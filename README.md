@@ -13,7 +13,7 @@ From this project directory, create an environment and install dependencies:
 
 ```sh
 /opt/homebrew/bin/python3.12 -m venv .venv
-.venv/bin/python -m pip install -e '.[test]'
+.venv/bin/python -m pip install -e '.[test,dev]'
 ```
 
 Start the backend in terminal 1:
@@ -21,6 +21,26 @@ Start the backend in terminal 1:
 ```sh
 .venv/bin/python history.py serve
 ```
+
+While editing the code, add `--reload` to restart automatically when a `.py` file in this
+directory changes:
+
+```sh
+.venv/bin/python history.py serve --reload
+```
+
+Without `--reload` the process keeps serving the code it imported at startup, so edits
+need a manual restart. Reloading restarts the whole worker: in-flight requests are
+dropped, and a syntax error leaves the old worker serving until the file parses again
+(the reloader logs the traceback). Only `.py` files trigger it, so writing exports into
+`output/` does not. Run without `--reload` when ChatGPT is connected through the tunnel.
+
+`--reload` needs the `dev` extra (`watchfiles`); without it uvicorn falls back to slower
+polling. Because reloading re-imports this module in a worker process, `serve --reload`
+passes `--aw-url`, `--output-dir` and `--log-level` to that worker through the
+`COMPUTER_HISTORY_AW_URL`, `COMPUTER_HISTORY_OUTPUT_DIR` and `COMPUTER_HISTORY_LOG_LEVEL`
+environment variables. The same variables configure `uvicorn history:app` if you start it
+that way.
 
 On Brandon's Mac the verified interpreter is `/opt/homebrew/bin/python3.12`;
 the system `python3` is older. Any working Python 3.10+ interpreter is fine.
@@ -39,6 +59,24 @@ Every client command goes through our backend, not directly to ActivityWatch.
 `events` prints JSON; `export` saves JSON and prints the saved payload and absolute file path.
 Export filenames are generated uniquely under this project's `output/` directory, which is gitignored.
 Use `serve --output-dir /some/path` to change it. Existing files are never overwritten.
+
+### Call logging
+
+The serving terminal logs every call, so you can see what an AI client is doing:
+
+```
+14:28:07 INFO  computer_history.http     REST GET /apps?start=...&end=... -> 200 in 71ms
+14:28:07 INFO  computer_history.mcp.tool MCP tool call get_activity_events(start='...', end='...', app='Google Chrome', limit=5, offset=0)
+14:28:07 INFO  computer_history.mcp.tool MCP tool ok get_activity_events in 34ms
+```
+
+MCP calls are logged per tool, with every argument including defaults the client did not
+send, because tool names and parameters live inside the JSON-RPC body of a single
+`POST /mcp`. REST calls are logged with their query string. Failures log one line naming
+the tool and the error. Argument values longer than 120 characters are truncated.
+
+Add `serve --log-level DEBUG` to also log each MCP transport request (`POST /mcp`
+itself, including handshake traffic). `--log-level WARNING` logs only failures.
 
 Dates must include a timezone. Use consecutive local midnights to request a day.
 The raw API's time filtering and event durations are preserved: this is not an

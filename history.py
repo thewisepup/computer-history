@@ -3,8 +3,11 @@ import argparse
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
+import logging
+import os
 from pathlib import Path
 import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -16,7 +19,27 @@ from pydantic import BaseModel, Field
 import uvicorn
 from history_mcp import create_mcp
 
-DEFAULT_OUTPUT = Path(__file__).resolve().parent / "output"
+PROJECT_DIR = Path(__file__).resolve().parent
+DEFAULT_OUTPUT = PROJECT_DIR / "output"
+DEFAULT_AW_URL = "http://127.0.0.1:5600/api/0"
+LOG = logging.getLogger("computer_history.http")
+
+# `serve --reload` runs the app in a subprocess that re-imports this module on every
+# edit, so it cannot see the parent's parsed arguments. These carry them across.
+ENV_AW_URL = "COMPUTER_HISTORY_AW_URL"
+ENV_OUTPUT_DIR = "COMPUTER_HISTORY_OUTPUT_DIR"
+ENV_LOG_LEVEL = "COMPUTER_HISTORY_LOG_LEVEL"
+
+
+def configure_logging(level="INFO"):
+    """Send our own logs to stderr, independent of whatever configured the root logger."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s %(message)s"))
+    logger = logging.getLogger("computer_history")
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.setLevel(str(level).upper())
+    logger.propagate = False
 
 
 class UpstreamError(Exception):
@@ -214,7 +237,6 @@ class Bridge:
         name = datetime.now(timezone.utc).strftime("activitywatch-%Y%m%dT%H%M%SZ-") + uuid4().hex[:8] + ".json"
         target = self.output_dir / name
         # Exclusive creation prevents accidental overwrites; keep history private to this user.
-        import os
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "w") as handle:
             json.dump(result, handle, indent=2, ensure_ascii=False)
@@ -229,7 +251,7 @@ class ExportRequest(BaseModel):
     limit: int = Field(default=-1, description="-1 for all matching events; positive for preview")
 
 
-def create_app(aw_url="http://127.0.0.1:5600/api/0", output_dir=DEFAULT_OUTPUT):
+def create_app(aw_url=DEFAULT_AW_URL, output_dir=DEFAULT_OUTPUT):
     bridge = Bridge(aw_url, output_dir)
     mcp = create_mcp(bridge)
     mcp_app = mcp.streamable_http_app(stateless_http=True, json_response=True)
@@ -242,6 +264,25 @@ def create_app(aw_url="http://127.0.0.1:5600/api/0", output_dir=DEFAULT_OUTPUT):
     app = FastAPI(title="Computer History", version="0.1.0",
                   description="Read ActivityWatch events and export original payloads to JSON.",
                   lifespan=lifespan)
+
+    # One line per HTTP request. MCP tool names and arguments live in the JSON-RPC body,
+    # so they are logged per tool in history_mcp.py; this only records the transport call.
+    @app.middleware("http")
+    async def log_request(request, call_next):
+        transport = "MCP" if request.url.path.rstrip("/") == "/mcp" else "REST"
+        level = logging.DEBUG if transport == "MCP" else logging.INFO
+        target = request.url.path + (("?" + request.url.query) if request.url.query else "")
+        LOG.log(level, "%s %s %s", transport, request.method, target)
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            LOG.warning("%s %s %s failed after %.0fms: %s: %s", transport, request.method,
+                        target, (time.perf_counter() - started) * 1000, type(exc).__name__, exc)
+            raise
+        LOG.log(level, "%s %s %s -> %s in %.0fms", transport, request.method, target,
+                response.status_code, (time.perf_counter() - started) * 1000)
+        return response
 
     @app.exception_handler(ValueError)
     async def invalid_input(request, exc):
@@ -300,7 +341,13 @@ def create_app(aw_url="http://127.0.0.1:5600/api/0", output_dir=DEFAULT_OUTPUT):
     return app
 
 
-app = create_app()
+# Import-time app for `uvicorn history:app` and for `serve --reload` workers. Logging is
+# configured only when asked through the environment, so importing this module in tests
+# stays quiet.
+if os.environ.get(ENV_LOG_LEVEL):
+    configure_logging(os.environ[ENV_LOG_LEVEL])
+app = create_app(os.environ.get(ENV_AW_URL, DEFAULT_AW_URL),
+                 os.environ.get(ENV_OUTPUT_DIR, DEFAULT_OUTPUT))
 
 
 def main():
@@ -309,8 +356,13 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve", help="Start the local HTTP backend")
     serve.add_argument("--port", type=int, default=8765)
-    serve.add_argument("--aw-url", default="http://127.0.0.1:5600/api/0")
+    serve.add_argument("--aw-url", default=DEFAULT_AW_URL)
+    serve.add_argument("--reload", action="store_true",
+                       help="Restart the server when a .py file in this project changes (development)")
     serve.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    serve.add_argument("--log-level", default="INFO",
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                       help="DEBUG also logs each MCP transport request")
     sub.add_parser("status", help="Check backend and ActivityWatch connectivity")
     sub.add_parser("buckets", help="Print ActivityWatch buckets")
     for name in ("events", "export"):
@@ -321,7 +373,17 @@ def main():
         command.add_argument("--limit", type=int, default=-1, help="-1 fetches all matching events")
     args = parser.parse_args()
     if args.command == "serve":
-        uvicorn.run(create_app(args.aw_url, args.output_dir), host="127.0.0.1", port=args.port)
+        configure_logging(args.log_level)
+        options = {"host": "127.0.0.1", "port": args.port, "log_level": args.log_level.lower()}
+        if not args.reload:
+            uvicorn.run(create_app(args.aw_url, args.output_dir), **options)
+            return
+        # Reloading re-imports this module in a worker process, so the app has to be named
+        # by import string and configured through the environment rather than built here.
+        os.environ[ENV_AW_URL] = args.aw_url
+        os.environ[ENV_OUTPUT_DIR] = str(args.output_dir)
+        os.environ[ENV_LOG_LEVEL] = args.log_level
+        uvicorn.run("history:app", reload=True, reload_dirs=[str(PROJECT_DIR)], **options)
         return
     base = args.server.rstrip("/")
     try:

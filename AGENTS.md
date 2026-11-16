@@ -57,7 +57,7 @@ Current implementation: a Python proof of concept (no desktop app yet).
 | `history_mcp.py` | Read-only MCP adapter; every tool calls the same `Bridge` methods as REST |
 | `test_history.py` | REST, usage-math and validation tests (unittest) |
 | `test_mcp.py` | MCP discovery, structured responses and error tests |
-| `pyproject.toml` | Dependencies: `fastapi`, `uvicorn`, `mcp==2.3.0`; test extra: `httpx` |
+| `pyproject.toml` | Dependencies: `fastapi`, `uvicorn`, `mcp==2.3.0`; test extra: `httpx`; dev extra: `watchfiles` (for `serve --reload`) |
 | `README.md` | Detailed API reference |
 | `output/` | Raw JSON exports (gitignored) |
 
@@ -74,7 +74,7 @@ Current implementation: a Python proof of concept (no desktop app yet).
 ```bash
 cd /Users/brandon/workspace/computer-history
 /opt/homebrew/bin/python3.12 -m venv .venv
-.venv/bin/python -m pip install -e '.[test]'
+.venv/bin/python -m pip install -e '.[test,dev]'
 ```
 
 (The system `python3` is too old; any Python 3.10+ works.)
@@ -88,6 +88,15 @@ cd /Users/brandon/workspace/computer-history
    .venv/bin/python history.py serve
    ```
    Serves REST + MCP on `http://127.0.0.1:8765`. Swagger UI: `http://127.0.0.1:8765/docs`.
+   This terminal logs every call: REST requests with their query string, and MCP calls
+   per tool with their arguments (MCP tool names/parameters are inside the JSON-RPC body,
+   so they are logged in `history_mcp.py`, not by the HTTP layer). Add
+   `--log-level DEBUG` to also see raw `POST /mcp` transport requests.
+   Add `--reload` while editing code to restart on `.py` changes (needs the `dev`
+   extra). It re-imports this module in a worker process, so `serve --reload` hands
+   `--aw-url`, `--output-dir` and `--log-level` to the worker through
+   `COMPUTER_HISTORY_*` environment variables. Without `--reload`, edits need a
+   manual restart.
 3. **Check it:**
    ```bash
    .venv/bin/python history.py status
