@@ -185,7 +185,7 @@ blocks (
   started_at  TEXT NOT NULL,       -- aligned to 5-minute boundaries
   ended_at    TEXT NOT NULL,
   project_id  INTEGER REFERENCES projects(id),   -- NULL = Unassigned
-  work_type_id INTEGER NOT NULL REFERENCES work_types(id),
+  work_type_id INTEGER REFERENCES work_types(id),   -- NULL = no type fits / list empty
   confidence  REAL,                -- LLM's 0–1 confidence
   status      TEXT NOT NULL,       -- 'auto' | 'corrected'  (corrected = locked)
   summary     TEXT,                -- one-line LLM description of the block
@@ -233,7 +233,7 @@ proportional to what breaks when the AI is wrong.
 | | **Projects** | **Work types** | **Tags** |
 | --- | --- | --- | --- |
 | Question answered | *Where did this time go?* (the outcome served) | *What kind of labor was it?* | *What else is worth remembering?* (tools, topics, episodes) |
-| Created by | **Both**: AI proposes from activity (`proposed` status, labels blocks immediately); user adds their own | **Human only**: seeded on first run, then user adds | **AI, freely**: no vocabulary table exists — tags are just rows on blocks |
+| Created by | **Both**: AI proposes from activity (`proposed` status, labels blocks immediately); user adds their own | **Human only**: starts empty; user adds — directly, or by asking their AI assistant to propose a list from real activity (it calls `add_work_type`) | **AI, freely**: no vocabulary table exists — tags are just rows on blocks |
 | AI's role | Pick an existing project or propose a new one | Select exactly one from the active list; inventing is impossible (strict validation → Unassigned) | Invent liberally (~3/block, normalized lowercase) |
 | Human's role | Confirm, rename, merge, archive, add | Own the vocabulary: add, rename, re-describe, archive | Edit per block via `correct_block` |
 | How human edits reach the AI | Prompt rebuilt from DB each run; project changes re-label unconfirmed blocks from the last 14 days | Prompt rebuilt each run; `description` teaches which synonyms each type absorbs | n/a — no vocabulary to maintain |
@@ -242,13 +242,41 @@ proportional to what breaks when the AI is wrong.
 | Use cases | "Time by project", project timeline, review grouping | Bottleneck ranking (project × work type), "how much time editing overall" | Search and filter: "when was I in CapCut / working on shorts / editing ep12" |
 | Cost of an AI mistake | A duplicate project — one merge fixes it | Would silently split bottleneck math — hence no freedom | A bad tag — worst case a search misses |
 
-**[proposed] Seed work-type list** (inserted into `work_types` on first run;
-user adds/renames/archives from there): coding, code review, debugging,
-deploying/ops, design, research, writing/scripting, video editing,
-communication, meetings, planning/admin, learning, personal.
-`personal` blocks and `project_id = NULL` blocks are excluded from bottleneck
-ranking (only real work matters). AI-proposed work types and consolidation
-suggestions are deferred (PRD Later list).
+**No seed list — AI proposes from real data, human approves (decided).**
+`work_types` starts empty, and the design assumes a fresh install with zero
+history (backfill is opportunistic, §4.1). The cold-start sequence:
+
+1. **Day 0 (install):** capture starts; that's the only job of day one.
+   Classification runs anyway — blocks get projects and tags, with
+   `work_type_id = NULL`. Nothing stalls.
+2. **Day 1–2:** once real activity has accumulated, the user asks their AI
+   assistant to propose a work-type list from it. The proposal is purely
+   conversational in v1: the assistant reads activity through the MCP read
+   tools, drafts ~8–12 types with descriptions and evidence in chat, and on
+   the user's approval creates them via `add_work_type`. No dedicated
+   `propose_work_types` endpoint yet.
+3. **On first approval (empty → non-empty):** a one-time **bootstrap
+   re-label** sweeps the existing auto blocks so the day-0/1 backlog isn't
+   permanently typeless. This is a deliberate exception to the deferred
+   relabel-on-type-change feature: one trigger, runs once, bounded scope.
+
+The **nudge** is the onboarding mechanism: while `work_types` is empty,
+`get_recording_status` and review output include "no work types defined yet —
+after a day of activity, ask your assistant to propose a list." It is
+meaningless on day 0, actionable on day 2, and persists until acted on; the
+empty table *is* the onboarding state, with no wizard or state machine. The
+step is skippable — types can be added by hand anytime, and everything but the
+work-type axis works without them. (An interview-based day-0 draft — "what
+kinds of work fill your week?" — is deliberately not in v1: self-reported
+taxonomies are the problem the product exists to correct. It stays in the back
+pocket for the non-technical-audience product.)
+
+Blocks with a NULL work type or NULL project are excluded from bottleneck
+ranking; a real personal-vs-work distinction is deferred (PRD Later:
+"personal vs actual work"). AI-proposed work types during routine
+classification and consolidation suggestions also remain deferred (PRD Later
+list) — vocabulary proposals happen only in explicit, human-approved flows
+like the one above.
 
 ### 3.4 Layer 3: reviews and suggestions
 
@@ -295,8 +323,11 @@ their source's payload shape; everything downstream reads `signals`.
 
 - Polls `http://127.0.0.1:5600/api/0` **[proposed]** every 60 seconds for the
   window, AFK, and both Chrome web buckets.
-- **First run backfills all existing ActivityWatch history** (decided), in
-  day-sized pages so it doesn't hold everything in memory.
+- **Backfill is opportunistic, never assumed** (decided 2026-11-17): if
+  ActivityWatch history exists on first run, ingest all of it in day-sized
+  pages so it doesn't hold everything in memory. A real user's fresh install
+  has zero history, so nothing downstream — onboarding included — may depend
+  on pre-existing data.
 - AW events can grow in place (the current event's duration extends), so the
   adapter re-reads a small trailing overlap window and upserts by `source_id`.
 - Read-only toward ActivityWatch, as today.
@@ -370,7 +401,8 @@ The AI client never classifies on the fly; it reads stored results.
    (project, work type) into one block; split at AFK gaps over 5 minutes.
 5. **Write-back.** Insert blocks with `status='auto'`. Never touch
    `corrected` blocks. Low-confidence windows get `project_id = NULL`
-   (Unassigned) rather than a guess **[proposed]**.
+   (Unassigned) rather than a guess **[proposed]**; likewise
+   `work_type_id = NULL` when no active type fits or the list is still empty.
 6. **Catch-up.** On startup (login agent) and after sleep, classify the whole
    gap since the last successful `classification_run`.
 
@@ -387,7 +419,7 @@ hardening is on the Later list.
 | Rename project | Update `name`; references untouched; no LLM call. |
 | Merge A into B | `A.merged_into_id = B`, A archived; A's blocks re-pointed to B; no LLM call. |
 | Add project | New `confirmed` row, `created_by='user'`; appears in the next classifier prompt. |
-| Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later). |
+| Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later), with one exception: the first empty → non-empty transition triggers the one-time bootstrap re-label (§3.3). |
 | Correct a block | Set project / work type / tags; `status → 'corrected'` (locked forever). |
 | Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Each half gets its evidence recomputed from its time range; halves are then correctable independently. |
 | Project set changes | Re-label **unconfirmed** blocks from the last 14 days (decided). |
@@ -410,6 +442,8 @@ the same service layer.
 - Week = Monday–Sunday, local time. Generated automatically when the week
   ends and on demand anytime (on-demand runs are allowed to exceed the
   2-second target since they call the LLM).
+- While `work_types` is empty, reviews carry the onboarding nudge (§3.3) in
+  place of a work-type breakdown.
 - **Ranking is deterministic, in the backend** (decided): score each
   (project × work type) pair — **[proposed] formula:** `hours × distinct days
   it recurs`, over confirmed-work blocks only (no `personal`, no Unassigned).
@@ -426,7 +460,7 @@ Read (bounded, summaries by default, evidence on request — as in the POC):
 
 | Tool | Purpose |
 | --- | --- |
-| `get_recording_status` | Source freshness, coverage gaps, disk usage |
+| `get_recording_status` | Source freshness, coverage gaps, disk usage; onboarding nudge while `work_types` is empty |
 | `get_time_breakdown` | Time by project / work type / app / domain / URL over a range; reports both foreground and attended seconds |
 | `get_timeline` | A day's blocks in order |
 | `list_projects` | Projects with status and totals |
@@ -512,4 +546,14 @@ and meet only inside blocks; `block_evidence` FK targets `signals`
 (signal id = observation id), with `rebuild-signals` running as one
 transaction with deferred FK checks. Work types carry a `description` fed into
 the classifier prompt, which is where the user teaches the model which
-synonyms each type absorbs.
+synonyms each type absorbs. `work_types` starts empty (no seed list);
+`blocks.work_type_id` is nullable, and cold start is the user asking their AI
+assistant to propose types from real activity via `add_work_type`.
+
+**Settled in the onboarding review (also 2026-11-17):** backfill is
+opportunistic, never assumed — all flows must work from a zero-history fresh
+install; work-type onboarding = capture first, AI proposes conversationally
+from real data after a day or two, human approves, then a one-time bootstrap
+re-label heals the typeless backlog; the empty `work_types` table is the
+onboarding state, surfaced as a nudge in `get_recording_status` and reviews;
+no `propose_work_types` endpoint and no day-0 interview in v1.
