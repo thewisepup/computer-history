@@ -170,12 +170,22 @@ projects (
   created_at     TEXT NOT NULL
 )
 
+work_types (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,                -- fed into the classifier prompt; lists the
+                                   -- synonyms this type absorbs, e.g.
+                                   -- "coding, programming, debugging, DevOps"
+  status      TEXT NOT NULL,       -- 'active' | 'archived'
+  created_at  TEXT NOT NULL
+)
+
 blocks (
   id          INTEGER PRIMARY KEY,
   started_at  TEXT NOT NULL,       -- aligned to 5-minute boundaries
   ended_at    TEXT NOT NULL,
   project_id  INTEGER REFERENCES projects(id),   -- NULL = Unassigned
-  work_type   TEXT NOT NULL,       -- one of the fixed work-type list
+  work_type_id INTEGER NOT NULL REFERENCES work_types(id),
   confidence  REAL,                -- LLM's 0–1 confidence
   status      TEXT NOT NULL,       -- 'auto' | 'corrected'  (corrected = locked)
   summary     TEXT,                -- one-line LLM description of the block
@@ -185,7 +195,7 @@ blocks (
 
 block_tags (block_id, tag)         -- optional, search/filter only, never totals
 
-block_evidence (block_id, observation_id)  -- raw rows supporting the label; derived, recomputable
+block_evidence (block_id, signal_id)  -- signals supporting the label; signal id = observation id; derived, recomputable
 ```
 
 Key decisions encoded here:
@@ -197,17 +207,48 @@ Key decisions encoded here:
   confirms, renames, merges, adds. Renames/merges only update references —
   no LLM call. When projects change, **unconfirmed** blocks from the last 14
   days are re-labelled.
+- Work types are a user-curated vocabulary: the AI **selects** from the
+  active list and never invents new types (can't-fit → low confidence →
+  Unassigned, which surfaces as "maybe a work type is missing"). Projects are
+  the opposite: an open set the AI proposes freely. The asymmetry is
+  deliberate — work types' value is comparability across projects and weeks,
+  which LLM-coined near-duplicates ("coding" / "programming") would destroy.
+- Projects, work types and tags never reference each other; they meet only
+  inside a block. Every cross-question (bottleneck = project × work type) is
+  an aggregation over blocks, not a stored relationship.
 - `block_evidence` gives every label and every bottleneck claim traceable
-  evidence, per the "honest about uncertainty" principle. It is keyed on
-  immutable observation ids (= signal ids), so signal rebuilds never dangle
-  it; membership is derived from time overlap, so it is recomputed
+  evidence, per the "honest about uncertainty" principle. Its FK targets
+  `signals` (what the classifier actually read); because signal ids are
+  observation ids, `rebuild-signals` re-creates identical keys — the rebuild
+  runs as one transaction with deferred FK checks, so evidence never dangles.
+  Membership is derived from time overlap, so it is recomputed
   deterministically when a block is split.
 
-**[proposed] Work-type list** (fixed enum, revisable in code): coding,
-code review, debugging, deploying/ops, design, research, writing/scripting,
-video editing, communication, meetings, planning/admin, learning, personal.
+#### Projects vs. work types vs. tags
+
+Three independent annotations on a block; they never reference each other and
+meet only inside a block row. AI freedom on each axis is inversely
+proportional to what breaks when the AI is wrong.
+
+| | **Projects** | **Work types** | **Tags** |
+| --- | --- | --- | --- |
+| Question answered | *Where did this time go?* (the outcome served) | *What kind of labor was it?* | *What else is worth remembering?* (tools, topics, episodes) |
+| Created by | **Both**: AI proposes from activity (`proposed` status, labels blocks immediately); user adds their own | **Human only**: seeded on first run, then user adds | **AI, freely**: no vocabulary table exists — tags are just rows on blocks |
+| AI's role | Pick an existing project or propose a new one | Select exactly one from the active list; inventing is impossible (strict validation → Unassigned) | Invent liberally (~3/block, normalized lowercase) |
+| Human's role | Confirm, rename, merge, archive, add | Own the vocabulary: add, rename, re-describe, archive | Edit per block via `correct_block` |
+| How human edits reach the AI | Prompt rebuilt from DB each run; project changes re-label unconfirmed blocks from the last 14 days | Prompt rebuilt each run; `description` teaches which synonyms each type absorbs | n/a — no vocabulary to maintain |
+| Vocabulary shape | Open set, grows with your life | Small closed set (~12), curated for comparability | Unbounded free vocabulary |
+| In time math | Yes — exactly one per block | Yes — exactly one per block; the bottleneck axis | **Never** — structurally excluded from totals |
+| Use cases | "Time by project", project timeline, review grouping | Bottleneck ranking (project × work type), "how much time editing overall" | Search and filter: "when was I in CapCut / working on shorts / editing ep12" |
+| Cost of an AI mistake | A duplicate project — one merge fixes it | Would silently split bottleneck math — hence no freedom | A bad tag — worst case a search misses |
+
+**[proposed] Seed work-type list** (inserted into `work_types` on first run;
+user adds/renames/archives from there): coding, code review, debugging,
+deploying/ops, design, research, writing/scripting, video editing,
+communication, meetings, planning/admin, learning, personal.
 `personal` blocks and `project_id = NULL` blocks are excluded from bottleneck
-ranking (only real work matters).
+ranking (only real work matters). AI-proposed work types and consolidation
+suggestions are deferred (PRD Later list).
 
 ### 3.4 Layer 3: reviews and suggestions
 
@@ -314,9 +355,15 @@ The AI client never classifies on the fly; it reads stored results.
    (capped). Windows that are fully AFK (per raw `aw-afk`, §4.3) are skipped.
 2. **LLM labelling.** Batch N windows per call to OpenRouter (one hard-coded
    model, text only). The prompt includes the current project list (names +
-   one-line descriptions) and the fixed work-type list. The model returns, per
-   window: project (existing, or a proposed new one), work type, up to 3 tags
-   **[proposed]**, confidence, one-line summary.
+   one-line descriptions) and the active work-type list (names + descriptions
+   — the description tells the model which synonyms each type absorbs, so
+   "programming" and "DevOps" land in "software engineering" if that's how the
+   user sliced it). The model returns,
+   per window: project (existing, or a proposed new one), work type (selected
+   from the list, never invented), up to 3 tags **[proposed]**, confidence,
+   one-line summary. The prompt also states what a project is (an outcome
+   being worked toward, never a kind of activity — "Video Editing" is a work
+   type, not a project).
 3. **Project proposal.** A new project name in the response creates a
    `proposed` project row immediately and labels the window with it (decided).
 4. **Block assembly [proposed].** Merge consecutive windows with the same
@@ -340,6 +387,7 @@ hardening is on the Later list.
 | Rename project | Update `name`; references untouched; no LLM call. |
 | Merge A into B | `A.merged_into_id = B`, A archived; A's blocks re-pointed to B; no LLM call. |
 | Add project | New `confirmed` row, `created_by='user'`; appears in the next classifier prompt. |
+| Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later). |
 | Correct a block | Set project / work type / tags; `status → 'corrected'` (locked forever). |
 | Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Each half gets its evidence recomputed from its time range; halves are then correctable independently. |
 | Project set changes | Re-label **unconfirmed** blocks from the last 14 days (decided). |
@@ -389,7 +437,8 @@ Read (bounded, summaries by default, evidence on request — as in the POC):
 Write (the correction/project actions from §6):
 
 `correct_block`, `split_block`, `confirm_project`, `rename_project`,
-`merge_projects`, `create_project`.
+`merge_projects`, `create_project`, `add_work_type`, `rename_work_type`,
+`archive_work_type`.
 
 Writes validate hard (existing ids, known work types) and return the updated
 object. Tested in both Claude (direct) and ChatGPT (Secure MCP Tunnel).
@@ -453,3 +502,14 @@ observations + signals; signals PK = observation id; full wipe-and-rebuild
 AFK raw-only with exactly three consumers; breakdowns report foreground and
 attended seconds; corrections = relabel + split on the 5-minute grid, with no
 boundary drags or merges in v1.
+
+**Settled in the Layer 2 review (also 2026-11-17):** `work_types` is a
+user-curated table seeded on first run — the AI selects from it and never
+invents types, the user adds/renames/archives (AI-proposed types and
+consolidation suggestions deferred to PRD Later, as is re-labelling on
+work-type changes); projects / work types / tags never reference each other
+and meet only inside blocks; `block_evidence` FK targets `signals`
+(signal id = observation id), with `rebuild-signals` running as one
+transaction with deferred FK checks. Work types carry a `description` fed into
+the classifier prompt, which is where the user teaches the model which
+synonyms each type absorbs.

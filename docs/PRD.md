@@ -95,6 +95,10 @@ that remove bottlenecks so you can spend more time on higher leverage tasks.
 - Manual corrections becomes context for future suggestions
 - Suggestion status
 - Data retention
+- Re-labelling recent unconfirmed blocks when work types change (v1 only
+  re-labels on project changes)
+- AI-proposed work types and consolidation suggestions (v1: AI selects from
+  the user-curated list only)
 - Personal vs actual work
 - Prompt injection
 - 1-step install
