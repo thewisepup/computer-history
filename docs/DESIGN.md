@@ -1,10 +1,10 @@
 # Open Computer History: MVP Design Doc
 
-_Status: draft for review, 2026-11-16; updated 2026-11-17 after the data-model
-review (signals layer, AFK handling, corrections scope). Companion to
-[PRD.md](PRD.md)._
+_Status: draft under active review; last updated 2026-11-18. Companion to
+[PRD.md](PRD.md). §10 lists what still needs a decision; §11 is the decision
+log._
 
-Sections marked **[proposed]** are my recommendations and still need Brandon's
+Sections marked **[proposed]** are recommendations that still need Brandon's
 confirmation. Everything else reflects decisions already made.
 
 ---
@@ -256,7 +256,7 @@ proportional to what breaks when the AI is wrong.
 | --- | --- | --- | --- |
 | Question answered | *Where did this time go?* (the outcome served) | *What kind of labor was it?* | *What else is worth remembering?* (tools, topics, episodes) |
 | Created by | **Both**: AI proposes from activity (`proposed` status, labels blocks immediately); user adds their own | **Human only**: starts empty; user adds — directly, or by asking their AI assistant to propose a list from real activity (it calls `add_work_type`) | **AI, freely**: no vocabulary table exists — tags are just rows on blocks |
-| AI's role | Pick an existing project or propose a new one | Select exactly one from the active list; inventing is impossible (strict validation → Unassigned) | Invent liberally (~3/block, normalized lowercase) |
+| AI's role | Pick an existing project or propose a new one | Select exactly one from the active list; inventing is impossible (strict validation → Unassigned) | Invent liberally — as many genuinely useful tags as fit (lowercased, deduped) |
 | Human's role | Confirm, rename, merge, archive, add | Own the vocabulary: add, rename, re-describe, archive | Edit per block via `correct_block` |
 | How human edits reach the AI | Prompt rebuilt from DB each run; project changes re-label unconfirmed blocks from the last 14 days | Prompt rebuilt each run; `description` teaches which synonyms each type absorbs | n/a — no vocabulary to maintain |
 | Vocabulary shape | Open set, grows with your life | Small closed set (~12), curated for comparability | Unbounded free vocabulary |
@@ -322,6 +322,28 @@ suggestions (
   runnable   TEXT NOT NULL         -- paste-ready prompt or Claude Code command
 )
 ```
+
+Semantics (settled):
+
+- **Reviews are snapshots, not deltas.** Every generation — scheduled or
+  on-demand — recomputes the whole week from current blocks; there is no
+  cursor and no "since the last review." A mid-week on-demand run covers
+  Monday-to-now; the scheduled run covers the full week regardless of earlier
+  triggers. Full recompute is idempotent and absorbs corrections and
+  late-classified blocks automatically.
+- **Reviews are never overwritten.** Multiple rows per `week_start` coexist,
+  ordered by `generated_at`. `body` is a frozen document: later corrections
+  must not silently rewrite what a review said — freshness questions are
+  answered by `generated_at` and regeneration. Trend questions ("editing time
+  over 12 weeks") are answered from blocks, which are live and normalized,
+  never by querying across review bodies.
+- **Suggestions are rows, not blob entries, because they have an afterlife:**
+  the deferred status/dismissal features need addressable ids ("dismiss
+  suggestion 12"). `workflow` is the automation for a human to read and
+  judge; `runnable` is the artifact a machine executes as-is — clients render
+  them differently (prose vs. copy-and-run), which is why they are separate
+  columns. `evidence` is display-only JSON (block ids, hours, recurrence);
+  the ids inside it chain to live blocks for drill-down.
 
 ### 3.5 Bookkeeping
 
@@ -409,16 +431,16 @@ The AI client never classifies on the fly; it reads stored results.
    apps + titles with durations, domains/URLs, cleaned AX / OCR text
    (capped). Windows that are fully AFK (per raw `aw-afk`, §4.3) are skipped.
 2. **LLM labelling.** Batch N windows per call to OpenRouter (one hard-coded
-   model, text only). The prompt includes the current project list (names +
-   one-line descriptions) and the active work-type list (names + descriptions
-   — the description tells the model which synonyms each type absorbs, so
-   "programming" and "DevOps" land in "software engineering" if that's how the
-   user sliced it). The model returns,
-   per window: project (existing, or a proposed new one), work type (selected
-   from the list, never invented), as many genuinely useful tags as fit
-   (decided; lowercased, deduped), confidence, one-line summary. The prompt also states what a project is (an outcome
-   being worked toward, never a kind of activity — "Video Editing" is a work
-   type, not a project).
+   model, text only). The prompt includes: the current project list (names +
+   one-line descriptions); the active work-type list (names + descriptions —
+   the description tells the model which synonyms each type absorbs, so
+   "programming" and "devops" land in "software engineering" if that's how
+   the user sliced it); and the rule that a project is an outcome being
+   worked toward, never a kind of activity ("video editing" is a work type,
+   not a project). The model returns, per window: project (existing, or a
+   proposed new one), work type (selected from the list, never invented), as
+   many genuinely useful tags as fit (lowercased, deduped), confidence, and a
+   one-line summary.
 3. **Project proposal.** A new project name in the response creates a
    `proposed` project row immediately and labels the window with it (decided).
 4. **Block assembly (decided).** Merge consecutive windows with the same
@@ -447,7 +469,7 @@ hardening is on the Later list.
 | Confirm project | `status → confirmed`. |
 | Rename project | Update `name`; references untouched; no LLM call. |
 | Merge A into B | `A.merged_into_id = B`, A archived; A's blocks re-pointed to B; no LLM call. |
-| Add project | New `confirmed` row, `created_by='user'`; appears in the next classifier prompt. |
+| Add project | New `confirmed` row; appears in the next classifier prompt. |
 | Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later), with one exception: the first empty → non-empty transition triggers the one-time bootstrap re-label (§3.3). |
 | Correct a block | Set project / work type / tags; `status → 'corrected'` (locked forever). |
 | Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Evidence is a time-range query, so each half's evidence follows automatically; halves are then correctable independently. |
@@ -559,7 +581,7 @@ The POC keeps running until M3, when the new system replaces it.
 
 | # | Milestone | Done when |
 | --- | --- | --- |
-| **M1** | **Package + store + AW ingest.** New package, SQLite schema, ActivityWatch adapter with full backfill and polling, `status`/`backfill` CLI. | All AW history is in `observations`; re-running ingest is a no-op; coverage gaps queryable. |
+| **M1** | **Package + store + AW ingest.** New package, SQLite schema, ActivityWatch adapter (polling + settled-events rule), `status` CLI, one-time `backfill` command. | A fresh install ingests from zero; Brandon's existing AW history lands via `backfill`; re-running ingest is a no-op; coverage gaps queryable. |
 | **M2** | **Classification.** Windowing, OpenRouter client, project proposal, block assembly, scheduler with catch-up. | A day of real activity becomes labelled blocks within an hour, idempotently. |
 | **M3** | **MCP + corrections.** All read and write tools; REST under `/api`; POC deleted. | From Claude and ChatGPT: query timeline/breakdowns, correct a block, manage projects; corrected blocks survive re-classification. |
 | **M4** | **Weekly review.** Ranking, review generation (scheduled + on demand), suggestions stored. | Monday morning: a stored review with 1–3 runnable suggestions, same from every client. |
@@ -569,64 +591,62 @@ The POC keeps running until M3, when the new system replaces it.
 | **M8** | **Capture agent: screenshots + OCR.** Screen capture, dedup, Vision OCR, UI screenshot display. | OCR text improves classification; screenshots viewable in the UI; nothing but text leaves the Mac. |
 | **M9** | **Early adopters.** Setup docs, rough install script, a second Mac runs it. | A technical friend is running it on their machine. |
 
-## 10. Open items to settle as we go
+## 10. Open items needing a decision
 
-Carried from discussion, each tagged **[proposed]** above where it appears:
+Each tagged **[proposed]** above where it appears:
 
-1. Bottleneck stage-1 formula *value*: hours × distinct recurring days (§7) — the two-stage mechanism is decided, the formula itself is not
-2. Capture agent: Swift, triggers, spool handoff, storage budget (§4.2) — under active design discussion
-3. Low-confidence threshold value: default 0.5, configurable (§5)
-4. URL layout `/api` + `/` + `/mcp` (§2)
-5. AW polling interval: 60s (§4.1)
-6. Partial-week on-demand breakdowns: covered by `get_time_breakdown` over any range, so no separate tool — confirm this is enough
-7. Review `body` JSON shape: range / totals / bottlenecks / narrative (§3.4)
-8. Multiple reviews per week coexist as rows; `get_weekly_review` serves the latest (§3.4)
-9. Empty weeks still store a review ("no classified work"), so a missing review always means a bug (§7)
-10. Keep `reviews.trigger` (flagged as the one defensible cut in the final audit)
+1. **Capture agent** (§4.2) — under active discussion. Five sub-decisions:
+   screenshot scope (frontmost window / active display / all displays),
+   heartbeat cadence (30s vs 60s), image budget (~1440px JPEG q60), the
+   secure-input skip, and same-tick AX + screenshot capture.
+2. **Bottleneck formula value** (§7): `hours × distinct days`, and the
+   materiality floor (≥2h, or ≥30min on 3+ days) — the two-stage mechanism is
+   decided, the numbers are not.
+3. **Low-confidence threshold value** (§5): default 0.5, configurable.
+4. **URL layout** (§2): `/api` + `/` + `/mcp`.
+5. **AW polling interval** (§4.1): 60s.
+6. **Partial-week breakdowns**: covered by `get_time_breakdown` over any
+   range, no separate tool — confirm this is enough.
+7. **Review `body` JSON shape** (§3.4): range / totals / bottlenecks /
+   narrative.
+8. **`get_weekly_review` default**: serves the week's latest review.
+9. **Empty weeks** (§7): still store a review ("no classified work"), so a
+   missing review always means a bug.
+10. **Keep `reviews.trigger`** (flagged as the one defensible cut in the
+    final audit; recommendation: keep).
 
-**Settled 2026-11-18:** bottleneck ranking is two-stage (deterministic
-shortlist answers "how big", AI selection over that shortlist answers "how
-automatable", constrained to cite evidence and never add candidates); block
-assembly decided (5-min windows, merge same-label neighbors, split at >5-min
-AFK gaps); low-confidence → NULL project decided (threshold value still open);
-tags are uncapped — as many genuinely useful ones as fit, lowercased.
+Structural-but-unblessed (silence = consent unless something bothers you):
+package layout (§2), milestone ordering (§9).
 
-**Settled in the 2026-11-17 data-model review** (reflected above): two-layer
-observations + signals; signals PK = observation id; full wipe-and-rebuild
-(`rebuild-signals`) instead of per-row mapping versions; `extras` write-only;
-AFK raw-only with exactly three consumers; breakdowns report foreground and
-attended seconds; corrections = relabel + split on the 5-minute grid, with no
-boundary drags or merges in v1.
+## 11. Decision log
 
-**Settled in the Layer 2 review (also 2026-11-17):** `work_types` is a
-user-curated table seeded on first run — the AI selects from it and never
-invents types, the user adds/renames/archives (AI-proposed types and
-consolidation suggestions deferred to PRD Later, as is re-labelling on
-work-type changes); projects / work types / tags never reference each other
-and meet only inside blocks; block evidence was first keyed to signals, then
-dropped as a table entirely in the final audit (below) — it is a derived
-time-overlap query. Work types carry a `description` fed into
-the classifier prompt, which is where the user teaches the model which
-synonyms each type absorbs. `work_types` starts empty (no seed list);
-`blocks.work_type_id` is nullable, and cold start is the user asking their AI
-assistant to propose types from real activity via `add_work_type`.
-
-**Settled in the onboarding review (also 2026-11-17):** backfill is
-opportunistic, never assumed — all flows must work from a zero-history fresh
-install; work-type onboarding = capture first, AI proposes conversationally
-from real data after a day or two, human approves, then a one-time bootstrap
-re-label heals the typeless backlog; the empty `work_types` table is the
-onboarding state, surfaced as a nudge in `get_recording_status` and reviews;
-no `propose_work_types` endpoint and no day-0 interview in v1.
-
-**Settled in the final schema audit (2026-11-17):** `block_evidence` dropped —
-evidence is a derived time-overlap query over signals (kept as a view,
-`block_evidence_v`), with a documented re-add trigger if the classifier ever
-selects/weights signals; `projects.created_by` dropped (status carries the
-provenance that matters); `blocks.confidence` kept; observations strictly
-insert-only via the settled-events rule (no upsert carve-out); classification
-horizon (default 14 days) caps catch-up, with `classify-backfill` for older
-history; all stored timestamps UTC (week/day boundaries converted to local at
-query time, boundary-spanning blocks clipped); project/work-type names and
-tags lowercased on write; the corrected-block lock enforced inside the
-classifier's write statements.
+- **2026-11-16 — initial draft:** scope (capture agent and corrections in v1,
+  one model, full rewrite), architecture, milestones.
+- **2026-11-17 — data model:** two-layer `observations` + `signals`
+  (PK = observation id; wipe-and-rebuild; `extras` write-only); AFK raw-only
+  with exactly three consumers; breakdowns report foreground **and** attended
+  seconds; corrections = relabel + split on the 5-minute grid (no boundary
+  drags or merges in v1).
+- **2026-11-17 — Layer 2:** `work_types` table with `description` (AI selects
+  from it, never invents; user owns the vocabulary); projects / work types /
+  tags never reference each other and meet only inside blocks; AI-proposed
+  types, consolidation suggestions and relabel-on-type-change deferred to PRD
+  Later.
+- **2026-11-17 — onboarding:** zero-history install assumed everywhere
+  (backfill = one-time personal convenience); no seed work types —
+  conversational AI proposal from real data after a day of capture, human
+  approves, one-time bootstrap re-label; empty `work_types` is the onboarding
+  state (nudge in `get_recording_status` and reviews); no `propose_work_types`
+  endpoint, no day-0 interview.
+- **2026-11-17 — final schema audit:** `block_evidence` table dropped
+  (evidence = derived time-overlap query, view `block_evidence_v`, re-add
+  trigger documented); `projects.created_by` dropped; `confidence` kept;
+  settled-events rule makes observations strictly insert-only; classification
+  horizon (default 14 days) + `classify-backfill`; UTC storage with local
+  week/day boundaries and boundary clipping; lowercase names and tags;
+  corrected-block lock enforced inside the classifier's write statements.
+- **2026-11-18 — review engine:** two-stage ranking (deterministic
+  materiality-floor shortlist answers "how big"; AI selection answers "how
+  automatable," citing evidence, never adding candidates); generation runs
+  classification catch-up first; block assembly confirmed; tags uncapped;
+  low-confidence → NULL project; review snapshot semantics (§3.4).
