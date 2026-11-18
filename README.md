@@ -1,8 +1,8 @@
 # Computer History: ActivityWatch HTTP proof of concept
 
-> **New here or switching AI assistants?** Start with [AGENTS.md](AGENTS.md):
-> product goals, how to run everything (including the ChatGPT tunnel), current
-> status and roadmap. This README is the detailed API reference.
+> **New here or switching AI assistants?** Start with [AGENTS.md](AGENTS.md) for
+> orientation. This README is the proof of concept's API reference; connecting
+> ChatGPT is the `connect-chatgpt` skill (`.claude/skills/connect-chatgpt/`).
 
 Python 3.10+, FastAPI + Uvicorn, no database, no AI classification.
 ActivityWatch must be running. Its API remains read-only.
