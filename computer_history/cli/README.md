@@ -13,7 +13,7 @@ app.py         parser + dispatch: one entry per command
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk
         |
-db.py (open the store) and formatting.py (durations, times, sizes)
+db.py (unusable-database messages) and formatting.py (durations, times, sizes)
 ```
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the
@@ -93,6 +93,24 @@ Rebuilt signals in .../history.db from stored observations
 Wipes `signals` and re-projects every stored observation. Needed only after
 changing `project_signal` or `text.py`. Aborts (and rolls back) if too many
 rows fail to project or the result would shrink suspiciously.
+
+## When the database can't be used
+
+Every command opens the store the same way and refuses, with exit code 1 and
+no traceback, when the database is:
+
+- **newer** than this CLI (`cannot use ...: schema v3 is newer than this CLI
+  understands (v2); upgrade computer-history`). Nothing is read or written.
+- **busy** while opening for write, e.g. another process is migrating
+  (`cannot open ...: database is locked` plus a try-again hint).
+- **not a database** (`cannot open ...: file is not a database`).
+
+An **outdated** schema is migrated by `ingest`, `backfill` and
+`rebuild-signals`. `status` and `backfill --dry-run` never migrate: status
+prints `note: this CLI uses schema v2; computer-history ingest will migrate
+the database` and stops there, and a dry run refuses. A **missing** database
+is created by `ingest` and `backfill` (only once planning succeeds), shown as
+"not created yet" by `status`, and refused by `rebuild-signals`.
 
 ## Global flags
 

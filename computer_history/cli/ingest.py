@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from computer_history.cli.db import db_busy_hint, open_store
+from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.sources import (
     AWApi,
     AWClient,
@@ -20,7 +20,7 @@ from computer_history.sources import (
     discover_sources,
     ingest_source,
 )
-from computer_history.store import resolve_db_path
+from computer_history.store import Purpose, open_store, resolve_db_path
 
 log = logging.getLogger(__name__)
 
@@ -108,10 +108,11 @@ def watch(
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     client = AWClient(args.aw_url)
-    conn = open_store(db_path)
+    store = open_store(db_path, Purpose.WRITE)
+    conn = store.conn
     if conn is None:
-        return 1
-    try:
+        return store_unavailable(store)
+    with store:
         if args.watch:
             log.info(
                 "watching %s every %ds into %s (Ctrl-C to stop)",
@@ -125,8 +126,6 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 log.info("stopped")
             return 0
         summary = run_cycle(conn, client)
-    finally:
-        conn.close()
     if summary.outcomes or summary.ok:
         print(f"Ingested from {args.aw_url} into {db_path}")
     if summary.ok and not summary.outcomes:

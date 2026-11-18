@@ -71,6 +71,7 @@ automation suggestions.
 ```
 computer_history/
   store/        # SQLite, one module per concern: db (connections + migrations),
+                # opening (open for a purpose, report the database's state),
                 # observations (ingest writes), signals (rebuild), cursors,
                 # status (read queries), timefmt, paths
   sources/      # one adapter per source: activitywatch/, ax_text, screenshots

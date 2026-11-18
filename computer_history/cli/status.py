@@ -6,15 +6,16 @@ import argparse
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import db_size, duration, lag, when
 from computer_history.sources import AWClient, AWError, discover_sources
 from computer_history.store import (
+    Purpose,
     SourceSummary,
-    connect_readonly,
+    StoreState,
     find_gaps,
-    load_migrations,
+    open_store,
     resolve_db_path,
-    schema_version,
     source_summary,
     table_counts,
 )
@@ -44,36 +45,29 @@ def cmd_status(args: argparse.Namespace) -> int:
         names = ", ".join(s.name for s in sources) or "none of window/AFK/web"
         aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
 
-    if not db_path.exists():
+    store = open_store(db_path, Purpose.READ)
+    if store.state is StoreState.MISSING:
         print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
         print(aw_line)
         return 0
-    conn = connect_readonly(db_path)
-    try:
-        version, expected = schema_version(conn), load_migrations()[-1].version
-        print(f"Database:      {db_path} ({db_size(db_path)}, schema v{version})")
+    if store.state in (StoreState.BUSY, StoreState.UNREADABLE):
         print(aw_line)
-        if version < expected:
-            print(
-                f"  note: this CLI uses schema v{expected}; `computer-history ingest` will"
-                " migrate the database. No store details until then."
-            )
-            return 0
-        if version > expected:
-            print(
-                f"  note: schema v{version} is newer than this CLI understands"
-                f" (v{expected}); upgrade computer-history."
-            )
-            return 0
-        summaries = source_summary(conn)
+        return store_unavailable(store)
+    print(f"Database:      {db_path} ({db_size(db_path)}, schema v{store.version})")
+    print(aw_line)
+    if store.state is StoreState.OUTDATED:
+        print(f"  note: {outdated_note(store)}. No store details until then.")
+        return 0
+    if store.conn is None:
+        return store_unavailable(store)
+    with store:
+        summaries = source_summary(store.conn)
         print()
         _print_sources(summaries, now)
         print()
-        _print_gaps(conn, summaries)
+        _print_gaps(store.conn, summaries)
         print()
-        _print_counts(table_counts(conn))
-    finally:
-        conn.close()
+        _print_counts(table_counts(store.conn))
     return 0
 
 

@@ -28,15 +28,17 @@ from computer_history.sources.activitywatch import (
     AWApi,
     AWSource,
     IngestOutcome,
+    discover_sources,
     ingest_source,
 )
-from computer_history.store import init_cursor, to_utc
+from computer_history.store import get_cursor, init_cursor, to_utc
 
 __all__ = [
     "BACKFILL_CHUNK",
     "BackfillPlan",
     "BackfillResult",
     "Chunk",
+    "plan_all_backfills",
     "plan_backfill",
     "run_backfill",
 ]
@@ -128,6 +130,33 @@ def plan_backfill(
         chunks.append(Chunk(edge, min(edge + chunk, stop)))
         edge += chunk
     return BackfillPlan(source, begin, stop, cursor_dt, tuple(chunks), tuple(earlier))
+
+
+def plan_all_backfills(
+    conn: sqlite3.Connection | None,
+    client: AWApi,
+    *,
+    now: datetime,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[BackfillPlan]:
+    """Plan every discovered source from its stored cursor, or from none without a database.
+
+    Lists the buckets once and writes nothing.
+    """
+    buckets = client.get_buckets()
+    return [
+        plan_backfill(
+            client,
+            source,
+            cursor=None if conn is None else get_cursor(conn, source.name),
+            now=now,
+            start=start,
+            end=end,
+            buckets=buckets,
+        )
+        for source in discover_sources(client, buckets=buckets)
+    ]
 
 
 def run_backfill(

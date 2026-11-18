@@ -12,7 +12,6 @@ import pytest
 from fake_aw import FakeAW, at
 
 from computer_history import cli
-from computer_history.cli import db as cli_db
 from computer_history.cli import rebuild as cli_rebuild
 from computer_history.sources import (
     AFK_SOURCE,
@@ -500,23 +499,3 @@ def test_cli_rebuild_signals_allow_shrink(
     code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals", "--allow-shrink")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
-
-
-@pytest.mark.parametrize("command", ["rebuild-signals", "ingest"])
-def test_cli_reports_a_locked_db_at_open_without_a_traceback(
-    command: str,
-    capsys: pytest.CaptureFixture[str],
-    db_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    connect(db_path).close()
-
-    def locked(*args: Any, **kwargs: Any) -> None:
-        raise sqlite3.OperationalError("database is locked")  # e.g. while migrating
-
-    monkeypatch.setattr(cli_db, "connect", locked)
-    code, out, err = run(capsys, "--db-path", str(db_path), command)
-    assert code == 1
-    assert out == ""
-    assert f"cannot open {db_path}: database is locked" in err
-    assert f"Is another process writing to {db_path}?" in err

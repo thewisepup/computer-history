@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
 
 import computer_history
 from computer_history import cli
+from computer_history.cli import backfill as cli_backfill
 from computer_history.cli import formatting
 from computer_history.cli import ingest as cli_ingest
 from computer_history.cli import status as cli_status
@@ -456,13 +458,14 @@ def test_status_does_not_migrate_an_old_schema(capsys, use_aw, db_path: Path) ->
 
 
 def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
-    conn = connect(db_path)
-    conn.execute("PRAGMA user_version = 99")
-    conn.close()
+    newer_db(db_path)
     use_aw(FakeAW({}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
-    assert code == 0
-    assert "schema v99 is newer than this CLI understands (v2)" in out
+    code, out, err = run(capsys, "--db-path", str(db_path), "status")
+    assert code == 1
+    assert f"schema v{SUPPORTED + 1})" in out
+    assert "ActivityWatch: yes" in out
+    assert "Sources:" not in out
+    assert f"schema v{SUPPORTED + 1} is newer than this CLI understands (v{SUPPORTED})" in err
 
 
 def test_status_checks_cursorless_sources_up_to_latest_observation(
@@ -500,6 +503,97 @@ def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: 
     )
     assert seen == ["http://127.0.0.1:5666/api/0"]
     assert "(http://127.0.0.1:5666/api/0;" in out
+
+
+# --- every command against an unusable database -------------------------------------
+
+EVERY_COMMAND = [
+    ["ingest"],
+    ["status"],
+    ["rebuild-signals"],
+    ["backfill"],
+    ["backfill", "--dry-run"],
+]
+
+
+@pytest.fixture
+def aw_everywhere(monkeypatch: pytest.MonkeyPatch) -> FakeAW:
+    fake = seeded_aw(datetime.now(UTC))
+    for module in (cli_ingest, cli_status, cli_backfill):
+        monkeypatch.setattr(module, "AWClient", lambda *args, **kwargs: fake)
+    return fake
+
+
+@pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
+def test_every_command_refuses_a_newer_schema(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    newer_db(db_path)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert (
+        f"cannot use {db_path}: schema v{SUPPORTED + 1} is newer than this CLI understands"
+        f" (v{SUPPORTED}); upgrade computer-history"
+    ) in err
+    assert "Traceback" not in err
+    assert user_version(db_path) == SUPPORTED + 1
+
+
+@pytest.mark.parametrize("command", [["ingest"], ["rebuild-signals"], ["backfill"]], ids=" ".join)
+def test_writing_commands_report_a_locked_db_at_open(
+    capsys, aw_everywhere: FakeAW, db_path: Path, quick_busy_timeout: None, command: list[str]
+) -> None:
+    outdated_db(db_path)
+    with write_locked(db_path):
+        code, out, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert out == ""
+    assert f"cannot open {db_path}: database is locked" in err
+    assert f"Is another process writing to {db_path}?" in err
+    assert "Traceback" not in err
+    assert user_version(db_path) == SUPPORTED - 1
+
+
+@pytest.mark.parametrize("command", [["ingest"], ["backfill"]], ids=" ".join)
+def test_writing_commands_migrate_an_outdated_db(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    outdated_db(db_path)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 0, err
+    assert user_version(db_path) == SUPPORTED
+
+
+def test_rebuild_signals_migrates_an_outdated_db(capsys, db_path: Path) -> None:
+    outdated_db(db_path)
+    code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals")
+    assert code == 0
+    assert re.search(r"signals after\s+0\n", out)
+    assert user_version(db_path) == SUPPORTED
+
+
+def test_backfill_dry_run_refuses_an_outdated_db(
+    capsys, aw_everywhere: FakeAW, db_path: Path
+) -> None:
+    outdated_db(db_path)
+    code, out, err = run(capsys, "--db-path", str(db_path), "backfill", "--dry-run")
+    assert code == 1
+    assert out == ""
+    assert f"cannot read {db_path}: this CLI uses schema v{SUPPORTED}" in err
+    assert "`computer-history ingest` will migrate the database" in err
+    assert user_version(db_path) == SUPPORTED - 1
+
+
+@pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
+def test_every_command_reports_a_file_that_is_not_a_database(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    db_path.write_bytes(b"not a database" * 100)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert f"cannot open {db_path}: file is not a database" in err
+    assert "Is another process writing" not in err
+    assert "Traceback" not in err
 
 
 # --- formatting ----------------------------------------------------------------------

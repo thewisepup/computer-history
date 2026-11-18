@@ -6,11 +6,10 @@ import argparse
 import sqlite3
 import sys
 import time
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from computer_history.cli.db import db_busy_hint, open_store
+from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.cli.formatting import duration, when
 from computer_history.sources import (
     BACKFILL_CHUNK,
@@ -21,17 +20,21 @@ from computer_history.sources import (
     BackfillResult,
     Chunk,
     IngestOutcome,
-    discover_sources,
-    plan_backfill,
+    plan_all_backfills,
     run_backfill,
 )
-from computer_history.store import connect_readonly, get_cursor, resolve_db_path, schema_version
+from computer_history.store import (
+    Purpose,
+    StoreState,
+    open_store,
+    resolve_db_path,
+)
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
     """Plan every source, then ingest each plan chunk by chunk.
 
-    All planning happens before the database is opened or created.
+    A missing database is created only once planning succeeds, and a dry run never writes.
     """
     db_path = resolve_db_path(args.db_path)
     client = AWClient(args.aw_url)
@@ -39,42 +42,40 @@ def cmd_backfill(args: argparse.Namespace) -> int:
     if args.start is not None and args.end is not None and args.start >= args.end:
         print("--start must be before --end", file=sys.stderr)
         return 2
-    try:
-        buckets = client.get_buckets()
-        sources = discover_sources(client, buckets=buckets)
-        if not sources:
+    store = open_store(db_path, Purpose.READ if args.dry_run else Purpose.WRITE_EXISTING)
+    if store.conn is None and store.state is not StoreState.MISSING:
+        return store_unavailable(store)
+    with store:
+        try:
+            plans = plan_all_backfills(store.conn, client, now=now, start=args.start, end=args.end)
+        except AWError as exc:
+            return _aw_failed(exc)
+        except sqlite3.Error as exc:
+            print(f"cannot read {db_path}: {exc}", file=sys.stderr)
+            return 1
+        if not plans:
             print("no ActivityWatch sources found (no window, AFK or web buckets)")
             return 0
-        cursors = _read_cursors(db_path, [s.name for s in sources])
-        if cursors is None:
-            return 1
-        plans = [
-            plan_backfill(
-                client,
-                source,
-                cursor=cursors.get(source.name),
-                now=now,
-                start=args.start,
-                end=args.end,
-                buckets=buckets,
-            )
-            for source in sources
-        ]
-    except AWError as exc:
-        return _aw_failed(exc)
+        verb = "Dry run: would backfill" if args.dry_run else "Backfilling"
+        width = duration(BACKFILL_CHUNK.total_seconds())
+        print(f"{verb} {args.aw_url} into {db_path} ({width} chunks)", flush=True)
+        for plan in plans:
+            _print_plan(plan, list_chunks=args.dry_run)
+        if args.dry_run:
+            print("dry run: nothing written")
+            return 0
+        if store.conn is not None:
+            return _backfill_all(store.conn, client, plans, db_path)
+    with open_store(db_path, Purpose.WRITE) as created:
+        if created.conn is None:
+            return store_unavailable(created)
+        return _backfill_all(created.conn, client, plans, db_path)
 
-    verb = "Dry run: would backfill" if args.dry_run else "Backfilling"
-    width = duration(BACKFILL_CHUNK.total_seconds())
-    print(f"{verb} {args.aw_url} into {db_path} ({width} chunks)", flush=True)
-    for plan in plans:
-        _print_plan(plan, list_chunks=args.dry_run)
-    if args.dry_run:
-        print("dry run: nothing written")
-        return 0
 
-    conn = open_store(db_path)
-    if conn is None:
-        return 1
+def _backfill_all(
+    conn: sqlite3.Connection, client: AWApi, plans: list[BackfillPlan], db_path: Path
+) -> int:
+    """Run every plan, then print the totals and, after a failure, how to resume."""
     results: list[BackfillResult] = []
     try:
         for plan in plans:
@@ -99,8 +100,6 @@ def cmd_backfill(args: argparse.Namespace) -> int:
         print()
         _print_backfill_totals(results)
         return 0
-    finally:
-        conn.close()
     if results:
         print(_RESUME_HINT, file=sys.stderr)
     return code
@@ -215,26 +214,6 @@ def _print_backfill_totals(results: list[BackfillResult]) -> None:
             f"  {r.source:<{width}}  chunks {r.chunks_done:>4,}  inserted {r.inserted:>8,}"
             f"  skipped {r.skipped:>8,}  held back {r.held_back:>3,}"
         )
-
-
-def _read_cursors(db_path: Path, sources: Sequence[str]) -> dict[str, str | None] | None:
-    """Read the sources' cursors from the database, if there is one.
-
-    Returns None after printing why the database could not be read.
-    """
-    if not db_path.exists():
-        return {}
-    try:
-        conn = connect_readonly(db_path)
-        try:
-            if schema_version(conn) < 1:
-                return {}
-            return {name: get_cursor(conn, name) for name in sources}
-        finally:
-            conn.close()
-    except sqlite3.Error as exc:
-        print(f"cannot read {db_path}: {exc}", file=sys.stderr)
-        return None
 
 
 def _aw_failed(exc: AWError) -> int:

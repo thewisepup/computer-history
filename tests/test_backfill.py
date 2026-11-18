@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import write_locked
 from fake_aw import FakeAW
 
 from computer_history import cli
 from computer_history.cli import app as cli_app
 from computer_history.cli import backfill as cli_backfill
-from computer_history.cli import db as cli_db
 from computer_history.sources import (
     AFK_SOURCE,
     BACKFILL_CHUNK,
@@ -462,27 +462,34 @@ def test_cli_backfill_mid_run_failure_keeps_committed_chunks(capsys, use_aw, db_
 
 
 def test_cli_backfill_on_a_locked_store_fails_cleanly(
-    capsys, use_aw, db_path: Path, monkeypatch: pytest.MonkeyPatch
+    capsys, use_aw, db_path: Path, quick_busy_timeout: None
 ) -> None:
     use_aw(history_aw(datetime.now(UTC)))
-    locker = connect(db_path)
-
-    def quick_connect(path: Any) -> sqlite3.Connection:
-        conn = connect(path)
-        conn.execute("PRAGMA busy_timeout = 50")  # don't wait the full 5s in a test
-        return conn
-
-    monkeypatch.setattr(cli_db, "connect", quick_connect)
-    try:
-        locker.execute("BEGIN IMMEDIATE")
+    connect(db_path).close()
+    with write_locked(db_path):
         code, _, err = run(capsys, "--db-path", str(db_path), "backfill")
-    finally:
-        locker.execute("ROLLBACK")
-        locker.close()
     assert code == 1
     assert "database is locked" in err
     assert "Is another process writing to" in err
     assert "Committed chunks are kept" not in err  # nothing was committed
+    assert "Traceback" not in err
+
+
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]], ids=["run", "dry-run"])
+def test_cli_backfill_cursor_read_failure_fails_cleanly(
+    capsys, use_aw, db_path: Path, monkeypatch: pytest.MonkeyPatch, dry_run: list[str]
+) -> None:
+    use_aw(history_aw(datetime.now(UTC)))
+    connect(db_path).close()
+
+    def unreadable(*args: Any) -> None:
+        raise sqlite3.DatabaseError("database disk image is malformed")
+
+    monkeypatch.setattr(backfill_module, "get_cursor", unreadable)
+    code, out, err = run(capsys, "--db-path", str(db_path), "backfill", *dry_run)
+    assert code == 1
+    assert out == ""
+    assert f"cannot read {db_path}: database disk image is malformed" in err
     assert "Traceback" not in err
 
 

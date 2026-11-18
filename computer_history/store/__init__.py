@@ -1,7 +1,8 @@
 """The SQLite store: schema migrations and persistence.
 
-Only this package knows SQL. Writers use insert_observations and the cursor
-setters; rebuild-signals uses rebuild_signals; status uses the read queries.
+Only this package knows SQL. Commands open the database with open_store,
+which reports its state. Writers use insert_observations and the cursor
+setters, rebuild-signals uses rebuild_signals, status uses the read queries.
 """
 
 from computer_history.store.cursors import (
@@ -13,7 +14,6 @@ from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
     connect,
-    connect_readonly,
     load_migrations,
     migrate,
     schema_version,
@@ -26,6 +26,7 @@ from computer_history.store.observations import (
     Signal,
     insert_observations,
 )
+from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
 from computer_history.store.signals import (
     Projector,
@@ -50,13 +51,15 @@ __all__ = [
     "InsertResult",
     "Migration",
     "Observation",
+    "OpenedStore",
     "Projector",
+    "Purpose",
     "RebuildAborted",
     "RebuildResult",
     "Signal",
     "SourceSummary",
+    "StoreState",
     "connect",
-    "connect_readonly",
     "default_db_path",
     "find_gaps",
     "get_cursor",
@@ -64,6 +67,7 @@ __all__ = [
     "insert_observations",
     "load_migrations",
     "migrate",
+    "open_store",
     "rebuild_signals",
     "resolve_db_path",
     "schema_version",

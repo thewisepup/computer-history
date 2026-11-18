@@ -7,7 +7,7 @@
       +-- rebuild.py   rebuild-signals
       +-- backfill.py  plan, then ingest history chunk by chunk
             |
-    db.py (open the store) and formatting.py (durations, times, sizes)
+    db.py (unusable-database messages) and formatting.py (durations, times, sizes)
 """
 
 from computer_history.cli.app import COMMANDS, HANDLERS, build_parser, main

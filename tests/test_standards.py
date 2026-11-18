@@ -157,7 +157,7 @@ def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
         for node in ast.walk(_tree(path))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in ("AWClient", "connect", "connect_readonly")
+        and node.func.id in ("AWClient", "connect", "connect_readonly", "open_store")
     ]
     assert not calls, f"{_rel(path)}: take these as parameters instead: {calls}"
 
