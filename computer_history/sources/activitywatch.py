@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from computer_history.store import (
@@ -49,6 +49,13 @@ from computer_history.store import (
     get_cursor,
     insert_observations,
     to_utc,
+)
+from computer_history.text import (
+    MAX_TEXT_LENGTH,  # noqa: F401  (re-exported)
+    MAX_URL_LENGTH,  # noqa: F401  (re-exported)
+    clean_text,
+    clean_url,
+    extract_domain,
 )
 
 __all__ = [
@@ -83,9 +90,6 @@ STABILITY_MARGIN_SECONDS = 120
 CURSOR_OVERLAP_SECONDS = 600
 CLIP_GUARD = timedelta(seconds=1)
 _END_CLIP_TOLERANCE = timedelta(milliseconds=1)
-
-MAX_TEXT_LENGTH = 2000
-MAX_URL_LENGTH = 4096
 
 WINDOW_SOURCE = "aw-window"
 AFK_SOURCE = "aw-afk"
@@ -247,40 +251,6 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
     )
 
 
-def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str | None:
-    """Strip and collapse whitespace and cap the length. Empty becomes None."""
-    if value is None:
-        return None
-    return " ".join(_scrub(value).split())[:limit] or None
-
-
-def clean_url(value: str | None) -> str | None:
-    """Remove control characters and cap the length. Empty becomes None."""
-    if value is None:
-        return None
-    return _sanitize_url(value)[:MAX_URL_LENGTH] or None
-
-
-def extract_domain(url: str | None) -> str | None:
-    """The lowercased host of a web URL, without port or a leading www.
-
-    Missing, unreadable and non-web URLs (chrome://, file://, ...) become None.
-    """
-    if not url:
-        return None
-    try:
-        parts = urlsplit(_sanitize_url(url))
-        host = parts.hostname
-    except ValueError:
-        return None
-    if parts.scheme not in ("http", "https") or not host:
-        return None
-    host = host.rstrip(".")
-    if host.startswith("www."):
-        host = host[len("www.") :]
-    return host or None
-
-
 def _take_str(data: dict[str, Any], key: str) -> str | None:
     """Pop and return the key if it holds a string."""
     value = data.get(key)
@@ -292,19 +262,6 @@ def _take_str(data: dict[str, Any], key: str) -> str | None:
 
 def _extras(leftover: dict[str, Any]) -> str | None:
     return json.dumps(leftover, sort_keys=True) if leftover else None
-
-
-_URL_CONTROL_CHARS = dict.fromkeys([*range(0x20), 0x7F])
-
-
-def _sanitize_url(value: str) -> str:
-    """Remove control characters and trim spaces."""
-    return _scrub(value).translate(_URL_CONTROL_CHARS).strip(" ")
-
-
-def _scrub(value: str) -> str:
-    # Replace characters SQLite cannot store.
-    return value.encode("utf-8", "replace").decode("utf-8")
 
 
 # --- Pulling -----------------------------------------------------------------

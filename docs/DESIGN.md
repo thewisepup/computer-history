@@ -74,6 +74,7 @@ computer_history/
                 # observations (ingest writes), signals (rebuild), cursors,
                 # status (read queries), timefmt, paths
   sources/      # one adapter per source: activitywatch, ax_text, screenshots
+  text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
   api/          # FastAPI routes under /api

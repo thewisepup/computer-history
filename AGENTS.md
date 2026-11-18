@@ -16,7 +16,8 @@ _Last updated: 2026-11-16._
 > `$COMPUTER_HISTORY_DB` override). `store/` has one module per concern:
 > `db` (connections + migrations), `observations` (the atomic ingest write),
 > `signals` (rebuild), `cursors`, `status` (read queries), `timefmt`, `paths`;
-> `sources/` holds the ActivityWatch adapter and `backfill`. Rewrite tests:
+> `sources/` holds the ActivityWatch adapter and `backfill`; `text.py` is the
+> shared text/URL normalization. Rewrite tests:
 > `.venv/bin/python -m pytest` (219) + `ruff check computer_history tests`;
 > the POC suite below still runs with unittest. The distribution was renamed
 > `computer-history-poc` → `computer-history`; stale venvs need
