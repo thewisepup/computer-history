@@ -13,7 +13,10 @@ _Last updated: 2026-11-16._
 > via `user_version` migrations), ActivityWatch adapter (settled events,
 > idempotent, start-based cursors), and the CLI `computer-history
 > ingest [--watch] | status | rebuild-signals | backfill` (`--db-path` /
-> `$COMPUTER_HISTORY_DB` override). Rewrite tests:
+> `$COMPUTER_HISTORY_DB` override). `store/` has one module per concern:
+> `db` (connections + migrations), `observations` (the atomic ingest write),
+> `signals` (rebuild), `cursors`, `status` (read queries), `timefmt`, `paths`;
+> `sources/` holds the ActivityWatch adapter and `backfill`. Rewrite tests:
 > `.venv/bin/python -m pytest` (219) + `ruff check computer_history tests`;
 > the POC suite below still runs with unittest. The distribution was renamed
 > `computer-history-poc` → `computer-history`; stale venvs need

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import NamedTuple
 
-from computer_history.store.bookkeeping import set_cursor
+from computer_history.store.cursors import set_cursor
 from computer_history.store.db import transaction
 from computer_history.store.timefmt import utc_iso
 

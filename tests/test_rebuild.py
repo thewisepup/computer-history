@@ -25,7 +25,7 @@ from computer_history.store import (
     rebuild_signals,
     transaction,
 )
-from computer_history.store import rebuild as rebuild_module
+from computer_history.store import signals as signals_module
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
@@ -265,7 +265,7 @@ def test_only_the_first_failures_are_logged_individually(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = ingested
-    monkeypatch.setattr(rebuild_module, "MAX_LOGGED_FAILURES", 1)
+    monkeypatch.setattr(signals_module, "MAX_LOGGED_FAILURES", 1)
     bad = [observation_id(conn, WEB_SOURCE, t) for t in ("GitHub", "New Tab", "HN")]
     for obs_id in bad:
         corrupt_payload(conn, obs_id)
@@ -325,7 +325,7 @@ def test_a_projector_failing_every_row_aborts_early(big: sqlite3.Connection) -> 
     # i.e. after about half the table rather than after scanning all of it.
     assert attempts == exc.value.failed
     assert attempts <= (BIG + 2) // 2 + 1
-    assert len(exc.value.failed_ids) == rebuild_module.MAX_LOGGED_FAILURES
+    assert len(exc.value.failed_ids) == signals_module.MAX_LOGGED_FAILURES
     assert not exc.value.shrink
     assert signal_rows(conn) == signals
 
@@ -463,7 +463,7 @@ def test_cli_rebuild_signals_refuses_a_missing_db(
 def test_cli_rebuild_signals_says_how_many_ids_it_left_out(
     capsys: pytest.CaptureFixture[str], db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(rebuild_module, "MAX_LOGGED_FAILURES", 1)
+    monkeypatch.setattr(signals_module, "MAX_LOGGED_FAILURES", 1)
     conn = connect(db_path)
     try:
         ingest_all(conn, fixture_aw(), now=at(30))
@@ -482,7 +482,7 @@ def test_cli_rebuild_signals_says_how_many_ids_it_left_out(
 def test_cli_rebuild_signals_allow_shrink(
     capsys: pytest.CaptureFixture[str], db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(rebuild_module, "SHRINK_CHECK_MIN_SIGNALS", 1)
+    monkeypatch.setattr(signals_module, "SHRINK_CHECK_MIN_SIGNALS", 1)
     monkeypatch.setattr(cli, "project_signal", lambda source, payload: None)
     conn = connect(db_path)
     try:

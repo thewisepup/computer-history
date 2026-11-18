@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from computer_history.store.db import transaction
-from computer_history.store.writes import _INSERT_SIGNAL, Signal, _signal_params
+from computer_history.store.observations import _INSERT_SIGNAL, Signal, _signal_params
 
 log = logging.getLogger(__name__)
 

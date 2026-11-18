@@ -4,7 +4,7 @@ Only this package knows SQL. Writers use insert_observations and the cursor
 setters; rebuild-signals uses rebuild_signals; status uses the read queries.
 """
 
-from computer_history.store.bookkeeping import (
+from computer_history.store.cursors import (
     get_cursor,
     init_cursor,
     set_cursor,
@@ -19,28 +19,28 @@ from computer_history.store.db import (
     schema_version,
     transaction,
 )
-from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
-from computer_history.store.reads import (
-    Gap,
-    SourceSummary,
-    find_gaps,
-    source_summary,
-    table_counts,
-)
-from computer_history.store.rebuild import (
-    Projector,
-    RebuildAborted,
-    RebuildResult,
-    rebuild_signals,
-)
-from computer_history.store.timefmt import to_utc, utc_iso
-from computer_history.store.writes import (
+from computer_history.store.observations import (
     Cursor,
     InsertResult,
     Observation,
     Signal,
     insert_observations,
 )
+from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
+from computer_history.store.signals import (
+    Projector,
+    RebuildAborted,
+    RebuildResult,
+    rebuild_signals,
+)
+from computer_history.store.status import (
+    Gap,
+    SourceSummary,
+    find_gaps,
+    source_summary,
+    table_counts,
+)
+from computer_history.store.timefmt import to_utc, utc_iso
 
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",

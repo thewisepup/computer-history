@@ -70,7 +70,9 @@ automation suggestions.
 
 ```
 computer_history/
-  store/        # SQLite schema, migrations, queries
+  store/        # SQLite, one module per concern: db (connections + migrations),
+                # observations (ingest writes), signals (rebuild), cursors,
+                # status (read queries), timefmt, paths
   sources/      # one adapter per source: activitywatch, ax_text, screenshots
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
