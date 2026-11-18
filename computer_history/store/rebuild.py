@@ -1,8 +1,7 @@
-"""Rebuild the disposable ``signals`` table from raw ``observations`` (DESIGN.md §3.2).
+"""Rebuild the disposable signals table from the raw observations.
 
-The store does not know any source's payload dialect, so the caller passes the
-projector (for ActivityWatch: ``sources.project_signal``). ``observations`` is
-only read, never written.
+The store does not know any source's payload format, so the caller passes the
+projector function. Observations are only read, never written.
 """
 
 from __future__ import annotations
@@ -17,19 +16,15 @@ from computer_history.store.writes import _INSERT_SIGNAL, Signal, _signal_params
 
 log = logging.getLogger(__name__)
 
-#: ``project(source, stored_payload_text) -> Signal | None``; ``None`` = no content (AFK).
+# project(source, stored_payload_text) -> Signal, or None for no content (AFK).
 Projector = Callable[[str, str], Signal | None]
 
 DEFAULT_BATCH_SIZE = 1000
-# Abort (and roll back) once more than this share of content observations fail to
-# project: a "rebuild" that wipes signals and then skips most rows is a bug in
-# the projector, not malformed data.
+# Abort once more than this share of content observations fail to project.
 MAX_FAILURE_RATIO = 0.5
-# Abort if the rebuild would leave fewer than this share of the signals it found,
-# unless the caller allows it: catches a projector that wrongly returns None
-# (no content) for content rows, which raises nothing and so skips nothing.
+# Abort if the rebuild would keep fewer than this share of the existing signals.
 MIN_KEPT_RATIO = 0.5
-# ...but only for stores with at least this many signals; tiny ones may shrink.
+# The shrink check only applies to stores with at least this many signals.
 SHRINK_CHECK_MIN_SIGNALS = 50
 # Log this many skipped observations individually, then only the total.
 MAX_LOGGED_FAILURES = 20
@@ -38,8 +33,7 @@ MAX_LOGGED_FAILURES = 20
 class RebuildResult(NamedTuple):
     signals_before: int
     signals_after: int
-    # Content observations that could not be projected (malformed payload): they
-    # have no signal row now. ``failed_ids`` holds the first few of their ids.
+    # Observations that could not be projected; failed_ids samples their ids.
     skipped: int
     failed_ids: tuple[int, ...]
 
@@ -47,9 +41,8 @@ class RebuildResult(NamedTuple):
 class RebuildAborted(RuntimeError):
     """The rebuild looked wrong and was rolled back; signals are unchanged.
 
-    ``failed``/``failed_ids`` count and sample the observations that failed to
-    project before the abort. ``shrink`` is true for the shrink check, which
-    ``allow_shrink=True`` overrides.
+    failed and failed_ids count and sample the observations that failed to
+    project. shrink is true when the shrink check tripped.
     """
 
     def __init__(
@@ -73,36 +66,23 @@ def rebuild_signals(
     batch_size: int = DEFAULT_BATCH_SIZE,
     allow_shrink: bool = False,
 ) -> RebuildResult:
-    """Wipe ``signals`` and re-project every observation with ``project``, atomically.
+    """Wipe the signals table and re-project every observation, atomically.
 
-    One transaction: the wipe and every re-inserted row commit together, or (on
-    any error, or a crash) none of it does and the old signals stay. Rows are built like
-    :func:`insert_observations` builds them: ``source``/``started_at``/``ended_at``
-    copied from the observation row as stored, ``observation_id`` as the key.
+    Everything happens in one transaction: on any error or crash, none of it
+    sticks and the old signals stay. Rebuilt rows are built exactly like
+    ingested ones.
 
-    ``project`` returning ``None`` means the source has no content (AFK): no row.
-    If it raises for one observation (malformed payload), that observation is
-    logged, skipped and counted, and the rebuild goes on. Two sanity checks raise
-    :class:`RebuildAborted` and roll back instead:
+    The projector returning None means the source has no content (AFK): no row.
+    If it raises on one observation (malformed payload), that observation is
+    logged, skipped and counted, and the rebuild goes on. Two sanity checks
+    abort and roll back instead: too many observations failing to project, and
+    the result shrinking far below the existing signals (a projector wrongly
+    returning None raises nothing) unless allow_shrink is passed.
 
-    * more than :data:`MAX_FAILURE_RATIO` of the content observations fail. This
-      is checked as the scan goes, against an upper bound on the content count
-      (rows projected + failed + not yet scanned), so a projector that fails on
-      every row stops after about half the table, not at the end;
-    * the result keeps fewer than :data:`MIN_KEPT_RATIO` of the existing signals
-      (stores with at least :data:`SHRINK_CHECK_MIN_SIGNALS`), unless
-      ``allow_shrink``: a projector wrongly returning ``None`` raises nothing.
+    Blocks other writers while it runs: a concurrent ingest waits briefly, then
+    fails with "database is locked" and retries next cycle.
 
-    Observations are streamed, never loaded all at once.
-
-    **Blocks other writers while it runs.** The transaction takes SQLite's write
-    lock (``BEGIN IMMEDIATE``) for the whole scan, so a concurrent ``ingest``
-    waits up to the busy timeout and then fails with "database is locked";
-    ``ingest --watch`` logs that and retries next cycle. Fine at M1 volumes. If
-    rebuild time ever matters, the upgrade path is building into a shadow table
-    outside the lock and swapping it in with one short transaction.
-
-    Opens its own transaction, so it must not be called inside ``transaction()``.
+    Opens its own transaction, so it must not be called inside transaction().
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -115,7 +95,7 @@ def rebuild_signals(
     batch: list[tuple[int | str | None, ...]] = []
 
     def check_failures(total: int) -> None:
-        # Content observations number at most projected + failed + unscanned rows.
+        # Content observations number at most: projected + failed + rows not yet scanned.
         bound = projected + failed + (total - scanned)
         if failed > bound * MAX_FAILURE_RATIO:
             raise RebuildAborted(
@@ -138,7 +118,7 @@ def rebuild_signals(
             scanned += 1
             try:
                 signal = project(source, payload)
-            except Exception as exc:  # malformed payload: skip it, never the whole rebuild
+            except Exception as exc:  # malformed payload: skip the row, not the rebuild
                 failed += 1
                 if len(failed_ids) < MAX_LOGGED_FAILURES:
                     failed_ids.append(observation_id)

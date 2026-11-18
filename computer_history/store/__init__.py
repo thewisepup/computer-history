@@ -1,8 +1,7 @@
-"""SQLite store: schema migrations and persistence (Milestone 1).
+"""The SQLite store: schema migrations and persistence.
 
-Only this package knows SQL. Writers use :func:`insert_observations` and the
-bookkeeping setters; ``rebuild-signals`` uses :func:`rebuild_signals`; ``status``
-uses the queries in :mod:`.reads`.
+Only this package knows SQL. Writers use insert_observations and the cursor
+setters; rebuild-signals uses rebuild_signals; status uses the read queries.
 """
 
 from computer_history.store.bookkeeping import (

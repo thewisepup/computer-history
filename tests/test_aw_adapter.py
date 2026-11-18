@@ -1,5 +1,5 @@
-"""ActivityWatch adapter tests. No network: :class:`fake_aw.FakeAW` reproduces the
-real API's range semantics (see that module)."""
+"""ActivityWatch adapter tests. No network: FakeAW reproduces the real API's
+range semantics (see that module)."""
 
 from __future__ import annotations
 

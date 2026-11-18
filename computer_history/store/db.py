@@ -1,8 +1,8 @@
 """SQLite connections, explicit transactions and the schema migration runner.
 
-Connections are opened with ``isolation_level=None``: Python's sqlite3 module
-never issues an implicit BEGIN or COMMIT. Every multi-statement write goes
-through :func:`transaction`, so atomicity is visible at the call site.
+Connections run in autocommit mode: nothing starts a transaction implicitly.
+Every multi-statement write goes through transaction(), so atomicity is
+visible at the call site.
 """
 
 from __future__ import annotations
@@ -34,11 +34,10 @@ class Migration(NamedTuple):
 
 
 def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
-    """Open the store (creating file and parent directory if needed) and migrate it.
+    """Open the database (creating it if needed) and bring its schema up to date.
 
-    ``db_path`` is resolved by :func:`resolve_db_path` (flag > env var > default).
-    The connection uses WAL journaling, enforces foreign keys, waits up to
-    ``BUSY_TIMEOUT_SECONDS`` for locks, and returns :class:`sqlite3.Row` rows.
+    The path comes from the --db-path flag, then $COMPUTER_HISTORY_DB, then the
+    default location.
     """
     path = resolve_db_path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,11 +56,10 @@ def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection
 
 
 def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
-    """Open an existing store for reading only: no file creation, no migration.
+    """Open an existing database for reading only: never creates or migrates.
 
-    For diagnostics (``status``): SQLite itself refuses every write
-    (``mode=ro``), so callers must check :func:`schema_version` before querying.
-    Raises :class:`sqlite3.OperationalError` if the file does not exist.
+    Used by status. Fails if the file does not exist; callers should check
+    schema_version() before querying.
     """
     path = resolve_db_path(db_path).resolve()
     conn = sqlite3.connect(
@@ -76,19 +74,17 @@ def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.C
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    """Run the block in one ``BEGIN IMMEDIATE`` transaction; roll back on any error.
+    """Run the block as one transaction; roll back on any error.
 
-    IMMEDIATE takes the write lock up front, so concurrent writers wait (up to the
-    busy timeout) at BEGIN instead of failing midway. Not reentrant: nesting raises.
-    Expects a connection from :func:`connect` (``isolation_level=None``).
+    Takes the write lock up front, so concurrent writers wait at the start
+    instead of failing midway. Not reentrant: nesting raises.
     """
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn
         conn.execute("COMMIT")
     except BaseException:
-        # Some errors (e.g. SQLITE_FULL, or a failed COMMIT) already rolled back;
-        # don't mask them, but never leave the connection stuck in a transaction.
+        # Some failures roll back on their own; never leave a transaction open.
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
@@ -99,9 +95,9 @@ def schema_version(conn: sqlite3.Connection) -> int:
 
 
 def load_migrations(directory: Traversable | None = None) -> list[Migration]:
-    """Read ``NNN_description.sql`` files, sorted, checked to run 1..N without gaps.
+    """Read the NNN_description.sql files, sorted and checked to run 1..N with no gaps.
 
-    Defaults to the ``migrations/`` directory shipped inside this package.
+    Defaults to the migrations/ directory shipped inside this package.
     """
     global _default_migrations
     if directory is None:
@@ -135,10 +131,10 @@ def _validate_sequence(migrations: Sequence[Migration]) -> list[Migration]:
 
 
 def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = None) -> int:
-    """Apply every migration above ``PRAGMA user_version``; return the new version.
+    """Apply every migration the database has not seen; return the new schema version.
 
-    Each migration's statements and its ``user_version`` bump commit together or
-    not at all. Migration files must not contain BEGIN/COMMIT/SAVEPOINT.
+    Each migration commits fully or not at all. Migration files must not
+    contain BEGIN/COMMIT/SAVEPOINT.
     """
     migrations = load_migrations() if migrations is None else _validate_sequence(migrations)
     latest = migrations[-1].version if migrations else 0
@@ -156,18 +152,16 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = N
                 continue
             for statement in _split_statements(migration.sql):
                 conn.execute(statement)
-            # PRAGMA values cannot be bound parameters; version is an int from the filename.
+            # PRAGMAs cannot take bound parameters; the version is an int from the filename.
             conn.execute(f"PRAGMA user_version = {int(migration.version)}")
     return schema_version(conn)
 
 
 def _split_statements(script: str) -> list[str]:
-    """Split a SQL script into single statements using SQLite's own tokenizer.
+    """Split a SQL script into single statements.
 
-    ``executescript()`` is not an option: in Python's legacy transaction mode it
-    COMMITs any open transaction before running, which would break atomicity.
-    ``sqlite3.complete_statement`` handles semicolons inside strings, comments
-    and trigger bodies.
+    Uses SQLite's own tokenizer, so semicolons inside strings, comments and
+    trigger bodies are handled correctly.
     """
     statements = []
     buffer = ""
@@ -177,8 +171,8 @@ def _split_statements(script: str) -> list[str]:
             if buffer.strip() != ";":
                 statements.append(buffer)
             buffer = ""
-    # The last piece got a ';' the script never had. What is left is comments
-    # (execute() runs them as a no-op) or an unterminated statement (it raises).
+    # Whatever remains is trailing comments (harmless) or an unterminated
+    # statement (raises when run).
     if buffer[:-1].strip():
         statements.append(buffer[:-1])
     return statements

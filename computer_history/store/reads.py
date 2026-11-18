@@ -61,7 +61,7 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
             "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         )
     ]
-    # Names come from sqlite_master, not user input; quoted as identifiers anyway.
+    # Table names come from SQLite itself, not user input.
     return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
 
 

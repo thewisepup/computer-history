@@ -220,8 +220,10 @@ Write self-reading code and omit comments. A comment earns its place only when
 it carries something significant the code cannot show — an invariant, a
 non-obvious constraint — or enumerates values, e.g.
 `source TEXT NOT NULL, -- 'aw-window' | 'aw-afk' | 'aw-web'`. One short line,
-then stop; a paragraph of rationale belongs in a docstring, commit message, or
-ticket, not next to the code.
+then stop; a paragraph of rationale belongs in a commit message or ticket, not
+next to the code. Write comments and docstrings in plain English a user can
+read: no references to DESIGN.md or other docs, no Sphinx/reST markup
+(`:func:`, `:class:`, double backticks), no deep technical digressions.
 
 Key concepts:
 - FastAPI = the normal HTTP API (curl, scripts, a future frontend).

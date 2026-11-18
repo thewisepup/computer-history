@@ -1,10 +1,8 @@
 """The store's one canonical timestamp format.
 
-DESIGN.md §3 requires all stored timestamps to be UTC ISO-8601 at uniform
-precision: ``block_evidence_v`` and the window/block math compare timestamps
-as TEXT, so two spellings of the same instant ('…T10:00:00Z' vs
-'…T10:00:00.000000Z') would sort as different moments. Every writer must put
-timestamps through :func:`utc_iso` before they reach SQLite.
+Every stored timestamp is UTC ISO-8601 with microseconds, so timestamps
+compare correctly as plain text. Every writer puts timestamps through
+utc_iso() before they reach SQLite.
 """
 
 from __future__ import annotations
@@ -15,20 +13,18 @@ CANONICAL_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"  # + 'Z'; microseconds, always UTC
 
 
 def utc_iso(value: datetime | str) -> str:
-    """Canonical form: ``YYYY-MM-DDTHH:MM:SS.ffffffZ`` (UTC, microseconds).
+    """Canonical form: YYYY-MM-DDTHH:MM:SS.ffffffZ.
 
-    Accepts a timezone-aware datetime or any ISO-8601 string with an offset
-    ('Z' included). Naive values are rejected: per the design, a timestamp
-    without a timezone is an input error, never assumed local or UTC.
+    Accepts a timezone-aware datetime or any ISO-8601 string with an offset.
+    A timestamp without a timezone is rejected, never guessed.
     """
     return to_utc(value).strftime(CANONICAL_FORMAT) + "Z"
 
 
 def to_utc(value: datetime | str) -> datetime:
-    """Parse/convert like :func:`utc_iso`, but return an aware UTC ``datetime``."""
+    """Parse or convert a timestamp into an aware UTC datetime."""
     if isinstance(value, str):
-        # Python 3.10's fromisoformat() does not accept a trailing 'Z'.
-        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        value = datetime.fromisoformat(value)
     if value.tzinfo is None:
         raise ValueError(f"timestamp must be timezone-aware: {value!r}")
     return value.astimezone(UTC)

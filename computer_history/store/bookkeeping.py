@@ -1,7 +1,7 @@
-"""Ingest cursors (DESIGN.md §3.5).
+"""Per-source ingest cursors.
 
-Each setter is a single statement, so it is atomic on its own and also joins an
-enclosing ``transaction()`` when called inside one.
+Each setter is a single statement, so it is atomic on its own and also joins
+an enclosing transaction() when called inside one.
 """
 
 from __future__ import annotations
@@ -15,9 +15,7 @@ from computer_history.store.timefmt import utc_iso
 def get_cursor(conn: sqlite3.Connection, source: str) -> str | None:
     """The source's ingestion frontier, or None if never set.
 
-    Returns the canonical UTC *string* as stored — the form adapters pass back
-    to source APIs. For lag math, convert with ``to_utc()``; note that
-    ``SourceSummary.cursor`` returns the same value as a ``datetime``.
+    Returned as the stored UTC string; convert with to_utc() for time math.
     """
     row = conn.execute(
         "SELECT last_seen FROM ingest_cursors WHERE source = ?", (source,)
@@ -26,10 +24,10 @@ def get_cursor(conn: sqlite3.Connection, source: str) -> str | None:
 
 
 def set_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str) -> None:
-    """Upsert the frontier. It may move backwards; re-ingesting is idempotent.
+    """Set the frontier. It may move backwards; re-ingesting is harmless.
 
-    Prefer ``insert_observations(..., advance_cursor=...)`` when the cursor covers
-    a batch, so the two commit together.
+    When the cursor covers a batch of writes, pass it to insert_observations
+    instead, so the two commit together.
     """
     conn.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?) "
@@ -41,8 +39,8 @@ def set_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str)
 def init_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str) -> bool:
     """Set the frontier only if the source has none yet; True if this call set it.
 
-    One statement, so a cursor written concurrently (e.g. by ``ingest --watch``)
-    is never overwritten: whoever sets it first wins. ``backfill`` uses this.
+    Whoever sets it first wins, so a cursor written concurrently (say by a
+    running ingest --watch) is never overwritten. Used by backfill.
     """
     cur = conn.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?) "

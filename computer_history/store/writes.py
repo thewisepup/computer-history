@@ -15,10 +15,10 @@ from computer_history.store.timefmt import utc_iso
 
 @dataclass(frozen=True)
 class Signal:
-    """The normalized projection of one content observation (DESIGN.md §3.2).
+    """One observation's normalized, queryable fields.
 
-    ``source``/``started_at``/``ended_at`` are copied from the owning
-    :class:`Observation`, so they cannot disagree. ``extras`` is a JSON string.
+    source/started_at/ended_at are copied from the owning observation, so they
+    cannot disagree. extras is a JSON string.
     """
 
     app: str | None = None
@@ -31,11 +31,11 @@ class Signal:
 
 @dataclass(frozen=True)
 class Observation:
-    """One raw source event (DESIGN.md §3.1) plus its signal, if it has content.
+    """One raw source event, plus its signal if it has content.
 
-    ``payload`` is the source JSON text, stored verbatim. ``signal`` is ``None``
-    for state-only sources such as AFK (§4.3). ``source_id`` is required: SQLite
-    treats NULLs as distinct in ``UNIQUE``, so a NULL id would defeat dedup.
+    payload is the source's JSON, stored verbatim. signal is None for
+    state-only sources such as AFK. source_id is required: without one,
+    duplicate detection cannot work.
     """
 
     source: str
@@ -75,16 +75,14 @@ def insert_observations(
     *,
     advance_cursor: Cursor | None = None,
 ) -> InsertResult:
-    """Write a batch of observations and their signals, and optionally a cursor, atomically.
+    """Write a batch of observations, their signals, and optionally a cursor, atomically.
 
-    Everything commits in one transaction or nothing does, so a crash can never
-    leave the cursor ahead of the data it covers. An observation whose
-    ``(source, source_id)`` already exists (in the DB or earlier in this batch)
-    is skipped, and its signal is not written, so re-ingest never touches
-    existing rows. Only the uniqueness conflict is skipped: any other failure
+    Everything commits together or nothing does, so a crash can never leave the
+    cursor ahead of the data it covers. An observation already stored (same
+    source and source_id) is skipped along with its signal; any other failure
     rolls back the whole batch and raises.
 
-    Opens its own transaction, so it must not be called inside ``transaction()``.
+    Opens its own transaction, so it must not be called inside transaction().
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -92,8 +90,8 @@ def insert_observations(
             "it must not be called inside transaction()"
         )
     rows = [_prepare(observation) for observation in observations]
-    # Canonicalize (and so validate) the cursor before the write lock is taken,
-    # like the rows: a bad cursor must not roll back a finished batch.
+    # Validate the cursor before taking the write lock, like the rows: a bad
+    # cursor must not roll back a finished batch.
     cursor = (
         None
         if advance_cursor is None
@@ -121,10 +119,8 @@ def insert_observations(
 def _signal_params(
     observation_id: int, source: str, started_at: str, ended_at: str, signal: Signal
 ) -> tuple[int | str | None, ...]:
-    """Parameters for :data:`_INSERT_SIGNAL`. Timestamps must already be canonical.
-
-    Shared with ``rebuild_signals`` so a rebuilt row is built exactly like an
-    ingested one.
+    """Shared with rebuild_signals, so a rebuilt row is built exactly like an
+    ingested one. Timestamps must already be canonical.
     """
     return (
         observation_id,

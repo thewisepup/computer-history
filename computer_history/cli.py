@@ -1,8 +1,7 @@
-"""Command-line entry point for the ``computer-history`` console script.
+"""Command-line entry point for the computer-history console script.
 
-Thin by design: argument plumbing and formatting only. Ingest and signal mapping
-live in :mod:`computer_history.sources`, queries and rebuild in
-:mod:`computer_history.store`.
+Thin by design: argument plumbing and formatting only. The real work lives in
+the sources and store packages.
 """
 
 from __future__ import annotations
@@ -62,10 +61,10 @@ COMMANDS = {
     ),
 }
 
-POLL_INTERVAL_SECONDS = 60  # DESIGN.md §4.1
+POLL_INTERVAL_SECONDS = 60
 # status: look for coverage gaps this far back from each source's cursor...
 STATUS_WINDOW = timedelta(hours=24)
-# ...and report only gaps at least this long (well above poll/heartbeat jitter).
+# ...and report only gaps at least this long.
 MIN_GAP_SECONDS = 300
 MAX_GAPS_SHOWN = 10
 # status only probes reachability; don't hang on a wedged server.
@@ -77,8 +76,8 @@ STATUS_AW_TIMEOUT_SECONDS = 5
 
 @dataclass(frozen=True)
 class CycleSummary:
-    """What one poll cycle did: outcomes of the sources that committed and, if the
-    cycle stopped early, why (``error``) and on which source (``failed_source``)."""
+    """What one poll cycle did: the outcomes of the sources that committed and,
+    if the cycle stopped early, why and on which source."""
 
     at: datetime
     outcomes: dict[str, IngestOutcome] = field(default_factory=dict)
@@ -105,12 +104,13 @@ class CycleSummary:
 def run_cycle(
     conn: sqlite3.Connection, client: AWApi, *, now: datetime | None = None
 ) -> CycleSummary:
-    """One incremental poll of every source, like :func:`ingest_all`, but never raises
-    for a transient failure: an :class:`AWError` or :class:`sqlite3.OperationalError`
-    (e.g. "database is locked") ends the cycle and is returned in the summary,
-    together with the outcomes of the sources that committed before it. Those stay
-    committed; the next cycle resumes from the cursors. Other database errors
-    (corruption, ...) are not transient and propagate."""
+    """One incremental poll of every source; never raises for a transient failure.
+
+    An unreachable ActivityWatch or a locked database ends the cycle and is
+    returned in the summary, together with the outcomes of the sources that
+    committed before it. Those stay committed; the next cycle resumes from the
+    cursors. Other database errors are not transient and propagate.
+    """
     at = datetime.now(UTC) if now is None else now
     outcomes: dict[str, IngestOutcome] = {}
     current: str | None = None
@@ -138,11 +138,10 @@ def watch(
     interval: float = POLL_INTERVAL_SECONDS,
     sleep: Callable[[float], None] | None = None,
 ) -> None:
-    """Poll forever (until KeyboardInterrupt), one logged line per cycle.
+    """Poll forever (until Ctrl-C), one logged line per cycle.
 
-    Cycles start every ``interval`` seconds; a transient failure (see
-    :func:`run_cycle`) is logged and retried next cycle. ``sleep`` defaults to
-    :func:`time.sleep` (tests replace it).
+    Cycles start every interval seconds; a transient failure is logged and
+    retried next cycle.
     """
     sleep = time.sleep if sleep is None else sleep
     while True:
@@ -361,7 +360,7 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
 
 
 def _ids(ids: Sequence[int], total: int) -> str:
-    """``3, 7, 9``, plus ``(and N more)`` when ``ids`` is a sample of ``total``."""
+    """Like "3, 7, 9", plus "(and N more)" when the ids are a sample."""
     text = ", ".join(str(i) for i in ids) or "-"
     if total > len(ids):
         text += f" (and {total - len(ids):,} more)"
@@ -464,7 +463,7 @@ def _backfill_one(
 ) -> None:
     """Run one plan, printing a line per chunk and a closing summary for the source.
 
-    The running totals join ``results`` after the first committed chunk, so the
+    The running totals join results after the first committed chunk, so the
     caller can still print them if a later chunk fails.
     """
     total = len(plan.chunks)
@@ -572,10 +571,10 @@ def _print_backfill_totals(results: list[BackfillResult]) -> None:
 
 
 def _read_cursors(db_path: Path, sources: Sequence[str]) -> dict[str, str | None] | None:
-    """Cursors from an existing store, read-only (``--dry-run`` creates nothing).
+    """Cursors from an existing store, read-only.
 
-    ``{}`` when there is no database (or an unmigrated one); ``None`` after printing
-    why it could not be read.
+    Empty when there is no database (or an unmigrated one); None after
+    printing why it could not be read.
     """
     if not db_path.exists():
         return {}
@@ -603,7 +602,7 @@ def _span(chunk: Chunk) -> str:
 
 
 def _when_arg(value: str) -> datetime:
-    """``--start``/``--end``: an ISO date or datetime; without an offset, local time."""
+    """An ISO date or datetime; local time unless it carries an offset."""
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
@@ -619,10 +618,9 @@ def _when_arg(value: str) -> datetime:
 
 
 def _open_store(db_path: Path) -> sqlite3.Connection | None:
-    """:func:`connect` (which may migrate), or ``None`` after printing why it failed.
+    """Open (and migrate if needed) the store, or None after printing why it failed.
 
-    A lock held by another writer surfaces here as :class:`sqlite3.OperationalError`
-    once the busy timeout runs out (e.g. during migration).
+    A lock held by another writer surfaces here once the busy timeout runs out.
     """
     try:
         return connect(db_path)
@@ -640,7 +638,7 @@ def _db_busy_hint(db_path: Path) -> str:
 
 
 def _duration(seconds: float) -> str:
-    """``42s``, ``3m 12s``, ``2h 5m``, ``1d 3h``: the two largest non-zero units."""
+    """Like 42s, 3m 12s, 2h 5m, 1d 3h: the two largest non-zero units."""
     total = max(0, round(seconds))
     if total < 60:
         return f"{total}s"
@@ -662,7 +660,7 @@ def _lag(delta: timedelta) -> str:
 
 
 def _when(value: datetime | None) -> str:
-    """Local wall-clock time, minute precision; ``-`` for missing."""
+    """Local wall-clock time, minute precision; a dash for missing."""
     return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 

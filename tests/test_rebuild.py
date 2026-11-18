@@ -1,4 +1,4 @@
-"""rebuild-signals: wipe ``signals`` and re-project from raw observations (ticket 06)."""
+"""rebuild-signals tests: wipe the signals table and re-project from raw observations."""
 
 from __future__ import annotations
 

@@ -1,77 +1,32 @@
-"""ActivityWatch adapter (DESIGN.md §4.1): pull settled AW events into the store.
+"""Pull settled ActivityWatch events into the store.
 
-This is the only module that knows ActivityWatch's payload dialects. It reads the
-AW HTTP API (read-only, GET only), turns each settled event into an
-:class:`Observation` with its :class:`Signal` projection, and writes each source's
-batch and its cursor advance in one :func:`insert_observations` call.
+This is the only module that knows ActivityWatch's payload formats. It reads
+the ActivityWatch HTTP API (read-only), turns each settled event into an
+observation with its signal, and writes each source's batch and its cursor
+advance together.
 
-Sources and buckets
--------------------
-Buckets are discovered by their ``type``, never by name (names embed hostnames,
-and the web watcher's client is ``aw-client-web``, not ``aw-watcher-web``)::
+Buckets are discovered by their type, never by name::
 
     currentwindow   -> aw-window
     afkstatus       -> aw-afk
     web.tab.current -> aw-web
 
-Several buckets may feed one source (this Mac has two Chrome buckets, one of them
-dead). AW event ids are not unique across buckets, so
-``source_id = f"{bucket_id}/{event_id}"``.
+Several buckets may feed one source, and event ids are only unique per bucket,
+so source_id is "bucket_id/event_id". The stored payload is the event as
+ActivityWatch sent it, re-serialized once from JSON.
 
-``observations.payload`` is the AW event object as received, **verbatim up to a
-JSON round-trip**: ``json.dumps(json.loads(...))`` keeps AW's key order and
-every value, but not AW's byte-level formatting (whitespace, number spelling,
-and non-ASCII written as ``\\u`` escapes). Events arrive inside one list
-response, so their original bytes are not separately available.
+How pulling stays safe:
 
-Pull semantics (why the cursor is a *start* time)
--------------------------------------------------
-AW clips the events it returns to the query's ``[start, end]`` (checked against
-v0.14.2): an event that straddles a query edge comes back with a shortened
-``timestamp``/``duration``. Dedup keeps the first version of a row forever, so a
-clipped first copy would be stored truncated for good. The aw-server range query
-also skips events that began more than 24h before ``start``. Both problems go
-away if an event is **owned by its start time**:
-
-* A pull over ``[start, end)`` is responsible for exactly the events whose
-  ``timestamp`` lies in that range. AW is queried from ``start - CLIP_GUARD``, so
-  an owned event can never be start-clipped. An event that comes back starting
-  before ``start`` (unowned, or clipped) is ignored: it belongs to an earlier
-  pull.
-* With an explicit ``end``, an owned event that reaches the query end may have
-  been end-clipped, so it is re-fetched whole with ``GET .../events/{id}``.
-  Incremental pulls send no ``end``, so nothing is end-clipped there.
-* **Settled-events rule.** An owned event is ingested if it is not possibly the
-  bucket's latest event, or if its end is older than ``now - STABILITY_MARGIN``.
-  An event is possibly the latest when it starts no earlier than the bucket's
-  newest event (read first with ``limit=1``) *and* no earlier than every other
-  event in the range response. AW only ever extends the last event, so an event
-  with a newer one beside it in the same response is final as returned. Ties
-  count as latest. The rule errs toward holding an event back for a poll, never
-  toward ingesting one that is still growing.
-* **Frontier** of a bucket pull: the start of the earliest event held back, or, if
-  none, the pull's ``end`` (``now`` for an open-ended pull). Every owned event that
-  starts before the frontier is in the batch.
-* **Cursor** (``ingest_cursors``, one per source) = the minimum frontier over the
-  source's buckets. Invariant: every event that starts before the cursor has
-  been ingested. A dead bucket has nothing held back, so its frontier is ``now``
-  and it never pins the cursor. The cursor may move backwards, for example when
-  an event arrives late and becomes the held latest event. That is correct.
-* The next incremental pull starts at ``cursor - CURSOR_OVERLAP_SECONDS``. The
-  invariant needs no overlap at all. The overlap is a cheap safety net for
-  events that reach AW late with older timestamps (aw-client queues heartbeats
-  while the server is down), and dedup drops the re-read rows.
-
-* **Explicit ranges (backfill)** never touch the cursor. Their
-  :class:`IngestOutcome` reports ``held_back`` and ``frontier``: every event
-  starting in ``[start, frontier)`` is stored. If ``frontier < end``, the rest of
-  the range is not done yet, either because events there have not settled
-  (``held_back > 0``) or because the range runs past ``now``. Re-pull
-  ``[frontier, end)`` later.
-
-While one window, tab or AFK state lasts, the cursor sits at that event's start,
-so cursor lag ("now - cursor") grows to the current event's duration. That is
-expected, not a stall.
+* An event belongs to the pull whose range contains its start time, so a
+  stored payload is never a clipped or truncated copy.
+* An event that may still be growing (the bucket's latest, ending within the
+  stability margin) is held back for a later poll. Held back means delayed,
+  never lost.
+* The cursor is the frontier: every event starting before it is stored. While
+  one window, tab or AFK state lasts, the cursor waits at that event's start,
+  so cursor lag grows with the current event. That is expected, not a stall.
+* Explicit ranges (backfill) never touch the cursor. The outcome's frontier
+  says how much of the range is done; re-pull the rest once it has settled.
 """
 
 from __future__ import annotations
@@ -125,8 +80,8 @@ log = logging.getLogger(__name__)
 DEFAULT_AW_URL = "http://127.0.0.1:5600/api/0"
 REQUEST_TIMEOUT_SECONDS = 30
 
-# An event still possibly growing (the bucket's latest) is ingested only once its
-# end is older than this. 2x the 60s poll interval (map decision, 2026-11-17).
+# An event that may still be growing is ingested only once its end is older
+# than this (twice the 60s poll interval).
 STABILITY_MARGIN_SECONDS = 120
 # Incremental pulls re-read this much before the cursor; dedup drops the repeats.
 CURSOR_OVERLAP_SECONDS = 600
@@ -199,10 +154,10 @@ class AWClient:
         end: datetime | None = None,
         limit: int = -1,
     ) -> list[dict[str, Any]]:
-        """Events overlapping ``[start, end]``, newest first, **clipped to the range**.
+        """Events overlapping the range, newest first, clipped to the range.
 
-        AW applies ``limit`` newest-first, so a limited page drops the oldest
-        events. Pass ``limit=-1`` (all) whenever completeness matters.
+        The limit keeps the newest events, so a limited page drops the oldest.
+        Pass limit=-1 (all) whenever completeness matters.
         """
         params: dict[str, Any] = {"limit": limit}
         if start is not None:
@@ -215,7 +170,7 @@ class AWClient:
         return events
 
     def get_event(self, bucket_id: str, event_id: Any) -> dict[str, Any] | None:
-        """One event, unclipped, or ``None`` if it no longer exists."""
+        """One event, unclipped, or None if it no longer exists."""
         try:
             event = self._get(f"{self._bucket_path(bucket_id)}/events/{quote(str(event_id))}")
         except _NotFound:
@@ -256,11 +211,10 @@ class AWSource:
 
 
 def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None) -> list[AWSource]:
-    """Map AW buckets to store sources by bucket type; sorted by source name.
+    """Map ActivityWatch buckets to store sources by bucket type, sorted by name.
 
-    Buckets of other types are ignored. A source with no bucket is absent.
-    ``buckets`` is a ``get_buckets()`` listing the caller already has; otherwise
-    it is fetched.
+    Buckets of other types are ignored; a source with no bucket is absent.
+    Pass a bucket listing you already have, otherwise one is fetched.
     """
     grouped: dict[str, list[str]] = {}
     listing = client.get_buckets() if buckets is None else buckets
@@ -276,12 +230,11 @@ def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None)
 
 
 def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | None:
-    """The :class:`Signal` for one AW event payload, or ``None`` for AFK (§4.3).
+    """The signal for one ActivityWatch event payload, or None for AFK.
 
-    ``payload`` is the AW event (``{"id", "timestamp", "duration", "data"}``), as a
-    dict or as the JSON text stored in ``observations.payload``. ``rebuild-signals``
-    re-runs this over stored payloads, so the output must depend on the payload
-    alone.
+    Accepts the event as a dict or as the stored JSON text. rebuild-signals
+    re-runs this over stored payloads, so the output must depend on the
+    payload alone.
     """
     if source == AFK_SOURCE:
         return None
@@ -303,24 +256,23 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
 
 
 def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str | None:
-    """Text hygiene (§3.2): whitespace stripped and collapsed, capped; empty -> None."""
+    """Whitespace stripped and collapsed, length capped; empty becomes None."""
     if value is None:
         return None
     return " ".join(_scrub(value).split())[:limit] or None
 
 
 def clean_url(value: str | None) -> str | None:
-    """The stored ``signals.url``: :func:`_sanitize_url`, capped; empty -> ``None``."""
+    """Control characters removed, trimmed, length capped; empty becomes None."""
     if value is None:
         return None
     return _sanitize_url(value)[:MAX_URL_LENGTH] or None
 
 
 def extract_domain(url: str | None) -> str | None:
-    """Lowercased host of an http(s) URL, without port or a leading ``www.``.
+    """Lowercased host of an http(s) URL, without port or a leading www.
 
-    Missing, unparseable and non-web URLs (``chrome://``, ``file://``, ...) -> ``None``.
-    It parses the same sanitized string that :func:`clean_url` stores.
+    Missing, unparseable and non-web URLs (chrome://, file://, ...) become None.
     """
     if not url:
         return None
@@ -338,7 +290,7 @@ def extract_domain(url: str | None) -> str | None:
 
 
 def _take_str(data: dict[str, Any], key: str) -> str | None:
-    """Pop ``key`` if it holds a string; anything else stays behind for ``extras``."""
+    """Pop the key if it holds a string; anything else stays behind for extras."""
     value = data.get(key)
     if isinstance(value, str):
         del data[key]
@@ -351,23 +303,17 @@ def _extras(leftover: dict[str, Any]) -> str | None:
     return json.dumps(leftover, sort_keys=True) if leftover else None
 
 
-# C0 controls and DEL. Covers urlsplit's own cleanup (WHATWG: tab/CR/LF removed
-# anywhere, C0+space stripped at the ends) and the stray controls it would keep.
+# Control characters: a real URL never contains them unencoded.
 _URL_CONTROL_CHARS = dict.fromkeys([*range(0x20), 0x7F])
 
 
 def _sanitize_url(value: str) -> str:
-    """Control characters removed anywhere, spaces trimmed at the ends.
-
-    A real URL never contains a raw control character (they must be
-    percent-encoded), so removing them loses nothing a browser would send.
-    """
+    """Remove control characters anywhere; trim spaces at the ends."""
     return _scrub(value).translate(_URL_CONTROL_CHARS).strip(" ")
 
 
 def _scrub(value: str) -> str:
-    # Lone surrogates (broken emoji in window titles) survive json.loads but cannot
-    # be encoded for SQLite; replace them rather than fail the whole batch.
+    # Replace broken characters (lone surrogates) that SQLite cannot store.
     return value.encode("utf-8", "replace").decode("utf-8")
 
 
@@ -383,7 +329,7 @@ class _Event:
 
 
 def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
-    """Timing for one raw AW event; ``None`` (logged) if it is malformed."""
+    """Timing for one raw event; None (logged) if it is malformed."""
     try:
         event_id = raw["id"]
         if isinstance(event_id, bool) or not isinstance(event_id, int | str) or event_id == "":
@@ -403,9 +349,8 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
 class BucketPull:
     """The settled events one bucket owns in a pull, and how far they reach.
 
-    ``frontier``: every event in the bucket that starts in the pull's range and
-    before ``frontier`` is in ``observations``. ``held_back`` counts owned events
-    not yet settled.
+    Every event starting in the pull's range before the frontier is included;
+    held_back counts owned events not yet settled.
     """
 
     bucket_id: str
@@ -423,10 +368,9 @@ def pull_bucket(
     end: datetime | str | None = None,
     now: datetime | None = None,
 ) -> BucketPull:
-    """Settled events of one bucket that *start* in ``[start, end)``. Writes nothing.
+    """Settled events of one bucket that start in the range. Writes nothing.
 
-    ``start=None`` means the beginning of the bucket. ``end=None`` means open-ended
-    (up to now). See the module docstring for the clipping and settled rules.
+    No start means the beginning of the bucket; no end means up to now.
     """
     now = _now(now)
     start_dt = None if start is None else to_utc(start)
@@ -435,8 +379,8 @@ def pull_bucket(
         raise ValueError(f"empty pull range: [{start_dt.isoformat()}, {end_dt.isoformat()})")
     settled_before = now - timedelta(seconds=STABILITY_MARGIN_SECONDS)
 
-    # The bucket's newest event first, then the range: an event created in between
-    # starts at or after `newest`, so it can only make the rule more conservative.
+    # Read the bucket's newest event before the range: anything created in
+    # between only makes the settled rule more cautious.
     newest_raw = client.get_events(bucket_id, limit=1)
     newest = _parse_event(newest_raw[0], bucket_id) if newest_raw else None
     raw_events = client.get_events(
@@ -491,8 +435,7 @@ def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
         source_id=f"{bucket_id}/{event.id}",
         started_at=event.start,
         ended_at=event.end,
-        # Verbatim up to a JSON round-trip (module docstring): AW's key order and
-        # values are kept. ensure_ascii's \u escapes also keep lone surrogates storable.
+        # Stored as received, re-serialized once from JSON.
         payload=json.dumps(event.raw),
         signal=project_signal(source, event.raw),
     )
@@ -510,15 +453,13 @@ def ingest_source(
     end: datetime | str | None = None,
     now: datetime | None = None,
 ) -> IngestOutcome:
-    """Pull one source's buckets and write the batch in one ``insert_observations``.
+    """Pull one source's buckets and write the batch and cursor together.
 
-    With neither ``start`` nor ``end`` this is an incremental poll: it reads from
-    ``cursor - CURSOR_OVERLAP_SECONDS`` (or from the beginning if there is no
-    cursor) and advances the cursor to the minimum bucket frontier in the same
-    transaction. An explicit range (backfill) ingests the settled events that
-    start in ``[start, end)`` and leaves the cursor alone; check the outcome's
-    ``frontier`` (see :class:`IngestOutcome`) to know whether the whole range is
-    done. If any bucket's pull fails, no observations are written for the source.
+    With no explicit range this is an incremental poll: it reads from a little
+    before the cursor (or from the beginning) and advances the cursor in the
+    same transaction. An explicit range (backfill) leaves the cursor alone;
+    check the outcome's frontier to know whether the whole range is done. If
+    any bucket's pull fails, nothing is written for the source.
     """
     now = _now(now)
     incremental = start is None and end is None
@@ -543,14 +484,12 @@ def ingest_source(
 
 
 class IngestOutcome(NamedTuple):
-    """What one :func:`ingest_source` call did.
+    """What one ingest_source call did.
 
-    ``inserted``/``skipped`` are the store's counts. ``held_back`` counts owned
-    events not yet settled, so not written. ``frontier`` is the minimum bucket
-    frontier: every event starting in ``[start, frontier)`` is now stored. For an
-    incremental poll it is the cursor just written. For an explicit range,
-    ``frontier < end`` means the range is incomplete, so re-pull ``[frontier, end)``
-    once it has settled. ``None`` means the source had no buckets.
+    held_back counts events not yet settled, so not written. frontier is how
+    far the pull reached: every event starting before it is now stored. A
+    frontier short of the requested end means the range is incomplete; re-pull
+    the rest once it has settled. None means the source had no buckets.
     """
 
     inserted: int
