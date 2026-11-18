@@ -4,8 +4,8 @@ _Status: draft under active review; last updated 2026-11-18. Companion to
 [PRD.md](PRD.md). §10 lists what still needs a decision; §11 is the decision
 log._
 
-Sections marked **[proposed]** are recommendations that still need Brandon's
-confirmation. Everything else reflects decisions already made.
+**[proposed]** = recommendation awaiting Brandon's confirmation. Everything
+else is decided.
 
 ---
 
@@ -13,23 +13,18 @@ confirmation. Everything else reflects decisions already made.
 
 A local macOS system that records computer activity, classifies it into
 projects and work types with an LLM, and exposes the result to AI assistants
-(via MCP) and a local web UI — ending each week in a review with 1–3 concrete
+(MCP) and a local web UI — ending each week in a review with 1–3 concrete
 automation suggestions.
 
-**Decided scope for v1:**
+**v1 scope:** ActivityWatch **and** a custom capture agent (AX text +
+screenshots, on-device OCR); block corrections and project management via MCP
+write tools and the UI ("manual corrections" on the PRD Later list means
+corrections-as-rules); one hard-coded OpenRouter model; full rewrite as a
+Python package — the POC is deleted once the new pipeline passes its tests.
 
-- Capture: ActivityWatch (window, AFK, Chrome) **and** a custom capture agent
-  for Accessibility text + screenshots with on-device text recognition.
-- Corrections: block corrections and project management are in v1, via MCP
-  write tools and the UI. ("Manual corrections" on the Later list means
-  corrections-as-rules — generalizing one correction to future classification.)
-- One hard-coded OpenRouter model for both block labelling and weekly reviews.
-- Full rewrite: a structured Python package replaces `history.py` /
-  `history_mcp.py`. The POC is deleted once the new pipeline passes its tests.
-
-**Carried over from the POC's principles:** raw observations immutable, one
-service layer for REST/CLI/MCP, bounded purpose-built AI tools, honest coverage
-reporting, loopback only, captured text is untrusted data.
+**Kept POC principles:** raw observations immutable; one service layer for
+REST/CLI/MCP; bounded purpose-built AI tools; honest coverage reporting;
+loopback only; captured text is untrusted data.
 
 ## 2. System architecture
 
@@ -61,13 +56,11 @@ reporting, loopback only, captured text is untrusted data.
                Claude (direct) · ChatGPT (Secure MCP Tunnel)
 ```
 
-One FastAPI process hosts the API, MCP and UI, and runs the scheduler.
-The capture agent is a separate login-launched process. ActivityWatch is a
-separate app, as today.
+One FastAPI process hosts API + MCP + UI and runs the scheduler. The capture
+agent is a separate login-launched process; ActivityWatch is a separate app.
 
-**[proposed] URL layout:** REST moves under `/api/*`, MCP stays at `/mcp`,
-the React UI is served at `/`. This avoids route collisions between React
-routes and the POC's root-level REST routes.
+**URL layout:** REST under `/api/`*, MCP at `/mcp`, React UI at `/`
+(avoids route collisions with the POC's root-level routes).
 
 **[proposed] Package layout:**
 
@@ -87,58 +80,49 @@ docs/
 
 ## 3. Data model (SQLite)
 
-One SQLite file (e.g. `~/Library/Application Support/ComputerHistory/history.db`).
-Screenshots live on disk as files; the DB stores paths and extracted text.
+One SQLite file (`~/Library/Application Support/ComputerHistory/history.db`).
+Screenshots live on disk; the DB stores paths and extracted text.
 
-**Time rule (decided):** every stored timestamp is UTC ISO-8601 at uniform
-precision, so TEXT comparison works lexicographically. The single exception to
-UTC-everywhere: week and day *boundaries* are computed in the user's local
-timezone at query/generation time (a UTC week boundary would land mid-Sunday
-locally), and blocks spanning a boundary are clipped into each side when
-summing.
+**Time rule:** all stored timestamps are UTC ISO-8601 at uniform precision
+(TEXT comparison works lexicographically). Sole exception: week/day
+*boundaries* are computed in the user's local timezone at query time, and
+boundary-spanning blocks are clipped into each side when summing.
 
-**Naming rule (decided):** project names, work-type names and tags are
-normalized to lowercase (and trimmed) on write, so case variants can never
-create duplicates ("YouTube" vs "youtube"). Display casing is a later
-nicety.
+**Naming rule:** project names, work-type names and tags are lowercased and
+trimmed on write — case variants can never create duplicates. Display casing
+is a later nicety.
 
 ### 3.1 Layer 1: raw observations (immutable)
 
-The extensibility requirement ("new capture sources plug in without schema
-changes") is met by one generic table — a new source is a new `source` value
-plus an adapter, not a new table.
+One generic table meets the extensibility requirement: a new capture source is
+a new `source` value plus an adapter, not a new table.
 
 ```sql
 observations (
   id           INTEGER PRIMARY KEY,
   source       TEXT NOT NULL,      -- 'aw-window' | 'aw-afk' | 'aw-web' | 'ax-text' | 'screenshot'
-  source_id    TEXT,               -- id in the source system, for dedup on re-ingest
-  started_at   TEXT NOT NULL,      -- ISO 8601 UTC
+  source_id    TEXT,               -- id in the source system; dedup on re-ingest
+  started_at   TEXT NOT NULL,
   ended_at     TEXT NOT NULL,
-  payload      TEXT NOT NULL,      -- source JSON, verbatim (title, url, app, file path…)
+  payload      TEXT NOT NULL,      -- source JSON, verbatim
   ingested_at  TEXT NOT NULL,
   UNIQUE (source, source_id)
 )
 ```
 
-Rules: insert-only — no updates, no deletes, no upsert carve-outs (retention
-is a later feature). Because some sources grow events in place (ActivityWatch
-extends the current window event's duration), adapters follow a
-**settled-events rule**: only events that are closed — superseded by a newer
-event, or older than a short stability margin — are ingested; the
-currently-growing event is simply not ingested yet. Classification runs
-hourly, so the few minutes of ingest lag are invisible, and immutability holds
-with no exceptions. The original source payload is preserved verbatim;
-normalization happens into derived tables, never by editing this row.
+Strictly insert-only: no updates, no deletes, no upsert carve-outs. Sources
+that grow events in place (AW extends the current window event) are handled by
+the **settled-events rule**: an event is ingested only once closed —
+superseded by a newer event or older than a short stability margin. The few
+minutes of lag are invisible at hourly classification, and immutability holds
+with no exceptions.
 
 ### 3.2 Layer 1.5: signals (normalized, rebuildable)
 
-Content sources are projected into one typed table so every consumer reads a
-single shape instead of parsing per-source payload JSON. This is where
-per-source knowledge is centralized (only adapters know payload dialects), and
-normalization here is **computation, not just reshaping**: domain extraction
-from URLs and text hygiene (capping, whitespace collapse, dedup against the
-previous capture) happen at this step.
+Content sources projected into one typed table, so consumers read one shape
+instead of per-source payload JSON. Normalization is computation, not just
+reshaping: domain extraction from URLs, text hygiene (capping, whitespace
+collapse, dedup against the previous capture).
 
 ```sql
 signals (
@@ -155,26 +139,19 @@ signals (
 )
 ```
 
-Rules:
-
-- **1:1 with observations; PK = the observation id.** Signals carry no
-  original information, and stable ids make rebuilds invisible to anything
-  that references a signal.
-- **Written in the same transaction** as their observation, by the adapter —
-  drift between the layers can only come from mapping bugs, never crashes.
-- **Disposable by design.** `rebuild-signals` (CLI) wipes and re-projects the
-  whole table from raw whenever the mapping code improves. No per-row mapping
-  version: at this scale a full rebuild takes minutes. A single row in a meta
-  table records which code version last built the table.
-- **`extras` is write-only.** Consumers may display it (the evidence
-  drill-down), never filter or aggregate on it. The moment a query needs a
-  field from `extras`, that field is promoted to a real column (ten-second
-  migration + `rebuild-signals`).
-- **AFK is not in signals.** It is a state, not content — it never describes
-  activity, it gates and splits activity from other sources (see §4.3). If a
-  second state-like source appears later (screen locked, in a meeting), the
-  pattern gets promoted to a `state_spans` table; one instance doesn't justify
-  the abstraction.
+- **1:1 with observations; PK = observation id** — signals carry no original
+information, and stable ids make rebuilds invisible to anything referencing
+a signal.
+- **Written in the same transaction** as their observation — drift can only
+come from mapping bugs, never crashes.
+- **Disposable:** `rebuild-signals` wipes and re-projects the table whenever
+mapping code improves (full rebuild is minutes at this scale; a meta-table
+row records which code version built it — no per-row versions).
+- `**extras` is write-only:** display it, never filter/aggregate on it. A
+query needing a field in `extras` means promoting it to a column
+(migration + rebuild).
+- **AFK is not in signals** — it's a state, not content (§4.3). A second
+state-like source later would justify a `state_spans` table; one doesn't.
 
 ### 3.3 Layer 2: derived activity
 
@@ -183,126 +160,91 @@ projects (
   id             INTEGER PRIMARY KEY,
   name           TEXT NOT NULL UNIQUE,
   status         TEXT NOT NULL,    -- 'proposed' | 'confirmed' | 'archived'
-  merged_into_id INTEGER REFERENCES projects(id),  -- set on merge; blocks re-pointed
+  merged_into_id INTEGER REFERENCES projects(id),  -- merge tombstone; blocks re-pointed
   created_at     TEXT NOT NULL
 )
--- No created_by column: status already carries the provenance that matters
--- (AI-created projects are born 'proposed', user-created ones 'confirmed');
--- after approval, origin changes no behavior, so it isn't stored.
+-- No created_by: status already carries the provenance that matters (AI-created
+-- are born 'proposed', user-created 'confirmed'); after approval, origin
+-- changes no behavior.
 
 work_types (
   id          INTEGER PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
-  description TEXT,                -- fed into the classifier prompt; lists the
-                                   -- synonyms this type absorbs, e.g.
-                                   -- "coding, programming, debugging, DevOps"
+  description TEXT,                -- fed into the classifier prompt: the synonyms
+                                   -- this type absorbs ("coding, debugging, devops")
   status      TEXT NOT NULL,       -- 'active' | 'archived'
   created_at  TEXT NOT NULL
 )
 
 blocks (
-  id          INTEGER PRIMARY KEY,
-  started_at  TEXT NOT NULL,       -- aligned to 5-minute boundaries
-  ended_at    TEXT NOT NULL,
-  project_id  INTEGER REFERENCES projects(id),   -- NULL = Unassigned
+  id           INTEGER PRIMARY KEY,
+  started_at   TEXT NOT NULL,      -- aligned to 5-minute boundaries
+  ended_at     TEXT NOT NULL,
+  project_id   INTEGER REFERENCES projects(id),     -- NULL = Unassigned
   work_type_id INTEGER REFERENCES work_types(id),   -- NULL = no type fits / list empty
-  confidence  REAL,                -- LLM's 0–1 confidence
-  status      TEXT NOT NULL,       -- 'auto' | 'corrected'  (corrected = locked)
-  summary     TEXT,                -- one-line LLM description of the block
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
+  confidence   REAL,
+  status       TEXT NOT NULL,      -- 'auto' | 'corrected'  (corrected = locked)
+  summary      TEXT,               -- one-line LLM description
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
 )
 
-block_tags (block_id, tag)         -- optional, search/filter only, never totals
+block_tags (block_id, tag)         -- search/filter only, never totals
 ```
 
-Key decisions encoded here:
+Key decisions:
 
-- A block has **exactly one** project and **one** work type; tags are optional
-  and never count toward totals.
-- `status = 'corrected'` locks a block: the classifier must never update it.
-- Projects are proposed by the AI and label blocks immediately; the user
-  confirms, renames, merges, adds. Renames/merges only update references —
-  no LLM call. When projects change, **unconfirmed** blocks from the last 14
-  days are re-labelled.
-- Work types are a user-curated vocabulary: the AI **selects** from the
-  active list and never invents new types (can't-fit → low confidence →
-  Unassigned, which surfaces as "maybe a work type is missing"). Projects are
-  the opposite: an open set the AI proposes freely. The asymmetry is
-  deliberate — work types' value is comparability across projects and weeks,
-  which LLM-coined near-duplicates ("coding" / "programming") would destroy.
-- Projects, work types and tags never reference each other; they meet only
-  inside a block. Every cross-question (bottleneck = project × work type) is
-  an aggregation over blocks, not a stored relationship.
-- **Evidence is a query, not a table** (final-audit decision). A block's
-  evidence is exactly the signals whose time range overlaps the block's — one
-  indexed range query (kept as a SQL view, `block_evidence_v`, for a stable
-  name). Since the classifier reads *all* signals in a window, a stored
-  evidence table would cache this query while adding rebuild coordination and
-  recompute-on-split machinery for zero information. **Re-add trigger:** the
-  moment the classifier starts selecting or weighting signals (e.g. for
-  corrections-as-rules), "what the model saw" stops being derivable from time
-  overlap and must be stored again. Traceability is unchanged: every label and
-  bottleneck claim still drills down to raw signals, per the "honest about
-  uncertainty" principle.
+- **Exactly one project and one work type per block** — each axis partitions
+time, so totals sum to 100% and the bottleneck math can't double-count.
+Ambiguity is handled by splitting time or by tags, never by sharing labels.
+- `**corrected` = locked forever.** The classifier never touches it (§6).
+- **Merges are tombstones:** `merged_into_id` keeps the old row as a
+forwarding address, so a re-proposed duplicate name resolves to the survivor
+(following chains) instead of resurrecting. Renames/merges are reference
+surgery — no LLM call. Project-set changes re-label **unconfirmed** blocks
+from the last 14 days.
+- **Evidence is a query, not a table:** a block's evidence = signals whose
+time range overlaps the block's (kept as view `block_evidence_v`). The
+classifier reads *all* signals in a window, so a stored table would cache a
+range query while adding rebuild/split coordination for zero information.
+**Re-add trigger:** if the classifier ever selects or weights signals
+(corrections-as-rules), "what the model saw" must be stored again.
 
 #### Projects vs. work types vs. tags
 
-Three independent annotations on a block; they never reference each other and
-meet only inside a block row. AI freedom on each axis is inversely
-proportional to what breaks when the AI is wrong.
+Three independent annotations; they never reference each other and meet only
+inside a block. Every cross-question (bottleneck = project × work type) is an
+aggregation over blocks, not a stored relationship. AI freedom per axis is
+inversely proportional to what breaks when the AI is wrong:
 
 | | **Projects** | **Work types** | **Tags** |
 | --- | --- | --- | --- |
-| Question answered | *Where did this time go?* (the outcome served) | *What kind of labor was it?* | *What else is worth remembering?* (tools, topics, episodes) |
-| Created by | **Both**: AI proposes from activity (`proposed` status, labels blocks immediately); user adds their own | **Human only**: starts empty; user adds — directly, or by asking their AI assistant to propose a list from real activity (it calls `add_work_type`) | **AI, freely**: no vocabulary table exists — tags are just rows on blocks |
-| AI's role | Pick an existing project or propose a new one | Select exactly one from the active list; inventing is impossible (strict validation → Unassigned) | Invent liberally — as many genuinely useful tags as fit (lowercased, deduped) |
+| Question answered | *Where did this time go?* (outcome served) | *What kind of labor was it?* | *What else is worth remembering?* |
+| Created by | Both: AI proposes from activity (born `proposed`, labels blocks immediately); user adds | Human only: starts empty; user adds directly or via assistant (`add_work_type`) | AI, freely: no vocabulary table exists |
+| AI's role | Pick existing or propose new | Select exactly one from the active list; inventing impossible (strict validation → Unassigned) | Invent liberally — as many useful tags as fit (lowercased, deduped) |
 | Human's role | Confirm, rename, merge, archive, add | Own the vocabulary: add, rename, re-describe, archive | Edit per block via `correct_block` |
-| How human edits reach the AI | Prompt rebuilt from DB each run; project changes re-label unconfirmed blocks from the last 14 days | Prompt rebuilt each run; `description` teaches which synonyms each type absorbs | n/a — no vocabulary to maintain |
-| Vocabulary shape | Open set, grows with your life | Small closed set (~12), curated for comparability | Unbounded free vocabulary |
-| In time math | Yes — exactly one per block | Yes — exactly one per block; the bottleneck axis | **Never** — structurally excluded from totals |
-| Use cases | "Time by project", project timeline, review grouping | Bottleneck ranking (project × work type), "how much time editing overall" | Search and filter: "when was I in CapCut / working on shorts / editing ep12" |
-| Cost of an AI mistake | A duplicate project — one merge fixes it | Would silently split bottleneck math — hence no freedom | A bad tag — worst case a search misses |
+| How edits reach the AI | Prompt rebuilt from DB each run; project changes re-label unconfirmed blocks (14 days) | Prompt rebuilt each run; `description` teaches synonym absorption | n/a |
+| In time math | Yes — one per block | Yes — one per block; the bottleneck axis | Never |
+| Cost of an AI mistake | Duplicate project — one merge fixes it | Would silently split bottleneck math — hence no freedom | A search misses |
 
-**No seed list — AI proposes from real data, human approves (decided).**
-`work_types` starts empty, and the design assumes a fresh install with zero
-history (backfill is opportunistic, §4.1). The cold-start sequence:
-
-1. **Day 0 (install):** capture starts; that's the only job of day one.
-   Classification runs anyway — blocks get projects and tags, with
-   `work_type_id = NULL`. Nothing stalls.
-2. **Day 1–2:** once real activity has accumulated, the user asks their AI
-   assistant to propose a work-type list from it. The proposal is purely
-   conversational in v1: the assistant reads activity through the MCP read
-   tools, drafts ~8–12 types with descriptions and evidence in chat, and on
-   the user's approval creates them via `add_work_type`. No dedicated
-   `propose_work_types` endpoint yet.
-3. **On first approval (empty → non-empty):** a one-time **bootstrap
-   re-label** sweeps the existing auto blocks so the day-0/1 backlog isn't
-   permanently typeless. This is a deliberate exception to the deferred
-   relabel-on-type-change feature: one trigger, runs once, bounded scope.
-
-The **nudge** is the onboarding mechanism: while `work_types` is empty,
-`get_recording_status` and review output include "no work types defined yet —
-after a day of activity, ask your assistant to propose a list." It is
-meaningless on day 0, actionable on day 2, and persists until acted on; the
-empty table *is* the onboarding state, with no wizard or state machine. The
-step is skippable — types can be added by hand anytime, and everything but the
-work-type axis works without them. (An interview-based day-0 draft — "what
-kinds of work fill your week?" — is deliberately not in v1: self-reported
-taxonomies are the problem the product exists to correct. It stays in the back
-pocket for the non-technical-audience product.)
-
-Blocks with a NULL work type or NULL project are excluded from bottleneck
-ranking; a real personal-vs-work distinction is deferred (PRD Later:
-"personal vs actual work"). AI-proposed work types during routine
-classification and consolidation suggestions also remain deferred (PRD Later
-list) — vocabulary proposals happen only in explicit, human-approved flows
-like the one above.
+**Work-type cold start (no seed list).** `work_types` starts empty; the design
+assumes a zero-history fresh install (§4.1). Day 0: capture starts;
+classification runs with `work_type_id = NULL` — nothing stalls. Day 1–2: the
+user asks their assistant to propose ~8–12 types from real activity
+(conversational: MCP read tools → draft with descriptions → `add_work_type` on
+approval; no dedicated endpoint). First empty → non-empty transition triggers a
+one-time **bootstrap re-label** of auto blocks — the single exception to
+deferred relabel-on-type-change. The **nudge** ("no work types yet — ask your
+assistant to propose a list") in `get_recording_status` and reviews is the
+entire onboarding mechanism: the empty table *is* the onboarding state. A
+day-0 interview is deliberately out — self-reported taxonomies are the problem
+the product corrects. NULL-project/NULL-type blocks are excluded from
+bottleneck ranking; real personal-vs-work distinction is PRD Later.
 
 ### 3.4 Layer 3: reviews and suggestions
 
-Generated and stored by the backend so every AI client sees the same ones.
+Generated and stored by the backend so every client sees the same output,
+served in milliseconds.
 
 ```sql
 reviews (
@@ -310,157 +252,143 @@ reviews (
   week_start   TEXT NOT NULL,      -- Monday, local time
   trigger      TEXT NOT NULL,      -- 'scheduled' | 'on_demand'
   generated_at TEXT NOT NULL,
-  body         TEXT NOT NULL       -- JSON: time by project × work type, bottlenecks w/ evidence
+  body         TEXT NOT NULL       -- JSON: range, totals, bottlenecks w/ evidence, narrative
 )
 
 suggestions (
   id         INTEGER PRIMARY KEY,
   review_id  INTEGER NOT NULL REFERENCES reviews(id),
   title      TEXT NOT NULL,
-  evidence   TEXT NOT NULL,        -- JSON: block ids, hours, recurrence
-  workflow   TEXT NOT NULL,        -- the automation, step by step
+  evidence   TEXT NOT NULL,        -- JSON: block ids, hours, recurrence (display-only)
+  workflow   TEXT NOT NULL,        -- the automation, for a human to read and judge
   runnable   TEXT NOT NULL         -- paste-ready prompt or Claude Code command
 )
 ```
 
-Semantics (settled):
+Semantics:
 
-- **Reviews are snapshots, not deltas.** Every generation — scheduled or
-  on-demand — recomputes the whole week from current blocks; there is no
-  cursor and no "since the last review." A mid-week on-demand run covers
-  Monday-to-now; the scheduled run covers the full week regardless of earlier
-  triggers. Full recompute is idempotent and absorbs corrections and
-  late-classified blocks automatically.
-- **Reviews are never overwritten.** Multiple rows per `week_start` coexist,
-  ordered by `generated_at`. `body` is a frozen document: later corrections
-  must not silently rewrite what a review said — freshness questions are
-  answered by `generated_at` and regeneration. Trend questions ("editing time
-  over 12 weeks") are answered from blocks, which are live and normalized,
-  never by querying across review bodies.
-- **Suggestions are rows, not blob entries, because they have an afterlife:**
-  the deferred status/dismissal features need addressable ids ("dismiss
-  suggestion 12"). `workflow` is the automation for a human to read and
-  judge; `runnable` is the artifact a machine executes as-is — clients render
-  them differently (prose vs. copy-and-run), which is why they are separate
-  columns. `evidence` is display-only JSON (block ids, hours, recurrence);
-  the ids inside it chain to live blocks for drill-down.
+- **Snapshots, not deltas.** Every generation recomputes the whole week from
+current blocks — no cursor, no "since last review." Mid-week on-demand runs
+cover Monday-to-now; the scheduled run covers the full week regardless of
+earlier triggers. Full recompute is idempotent and absorbs corrections
+automatically.
+- **Never overwritten.** Multiple rows per `week_start` coexist, ordered by
+`generated_at`; `body` is frozen so later corrections can't rewrite what a
+review said. Trends are answered from blocks, never across review bodies.
+- **Suggestions are rows because they have an afterlife:** deferred
+status/dismissal needs addressable ids. `workflow` (read and judge) and
+`runnable` (execute as-is) stay separate columns because clients render
+them differently — prose vs. copy-and-run.
 
 ### 3.5 Bookkeeping
 
 ```sql
-ingest_cursors (source, last_seen)      -- where each adapter resumed from
+ingest_cursors (source, last_seen)      -- per-source ingestion frontier
 classification_runs (id, started_at, finished_at, range, model, status, error)
 ```
 
-`classification_runs` is how catch-up works after sleep: the scheduler
-classifies everything between the last successful run and now.
+Two separate frontiers on purpose (ingestion vs. classified time move
+independently); a blocks-derived watermark would re-classify fully-AFK ranges
+forever. `classification_runs` doubles as the LLM audit log.
 
 ## 4. Ingestion
 
-Each source gets an adapter with the same contract: _pull new data since a
-cursor, write `observations` rows plus their `signals` projections in one
-transaction, advance the cursor._ Adapters are idempotent (the
-`(source, source_id)` unique key makes re-ingest a no-op). Only adapters know
-their source's payload shape; everything downstream reads `signals`.
+Adapter contract: _pull new data since a cursor, write `observations` +
+`signals` in one transaction, advance the cursor._ Idempotent via the
+`(source, source_id)` unique key. Only adapters know payload dialects;
+everything downstream reads `signals`.
 
 ### 4.1 ActivityWatch adapter
 
-- Polls `http://127.0.0.1:5600/api/0` **[proposed]** every 60 seconds for the
-  window, AFK, and both Chrome web buckets.
-- **No pre-existing history is assumed, anywhere.** A real user's fresh
-  install starts from zero; nothing downstream — onboarding included — may
-  depend on prior data. Ingesting existing ActivityWatch history is a one-time
-  personal convenience for Brandon's own install (about a week of data), done
-  in day-sized pages, not a product feature.
-- AW events grow in place (the current event's duration extends), so the
-  adapter follows the settled-events rule (§3.1): it ingests an event only
-  once it is closed — superseded by a newer event or older than a short
-  stability margin — keeping observations strictly insert-only.
-- Read-only toward ActivityWatch, as today.
+- Polls `http://127.0.0.1:5600/api/0` every 60s **[proposed]** for window,
+AFK, and Chrome web buckets.
+- **Zero-history installs are the baseline.** Nothing downstream may depend on
+pre-existing data. Ingesting existing AW history is a one-time `backfill`
+command for Brandon's own install, not a product feature.
+- AW grows the current event in place → settled-events rule (§3.1).
+- Read-only toward ActivityWatch.
 
-### 4.2 Capture agent (Swift) **[proposed: language + mechanics]**
+### 4.2 Capture agent (Swift) **[proposed: mechanics under discussion]**
 
-A small Swift CLI launched at login, separate from the Python backend, because
-macOS TCC permissions (Accessibility, Screen Recording) attach to a stable
-signed binary and the capture + Vision OCR APIs are native.
+Separate Swift CLI, login-launched: TCC permissions (Accessibility, Screen
+Recording) attach to a stable signed binary, and AX / ScreenCaptureKit /
+Vision are native APIs. The agent is deliberately dumb — observe, write spool
+files, repeat; all intelligence stays in Python.
 
-- **Triggers:** on app/window switch, plus every 30s while active; skips when
-  idle (per AW AFK) or screen locked; skips near-identical screenshots.
-- **Accessibility text:** focused-window AX tree text, truncated to a cap.
-- **Screenshots:** JPEG to disk under the app-support dir; on-device Apple
-  Vision OCR; screenshots never leave the Mac — only OCR text is stored in
-  `observations.payload` and only text ever reaches the LLM.
-- **Handoff:** the agent appends JSONL files (one per hour) to a spool
-  directory; the backend's `ax-text` / `screenshot` adapters tail the spool
-  like any other source. The agent stays dumb; the backend owns the DB.
-  This survives the backend being down (files accumulate, ingest catches up).
-- Known risks: Electron/Chrome expose sparse AX trees; macOS re-prompts for
-  Screen Recording periodically; TCC under a LaunchAgent is fiddly. Milestones
-  6–7 absorb this risk after the core pipeline already works end to end.
+- **Triggers:** app/window switch + 30s heartbeat while active; silent when
+locked or AFK (reads AW's AFK state rather than reimplementing it).
+- **AX text:** focused-window tree walk, content roles only, ~10 KB cap,
+hash-skip unchanged text, per-call timeouts (hung apps cost one capture,
+not the agent). Secure fields (`kAXSecureTextField`) always skipped —
+engineering hygiene, not a privacy feature.
+- **Screenshots:** ScreenCaptureKit → downscale (~1440px JPEG q60) →
+perceptual-hash dedup → disk; Vision OCR **in the agent**, so only text
+ever reaches the Python/cloud side. Screenshots never leave the Mac.
+Est. ~75–150 MB/day post-dedup.
+- **Spool handoff:** hourly-rotated JSONL, one capture per line (UUID =
+`source_id`); backend adapters tail with a (file, offset) cursor. No IPC —
+the filesystem is the queue; backend downtime just accumulates files.
+- **Known risks:** Electron/Chrome expose sparse AX trees (screenshots+OCR
+are the complement); macOS re-confirms Screen Recording periodically
+(surface as a coverage warning, not silent failure); TCC under LaunchAgents
+needs a stable binary path and signature. This risk is deliberately
+front-loaded (M2–M3): it's exercised while a pivot is still cheap, and
+capture runs for weeks before classification needs its output.
 
 ### 4.3 AFK: raw-only, three consumers
 
-AFK stays out of `signals` (§3.2). Exactly three places read `aw-afk`
-observations directly — each is "give me the AFK intervals for this range,"
-which the raw table answers with one trivial query:
+AFK gates and splits activity; it never describes it. Exactly three readers of
+raw `aw-afk` rows:
 
-1. **Classifier windowing:** fully-AFK 5-minute windows are skipped — no
-   digest, no LLM call, no block.
-2. **Block assembly:** AFK gaps over 5 minutes split blocks, so a long break
-   separates two work blocks instead of being welded into one.
-3. **Time breakdowns:** attended time = signal intervals ∩ not-afk intervals
-   (the same clip-and-merge interval math the POC already uses). Breakdown
+1. **Classifier windowing** — fully-AFK windows skipped (no digest, no LLM).
+2. **Block assembly** — AFK gaps > 5 min split blocks.
+3. **Breakdowns** — attended = signal intervals ∩ not-afk intervals;
+
    responses report both `foreground_seconds` and `attended_seconds`.
 
-Two semantics pinned down:
+Pinned semantics: **missing AFK data is a coverage gap, never attendance**
+(report foreground time + warning); AFK undercounts passive consumption
+(video-watching reads as idle) — accepted for v1.
 
-- **Missing AFK data is a coverage gap, never attendance.** Window events
-  with no AFK stream (watcher off, permission revoked) → return foreground
-  time with a coverage warning; never silently equate "no AFK data" with
-  "attended the whole time."
-- **AFK undercounts passive consumption** (watching a video without input
-  reads as AFK). Accepted for v1; attended time slightly undercounts.
+## 5. Classification: observations → blocks
 
-## 5. Classification: from observations to blocks
+Scheduled in the backend (freshness ~1 hour). AI clients never classify on the
+fly; they read stored results.
 
-Runs on a schedule inside the backend (freshness target: within ~1 hour).
-The AI client never classifies on the fly; it reads stored results.
+1. **Windowing.** Fixed 5-minute windows; digest per window from `signals`
 
-1. **Windowing.** Slice un-classified time into fixed 5-minute windows
-   (decided). For each window, assemble a text digest from `signals`:
-   apps + titles with durations, domains/URLs, cleaned AX / OCR text
-   (capped). Windows that are fully AFK (per raw `aw-afk`, §4.3) are skipped.
-2. **LLM labelling.** Batch N windows per call to OpenRouter (one hard-coded
-   model, text only). The prompt includes: the current project list (names +
-   one-line descriptions); the active work-type list (names + descriptions —
-   the description tells the model which synonyms each type absorbs, so
-   "programming" and "devops" land in "software engineering" if that's how
-   the user sliced it); and the rule that a project is an outcome being
-   worked toward, never a kind of activity ("video editing" is a work type,
-   not a project). The model returns, per window: project (existing, or a
-   proposed new one), work type (selected from the list, never invented), as
-   many genuinely useful tags as fit (lowercased, deduped), confidence, and a
-   one-line summary.
-3. **Project proposal.** A new project name in the response creates a
-   `proposed` project row immediately and labels the window with it (decided).
-4. **Block assembly (decided).** Merge consecutive windows with the same
-   (project, work type) into one block; split at AFK gaps over 5 minutes.
-5. **Write-back.** Insert blocks with `status='auto'`. Never touch
-   `corrected` blocks. Low-confidence windows get `project_id = NULL`
-   (Unassigned) rather than a guess (decided; threshold default 0.5,
-   configurable — **[value proposed]**); likewise `work_type_id = NULL` when
-   no active type fits or the list is still empty.
-6. **Catch-up, with a horizon.** On startup (login agent) and after sleep,
-   classify the gap since the last successful `classification_run` — capped by
-   a classification horizon (default 14 days back, configurable). Anything
-   older is ingested and mechanically queryable (breakdowns read signals), but
-   is only classified by an explicit `classify-backfill` command, so a large
-   first ingest can never trigger a surprise LLM burn.
+   (apps + titles with durations, domains/URLs, cleaned text). Fully-AFK
+    windows skipped.
+2. **LLM labelling.** Batch N windows per OpenRouter call (one hard-coded
 
-**Prompt-injection posture (deferred, by decision):** titles, URLs, AX text
-and OCR text flow into the classifier prompt. V1 only constrains the output
-(strict JSON schema, project/work-type values validated against known lists);
-hardening is on the Later list.
+   model, text only). Prompt contains: project list (names + descriptions),
+    active work-type list (names + descriptions — descriptions teach synonym
+    absorption), and the rule that a project is an outcome, never an activity
+    kind ("video editing" is a work type, not a project). Returns per window:
+    project (existing or newly proposed), work type (selected, never
+    invented), as many useful tags as fit, confidence, one-line summary.
+3. **Project proposal.** New names create `proposed` rows and label windows
+
+   immediately; proposals resolve against archived names first (merge
+    forwarding).
+4. **Block assembly.** Merge consecutive same-(project, work type) windows;
+
+   split at AFK gaps > 5 min.
+5. **Write-back.** Insert `status='auto'`; never touch `corrected` (§6).
+
+   Low confidence → `project_id = NULL` rather than a guess (threshold
+    default 0.5 **[value proposed]**); `work_type_id = NULL` when nothing fits
+    or the list is empty.
+6. **Catch-up with a horizon.** On startup/after sleep, classify the gap
+
+   since the last successful run — capped at 14 days back (configurable).
+    Older data is ingested and mechanically queryable, but classified only via
+    explicit `classify-backfill` — a large first ingest can never trigger a
+    surprise LLM burn.
+
+**Prompt injection (deferred by decision):** captured text flows into the
+prompt; v1 only validates output (strict JSON schema, labels checked against
+known lists).
 
 ## 6. Projects and corrections
 
@@ -468,185 +396,170 @@ hardening is on the Later list.
 | --- | --- |
 | Confirm project | `status → confirmed`. |
 | Rename project | Update `name`; references untouched; no LLM call. |
-| Merge A into B | `A.merged_into_id = B`, A archived; A's blocks re-pointed to B; no LLM call. |
-| Add project | New `confirmed` row; appears in the next classifier prompt. |
-| Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later), with one exception: the first empty → non-empty transition triggers the one-time bootstrap re-label (§3.3). |
-| Correct a block | Set project / work type / tags; `status → 'corrected'` (locked forever). |
-| Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Evidence is a time-range query, so each half's evidence follows automatically; halves are then correctable independently. |
-| Project set changes | Re-label **unconfirmed** blocks from the last 14 days (decided). |
+| Merge A into B | Tombstone + re-point blocks; no LLM call. |
+| Add project | New `confirmed` row; appears in next classifier prompt. |
+| Add / rename / re-describe / archive work type | Rename = reference surgery; description edits steer the next run; archive hides from prompt, old blocks untouched. Affects future classification only (relabel-on-type-change is PRD Later), except the one-time bootstrap re-label (§3.3). |
+| Correct a block | Set project / work type / tags; `status → 'corrected'`, locked forever. |
+| Split a block | `split_block(block_id, at_time)`, snapped to the 5-min grid; evidence is a time-range query so each half's follows automatically. |
+| Project set changes | Re-label unconfirmed blocks from the last 14 days. |
 
-**Scope of time edits in v1: splitting only.** A split subdivides what a block
-already owns, so the rest of the timeline is untouched — no neighbor
-conflicts, no gap-filling policy. Dragging boundaries and merging neighbors
-change the partitioning of the day (every moved edge forces a decision about
-the adjacent block) and wait until there's evidence they're needed; the
-classifier already splits at AFK gaps and label changes, which catches most
-real transitions. Users edit interpretation only: nothing ever writes to
-`observations` or `signals`.
+**Time edits in v1 = splitting only.** A split subdivides what a block already
+owns — no neighbor conflicts, no gap-filling policy. Boundary drags and merges
+repartition the day and wait for evidence they're needed. Users edit
+interpretation only: nothing ever writes to `observations` or `signals`.
 
-Corrections fix only that block in v1; corrections-as-rules are later.
-All of the above is available from both MCP write tools and the UI, through
-the same service layer.
-
-**The lock is enforced in the write statement, not at read time.** The
-classifier is a read–think–write pipeline; a correction can land between its
-read and its write, and a write based on the stale read would overwrite the
-correction. So the classifier's write-back guards every statement
-(`... WHERE status != 'corrected'`, inside one transaction) — the database,
-whose knowledge is never stale, enforces the lock, and a correction made
-mid-run survives.
+**The corrected lock is enforced in the write statement, not at read time.**
+The classifier is read–think–write; a correction landing mid-run would be
+overwritten by a write based on the stale read. Every classifier write-back
+statement carries `WHERE status != 'corrected'` inside one transaction — the
+database, never stale, enforces the lock. (Human writes always win; machine
+writes defer to the flag.)
 
 ## 7. Weekly review and bottlenecks
 
-- Week = Monday–Sunday, local time. Generated automatically when the week
-  ends and on demand anytime (on-demand runs are allowed to exceed the
-  2-second target since they call the LLM).
-- While `work_types` is empty, reviews carry the onboarding nudge (§3.3) in
-  place of a work-type breakdown.
-- **Ranking is two-stage: deterministic shortlist, then AI selection
-  (decided).** Stage 1, in the backend with no LLM: score each
-  (project × work type) pair — **[proposed] formula:** `hours × distinct days
-  it recurs` — over work blocks only (NULL project / NULL work type excluded).
-  Deterministic scoring answers *how big is it*: same data in, same ranking
-  out, every number auditable against blocks.
-- The shortlist is cut by **materiality, not rank**: every pair clearing a
-  floor (**[proposed]:** ≥2 hours in the week, or ≥30 minutes recurring on 3+
-  days) is included, capped at ~15 by score for prompt sanity. Nothing both
-  meaningful and automatable can fall outside the shortlist, because
-  meaningful is the only inclusion criterion; a sparse week passes 4 pairs, a
-  heavy one 14.
-- Generation (scheduled or on-demand) first triggers a classification
-  catch-up, so the week's final hours are labelled before scoring.
-- Stage 2, AI judgment: the LLM receives the shortlisted pairs **with
-  their evidence** and answers *which are automatable* — selecting and
-  ordering the 1–3 worth suggesting, then writing the review narrative and
-  each suggestion's evidence, workflow, and ready-to-run prompt or Claude Code
-  command. Two constraints keep it honest: it may not introduce candidates
-  outside the shortlist, and every pick must cite the evidence it was handed.
-  The full stage-1 ranking is stored in `reviews.body`; the AI's picks become
-  the `suggestions` rows. All stored, so Claude, ChatGPT and the UI see the
-  same.
+- Week = Monday–Sunday local. Auto-generated at week end; on demand anytime
+(LLM-backed, exempt from the 2s target). Generation runs classification
+catch-up first, so the week's final hours are labelled.
+- While `work_types` is empty, reviews carry the onboarding nudge instead of a
+work-type breakdown.
+- **Two-stage ranking.** Stage 1, deterministic SQL — *how big is it*:
+score each (project × work type) pair, **[proposed]** `hours × distinct days`, over work blocks only (NULLs excluded). Same data in, same ranking
+out; every number auditable against blocks.
+- **Shortlist by materiality, not rank:** every pair clearing a floor
+(**[proposed]** ≥2h in the week, or ≥30 min on 3+ days), capped at ~15.
+Nothing both meaningful and automatable can fall outside it, because
+meaningful is the only inclusion criterion.
+- **Stage 2, AI judgment — *which are automatable*:** the LLM gets the
+shortlist with evidence, selects and orders the 1–3 worth suggesting, and
+writes the narrative + each suggestion's evidence/workflow/runnable.
+Constraints: no candidates outside the shortlist; every pick cites its
+evidence. Stage-1 ranking stored in `reviews.body`; picks become
+`suggestions` rows.
 
 ## 8. Interfaces
 
 ### 8.1 MCP tools (`/mcp`)
 
-Read (bounded, summaries by default, evidence on request — as in the POC):
+Read (bounded; summaries by default, evidence on request):
 
 | Tool | Purpose |
 | --- | --- |
-| `get_recording_status` | Source freshness, coverage gaps, disk usage; onboarding nudge while `work_types` is empty |
-| `get_time_breakdown` | Time by project / work type / app / domain / URL over a range; reports both foreground and attended seconds |
+| `get_recording_status` | Source freshness, coverage gaps, disk usage; onboarding nudge while `work_types` empty |
+| `get_time_breakdown` | Time by project / work type / app / domain / URL; foreground + attended seconds |
 | `get_timeline` | A day's blocks in order |
 | `list_projects` | Projects with status and totals |
-| `get_blocks` | Blocks filtered by range/project, with evidence on request |
+| `get_blocks` | Blocks by range/project, evidence on request |
 | `get_weekly_review` | Latest or specified week's review + suggestions |
 | `generate_review_now` | On-demand review (slow; runs the LLM) |
 
-Write (the correction/project actions from §6):
-
-`correct_block`, `split_block`, `confirm_project`, `rename_project`,
+Write: `correct_block`, `split_block`, `confirm_project`, `rename_project`,
 `merge_projects`, `create_project`, `add_work_type`, `rename_work_type`,
-`archive_work_type`.
-
-Writes validate hard (existing ids, known work types) and return the updated
-object. Tested in both Claude (direct) and ChatGPT (Secure MCP Tunnel).
+`archive_work_type`. Hard validation (existing ids, known types); returns the
+updated object. Tested in Claude (direct) and ChatGPT (Secure MCP Tunnel).
 
 ### 8.2 REST (`/api/*`)
 
-Same service layer, roughly one route per MCP tool, plus what the UI needs
-(e.g. screenshot file serving for the UI's evidence view — localhost only).
+Same service layer, ~one route per MCP tool, plus UI needs (screenshot file
+serving — localhost only).
 
 ### 8.3 Web UI (`/`)
 
-React, built to static files, served by FastAPI. V1 is Brandon's testing and
-viewing tool: daily timeline, breakdowns, project management, block
-correction, weekly review + suggestions, recording status, disk usage.
-Screenshot display is in scope; presentation details decided later.
+React, static files served by FastAPI. V1 = Brandon's testing/viewing tool:
+timeline, breakdowns, project management, block correction, review +
+suggestions, recording status, disk usage. Screenshot display in scope;
+presentation details later.
 
-### 8.4 Non-functional handling
+### 8.4 Non-functional
 
-- **2-second target** applies to reads from SQLite (MCP + UI). LLM-backed
-  actions (on-demand review, backfill classification) are exempt and report
-  progress instead.
-- **Login agent:** a LaunchAgent starts the backend (and capture agent) at
-  login; the backend immediately runs ingest + classification catch-up.
-- **Localhost only**, no auth, same posture as the POC.
-- **Disk usage visible** via `get_recording_status` and the UI.
+- **2s target** for SQLite reads (MCP + UI); LLM-backed actions exempt,
+report progress instead.
+- **LaunchAgent** starts backend + capture agent at login; immediate
+ingest + classification catch-up.
+- **Localhost only**, no auth. **Disk usage visible** via status tool + UI.
 
 ## 9. Milestones
 
-Each milestone is independently useful and testable before the next starts.
-The POC keeps running until M3, when the new system replaces it.
+**Ordering principle (decided):** all ingestion before any intelligence. The
+classifier is built once against the full signal set (no prompt rework when
+text sources arrive), weeks of rich data accumulate as an evaluation corpus
+while the brain is being built, and the scariest risk (TCC under
+LaunchAgents) is exercised first, while a pivot would still be cheap. The
+accepted cost: the aha moment arrives at M5, not M2 — until then the system
+is mechanically useful only (breakdowns, attended time, timeline from
+signals). The POC keeps serving AI clients until M6 replaces it. FastAPI's
+Swagger UI at `/docs` is the free admin tool from M1 until the React UI.
 
 | # | Milestone | Done when |
 | --- | --- | --- |
-| **M1** | **Package + store + AW ingest.** New package, SQLite schema, ActivityWatch adapter (polling + settled-events rule), `status` CLI, one-time `backfill` command. | A fresh install ingests from zero; Brandon's existing AW history lands via `backfill`; re-running ingest is a no-op; coverage gaps queryable. |
-| **M2** | **Classification.** Windowing, OpenRouter client, project proposal, block assembly, scheduler with catch-up. | A day of real activity becomes labelled blocks within an hour, idempotently. |
-| **M3** | **MCP + corrections.** All read and write tools; REST under `/api`; POC deleted. | From Claude and ChatGPT: query timeline/breakdowns, correct a block, manage projects; corrected blocks survive re-classification. |
-| **M4** | **Weekly review.** Ranking, review generation (scheduled + on demand), suggestions stored. | Monday morning: a stored review with 1–3 runnable suggestions, same from every client. |
-| **M5** | **React UI.** Timeline, breakdowns, project/block editing, review view, status page. | Brandon can do everything from the browser that MCP can do. |
-| **M6** | **Login agent + reliability.** LaunchAgent, sleep/crash catch-up, disk usage reporting. | Reboot the Mac; recording and classification resume with no manual steps. |
-| **M7** | **Capture agent: Accessibility text.** Swift agent, spool handoff, `ax-text` adapter, text feeding classification. | Blocks from AX-rich apps get visibly better labels. |
-| **M8** | **Capture agent: screenshots + OCR.** Screen capture, dedup, Vision OCR, UI screenshot display. | OCR text improves classification; screenshots viewable in the UI; nothing but text leaves the Mac. |
-| **M9** | **Early adopters.** Setup docs, rough install script, a second Mac runs it. | A technical friend is running it on their machine. |
+| **M1** | **Package + store + AW ingest.** Schema, AW adapter (polling + settled-events), `status` CLI, one-time `backfill`. | Fresh install ingests from zero; Brandon's history lands via `backfill`; re-ingest is a no-op; coverage gaps queryable. |
+| **M2** | **Capture agent: AX text.** Swift CLI, AX tree capture (caps, hash-skip, secure-field skip, per-call timeouts), spool + `ax-text` adapter. | Real AX text lands in `signals`, cleaned and deduped; a hung app costs one capture, not the agent; spool catches up after backend downtime. |
+| **M3** | **Capture agent: screenshots + OCR.** ScreenCaptureKit, perceptual-hash dedup, Vision OCR in-agent, `screenshot` adapter. | OCR text in `signals`; JPEGs on disk within the storage budget; only text ever crosses into Python. |
+| **M4** | **Login agents + reliability.** LaunchAgents for backend + capture agent, sleep/crash ingest catch-up, disk usage reporting. | Reboot → both processes resume recording with no manual steps; gaps reported, never guessed. From here, data accumulates unattended. |
+| **M5** | **Classification.** Windowing, OpenRouter client, project proposal, block assembly, scheduler + horizon catch-up. | A day of multi-source activity becomes labelled blocks within an hour, idempotently — evaluated against the accumulated corpus. |
+| **M6** | **MCP + corrections.** All read/write tools; REST under `/api`; POC deleted. | From Claude and ChatGPT: "anything I need to approve?" answered (proposed projects + work-type nudge), breakdowns/timeline queried, blocks corrected and split, projects and work types managed; corrections survive re-classification. |
+| **M7** | **Weekly review.** Two-stage ranking, scheduled + on-demand generation, stored suggestions. | Monday morning: stored review with 1–3 runnable suggestions, same from every client. |
+| **M8** | **React UI.** Timeline, breakdowns, editing, review view, status page, screenshot display. | Everything MCP can do, doable in the browser. |
+| **M9** | **Early adopters.** Setup docs, rough install script. | A technical friend runs it on their Mac. |
 
 ## 10. Open items needing a decision
 
 Each tagged **[proposed]** above where it appears:
 
-1. **Capture agent** (§4.2) — under active discussion. Five sub-decisions:
-   screenshot scope (frontmost window / active display / all displays),
-   heartbeat cadence (30s vs 60s), image budget (~1440px JPEG q60), the
-   secure-input skip, and same-tick AX + screenshot capture.
-2. **Bottleneck formula value** (§7): `hours × distinct days`, and the
-   materiality floor (≥2h, or ≥30min on 3+ days) — the two-stage mechanism is
-   decided, the numbers are not.
-3. **Low-confidence threshold value** (§5): default 0.5, configurable.
-4. **URL layout** (§2): `/api` + `/` + `/mcp`.
-5. **AW polling interval** (§4.1): 60s.
-6. **Partial-week breakdowns**: covered by `get_time_breakdown` over any
-   range, no separate tool — confirm this is enough.
-7. **Review `body` JSON shape** (§3.4): range / totals / bottlenecks /
-   narrative.
-8. **`get_weekly_review` default**: serves the week's latest review.
-9. **Empty weeks** (§7): still store a review ("no classified work"), so a
-   missing review always means a bug.
-10. **Keep `reviews.trigger`** (flagged as the one defensible cut in the
-    final audit; recommendation: keep).
+1. **Capture agent** (§4.2) — five sub-decisions: screenshot scope (frontmost
 
-Structural-but-unblessed (silence = consent unless something bothers you):
-package layout (§2), milestone ordering (§9).
+   window / active display / all displays), heartbeat cadence (30s vs 60s),
+    image budget (~1440px JPEG q60), secure-input skip, same-tick AX +
+    screenshot capture.
+2. **Bottleneck numbers** (§7): formula `hours × distinct days`; materiality
+
+   floor ≥2h or ≥30min on 3+ days. (Mechanism decided; values not.)
+3. **Low-confidence threshold** (§5): default 0.5, configurable.
+4. **AW polling interval** (§4.1): 60s.
+5. **Partial-week breakdowns**: `get_time_breakdown` over any range suffices —
+   confirm no separate tool needed.
+6. **Review `body` JSON shape** (§3.4): range / totals / bottlenecks /
+   narrative.
+7. **`get_weekly_review` default**: serves the week's latest review.
+8. **Empty weeks** (§7): still store a review ("no classified work") so a
+   missing review always means a bug.
+9. **Keep `reviews.trigger`** (the one defensible cut from the final audit;
+   recommendation: keep).
+
+Structural-but-unblessed (silence = consent): package layout (§2).
 
 ## 11. Decision log
 
 - **2026-11-16 — initial draft:** scope (capture agent and corrections in v1,
-  one model, full rewrite), architecture, milestones.
+one model, full rewrite), architecture, milestones.
 - **2026-11-17 — data model:** two-layer `observations` + `signals`
-  (PK = observation id; wipe-and-rebuild; `extras` write-only); AFK raw-only
-  with exactly three consumers; breakdowns report foreground **and** attended
-  seconds; corrections = relabel + split on the 5-minute grid (no boundary
-  drags or merges in v1).
-- **2026-11-17 — Layer 2:** `work_types` table with `description` (AI selects
-  from it, never invents; user owns the vocabulary); projects / work types /
-  tags never reference each other and meet only inside blocks; AI-proposed
-  types, consolidation suggestions and relabel-on-type-change deferred to PRD
-  Later.
+(PK = observation id; wipe-and-rebuild; `extras` write-only); AFK raw-only
+with exactly three consumers; foreground **and** attended seconds;
+corrections = relabel + split on the 5-minute grid (no drags/merges in v1).
+- **2026-11-17 — Layer 2:** `work_types` table with `description` (AI selects,
+never invents; user owns the vocabulary); projects / work types / tags meet
+only inside blocks; AI-proposed types, consolidation suggestions and
+relabel-on-type-change deferred to PRD Later.
 - **2026-11-17 — onboarding:** zero-history install assumed everywhere
-  (backfill = one-time personal convenience); no seed work types —
-  conversational AI proposal from real data after a day of capture, human
-  approves, one-time bootstrap re-label; empty `work_types` is the onboarding
-  state (nudge in `get_recording_status` and reviews); no `propose_work_types`
-  endpoint, no day-0 interview.
+(backfill = one-time personal convenience); no seed work types —
+conversational AI proposal from real data after a day of capture, human
+approves, one-time bootstrap re-label; empty `work_types` is the onboarding
+state (nudge); no `propose_work_types` endpoint, no day-0 interview.
 - **2026-11-17 — final schema audit:** `block_evidence` table dropped
-  (evidence = derived time-overlap query, view `block_evidence_v`, re-add
-  trigger documented); `projects.created_by` dropped; `confidence` kept;
-  settled-events rule makes observations strictly insert-only; classification
-  horizon (default 14 days) + `classify-backfill`; UTC storage with local
-  week/day boundaries and boundary clipping; lowercase names and tags;
-  corrected-block lock enforced inside the classifier's write statements.
+(evidence = derived time-overlap query, view `block_evidence_v`, re-add
+trigger documented); `projects.created_by` dropped; `confidence` kept;
+settled-events rule (strict insert-only observations); classification
+horizon + `classify-backfill`; UTC storage with local week/day boundaries
+and clipping; lowercase names and tags; corrected-lock enforced inside
+write statements.
 - **2026-11-18 — review engine:** two-stage ranking (deterministic
-  materiality-floor shortlist answers "how big"; AI selection answers "how
-  automatable," citing evidence, never adding candidates); generation runs
-  classification catch-up first; block assembly confirmed; tags uncapped;
-  low-confidence → NULL project; review snapshot semantics (§3.4).
+materiality-floor shortlist = "how big"; AI selection = "how automatable",
+evidence-cited, no new candidates); catch-up before scoring; block assembly
+confirmed; tags uncapped; low-confidence → NULL project; review snapshot
+semantics (§3.4).
+- **2026-11-18 — milestones:** ingestion-first ordering (M1 AW ingest → M2–M3
+capture agent → M4 login agents → M5 classification → M6 MCP → M7 review →
+M8 React UI → M9 adopters): classifier built once against the full signal
+set, data accumulates as an eval corpus, TCC risk front-loaded; accepted
+cost is a later aha moment. Swagger `/docs` is the admin tool until React;
+"what needs approval" = `list_projects(status='proposed')` + the work-type
+nudge, no new tool. URL layout (`/api` + `/` + `/mcp`) accepted.
