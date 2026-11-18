@@ -1,7 +1,8 @@
 """SQLite store: schema migrations and persistence (Milestone 1).
 
 Only this package knows SQL. Writers use :func:`insert_observations` and the
-bookkeeping setters; ``status`` uses the queries in :mod:`.reads`.
+bookkeeping setters; ``rebuild-signals`` uses :func:`rebuild_signals`; ``status``
+uses the queries in :mod:`.reads`.
 """
 
 from computer_history.store.bookkeeping import (
@@ -28,6 +29,12 @@ from computer_history.store.reads import (
     source_summary,
     table_counts,
 )
+from computer_history.store.rebuild import (
+    Projector,
+    RebuildAborted,
+    RebuildResult,
+    rebuild_signals,
+)
 from computer_history.store.timefmt import to_utc, utc_iso
 from computer_history.store.writes import (
     Cursor,
@@ -45,6 +52,9 @@ __all__ = [
     "InsertResult",
     "Migration",
     "Observation",
+    "Projector",
+    "RebuildAborted",
+    "RebuildResult",
     "Signal",
     "SourceSummary",
     "connect",
@@ -56,6 +66,7 @@ __all__ = [
     "insert_observations",
     "load_migrations",
     "migrate",
+    "rebuild_signals",
     "resolve_db_path",
     "schema_version",
     "set_cursor",

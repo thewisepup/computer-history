@@ -111,23 +111,33 @@ def insert_observations(
             inserted += 1
             if signal is not None:
                 conn.execute(
-                    _INSERT_SIGNAL,
-                    (
-                        result.lastrowid,
-                        source,
-                        started,
-                        ended,
-                        signal.app,
-                        signal.domain,
-                        signal.url,
-                        signal.title,
-                        signal.text,
-                        signal.extras,
-                    ),
+                    _INSERT_SIGNAL, _signal_params(result.lastrowid, source, started, ended, signal)
                 )
         if cursor is not None:
             set_cursor(conn, cursor.source, cursor.last_seen)
     return InsertResult(inserted=inserted, skipped=len(rows) - inserted)
+
+
+def _signal_params(
+    observation_id: int, source: str, started_at: str, ended_at: str, signal: Signal
+) -> tuple[int | str | None, ...]:
+    """Parameters for :data:`_INSERT_SIGNAL`. Timestamps must already be canonical.
+
+    Shared with ``rebuild_signals`` so a rebuilt row is built exactly like an
+    ingested one.
+    """
+    return (
+        observation_id,
+        source,
+        started_at,
+        ended_at,
+        signal.app,
+        signal.domain,
+        signal.url,
+        signal.title,
+        signal.text,
+        signal.extras,
+    )
 
 
 def _prepare(observation: Observation) -> tuple[str, str, str, str, str, Signal | None]:

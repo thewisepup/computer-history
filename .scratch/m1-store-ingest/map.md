@@ -60,6 +60,10 @@ cross-checked with the POC's `/usage` numbers.
   (+`--watch` 60s loop surviving AW outages and DB lock contention, partial
   cycles reported honestly) and read-only `status` (freshness, gaps-to-cursor
   as "unobserved", counts; never migrates).
+- [06 — rebuild-signals](issues/06-rebuild-signals.md): atomic wipe +
+  re-projection (projector injected into store/), identity-tested against
+  ingest; failure-ratio and shrink guards with `--allow-shrink`; blocks
+  ingest while running (documented; shadow-swap is the future upgrade).
 
 ## Not yet specified
 

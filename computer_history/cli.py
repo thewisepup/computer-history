@@ -1,7 +1,8 @@
 """Command-line entry point for the ``computer-history`` console script.
 
-Thin by design: argument plumbing and formatting only. Ingest logic lives in
-:mod:`computer_history.sources`, queries in :mod:`computer_history.store`.
+Thin by design: argument plumbing and formatting only. Ingest and signal mapping
+live in :mod:`computer_history.sources`, queries and rebuild in
+:mod:`computer_history.store`.
 """
 
 from __future__ import annotations
@@ -18,19 +19,23 @@ from pathlib import Path
 
 from computer_history.sources import (
     DEFAULT_AW_URL,
+    MAPPING_VERSION,
     AWApi,
     AWClient,
     AWError,
     IngestOutcome,
     discover_sources,
     ingest_source,
+    project_signal,
 )
 from computer_history.store import (
+    RebuildAborted,
     SourceSummary,
     connect,
     connect_readonly,
     find_gaps,
     load_migrations,
+    rebuild_signals,
     resolve_db_path,
     schema_version,
     source_summary,
@@ -42,7 +47,9 @@ log = logging.getLogger(__name__)
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events into the store.",
     "status": "Show store and source status.",
-    "rebuild-signals": "Rebuild derived signals from stored observations.",
+    "rebuild-signals": (
+        "Rebuild derived signals from stored observations (blocks ingest while running)."
+    ),
     "backfill": "Ingest ActivityWatch history for a past time range.",
 }
 
@@ -143,7 +150,9 @@ def watch(
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     client = AWClient(args.aw_url)
-    conn = connect(db_path)
+    conn = _open_store(db_path)
+    if conn is None:
+        return 1
     try:
         if args.watch:
             log.info(
@@ -175,7 +184,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     where = f" on {summary.failed_source}" if summary.failed_source else ""
     print(f"error{where}: {summary.error}", file=sys.stderr)
     if summary.database_error:
-        print(f"Is another process writing to {db_path}? Try again shortly.", file=sys.stderr)
+        print(_db_busy_hint(db_path), file=sys.stderr)
     else:
         print("Is ActivityWatch running? Check with `computer-history status`.", file=sys.stderr)
     return 1
@@ -298,6 +307,89 @@ def _print_counts(counts: dict[str, int]) -> None:
         print(f"  {name:<{width}}  {counts[name]:>10,}")
 
 
+# --- rebuild-signals -------------------------------------------------------------
+
+
+def cmd_rebuild_signals(args: argparse.Namespace) -> int:
+    db_path = resolve_db_path(args.db_path)
+    if not db_path.exists():
+        print(f"no database at {db_path}; run `computer-history ingest` first", file=sys.stderr)
+        return 1
+    conn = _open_store(db_path)
+    if conn is None:
+        return 1
+    try:
+        result = rebuild_signals(
+            conn,
+            project_signal,
+            mapping_version=MAPPING_VERSION,
+            allow_shrink=args.allow_shrink,
+        )
+    except RebuildAborted as exc:
+        print(f"rebuild-signals aborted: {exc}", file=sys.stderr)
+        if exc.failed:
+            print(
+                f"  first failing observation ids: {_ids(exc.failed_ids, exc.failed)}",
+                file=sys.stderr,
+            )
+        if exc.shrink:
+            print(
+                "  if the mapping change is meant to drop them, re-run with --allow-shrink",
+                file=sys.stderr,
+            )
+        return 1
+    except sqlite3.OperationalError as exc:
+        print(f"rebuild-signals failed, signals unchanged: {exc}", file=sys.stderr)
+        print(_db_busy_hint(db_path), file=sys.stderr)
+        return 1
+    finally:
+        conn.close()
+    previous = result.previous_mapping_version
+    print(f"Rebuilt signals in {db_path} from stored observations")
+    print(f"  signals before   {result.signals_before:>10,}")
+    print(f"  signals after    {result.signals_after:>10,}")
+    print(
+        f"  mapping version  {result.mapping_version:>10}"
+        f"  (was {'none' if previous is None else previous})"
+    )
+    print(f"  skipped          {result.skipped:>10,}  (malformed payloads)")
+    if result.skipped:
+        print(
+            f"  warning: {result.skipped:,} observations could not be projected and now have"
+            f" no signal; first ids: {_ids(result.failed_ids, result.skipped)}"
+        )
+    return 0
+
+
+def _ids(ids: Sequence[int], total: int) -> str:
+    """``3, 7, 9``, plus ``(and N more)`` when ``ids`` is a sample of ``total``."""
+    text = ", ".join(str(i) for i in ids) or "-"
+    if total > len(ids):
+        text += f" (and {total - len(ids):,} more)"
+    return text
+
+
+# --- shared ----------------------------------------------------------------------
+
+
+def _open_store(db_path: Path) -> sqlite3.Connection | None:
+    """:func:`connect` (which may migrate), or ``None`` after printing why it failed.
+
+    A lock held by another writer surfaces here as :class:`sqlite3.OperationalError`
+    once the busy timeout runs out (e.g. during migration).
+    """
+    try:
+        return connect(db_path)
+    except sqlite3.OperationalError as exc:
+        print(f"cannot open {db_path}: {exc}", file=sys.stderr)
+        print(_db_busy_hint(db_path), file=sys.stderr)
+        return None
+
+
+def _db_busy_hint(db_path: Path) -> str:
+    return f"Is another process writing to {db_path}? Try again shortly."
+
+
 # --- formatting ----------------------------------------------------------------
 
 
@@ -373,6 +465,13 @@ def build_parser() -> argparse.ArgumentParser:
     for name, help_text in COMMANDS.items():
         parents = [db, aw] if name in ("ingest", "status") else [db]
         sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
+        if name == "rebuild-signals":
+            sub.add_argument(
+                "--allow-shrink",
+                action="store_true",
+                help="allow a rebuild that drops more than half of the existing signals"
+                " (refused by default as a likely mapping bug)",
+            )
         if name == "ingest":
             sub.add_argument(
                 "--watch",
@@ -385,6 +484,7 @@ def build_parser() -> argparse.ArgumentParser:
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "ingest": cmd_ingest,
     "status": cmd_status,
+    "rebuild-signals": cmd_rebuild_signals,
 }
 
 
