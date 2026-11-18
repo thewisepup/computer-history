@@ -1,51 +1,98 @@
-# Computer History: ActivityWatch HTTP proof of concept
+# Computer History
 
-> **New here or switching AI assistants?** Start with [AGENTS.md](AGENTS.md) for
-> orientation. This README is the proof of concept's API reference; connecting
-> ChatGPT is the `connect-chatgpt` skill (`.claude/skills/connect-chatgpt/`).
+A local activity layer that any AI assistant can query. It takes raw capture
+from [ActivityWatch](https://activitywatch.net/) and, eventually, attributes
+it to projects and types of work.
 
-Python 3.10+, FastAPI + Uvicorn, no database, no AI classification.
-ActivityWatch must be running. Its API remains read-only.
+> **New here or switching AI assistants?** Start with [AGENTS.md](AGENTS.md).
+> The design and milestones are in [docs/DESIGN.md](docs/DESIGN.md), and the
+> product requirements are in [docs/PRD.md](docs/PRD.md). Connecting ChatGPT
+> is covered by the `connect-chatgpt` skill (`.claude/skills/connect-chatgpt/`).
 
-## Run
+The repo holds two separate programs that share nothing at runtime:
 
-From this project directory, create an environment and install dependencies:
+| | What it is | Entry point | Reads from |
+| --- | --- | --- | --- |
+| **Activity store** (the rewrite, M1 done) | Ingests ActivityWatch events into a local SQLite store and reports on it | `computer-history` → `computer_history/` | ActivityWatch, then its own SQLite DB |
+| **POC server** (frozen until M6) | Read-only REST + MCP server for AI clients | `history.py`, `history_mcp.py` | ActivityWatch, live on every request |
+
+The POC does not read the SQLite store yet. M6 replaces it with MCP tools
+built on the store.
+
+Both programs are read-only toward ActivityWatch, bind only to loopback, and
+have no authentication.
+
+## Setup
+
+You need Python 3.11+ and a running ActivityWatch server
+(`http://127.0.0.1:5600/api/0`). On Brandon's Mac the verified interpreter is
+`/opt/homebrew/bin/python3.12`. The system `python3` there is too old.
 
 ```sh
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
+git config core.hooksPath .githooks
 ```
 
-Start the backend in terminal 1:
+This installs two console scripts into `.venv/bin/`: `computer-history` (the
+store CLI) and `history` (the POC, the same as `python history.py`).
+
+## Activity store: `computer-history`
 
 ```sh
-.venv/bin/python history.py serve
+.venv/bin/computer-history backfill --dry-run   # plan a one-time import of existing history
+.venv/bin/computer-history backfill             # run it
+.venv/bin/computer-history ingest --watch       # keep ingesting settled events every 60s
+.venv/bin/computer-history status               # freshness, coverage gaps, row counts
+.venv/bin/computer-history rebuild-signals      # regenerate derived signals from observations
 ```
 
-While editing the code, add `--reload` to restart automatically when a `.py` file in this
-directory changes:
+Raw events go into an immutable `observations` table, and normalized
+`signals` are derived from them, so signals can always be rebuilt. The
+database defaults to `~/Library/Application Support/ComputerHistory/history.db`.
+Override it with `--db-path` or `$COMPUTER_HISTORY_DB`. The networked commands
+take `--aw-url`.
+
+[computer_history/cli/README.md](computer_history/cli/README.md) documents
+every command with sample output. Each package's `__init__.py` begins with a
+diagram of how data flows through it.
+
+## POC server: `history.py`
+
+FastAPI + Uvicorn with no database and no classification. Every request goes
+to ActivityWatch live.
+
+### Run
 
 ```sh
-.venv/bin/python history.py serve --reload
+.venv/bin/python history.py serve            # http://127.0.0.1:8765
+.venv/bin/python history.py serve --reload   # restart when a .py file in this directory changes
 ```
 
-Without `--reload` the process keeps serving the code it imported at startup, so edits
-need a manual restart. Reloading restarts the whole worker: in-flight requests are
-dropped, and a syntax error leaves the old worker serving until the file parses again
-(the reloader logs the traceback). Only `.py` files trigger it, so writing exports into
-`output/` does not. Run without `--reload` when ChatGPT is connected through the tunnel.
+`serve` takes `--port` (default 8765), `--aw-url`, `--output-dir` (default
+`output/`, gitignored) and `--log-level` (`DEBUG`/`INFO`/`WARNING`/`ERROR`).
+You can also start it with
+`.venv/bin/uvicorn history:app --host 127.0.0.1 --port 8765`. That form reads
+its settings from `COMPUTER_HISTORY_AW_URL`, `COMPUTER_HISTORY_OUTPUT_DIR` and
+`COMPUTER_HISTORY_LOG_LEVEL`. `serve --reload` passes its flags to the reload
+worker through those same variables.
 
-`--reload` needs the `dev` extra (`watchfiles`); without it uvicorn falls back to slower
-polling. Because reloading re-imports this module in a worker process, `serve --reload`
-passes `--aw-url`, `--output-dir` and `--log-level` to that worker through the
-`COMPUTER_HISTORY_AW_URL`, `COMPUTER_HISTORY_OUTPUT_DIR` and `COMPUTER_HISTORY_LOG_LEVEL`
-environment variables. The same variables configure `uvicorn history:app` if you start it
-that way.
+Without `--reload`, the process keeps serving the code it imported at startup,
+so you have to restart it after edits. Reloading restarts the whole worker:
 
-On Brandon's Mac the verified interpreter is `/opt/homebrew/bin/python3.12`;
-the system `python3` is older. Any working Python 3.10+ interpreter is fine.
+- In-flight requests are dropped.
+- A syntax error leaves the old worker serving until the file parses again.
+- Only `.py` files trigger a reload, so writing exports into `output/` does
+  not.
 
-In terminal 2:
+Turn off `--reload` when ChatGPT is connected through the tunnel. Reloading
+uses `watchfiles` from the `dev` extra. Without it, uvicorn falls back to
+slower polling.
+
+### CLI client
+
+The other subcommands are clients of the running server. They never call
+ActivityWatch directly.
 
 ```sh
 .venv/bin/python history.py status
@@ -54,164 +101,133 @@ In terminal 2:
 .venv/bin/python history.py export --bucket aw-watcher-window_Brandons-MacBook-Pro.local --start 2026-11-12T00:00:00-08:00 --end 2026-11-13T00:00:00-08:00
 ```
 
-Choose an exact bucket from `buckets`. Browser buckets are never automatically combined.
-Every client command goes through our backend, not directly to ActivityWatch.
-`events` prints JSON; `export` saves JSON and prints the saved payload and absolute file path.
-Export filenames are generated uniquely under this project's `output/` directory, which is gitignored.
-Use `serve --output-dir /some/path` to change it. Existing files are never overwritten.
+- Pick an exact bucket name from the `buckets` output. Browser buckets are
+  never combined automatically.
+- `events` prints JSON.
+- `export` saves the result to a uniquely named file under the output
+  directory, then prints the payload and the file's absolute path. Existing
+  files are never overwritten.
+- If the server runs on another port, put `--server http://127.0.0.1:8766`
+  before the subcommand.
 
 ### Call logging
 
-The serving terminal logs every call, so you can see what an AI client is doing:
+The serving terminal logs every call to stderr, so you can see what an AI
+client is doing:
 
 ```
-14:28:07 INFO  computer_history.http     REST GET /apps?start=...&end=... -> 200 in 71ms
-14:28:07 INFO  computer_history.mcp.tool MCP tool call get_activity_events(start='...', end='...', app='Google Chrome', limit=5, offset=0)
-14:28:07 INFO  computer_history.mcp.tool MCP tool ok get_activity_events in 34ms
+2026-11-12 14:28:07,512 INFO    computer_history.http REST GET /apps?start=...&end=...
+2026-11-12 14:28:07,583 INFO    computer_history.http REST GET /apps?start=...&end=... -> 200 in 71ms
+2026-11-12 14:28:07,601 INFO    computer_history.mcp.tool MCP tool call get_activity_events(start='...', end='...', app='Google Chrome', limit=5, offset=0)
+2026-11-12 14:28:07,635 INFO    computer_history.mcp.tool MCP tool ok get_activity_events in 34ms
 ```
 
-MCP calls are logged per tool, with every argument including defaults the client did not
-send, because tool names and parameters live inside the JSON-RPC body of a single
-`POST /mcp`. REST calls are logged with their query string. Failures log one line naming
-the tool and the error. Argument values longer than 120 characters are truncated.
+- **REST** calls are logged with their query string, once when they arrive
+  and once when they finish.
+- **MCP** calls are logged per tool, with every argument, including defaults
+  the client did not send. This is needed because tool names and arguments
+  travel inside the JSON-RPC body of a single `POST /mcp`. Argument values
+  longer than 120 characters are truncated.
+- **Failures** log one warning line naming the call and the error.
 
-Add `serve --log-level DEBUG` to also log each MCP transport request (`POST /mcp`
-itself, including handshake traffic). `--log-level WARNING` logs only failures.
+`--log-level DEBUG` also logs each MCP transport request (`POST /mcp` itself,
+including handshake traffic). `--log-level WARNING` logs only failures.
 
-Dates must include a timezone. Use consecutive local midnights to request a day.
-The raw API's time filtering and event durations are preserved: this is not an
-idle-filtered report, and events are not clipped or classified. The end boundary
-is passed directly to ActivityWatch; exact boundary behavior is owned by that server.
-Omit `--limit` to request all matching events (`-1`). A positive limit is a preview,
-and `possibly_truncated` is flagged when the result reaches that limit. Large exports
-are buffered in memory; use bounded date ranges for this proof of concept.
+### REST API
 
-## HTTP API
+Interactive docs are at `http://127.0.0.1:8765/docs`, and the OpenAPI schema
+is at `/openapi.json`.
 
-Interactive Swagger documentation: `http://127.0.0.1:8765/docs`; OpenAPI schema: `/openapi.json`.
-You can also start with `.venv/bin/uvicorn history:app --host 127.0.0.1 --port 8765`.
-
-Default backend: `http://127.0.0.1:8765`. ActivityWatch: `http://127.0.0.1:5600/api/0`.
-
-| Method | Route | Behavior |
-| --- | --- | --- |
-| GET | `/health` | Check ActivityWatch connectivity and return server info |
-| GET | `/buckets` | Return original ActivityWatch bucket metadata |
-| GET | `/usage?app=...&start=...&end=...` | Foreground usage totals and original matching events |
-| GET | `/events?bucket=...&start=...&end=...&limit=-1` | Fetch raw events in a metadata wrapper |
-| POST | `/exports` | Fetch events, save a JSON file, return path and payload |
-
-```sh
-curl http://127.0.0.1:8765/health
-curl -X POST http://127.0.0.1:8765/exports \
-  -H 'Content-Type: application/json' \
-  -d '{"bucket":"aw-watcher-window_Brandons-MacBook-Pro.local","start":"2026-11-12T00:00:00-08:00","end":"2026-11-13T00:00:00-08:00","limit":5}'
-```
-
-Malformed request bodies, missing fields, and invalid parameter types return 422; invalid date ranges or limit values return 400; ActivityWatch failures return 502. No events and an
-unavailable server are different outcomes. The backend binds only to loopback and
-is an unauthenticated development server, not a public deployment or MCP server.
-Use `serve --port 8766 --aw-url http://127.0.0.1:5600/api/0` to override configuration;
-clients use `--server http://127.0.0.1:8766` before their subcommand.
-
-Original event JSON values (including unknown nested fields) are preserved;
-JSON whitespace and key formatting are not byte-for-byte preserved. The wrapper
-adds source URL, fetch time, request range, bucket metadata, count, and truncation status.
-
-## Tests
-
-```sh
-.venv/bin/python -m unittest -v
-```
-
-## Next step
-
-### App usage
-
-```sh
-curl -G http://127.0.0.1:8765/usage \
-  --data-urlencode 'app=ChatGPT' \
-  --data-urlencode 'start=2026-11-12T00:00:00-08:00' \
-  --data-urlencode 'end=2026-11-13T00:00:00-08:00'
-```
-
-Returns `total_seconds`, `total_minutes`, `total_hours`, and original matching
-`events`. App names match exactly, ignoring case. The window bucket is discovered
-for the ActivityWatch server's hostname; missing/ambiguous buckets return 502.
-Totals are foreground time, NOT idle-filtered time, and do not include usage of
-a service inside a browser. Totals clip intervals to [start, end) and merge overlaps;
-raw event durations remain unchanged. No matches returns zero and an empty list.
-For correctness this POC fetches all window events before the end boundary, including
-events that started before the requested range. This can be expensive with long histories;
-future optimization should preserve overlapping-boundary events.
-
-Add enrichment as a separate transformation of these observations, retaining the
-original payload and source identity. CLI and future MCP tools can share the Bridge
-service boundary. This POC does not store project labels or calculate active time.
-
-## AI-ready read endpoints
-
-These HTTP endpoints share Python service methods that can later be wrapped by MCP.
-They do not perform classification or expose arbitrary SQL.
-
-| Route | Parameters | Result |
-| --- | --- | --- |
-| `GET /recording-status` | none | Sources, latest event ends, observation age; not a watcher-process health guarantee |
-| `GET /apps` | `start`, `end` | Distinct recorded app names |
-| `GET /usage/breakdown` | `start`, `end` | Apps ranked by foreground seconds, without raw events |
-| `GET /activity/events` | `start`, `end`, optional `app`, `limit` (1–1000, default 100), `offset` | Newest-first original events, filtered before pagination |
-| `GET /usage` | `app`, `start`, `end`, optional `include_events`, `event_limit` (1–1000) | Full total with optional bounded evidence |
-
-Usage, app listing, breakdown and activity ranges are limited to 31 days and use
-[start, end) with timezone-aware timestamps. They select one window bucket for the
-server's host. Missing/ambiguous sources and upstream failures return 502, not zero.
-Responses include `observed_seconds`, `unobserved_seconds`, and `coverage_warnings`.
-Unobserved time may be sleep, downtime, missing collection, or future time; it is NOT
-inferred idle time. Totals are not idle-filtered. Same-app overlaps are unioned;
-cross-app overlaps produce a warning in the breakdown. `sum_app_seconds` can then
-exceed elapsed observed time. App names match case-insensitively; discovery preserves
-original spellings. Pagination is over live data and is not a frozen snapshot.
+| Method | Route | Parameters | Result |
+| --- | --- | --- | --- |
+| GET | `/health` | none | Checks ActivityWatch connectivity and returns its `/info` |
+| GET | `/buckets` | none | Original ActivityWatch bucket metadata |
+| GET | `/recording-status` | none | Each source's latest event end and the time since then. This shows freshness, not watcher-process health |
+| GET | `/apps` | `start`, `end` | Distinct recorded app names |
+| GET | `/usage` | `app`, `start`, `end`, optional `include_events` (default true), `event_limit` (1–1000) | Foreground total for one app, with matching events as evidence |
+| GET | `/usage/breakdown` | `start`, `end` | Apps ranked by foreground seconds, without raw events |
+| GET | `/activity/events` | `start`, `end`, optional `app`, `limit` (1–1000, default 100), `offset` | Original events, newest first, filtered before pagination |
+| GET | `/events` | `bucket`, `start`, `end`, optional `limit` (default −1 = all) | Raw events from one bucket, in a metadata wrapper |
+| POST | `/exports` | JSON body `{bucket, start, end, limit}` | Same as `/events`, also saved to a JSON file. Returns `output_file` and `data` |
 
 ```sh
 curl http://127.0.0.1:8765/recording-status
-curl -G http://127.0.0.1:8765/apps --data-urlencode 'start=2026-11-12T00:00:00-08:00' --data-urlencode 'end=2026-11-13T00:00:00-08:00'
 curl -G http://127.0.0.1:8765/usage/breakdown --data-urlencode 'start=2026-11-12T00:00:00-08:00' --data-urlencode 'end=2026-11-13T00:00:00-08:00'
 curl -G http://127.0.0.1:8765/usage --data-urlencode 'app=ChatGPT' --data-urlencode 'start=2026-11-12T00:00:00-08:00' --data-urlencode 'end=2026-11-13T00:00:00-08:00' --data-urlencode 'include_events=false'
 curl -G http://127.0.0.1:8765/activity/events --data-urlencode 'app=ChatGPT' --data-urlencode 'start=2026-11-12T00:00:00-08:00' --data-urlencode 'end=2026-11-13T00:00:00-08:00' --data-urlencode 'limit=5'
+curl -X POST http://127.0.0.1:8765/exports -H 'Content-Type: application/json' \
+  -d '{"bucket":"aw-watcher-window_Brandons-MacBook-Pro.local","start":"2026-11-12T00:00:00-08:00","end":"2026-11-13T00:00:00-08:00","limit":5}'
 ```
 
-The legacy bucket-based `/events` and `/exports` remain available. These endpoints
-bound AI response sizes but the POC still fetches prior source history internally to
-preserve boundary overlaps; very long source histories need a more efficient adapter.
-# MCP integration
+**Errors.** No events and an unreachable server are different outcomes.
 
-The same server now exposes a read-only MCP interface using Streamable HTTP at
-`http://127.0.0.1:8765/mcp`. Existing REST endpoints still work.
+| Status | When |
+| --- | --- |
+| 422 | Malformed bodies, missing fields, wrong parameter types, out-of-range `limit`/`event_limit`/`offset` |
+| 400 | Invalid timestamps or ranges, a blank `app`, an invalid `/events` limit |
+| 502 | ActivityWatch failed, or there are zero or several window buckets for its host |
+| 500 | An export could not be written |
 
-```bash
-cd /Users/brandon/workspace/computer-history
-.venv/bin/python -m pip install -e '.[test]'
-.venv/bin/python history.py serve
-```
+**Timestamps.** Every timestamp needs a timezone, for example
+`2026-11-12T00:00:00-08:00`. To request one day, use two consecutive local
+midnights.
+
+**App endpoints** (`/apps`, `/usage`, `/usage/breakdown`, `/activity/events`):
+
+- **Range.** Limited to 31 days and treated as `[start, end)`.
+- **Bucket.** Each request uses the single `currentwindow` bucket whose
+  hostname matches the ActivityWatch server.
+- **Totals.** Totals are recorded foreground time, not idle-filtered. They
+  don't count time spent in a service inside a browser. Intervals are clipped
+  to the range, and overlaps within one app are merged. The raw event
+  durations in responses are unchanged.
+- **Coverage.** Responses include `observed_seconds`, `unobserved_seconds`
+  and `coverage_warnings`. Unobserved time may be sleep, downtime, missing
+  collection or future time, and is never assumed to be idle.
+- **Overlapping apps.** If different apps' intervals overlap, the breakdown
+  adds a warning, and `sum_app_seconds` can then exceed `observed_seconds`.
+- **App names.** Matching is exact but ignores case. App discovery keeps the
+  original spellings.
+- **Pagination.** Pages come from live data, not a frozen snapshot. Follow
+  `next_offset` to get the next page.
+- **Cost.** To keep events that cross the start boundary, each call fetches
+  all window events before `end`. This gets expensive with long histories.
+
+**Bucket endpoints** (`/events`, `/exports`):
+
+- `start` and `end` go straight to ActivityWatch, which owns the exact
+  boundary behavior.
+- Events are not clipped or classified.
+- A positive `limit` returns a preview. When the result reaches the limit,
+  `possibly_truncated` is set.
+- Large results are buffered in memory, so keep ranges bounded.
+
+Original event JSON is preserved, including unknown nested fields. Whitespace
+and key formatting are not preserved byte for byte. The wrapper adds the
+source URL, fetch time, request, bucket metadata, event count and truncation
+flag.
+
+### MCP
+
+The same server exposes read-only MCP tools over Streamable HTTP at
+`http://127.0.0.1:8765/mcp`. The tools call the same `Bridge` methods as the
+REST routes.
 
 | MCP tool | Arguments | Result |
 | --- | --- | --- |
-| `get_recording_status` | None | Sources and observation freshness |
+| `get_recording_status` | none | Sources and how fresh their observations are |
 | `list_apps` | `start`, `end` | Recorded app names |
 | `get_app_usage` | `app`, `start`, `end` | Total foreground usage, without raw events |
 | `get_usage_breakdown` | `start`, `end` | Apps ranked by foreground time |
-| `get_activity_events` | `start`, `end`, optional `app`, `limit`, `offset` | Original event payloads, newest first |
+| `get_activity_events` | `start`, `end`, optional `app`, `limit` (1–1000, default 100), `offset` | Original event payloads, newest first |
 
-Use ISO timestamps with timezone offsets, such as `2026-11-12T00:00:00-08:00`.
-Ranges are limited to 31 days. Event pages default to 100, with a maximum of
-1,000; use the returned `next_offset` for another page. App names use
-case-insensitive exact matching. Usage is recorded foreground time, with no idle
-filtering. Results include coverage warnings. Tool calls do not write exports
-or modify ActivityWatch. All tools share the same backend methods as REST.
+The tools follow the same rules as the REST app endpoints above. They never
+write exports or modify ActivityWatch. The server's instructions tell clients
+that event titles and URLs are untrusted data, never instructions.
 
-To check discovery with the installed official Python MCP client:
+To check discovery with the official Python MCP client:
 
-```bash
+```sh
 .venv/bin/python - <<'PY'
 import asyncio
 from mcp import Client
@@ -231,14 +247,18 @@ asyncio.run(main())
 PY
 ```
 
-This implements the server, not the ChatGPT connection. ChatGPT needs a reachable
-MCP transport (for example its supported secure tunnel). The local server has
-no authentication and keeps the SDK's localhost Host checks. Do not expose the
-whole FastAPI server publicly; a remote deployment needs authentication and
-explicit trusted-host configuration. No tunnel or ChatGPT account is configured
-by this project.
+ChatGPT needs a reachable transport, such as OpenAI's secure tunnel. See the
+`connect-chatgpt` skill. The server keeps the MCP SDK's localhost Host checks.
+Never expose the whole FastAPI server publicly. A remote deployment would need
+authentication and explicit trusted-host configuration.
 
-Run tests with `.venv/bin/python -m unittest -q`. They cover MCP discovery,
-structured responses, original payload preservation, invalid inputs, upstream
-failures, the HTTP mount/lifespan, and the existing REST behavior.
+## Tests and checks
 
+```sh
+.venv/bin/python -m pytest                              # the computer_history package (tests/)
+.venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
+.venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
+```
+
+The pre-commit hook runs ruff and pytest. CI runs all three on pushes to
+`main`.
