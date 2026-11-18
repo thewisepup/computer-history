@@ -52,6 +52,10 @@ cross-checked with the POC's `/usage` numbers.
   cursor atomically with dedup; cursor/mapping-version bookkeeping; status
   reads (`source_summary`, `find_gaps`, `table_counts`). Python floor raised
   to 3.11.
+- [04 — ActivityWatch adapter](issues/04-aw-adapter.md): type-based bucket
+  discovery; start-based ownership cursor (never stores clipped payloads);
+  settled rule with 120s margin; `IngestOutcome.frontier/held_back` tells
+  backfill when a chunk is incomplete; `project_signal` reusable for rebuild.
 
 ## Not yet specified
 
