@@ -261,13 +261,16 @@ class AWSource:
     bucket_ids: tuple[str, ...]
 
 
-def discover_sources(client: AWApi) -> list[AWSource]:
+def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None) -> list[AWSource]:
     """Map AW buckets to store sources by bucket type; sorted by source name.
 
     Buckets of other types are ignored. A source with no bucket is absent.
+    ``buckets`` is a ``get_buckets()`` listing the caller already has; otherwise
+    it is fetched.
     """
     grouped: dict[str, list[str]] = {}
-    for bucket_id, meta in client.get_buckets().items():
+    listing = client.get_buckets() if buckets is None else buckets
+    for bucket_id, meta in listing.items():
         bucket_type = meta.get("type") if isinstance(meta, Mapping) else None
         source = BUCKET_TYPE_SOURCES.get(bucket_type) if isinstance(bucket_type, str) else None
         if source is not None:

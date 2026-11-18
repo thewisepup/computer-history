@@ -64,6 +64,10 @@ cross-checked with the POC's `/usage` numbers.
   re-projection (projector injected into store/), identity-tested against
   ingest; failure-ratio and shrink guards with `--allow-shrink`; blocks
   ingest while running (documented; shadow-swap is the future upgrade).
+- [07 — backfill](issues/07-backfill.md): chunked one-time history ingest
+  (plan-before-open, fail-safe cursor init via `init_cursor`, resume hints);
+  live run stored 5,709 observations / 5,627 signals from 2026-11-12 on;
+  re-run inserted zero.
 
 ## Not yet specified
 

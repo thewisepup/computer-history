@@ -695,9 +695,11 @@ def test_ingest_never_overwrites_a_recorded_mapping_version(conn: sqlite3.Connec
 # --- package surface -------------------------------------------------------------
 
 
-def test_sources_package_reexports_exactly_the_adapter_api() -> None:
+def test_sources_package_reexports_exactly_the_adapter_and_backfill_api() -> None:
     import computer_history.sources as sources
+    from computer_history.sources import backfill
 
-    assert sources.__all__ == aw.__all__
-    for name in aw.__all__:
-        assert getattr(sources, name) is getattr(aw, name)
+    assert sources.__all__ == [*aw.__all__, *backfill.__all__]
+    for module in (aw, backfill):
+        for name in module.__all__:
+            assert getattr(sources, name) is getattr(module, name)

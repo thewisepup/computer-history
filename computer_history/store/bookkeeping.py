@@ -38,6 +38,20 @@ def set_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str)
     )
 
 
+def init_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str) -> bool:
+    """Set the frontier only if the source has none yet; True if this call set it.
+
+    One statement, so a cursor written concurrently (e.g. by ``ingest --watch``)
+    is never overwritten: whoever sets it first wins. ``backfill`` uses this.
+    """
+    cur = conn.execute(
+        "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?) "
+        "ON CONFLICT (source) DO NOTHING",
+        (source, utc_iso(last_seen)),
+    )
+    return cur.rowcount == 1
+
+
 def get_mapping_version(conn: sqlite3.Connection) -> int | None:
     """The mapping code version current ``signals`` rows were built with, if recorded."""
     row = conn.execute("SELECT mapping_version FROM signals_meta WHERE id = 1").fetchone()

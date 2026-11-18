@@ -23,11 +23,15 @@ def at(minutes: float) -> datetime:
 class FakeAW:
     """In-memory stand-in for the AW API with the real server's query semantics."""
 
-    def __init__(self, buckets: dict[str, str], *, t0: datetime = T0) -> None:
+    def __init__(
+        self, buckets: dict[str, str], *, t0: datetime = T0, created: datetime | None = None
+    ) -> None:
+        """``created`` (default ``t0``) is every bucket's AW ``created`` time."""
         self.t0 = t0
         self.buckets = {
             bucket_id: {
                 "id": bucket_id,
+                "created": (t0 if created is None else created).isoformat(),
                 "type": bucket_type,
                 "client": "aw-client-web" if bucket_type == "web.tab.current" else bucket_id,
                 "hostname": "test-host.local",

@@ -8,6 +8,7 @@ uses the queries in :mod:`.reads`.
 from computer_history.store.bookkeeping import (
     get_cursor,
     get_mapping_version,
+    init_cursor,
     set_cursor,
     set_mapping_version,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "find_gaps",
     "get_cursor",
     "get_mapping_version",
+    "init_cursor",
     "insert_observations",
     "load_migrations",
     "migrate",

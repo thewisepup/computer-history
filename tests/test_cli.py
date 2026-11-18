@@ -23,8 +23,6 @@ from computer_history.store import (
     table_counts,
 )
 
-STUB_COMMANDS = [name for name in cli.COMMANDS if name not in cli.HANDLERS]
-
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
 UNREACHABLE = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: [Errno 61] refused"
@@ -97,10 +95,8 @@ def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--db-path" in out
 
 
-@pytest.mark.parametrize("command", STUB_COMMANDS)
-def test_stub_commands_exit_nonzero(command: str, capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["--db-path", "/unused.db", command]) != 0
-    assert "not implemented yet" in capsys.readouterr().err
+def test_every_command_has_a_handler() -> None:
+    assert set(cli.HANDLERS) == set(cli.COMMANDS)
 
 
 # --- ingest ----------------------------------------------------------------------
