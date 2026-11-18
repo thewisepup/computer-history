@@ -9,10 +9,12 @@ from computer_history.store import (
     InsertResult,
     Observation,
     Signal,
+    connect_readonly,
     find_gaps,
     get_cursor,
     get_mapping_version,
     insert_observations,
+    schema_version,
     set_cursor,
     set_mapping_version,
     source_summary,
@@ -245,14 +247,14 @@ def test_source_summary(conn: sqlite3.Connection) -> None:
         [window("1", 0, 5), window("2", 1, 3)],
         advance_cursor=Cursor("aw-window", at(5)),
     )
-    insert_observations(conn, [afk("1", 0, 2)])
+    insert_observations(conn, [afk("1", 0, 2), afk("2", -3, -1)])
     set_cursor(conn, "aw-web", at(0))
 
     rows = {row.source: row for row in source_summary(conn)}
     assert list(rows) == ["aw-afk", "aw-web", "aw-window"]
-    assert rows["aw-window"] == ("aw-window", 2, at(5), at(5))
-    assert rows["aw-afk"] == ("aw-afk", 1, at(2), None)
-    assert rows["aw-web"] == ("aw-web", 0, None, at(0))
+    assert rows["aw-window"] == ("aw-window", 2, at(0), at(5), at(5))
+    assert rows["aw-afk"] == ("aw-afk", 2, at(-3), at(2), None)
+    assert rows["aw-web"] == ("aw-web", 0, None, None, at(0))
     assert rows["aw-window"].latest_ended_at.tzinfo is not None
 
 
@@ -323,3 +325,30 @@ def test_gaps_accept_string_bounds_and_reject_empty_range(conn: sqlite3.Connecti
     assert result[0].seconds == 1800
     with pytest.raises(ValueError, match="empty"):
         find_gaps(conn, "aw-window", at(5), at(5))
+
+
+# --- connect_readonly ----------------------------------------------------------------
+
+
+def test_connect_readonly_reads_but_refuses_writes(db_path, conn: sqlite3.Connection) -> None:
+    insert_observations(conn, [window("1")])
+    ro = connect_readonly(db_path)
+    try:
+        assert schema_version(ro) == 1
+        assert ro.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 1
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            ro.execute("DELETE FROM observations")
+    finally:
+        ro.close()
+
+
+def test_connect_readonly_neither_creates_nor_migrates(tmp_path) -> None:
+    with pytest.raises(sqlite3.OperationalError):
+        connect_readonly(tmp_path / "missing.db").execute("SELECT 1")
+    assert not (tmp_path / "missing.db").exists()
+    sqlite3.connect(tmp_path / "v0.db").close()
+    ro = connect_readonly(tmp_path / "v0.db")
+    try:
+        assert schema_version(ro) == 0
+    finally:
+        ro.close()

@@ -56,6 +56,24 @@ def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection
     return conn
 
 
+def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
+    """Open an existing store for reading only: no file creation, no migration.
+
+    For diagnostics (``status``): SQLite itself refuses every write
+    (``mode=ro``), so callers must check :func:`schema_version` before querying.
+    Raises :class:`sqlite3.OperationalError` if the file does not exist.
+    """
+    path = resolve_db_path(db_path).resolve()
+    conn = sqlite3.connect(
+        path.as_uri() + "?mode=ro",
+        uri=True,
+        timeout=BUSY_TIMEOUT_SECONDS,
+        isolation_level=None,
+    )
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     """Run the block in one ``BEGIN IMMEDIATE`` transaction; roll back on any error.

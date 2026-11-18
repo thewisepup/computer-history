@@ -14,13 +14,20 @@ from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
     connect,
+    connect_readonly,
     load_migrations,
     migrate,
     schema_version,
     transaction,
 )
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
-from computer_history.store.reads import Gap, SourceSummary, find_gaps, source_summary, table_counts
+from computer_history.store.reads import (
+    Gap,
+    SourceSummary,
+    find_gaps,
+    source_summary,
+    table_counts,
+)
 from computer_history.store.timefmt import to_utc, utc_iso
 from computer_history.store.writes import (
     Cursor,
@@ -41,6 +48,7 @@ __all__ = [
     "Signal",
     "SourceSummary",
     "connect",
+    "connect_readonly",
     "default_db_path",
     "find_gaps",
     "get_cursor",

@@ -1,10 +1,43 @@
-"""Command-line entry point for the ``computer-history`` console script."""
+"""Command-line entry point for the ``computer-history`` console script.
+
+Thin by design: argument plumbing and formatting only. Ingest logic lives in
+:mod:`computer_history.sources`, queries in :mod:`computer_history.store`.
+"""
 
 from __future__ import annotations
 
 import argparse
+import logging
+import sqlite3
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from computer_history.sources import (
+    DEFAULT_AW_URL,
+    AWApi,
+    AWClient,
+    AWError,
+    IngestOutcome,
+    discover_sources,
+    ingest_source,
+)
+from computer_history.store import (
+    SourceSummary,
+    connect,
+    connect_readonly,
+    find_gaps,
+    load_migrations,
+    resolve_db_path,
+    schema_version,
+    source_summary,
+    table_counts,
+)
+
+log = logging.getLogger(__name__)
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events into the store.",
@@ -13,29 +46,360 @@ COMMANDS = {
     "backfill": "Ingest ActivityWatch history for a past time range.",
 }
 
+POLL_INTERVAL_SECONDS = 60  # DESIGN.md §4.1
+# status: look for coverage gaps this far back from each source's cursor...
+STATUS_WINDOW = timedelta(hours=24)
+# ...and report only gaps at least this long (well above poll/heartbeat jitter).
+MIN_GAP_SECONDS = 300
+MAX_GAPS_SHOWN = 10
+# status only probes reachability; don't hang on a wedged server.
+STATUS_AW_TIMEOUT_SECONDS = 5
+
+
+# --- ingest ------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CycleSummary:
+    """What one poll cycle did: outcomes of the sources that committed and, if the
+    cycle stopped early, why (``error``) and on which source (``failed_source``)."""
+
+    at: datetime
+    outcomes: dict[str, IngestOutcome] = field(default_factory=dict)
+    error: str | None = None
+    failed_source: str | None = None  # None with an error: failed before any source
+    database_error: bool = False  # the store failed, not ActivityWatch
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+    def line(self) -> str:
+        done = "; ".join(
+            f"{name} +{o.inserted} ({o.skipped} dup, {o.held_back} held)"
+            for name, o in self.outcomes.items()
+        )
+        if self.error is None:
+            return done or "no ActivityWatch sources found"
+        where = f" on {self.failed_source}" if self.failed_source else ""
+        failure = f"ingest failed{where}: {self.error}"
+        return f"{done}; then {failure}" if done else failure
+
+
+def run_cycle(
+    conn: sqlite3.Connection, client: AWApi, *, now: datetime | None = None
+) -> CycleSummary:
+    """One incremental poll of every source, like :func:`ingest_all`, but never raises
+    for a transient failure: an :class:`AWError` or :class:`sqlite3.OperationalError`
+    (e.g. "database is locked") ends the cycle and is returned in the summary,
+    together with the outcomes of the sources that committed before it. Those stay
+    committed; the next cycle resumes from the cursors. Other database errors
+    (corruption, ...) are not transient and propagate."""
+    at = datetime.now(UTC) if now is None else now
+    outcomes: dict[str, IngestOutcome] = {}
+    current: str | None = None
+    try:
+        for source in discover_sources(client):
+            current = source.name
+            outcomes[source.name] = ingest_source(conn, client, source, now=at)
+    except AWError as exc:
+        return CycleSummary(at, outcomes, error=str(exc), failed_source=current)
+    except sqlite3.OperationalError as exc:
+        return CycleSummary(
+            at,
+            outcomes,
+            error=f"database error: {exc}",
+            failed_source=current,
+            database_error=True,
+        )
+    return CycleSummary(at, outcomes)
+
+
+def watch(
+    conn: sqlite3.Connection,
+    client: AWApi,
+    *,
+    interval: float = POLL_INTERVAL_SECONDS,
+    sleep: Callable[[float], None] | None = None,
+) -> None:
+    """Poll forever (until KeyboardInterrupt), one logged line per cycle.
+
+    Cycles start every ``interval`` seconds; a transient failure (see
+    :func:`run_cycle`) is logged and retried next cycle. ``sleep`` defaults to
+    :func:`time.sleep` (tests replace it).
+    """
+    sleep = time.sleep if sleep is None else sleep
+    while True:
+        began = time.monotonic()
+        summary = run_cycle(conn, client)
+        delay = max(0.0, interval - (time.monotonic() - began))
+        if summary.ok:
+            log.info(summary.line())
+        else:
+            log.warning("%s; retrying in %.0fs", summary.line(), delay)
+        sleep(delay)
+
+
+def cmd_ingest(args: argparse.Namespace) -> int:
+    db_path = resolve_db_path(args.db_path)
+    client = AWClient(args.aw_url)
+    conn = connect(db_path)
+    try:
+        if args.watch:
+            log.info(
+                "watching %s every %ds into %s (Ctrl-C to stop)",
+                args.aw_url,
+                POLL_INTERVAL_SECONDS,
+                db_path,
+            )
+            try:
+                watch(conn, client)
+            except KeyboardInterrupt:
+                log.info("stopped")
+            return 0
+        summary = run_cycle(conn, client)
+    finally:
+        conn.close()
+    if summary.outcomes or summary.ok:
+        print(f"Ingested from {args.aw_url} into {db_path}")
+    if summary.ok and not summary.outcomes:
+        print("  no ActivityWatch sources found (no window, AFK or web buckets)")
+    width = max((len(name) for name in summary.outcomes), default=0)
+    for name, o in summary.outcomes.items():
+        print(
+            f"  {name:<{width}}  inserted {o.inserted:>6,}  skipped {o.skipped:>6,}"
+            f"  held back {o.held_back:>3,}"
+        )
+    if summary.ok:
+        return 0
+    where = f" on {summary.failed_source}" if summary.failed_source else ""
+    print(f"error{where}: {summary.error}", file=sys.stderr)
+    if summary.database_error:
+        print(f"Is another process writing to {db_path}? Try again shortly.", file=sys.stderr)
+    else:
+        print("Is ActivityWatch running? Check with `computer-history status`.", file=sys.stderr)
+    return 1
+
+
+# --- status ------------------------------------------------------------------
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    db_path = resolve_db_path(args.db_path)
+    now = datetime.now(UTC)
+    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    try:
+        sources = discover_sources(client)
+        aw_error = None
+    except AWError as exc:
+        sources, aw_error = [], str(exc)
+
+    if aw_error is not None:
+        print(f"!! ActivityWatch is UNREACHABLE at {args.aw_url}: nothing new can be ingested.")
+        print(f"!! {aw_error}")
+        print()
+        aw_line = f"ActivityWatch: no  ({args.aw_url})"
+    else:
+        names = ", ".join(s.name for s in sources) or "none of window/AFK/web"
+        aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
+
+    if not db_path.exists():
+        print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
+        print(aw_line)
+        return 0
+    # Read-only: status never creates, migrates or writes the store.
+    conn = connect_readonly(db_path)
+    try:
+        version, expected = schema_version(conn), load_migrations()[-1].version
+        print(f"Database:      {db_path} ({_db_size(db_path)}, schema v{version})")
+        print(aw_line)
+        if version < expected:
+            print(
+                f"  note: this CLI uses schema v{expected}; `computer-history ingest` will"
+                " migrate the database. No store details until then."
+            )
+            return 0
+        if version > expected:
+            print(
+                f"  note: schema v{version} is newer than this CLI understands"
+                f" (v{expected}); upgrade computer-history."
+            )
+            return 0
+        summaries = source_summary(conn)
+        print()
+        _print_sources(summaries, now)
+        print()
+        _print_gaps(conn, summaries)
+        print()
+        _print_counts(table_counts(conn))
+    finally:
+        conn.close()
+    return 0
+
+
+def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
+    print("Sources:")
+    if not summaries:
+        print("  none yet (run `computer-history ingest`)")
+        return
+    width = max(len(s.source) for s in summaries)
+    for s in summaries:
+        lag = "never ingested" if s.cursor is None else _lag(now - s.cursor)
+        print(
+            f"  {s.source:<{width}}  {s.observation_count:>8,} observations"
+            f"  latest end {_when(s.latest_ended_at)}"
+            f"  cursor {_when(s.cursor)} ({lag})"
+        )
+    print(
+        "  (the cursor waits at the start of the current, still-growing window/tab/AFK"
+        " event, so lag includes that event's length)"
+    )
+
+
+def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> None:
+    print(
+        f"Coverage gaps (unobserved: nothing recorded) of {_duration(MIN_GAP_SECONDS)} or"
+        f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's cursor"
+        " (or its latest observation, if it has no cursor):"
+    )
+    if not summaries:
+        print("  nothing to check yet")
+    for s in summaries:
+        end = s.cursor or s.latest_ended_at
+        first = s.earliest_started_at
+        if end is None or first is None:
+            print(f"  {s.source}: no observations yet")
+            continue
+        # Ending at the cursor, not now: the last ~2 minutes are never settled yet.
+        # Starting no earlier than the first event: time before recording began
+        # is not a gap.
+        start = max(end - STATUS_WINDOW, first)
+        if start >= end:
+            print(f"  {s.source}: no settled span to check yet")
+            continue
+        gaps = find_gaps(conn, s.source, start, end, min_gap_seconds=MIN_GAP_SECONDS)
+        if not gaps:
+            print(f"  {s.source}: no gaps since {_when(start)}")
+        for gap in gaps[:MAX_GAPS_SHOWN]:
+            print(
+                f"  warning: no {s.source} coverage from {_when(gap.start)} to"
+                f" {_when(gap.end)} ({_duration(gap.seconds)})"
+            )
+        if len(gaps) > MAX_GAPS_SHOWN:
+            print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {s.source} gaps")
+
+
+def _print_counts(counts: dict[str, int]) -> None:
+    print("Rows:")
+    # observations and signals first; the rest (empty until later milestones) after.
+    ordered = sorted(counts, key=lambda name: (name not in ("observations", "signals"), name))
+    width = max((len(name) for name in ordered), default=0)
+    for name in ordered:
+        print(f"  {name:<{width}}  {counts[name]:>10,}")
+
+
+# --- formatting ----------------------------------------------------------------
+
+
+def _duration(seconds: float) -> str:
+    """``42s``, ``3m 12s``, ``2h 5m``, ``1d 3h``: the two largest non-zero units."""
+    total = max(0, round(seconds))
+    if total < 60:
+        return f"{total}s"
+    parts = []
+    for suffix, size in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        value, total = divmod(total, size)
+        if value:
+            parts.append(f"{value}{suffix}")
+            if len(parts) == 2:
+                break
+    return " ".join(parts)
+
+
+def _lag(delta: timedelta) -> str:
+    seconds = delta.total_seconds()
+    if seconds < 0:
+        return f"{_duration(-seconds)} ahead of now"
+    return f"{_duration(seconds)} behind now"
+
+
+def _when(value: datetime | None) -> str:
+    """Local wall-clock time, minute precision; ``-`` for missing."""
+    return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def _db_size(path: Path) -> str:
+    size = _bytes(path.stat().st_size)
+    wal = path.with_name(path.name + "-wal")
+    if wal.exists() and wal.stat().st_size:
+        size += f" + {_bytes(wal.stat().st_size)} WAL"
+    return size
+
+
+def _bytes(n: int) -> str:
+    if n < 1024:
+        return f"{n} B"
+    value = n / 1024
+    for unit in ("KB", "MB"):
+        if value < 1024:
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+# --- entry point ---------------------------------------------------------------
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="computer-history",
         description="Local activity store and ActivityWatch ingest.",
     )
-    parser.add_argument(
-        "--db-path",
-        help=(
-            "SQLite database path (default: $COMPUTER_HISTORY_DB, else "
-            "~/Library/Application Support/ComputerHistory/history.db)"
-        ),
+    db_help = (
+        "SQLite database path (default: $COMPUTER_HISTORY_DB, else "
+        "~/Library/Application Support/ComputerHistory/history.db)"
+    )
+    parser.add_argument("--db-path", help=db_help)
+    # Also accepted after the subcommand; SUPPRESS keeps a value given before it.
+    db = argparse.ArgumentParser(add_help=False)
+    db.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
+    aw = argparse.ArgumentParser(add_help=False)
+    aw.add_argument(
+        "--aw-url",
+        default=DEFAULT_AW_URL,
+        help=f"ActivityWatch API base URL (default: {DEFAULT_AW_URL})",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, help_text in COMMANDS.items():
-        subparsers.add_parser(name, help=help_text, description=help_text)
+        parents = [db, aw] if name in ("ingest", "status") else [db]
+        sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
+        if name == "ingest":
+            sub.add_argument(
+                "--watch",
+                action="store_true",
+                help=f"poll every {POLL_INTERVAL_SECONDS}s until interrupted (Ctrl-C)",
+            )
     return parser
+
+
+HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "ingest": cmd_ingest,
+    "status": cmd_status,
+}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
-    return 1
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler = HANDLERS.get(args.command)
+    if handler is None:
+        print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
+        return 1
+    return handler(args)
 
 
 if __name__ == "__main__":

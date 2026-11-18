@@ -56,6 +56,10 @@ cross-checked with the POC's `/usage` numbers.
   discovery; start-based ownership cursor (never stores clipped payloads);
   settled rule with 120s margin; `IngestOutcome.frontier/held_back` tells
   backfill when a chunk is incomplete; `project_signal` reusable for rebuild.
+- [05 — CLI: ingest + status](issues/05-cli-ingest-status.md): `ingest`
+  (+`--watch` 60s loop surviving AW outages and DB lock contention, partial
+  cycles reported honestly) and read-only `status` (freshness, gaps-to-cursor
+  as "unobserved", counts; never migrates).
 
 ## Not yet specified
 

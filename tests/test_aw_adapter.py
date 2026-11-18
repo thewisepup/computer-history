@@ -1,6 +1,5 @@
-"""ActivityWatch adapter tests. No network: a fake AW reproduces the real API's
-range semantics (overlap filter, inclusive end, newest-first, ``limit``, and
-clipping returned events to the query range, as verified on AW v0.14.2)."""
+"""ActivityWatch adapter tests. No network: :class:`fake_aw.FakeAW` reproduces the
+real API's range semantics (see that module)."""
 
 from __future__ import annotations
 
@@ -8,11 +7,12 @@ import copy
 import io
 import json
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
 
 import pytest
+from fake_aw import T0, FakeAW, at
 
 from computer_history.sources import activitywatch as aw
 from computer_history.sources.activitywatch import (
@@ -48,13 +48,6 @@ AFK_BUCKET = "aw-watcher-afk_test-host.local"
 WEB_BUCKET = "aw-watcher-web-chrome_test-host.local"
 OLD_WEB_BUCKET = "aw-watcher-web-chrome"
 
-T0 = datetime(2026, 11, 17, 10, 0, 0, 250000, tzinfo=UTC)
-
-
-def at(minutes: float) -> datetime:
-    return T0 + timedelta(minutes=minutes)
-
-
 # Realistic payloads, shaped like the AW API's responses.
 WINDOW_EVENT = {
     "id": 5709,
@@ -80,82 +73,6 @@ AFK_EVENT = {
     "duration": 1800.0,
     "data": {"status": "not-afk"},
 }
-
-
-class FakeAW:
-    """In-memory stand-in for the AW API with the real server's query semantics."""
-
-    def __init__(self, buckets: dict[str, str]) -> None:
-        self.buckets = {
-            bucket_id: {
-                "id": bucket_id,
-                "type": bucket_type,
-                "client": "aw-client-web" if bucket_type == "web.tab.current" else bucket_id,
-                "hostname": "test-host.local",
-                "data": {},
-            }
-            for bucket_id, bucket_type in buckets.items()
-        }
-        self.events: dict[str, list[dict[str, Any]]] = {b: [] for b in buckets}
-        self.refetches: list[tuple[str, Any]] = []
-        self._next_id = 1
-
-    def add(self, bucket_id: str, start: float, seconds: float, data: dict[str, Any]) -> dict:
-        """Add an event starting ``start`` minutes after T0, lasting ``seconds``."""
-        raw = {
-            "id": self._next_id,
-            "timestamp": at(start).isoformat(),
-            "duration": seconds,
-            "data": data,
-        }
-        self._next_id += 1
-        self.events[bucket_id].append(raw)
-        return raw
-
-    def get_buckets(self) -> dict[str, dict[str, Any]]:
-        return copy.deepcopy(self.buckets)
-
-    def get_events(
-        self,
-        bucket_id: str,
-        *,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        limit: int = -1,
-    ) -> list[dict[str, Any]]:
-        found = []
-        for raw in self.events[bucket_id]:
-            event = copy.deepcopy(raw)
-            try:
-                ts = to_utc(raw["timestamp"])
-                te = ts + timedelta(seconds=raw["duration"])
-            except (KeyError, ValueError):
-                found.append(event)  # malformed: passed through unfiltered
-                continue
-            if (start is not None and te < start) or (end is not None and ts > end):
-                continue
-            if start is not None and ts < start:  # AW clips to the query range
-                event["timestamp"], ts = start.isoformat(), start
-                event["duration"] = (te - ts).total_seconds()
-            if end is not None and te > end:
-                event["duration"] = (end - ts).total_seconds()
-            found.append(event)
-        found.sort(key=_sort_key, reverse=True)
-        return found if limit < 0 else found[:limit]
-
-    def get_event(self, bucket_id: str, event_id: Any) -> dict[str, Any] | None:
-        self.refetches.append((bucket_id, event_id))
-        for raw in self.events[bucket_id]:
-            if raw["id"] == event_id:
-                return copy.deepcopy(raw)
-        return None
-
-
-def _sort_key(event: dict[str, Any]) -> datetime:
-    try:
-        return to_utc(event["timestamp"])
-    except (KeyError, ValueError):
-        return datetime.min.replace(tzinfo=UTC)
 
 
 def counts(outcome: IngestOutcome) -> tuple[int, int]:

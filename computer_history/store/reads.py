@@ -16,6 +16,7 @@ from computer_history.store.timefmt import to_utc, utc_iso
 class SourceSummary(NamedTuple):
     source: str
     observation_count: int
+    earliest_started_at: datetime | None  # None: no observations yet
     latest_ended_at: datetime | None  # None: no observations yet
     cursor: datetime | None  # None: cursor never set
 
@@ -31,11 +32,11 @@ class Gap(NamedTuple):
 
 _SOURCE_SUMMARY = """
 WITH obs AS (
-  SELECT source, COUNT(*) AS n, MAX(ended_at) AS latest
+  SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest
   FROM observations
   GROUP BY source
 )
-SELECT s.source, COALESCE(obs.n, 0), obs.latest, c.last_seen
+SELECT s.source, COALESCE(obs.n, 0), obs.earliest, obs.latest, c.last_seen
 FROM (SELECT source FROM obs UNION SELECT source FROM ingest_cursors) AS s
 LEFT JOIN obs USING (source)
 LEFT JOIN ingest_cursors AS c USING (source)
@@ -46,8 +47,8 @@ ORDER BY s.source
 def source_summary(conn: sqlite3.Connection) -> list[SourceSummary]:
     """One row per source that has observations or a cursor, sorted by source."""
     return [
-        SourceSummary(source, count, _maybe_utc(latest), _maybe_utc(cursor))
-        for source, count, latest, cursor in conn.execute(_SOURCE_SUMMARY)
+        SourceSummary(source, count, _maybe_utc(earliest), _maybe_utc(latest), _maybe_utc(cursor))
+        for source, count, earliest, latest, cursor in conn.execute(_SOURCE_SUMMARY)
     ]
 
 
