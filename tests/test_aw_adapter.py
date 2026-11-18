@@ -32,6 +32,7 @@ from computer_history.sources.activitywatch import (
     project_signal,
     pull_bucket,
 )
+from computer_history.sources.activitywatch import client as aw_client
 from computer_history.store import (
     Signal,
     get_cursor,
@@ -535,7 +536,7 @@ def test_client_builds_read_only_get_requests(monkeypatch: pytest.MonkeyPatch) -
         seen.append(request)
         return _Response(b"[]")
 
-    monkeypatch.setattr(aw, "urlopen", fake_urlopen)
+    monkeypatch.setattr(aw_client, "urlopen", fake_urlopen)
     client = AWClient("http://aw.test/api/0/")
     assert client.get_events(WEB_BUCKET, start=at(0), end=at(1), limit=-1) == []
     (request,) = seen
@@ -554,17 +555,17 @@ def test_client_maps_404_to_none_and_failures_to_awerror(
     def not_found(request, timeout):
         raise HTTPError(request.full_url, 404, "Not Found", {}, None)
 
-    monkeypatch.setattr(aw, "urlopen", not_found)
+    monkeypatch.setattr(aw_client, "urlopen", not_found)
     assert AWClient().get_event(WINDOW_BUCKET, 1) is None
 
     def refused(request, timeout):
         raise URLError(ConnectionRefusedError(61, "Connection refused"))
 
-    monkeypatch.setattr(aw, "urlopen", refused)
+    monkeypatch.setattr(aw_client, "urlopen", refused)
     with pytest.raises(AWError):
         AWClient().get_buckets()
 
-    monkeypatch.setattr(aw, "urlopen", lambda request, timeout: _Response(b"not json"))
+    monkeypatch.setattr(aw_client, "urlopen", lambda request, timeout: _Response(b"not json"))
     with pytest.raises(AWError):
         AWClient().get_buckets()
 

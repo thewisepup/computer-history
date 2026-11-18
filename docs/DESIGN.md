@@ -73,7 +73,9 @@ computer_history/
   store/        # SQLite, one module per concern: db (connections + migrations),
                 # observations (ingest writes), signals (rebuild), cursors,
                 # status (read queries), timefmt, paths
-  sources/      # one adapter per source: activitywatch, ax_text, screenshots
+  sources/      # one adapter per source: activitywatch/, ax_text, screenshots
+                # activitywatch/: client, discovery, pull, normalize,
+                # ingest (the orchestrator)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

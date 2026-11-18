@@ -1,0 +1,141 @@
+"""Fetch one bucket's events for a range and keep the settled ones."""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from computer_history.sources.activitywatch.client import AWApi, AWError
+from computer_history.sources.activitywatch.normalize import project_signal
+from computer_history.store import Observation, to_utc
+
+log = logging.getLogger(__name__)
+
+STABILITY_MARGIN_SECONDS = 120
+CLIP_GUARD = timedelta(seconds=1)
+_END_CLIP_TOLERANCE = timedelta(milliseconds=1)
+
+
+@dataclass(frozen=True)
+class _Event:
+    raw: dict[str, Any]
+    id: int | str
+    start: datetime
+    end: datetime
+
+
+def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
+    """The timing of one raw event, or None if it is malformed."""
+    try:
+        event_id = raw["id"]
+        if isinstance(event_id, bool) or not isinstance(event_id, int | str) or event_id == "":
+            raise ValueError(f"bad id {event_id!r}")
+        start = to_utc(raw["timestamp"])
+        duration = float(raw.get("duration") or 0)
+        duration = duration if math.isfinite(duration) and duration > 0 else 0.0
+        end = start + timedelta(seconds=duration)
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError) as exc:
+        log.warning("skipping malformed ActivityWatch event in %s: %s", bucket_id, exc)
+        return None
+    return _Event(raw, event_id, start, end)
+
+
+@dataclass(frozen=True)
+class BucketPull:
+    """The settled events one bucket contributed to a pull.
+
+    Every event starting before the frontier is included. held_back counts
+    events that have not settled yet.
+    """
+
+    bucket_id: str
+    observations: tuple[Observation, ...]
+    frontier: datetime
+    held_back: int
+
+
+def pull_bucket(
+    client: AWApi,
+    source: str,
+    bucket_id: str,
+    *,
+    start: datetime | str | None = None,
+    end: datetime | str | None = None,
+    now: datetime | None = None,
+) -> BucketPull:
+    """The settled events of one bucket that start in the range. Writes nothing.
+
+    No start means the beginning of the bucket, and no end means up to now.
+    """
+    now = _now(now)
+    start_dt = None if start is None else to_utc(start)
+    end_dt = None if end is None else to_utc(end)
+    if start_dt is not None and end_dt is not None and end_dt <= start_dt:
+        raise ValueError(f"empty pull range: [{start_dt.isoformat()}, {end_dt.isoformat()})")
+    settled_before = now - timedelta(seconds=STABILITY_MARGIN_SECONDS)
+
+    newest_raw = client.get_events(bucket_id, limit=1)
+    newest = _parse_event(newest_raw[0], bucket_id) if newest_raw else None
+    raw_events = client.get_events(
+        bucket_id,
+        start=None if start_dt is None else start_dt - CLIP_GUARD,
+        end=end_dt,
+        limit=-1,
+    )
+    events = [e for e in (_parse_event(raw, bucket_id) for raw in raw_events) if e is not None]
+    latest_start = max((e.start for e in events), default=None)
+    if newest is not None and latest_start is not None:
+        latest_start = max(latest_start, newest.start)
+
+    observations: list[Observation] = []
+    held: list[_Event] = []
+    for event in events:
+        if start_dt is not None and event.start < start_dt:
+            continue
+        if end_dt is not None:
+            if event.start >= end_dt:
+                continue
+            if event.end >= end_dt - _END_CLIP_TOLERANCE:
+                event = _refetch(client, bucket_id, event)
+                if event is None:
+                    continue
+        if event.start >= latest_start and event.end >= settled_before:
+            held.append(event)
+        else:
+            observations.append(_observation(source, bucket_id, event))
+
+    if held:
+        frontier = min(event.start for event in held)
+    else:
+        frontier = now if end_dt is None else min(end_dt, now)
+    return BucketPull(bucket_id, tuple(observations), frontier, len(held))
+
+
+def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:
+    raw = client.get_event(bucket_id, clipped.id)
+    if raw is None:
+        log.warning("ActivityWatch event %s/%s vanished during the pull", bucket_id, clipped.id)
+        return None
+    event = _parse_event(raw, bucket_id)
+    if event is not None and event.id != clipped.id:
+        raise AWError(f"ActivityWatch returned event {event.id} for {bucket_id}/{clipped.id}")
+    return event
+
+
+def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
+    return Observation(
+        source=source,
+        source_id=f"{bucket_id}/{event.id}",
+        started_at=event.start,
+        ended_at=event.end,
+        payload=json.dumps(event.raw),
+        signal=project_signal(source, event.raw),
+    )
+
+
+def _now(now: datetime | None) -> datetime:
+    return datetime.now(UTC) if now is None else to_utc(now)
