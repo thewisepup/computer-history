@@ -47,6 +47,11 @@ cross-checked with the POC's `/usage` numbers.
   full §3 schema via atomic `user_version` migrations; explicit
   `transaction()` (isolation_level=None); canonical `utc_iso()` timestamps —
   all later writers must use both.
+- [03 — Store write/read API](issues/03-store-write-read-api.md): typed
+  `Observation`/`Signal` records; `insert_observations` commits batch +
+  cursor atomically with dedup; cursor/mapping-version bookkeeping; status
+  reads (`source_summary`, `find_gaps`, `table_counts`). Python floor raised
+  to 3.11.
 
 ## Not yet specified
 

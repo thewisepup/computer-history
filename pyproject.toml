@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "computer-history"
 version = "0.1.0"
 description = "Local activity store and ActivityWatch ingest, plus the original HTTP/MCP POC bridge"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp==2.3.0"]
 
 [project.optional-dependencies]
@@ -33,7 +33,7 @@ include = ["computer_history*"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 # POC files are frozen until M6; lint only the new package and its tests.
 extend-exclude = ["history.py", "history_mcp.py", "test_history.py", "test_mcp.py"]

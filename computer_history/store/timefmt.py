@@ -9,7 +9,7 @@ timestamps through :func:`utc_iso` before they reach SQLite.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 CANONICAL_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"  # + 'Z'; microseconds, always UTC
 
@@ -21,8 +21,14 @@ def utc_iso(value: datetime | str) -> str:
     ('Z' included). Naive values are rejected: per the design, a timestamp
     without a timezone is an input error, never assumed local or UTC.
     """
+    return to_utc(value).strftime(CANONICAL_FORMAT) + "Z"
+
+
+def to_utc(value: datetime | str) -> datetime:
+    """Parse/convert like :func:`utc_iso`, but return an aware UTC ``datetime``."""
     if isinstance(value, str):
+        # Python 3.10's fromisoformat() does not accept a trailing 'Z'.
         value = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if value.tzinfo is None:
         raise ValueError(f"timestamp must be timezone-aware: {value!r}")
-    return value.astimezone(timezone.utc).strftime(CANONICAL_FORMAT) + "Z"
+    return value.astimezone(UTC)

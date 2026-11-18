@@ -111,7 +111,8 @@ cd /Users/brandon/workspace/computer-history
    .venv/bin/python history.py status
    curl http://127.0.0.1:8765/health
    ```
-4. **Tests:** `.venv/bin/python -m unittest -v` (12 tests, all passing as of 2026-11-16).
+4. **Tests:** POC: `.venv/bin/python -m unittest -v` (12 tests). Rewrite:
+   `.venv/bin/python -m pytest` + `.venv/bin/python -m ruff check computer_history tests`.
 
 If port 8765 is already taken, a backend is probably already running. Use it,
 or run `serve --port 8766`.

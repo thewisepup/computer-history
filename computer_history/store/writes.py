@@ -1,0 +1,152 @@
+"""The single write path for raw data: observations, their signals, the cursor."""
+
+from __future__ import annotations
+
+import sqlite3
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import NamedTuple
+
+from computer_history.store.bookkeeping import set_cursor
+from computer_history.store.db import transaction
+from computer_history.store.timefmt import utc_iso
+
+
+@dataclass(frozen=True)
+class Signal:
+    """The normalized projection of one content observation (DESIGN.md §3.2).
+
+    ``source``/``started_at``/``ended_at`` are copied from the owning
+    :class:`Observation`, so they cannot disagree. ``extras`` is a JSON string.
+    """
+
+    app: str | None = None
+    domain: str | None = None
+    url: str | None = None
+    title: str | None = None
+    text: str | None = None
+    extras: str | None = None
+
+
+@dataclass(frozen=True)
+class Observation:
+    """One raw source event (DESIGN.md §3.1) plus its signal, if it has content.
+
+    ``payload`` is the source JSON text, stored verbatim. ``signal`` is ``None``
+    for state-only sources such as AFK (§4.3). ``source_id`` is required: SQLite
+    treats NULLs as distinct in ``UNIQUE``, so a NULL id would defeat dedup.
+    """
+
+    source: str
+    source_id: str
+    started_at: datetime | str
+    ended_at: datetime | str
+    payload: str
+    signal: Signal | None = None
+
+
+class Cursor(NamedTuple):
+    source: str
+    last_seen: datetime | str
+
+
+class InsertResult(NamedTuple):
+    inserted: int
+    skipped: int
+
+
+_INSERT_OBSERVATION = """
+INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (source, source_id) DO NOTHING
+"""
+
+_INSERT_SIGNAL = """
+INSERT INTO signals
+  (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+
+def insert_observations(
+    conn: sqlite3.Connection,
+    observations: Iterable[Observation],
+    *,
+    advance_cursor: Cursor | None = None,
+) -> InsertResult:
+    """Write a batch of observations and their signals, and optionally a cursor, atomically.
+
+    Everything commits in one transaction or nothing does, so a crash can never
+    leave the cursor ahead of the data it covers. An observation whose
+    ``(source, source_id)`` already exists (in the DB or earlier in this batch)
+    is skipped, and its signal is not written, so re-ingest never touches
+    existing rows. Only the uniqueness conflict is skipped: any other failure
+    rolls back the whole batch and raises.
+
+    Opens its own transaction, so it must not be called inside ``transaction()``.
+    """
+    if conn.in_transaction:
+        raise RuntimeError(
+            "insert_observations opens its own transaction; "
+            "it must not be called inside transaction()"
+        )
+    rows = [_prepare(observation) for observation in observations]
+    # Canonicalize (and so validate) the cursor before the write lock is taken,
+    # like the rows: a bad cursor must not roll back a finished batch.
+    cursor = (
+        None
+        if advance_cursor is None
+        else Cursor(advance_cursor.source, utc_iso(advance_cursor.last_seen))
+    )
+    ingested_at = utc_iso(datetime.now(UTC))
+    inserted = 0
+    with transaction(conn):
+        for source, source_id, started, ended, payload, signal in rows:
+            result = conn.execute(
+                _INSERT_OBSERVATION, (source, source_id, started, ended, payload, ingested_at)
+            )
+            if result.rowcount == 0:
+                continue
+            inserted += 1
+            if signal is not None:
+                conn.execute(
+                    _INSERT_SIGNAL,
+                    (
+                        result.lastrowid,
+                        source,
+                        started,
+                        ended,
+                        signal.app,
+                        signal.domain,
+                        signal.url,
+                        signal.title,
+                        signal.text,
+                        signal.extras,
+                    ),
+                )
+        if cursor is not None:
+            set_cursor(conn, cursor.source, cursor.last_seen)
+    return InsertResult(inserted=inserted, skipped=len(rows) - inserted)
+
+
+def _prepare(observation: Observation) -> tuple[str, str, str, str, str, Signal | None]:
+    """Validate and canonicalize before the write lock is taken."""
+    if not observation.source:
+        raise ValueError(f"observation {observation.source_id!r} has no source")
+    if not observation.source_id:
+        raise ValueError(f"observation from {observation.source!r} has no source_id")
+    started = utc_iso(observation.started_at)
+    ended = utc_iso(observation.ended_at)
+    if ended < started:
+        raise ValueError(
+            f"observation {observation.source}/{observation.source_id} ends before it starts"
+        )
+    return (
+        observation.source,
+        observation.source_id,
+        started,
+        ended,
+        observation.payload,
+        observation.signal,
+    )

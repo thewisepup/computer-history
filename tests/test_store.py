@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -33,24 +33,6 @@ TABLES = {
 VIEWS = {"block_evidence_v"}
 DEFAULT_TAIL = Path("Application Support", "ComputerHistory", "history.db")
 LATEST = len(load_migrations())
-
-
-@pytest.fixture(autouse=True)
-def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Never let a developer's $COMPUTER_HISTORY_DB leak into tests.
-    monkeypatch.delenv(DB_ENV_VAR, raising=False)
-
-
-@pytest.fixture
-def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "history.db"
-
-
-@pytest.fixture
-def conn(db_path: Path):
-    connection = connect(db_path)
-    yield connection
-    connection.close()
 
 
 def schema_objects(conn: sqlite3.Connection, kind: str) -> set[str]:
@@ -247,7 +229,7 @@ def test_utc_iso_canonicalizes_mixed_spellings() -> None:
         "2026-11-17T10:00:00+00:00",
         "2026-11-17T10:00:00.000000Z",
         "2026-11-17T11:00:00+01:00",
-        datetime(2026, 11, 17, 10, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 17, 10, 0, 0, tzinfo=UTC),
     ]
     assert {utc_iso(value) for value in same_instant} == {"2026-11-17T10:00:00.000000Z"}
 
