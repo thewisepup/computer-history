@@ -138,7 +138,8 @@ observations (
 
 Content sources projected into one typed table so consumers read one shape.
 Normalization is computation, not just reshaping: domain extraction from URLs,
-text hygiene (capping, whitespace collapse, dedup against previous capture).
+text hygiene (capping, whitespace collapse). `ax-text` signals keep the first
+10,000 characters; the raw observation keeps everything.
 
 ```sql
 signals (
@@ -355,27 +356,41 @@ Only adapters know payload dialects; everything downstream reads `signals`.
   AW history) is a one-time command for Brandon's install, not a product
   feature.
 
-### 4.2 Capture agent (Swift) **[proposed: mechanics under discussion]**
+### 4.2 Capture agent (Swift)
 
 Separate Swift CLI, login-launched: TCC permissions attach to a stable signed
 binary; AX / ScreenCaptureKit / Vision are native. Deliberately dumb —
 observe, write spool files, repeat; all intelligence stays in Python.
+Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
 
-- Triggers: app/window switch + 30s heartbeat while active; silent when
-  locked or AFK (reads AW's AFK state).
-- AX text: focused-window tree walk, content roles only, ~10 KB cap,
-  hash-skip unchanged text, per-call timeouts. Secure fields
-  (`kAXSecureTextField`) always skipped.
+- Identity: a windowless `.app` at a fixed path, signed with a self-signed
+  certificate so the Accessibility grant survives rebuilds; started by its
+  own LaunchAgent from M2.
+- A capture is an instant (`started_at = ended_at`).
+- Triggers: app switch, window switch, window-title change + 30s heartbeat
+  while active; one-second settle delay, at most one capture per second.
+- Silent when idle, locked or asleep. Idle is macOS's own
+  seconds-since-last-input (threshold configurable, default 180s); the agent
+  never reads ActivityWatch. `aw-afk` stays the only source of attended time.
+- AX text: focused-window tree walk, content roles only, 50 KB cap with the
+  full length and a cut-off flag recorded, 0.25s per-call and 2s per-window
+  timeouts. Full text and its hash are written on every capture, changed or
+  not. Secure fields (`kAXSecureTextField`) always skipped.
+- Denylist: listed apps produce an "excluded" record with no text.
+  `pause` / `resume` each write a record. Both make the gap explained, not
+  unobserved.
 - Screenshots: ScreenCaptureKit → ~1440px JPEG q60 → perceptual-hash dedup →
   disk. Vision OCR **in the agent**; only text crosses to Python; screenshots
   never leave the Mac. Est. ~75–150 MB/day post-dedup.
-- Spool handoff: hourly-rotated JSONL, one capture per line (UUID =
-  `source_id`); backend tails with a (file, offset) position. The filesystem is
+- Spool handoff: the agent appends JSONL (one record per line, UUID =
+  `source_id`) to one open file and renames it to a finished name every
+  minute. The backend reads only finished files, stores them, then deletes
+  them; no offset cursor, since re-reading is idempotent. The filesystem is
   the queue; backend downtime just accumulates files.
-- Risks: sparse AX trees in Electron/Chrome (screenshots are the complement);
-  periodic macOS Screen Recording re-confirmation (surface as coverage
-  warning); TCC needs a stable binary path + signature. Front-loaded at
-  M2–M3 deliberately.
+- Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
+  whether to set the apps' accessibility flag is measured in M2); periodic
+  macOS Screen Recording re-confirmation (surface as coverage warning); TCC
+  needs a stable binary path + signature. Front-loaded at M2–M3 deliberately.
 
 ### 4.3 AFK: raw-only, three consumers
 
@@ -519,14 +534,18 @@ M6 replaces it.
 
 ### M2 — Capture agent: AX text
 
-- [ ] Swift CLI builds to a stable path; Accessibility permission granted and
-      surviving a restart.
-- [ ] Captures on app/window switch + 30s heartbeat; silent when locked/AFK.
-- [ ] Content-role text only, ~10 KB cap, hash-skip unchanged text,
-      `kAXSecureTextField` always skipped.
+- [ ] Swift CLI builds to a stable path, signed and started by its own
+      LaunchAgent; Accessibility permission granted and surviving a rebuild
+      and a restart.
+- [ ] Captures on app/window/title switch + 30s heartbeat; silent when
+      locked or idle (native idle detection).
+- [ ] Content-role text only, 50 KB cap with cut-offs recorded, full text +
+      hash on every capture, `kAXSecureTextField` always skipped.
+- [ ] Denylisted apps and pause/resume leave labelled records, no text.
 - [ ] Per-call timeout verified: a hung app costs one capture, not the agent.
-- [ ] Hourly-rotated JSONL spool; backend adapter tails via a (file, offset)
-      ingest position into observations + signals.
+- [ ] Finished-file JSONL spool (one-minute files); backend adapter ingests
+      finished files into observations + signals, then deletes them.
+- [ ] `status` reports the agent: last capture, liveness, spool backlog.
 - [ ] Kill the backend for a day → spool accumulates, catch-up ingests all.
 
 ### M3 — Capture agent: screenshots + OCR
@@ -541,7 +560,8 @@ M6 replaces it.
 
 ### M4 — Login agents + reliability
 
-- [ ] LaunchAgents for backend and capture agent; both start at login.
+- [ ] LaunchAgent for the backend (the capture agent's arrives in M2); both
+      start at login.
 - [ ] Reboot test: recording resumes with no manual steps.
 - [ ] Sleep test: ingest progress advances across wake; the gap is ingested, and real
       coverage gaps are reported as warnings, never guessed.
@@ -685,3 +705,18 @@ Context and rationale for decisions live here, not in the sections above.
   attended time) ships early. Swagger `/docs` is the admin tool until React.
   "What needs approval?" = `list_projects(status='proposed')` + work-type
   nudge; no new tool. URL layout (`/api` + `/` + `/mcp`) accepted.
+- **2026-11-18 — M2 capture agent.** Self-signed certificate: an ad-hoc
+  signature changes with every build, so TCC would drop the grant each time.
+  The agent's LaunchAgent moved from M4 to M2 because a terminal-launched
+  binary borrows the terminal's grant and proves nothing about its own.
+  Native idle detection instead of reading AW: same macOS idle timer, a few
+  lines, and no dependency on AW being up. Hash-skip dropped: the storage
+  saved is small next to screenshots, and markers force every reader to look
+  back for text that may be lost; full text plus a hash keeps every record
+  self-contained and lets later stages collapse duplicates. Cap raised to
+  50 KB (keep raw, trim later) with cut-offs recorded; signals keep 10,000
+  characters because they are rebuildable. Finished-file handoff replaced the
+  (file, offset) cursor: the backend never reads a file being written, so no
+  byte position or partial-line handling is needed, and unique `source_id`
+  makes re-reading harmless. Storage compaction (store-once, compression,
+  retention) deferred until real sizes exist.
