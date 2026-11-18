@@ -1,7 +1,4 @@
-"""Event sources: ActivityWatch ingest adapters (Milestone 1).
-
-The public names are defined once, in each module's ``__all__``, and re-exported here.
-"""
+"""Event sources: the ActivityWatch adapter and backfill, re-exported here."""
 
 from computer_history.sources import activitywatch, backfill
 from computer_history.sources.activitywatch import *  # noqa: F403  (re-export; see __all__)

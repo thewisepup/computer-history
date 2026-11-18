@@ -69,8 +69,7 @@ def find_gaps(
 ) -> list[Gap]:
     """The spans of the range that no observation from the source covers.
 
-    Overlapping observations are merged first. A gap is missing data, not
-    idle time.
+    A gap is missing data, not idle time.
     """
     start_text, end_text = utc_iso(start), utc_iso(end)
     if end_text <= start_text:

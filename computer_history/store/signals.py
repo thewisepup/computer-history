@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from computer_history.store.db import transaction
-from computer_history.store.observations import _INSERT_SIGNAL, Signal, _signal_params
+from computer_history.store.observations import INSERT_SIGNAL, Signal, signal_params
 
 log = logging.getLogger(__name__)
 
@@ -58,13 +58,8 @@ def rebuild_signals(
 ) -> RebuildResult:
     """Wipe the signals table and re-project every observation, atomically.
 
-    On any error or crash nothing sticks and the old signals stay. An
-    observation that fails to project is logged and skipped. The rebuild
-    aborts if too many observations fail, or if the result would shrink far
-    below the existing signals (pass allow_shrink to permit that).
-
-    Blocks other writers while it runs. Opens its own transaction, so it must
-    not be called inside transaction().
+    Aborts if too many observations fail or the result would shrink far below
+    the existing signals, unless allow_shrink is passed.
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -114,12 +109,12 @@ def rebuild_signals(
             if signal is None:
                 continue
             projected += 1
-            batch.append(_signal_params(observation_id, source, started_at, ended_at, signal))
+            batch.append(signal_params(observation_id, source, started_at, ended_at, signal))
             if len(batch) >= batch_size:
-                conn.executemany(_INSERT_SIGNAL, batch)
+                conn.executemany(INSERT_SIGNAL, batch)
                 batch.clear()
         if batch:
-            conn.executemany(_INSERT_SIGNAL, batch)
+            conn.executemany(INSERT_SIGNAL, batch)
         if failed > MAX_LOGGED_FAILURES:
             log.warning(
                 "rebuild-signals: %d more observations skipped (not logged individually)",

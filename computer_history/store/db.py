@@ -71,7 +71,7 @@ def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.C
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     """Run the block as one transaction, rolling back on any error.
 
-    Takes the write lock up front. Nesting raises an error.
+    Takes the write lock up front and cannot be nested.
     """
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -123,8 +123,7 @@ def _validate_sequence(migrations: Sequence[Migration]) -> list[Migration]:
 def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = None) -> int:
     """Apply every migration the database has not seen yet.
 
-    Each migration commits fully or not at all. Migration files must not
-    contain BEGIN/COMMIT/SAVEPOINT.
+    Each migration commits fully or not at all.
     """
     migrations = load_migrations() if migrations is None else _validate_sequence(migrations)
     latest = migrations[-1].version if migrations else 0

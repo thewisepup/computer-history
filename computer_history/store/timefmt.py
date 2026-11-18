@@ -12,10 +12,9 @@ CANONICAL_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
 
 def utc_iso(value: datetime | str) -> str:
-    """Format a timestamp as YYYY-MM-DDTHH:MM:SS.ffffffZ.
+    """Format a datetime or ISO-8601 string as YYYY-MM-DDTHH:MM:SS.ffffffZ.
 
-    Accepts a datetime or an ISO-8601 string. Timestamps without a timezone
-    are rejected.
+    Timestamps without a timezone are rejected.
     """
     return to_utc(value).strftime(CANONICAL_FORMAT) + "Z"
 

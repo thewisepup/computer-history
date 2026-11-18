@@ -29,8 +29,7 @@ class Signal:
 class Observation:
     """One raw source event, plus its signal if it has content.
 
-    payload is the source's JSON, stored verbatim. signal is None for sources
-    with no content, such as AFK.
+    payload is the source's JSON, stored verbatim.
     """
 
     source: str
@@ -57,7 +56,7 @@ VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (source, source_id) DO NOTHING
 """
 
-_INSERT_SIGNAL = """
+INSERT_SIGNAL = """
 INSERT INTO signals
   (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -70,12 +69,9 @@ def insert_observations(
     *,
     advance_cursor: Cursor | None = None,
 ) -> InsertResult:
-    """Write a batch of observations, their signals, and optionally a cursor.
+    """Write a batch of observations, their signals, and optionally a cursor, atomically.
 
-    Everything commits together or nothing does. An observation that is
-    already stored is skipped, along with its signal.
-
-    Opens its own transaction, so it must not be called inside transaction().
+    Observations already stored are skipped, along with their signals.
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -100,14 +96,14 @@ def insert_observations(
             inserted += 1
             if signal is not None:
                 conn.execute(
-                    _INSERT_SIGNAL, _signal_params(result.lastrowid, source, started, ended, signal)
+                    INSERT_SIGNAL, signal_params(result.lastrowid, source, started, ended, signal)
                 )
         if cursor is not None:
             set_cursor(conn, cursor.source, cursor.last_seen)
     return InsertResult(inserted=inserted, skipped=len(rows) - inserted)
 
 
-def _signal_params(
+def signal_params(
     observation_id: int, source: str, started_at: str, ended_at: str, signal: Signal
 ) -> tuple[int | str | None, ...]:
     """The insert parameters for one signal row. Also used by rebuild_signals."""

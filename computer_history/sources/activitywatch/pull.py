@@ -48,8 +48,8 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
 class BucketPull:
     """The settled events one bucket contributed to a pull.
 
-    Every event starting before the frontier is included. held_back counts
-    events that have not settled yet.
+    Every event starting before the frontier is included, and held_back counts
+    the ones not settled yet.
     """
 
     bucket_id: str

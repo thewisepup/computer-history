@@ -54,10 +54,9 @@ class Chunk(NamedTuple):
 
 @dataclass(frozen=True)
 class BackfillPlan:
-    """What run_backfill will pull for one source. Built without writing anything.
+    """What run_backfill will pull for one source, built without writing anything.
 
-    start is None when it could not be determined. earlier lists, per bucket,
-    the newest event found before the start: history the plan does not cover.
+    earlier lists history found before the start that the plan does not cover.
     """
 
     source: AWSource
@@ -77,8 +76,7 @@ class BackfillPlan:
 class BackfillResult:
     """Running totals of one source's backfill.
 
-    incomplete holds every chunk that ended early and how far it got. Every
-    event starting before complete_until is stored.
+    Every event starting before complete_until is stored.
     """
 
     source: str
@@ -104,8 +102,7 @@ def plan_backfill(
 ) -> BackfillPlan:
     """The chunked range to backfill for one source.
 
-    Reads ActivityWatch but writes nothing. Pass a bucket listing you already
-    have, otherwise one is fetched when needed.
+    Reads ActivityWatch but writes nothing.
     """
     if chunk <= timedelta(0):
         raise ValueError(f"chunk width must be positive: {chunk}")
@@ -143,8 +140,7 @@ def run_backfill(
 ) -> BackfillResult:
     """Ingest every chunk of the plan in order, then set the cursor if it had none.
 
-    Each chunk commits on its own, so re-running after an error resumes
-    cheaply. on_chunk is called after each chunk.
+    Each chunk commits on its own, so re-running after an error resumes cheaply.
     """
     clock = clock or (lambda: datetime.now(UTC))
     result = BackfillResult(plan.source.name)
