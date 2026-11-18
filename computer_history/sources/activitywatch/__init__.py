@@ -6,13 +6,13 @@
           |
       discovery.py   buckets -> streams (aw-window, aw-afk, aw-web)
           |
-      pull.py        fetch each bucket's events, keep the settled ones
+      pull.py        fetch each bucket's events, keep the settled ones as raw observations
           |          (a source's frontier is the earliest bucket frontier)
-      normalize.py   raw payload -> signal (app, domain, url, title)
-          |
       adapter.py     ActivityWatch: the adapter the ingest runner drives
                      position.py: the frontier is the position, rewound on resume
                      history.py: where a stream's history begins, for backfill
+                     normalize.py: its projectors, stored payload -> signal
+                     (app, domain, url, title)
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.
@@ -32,7 +32,7 @@ from computer_history.sources.activitywatch.discovery import (
     AWSource,
     discover_sources,
 )
-from computer_history.sources.activitywatch.normalize import project_signal
+from computer_history.sources.activitywatch.normalize import PROJECTORS, project_signal
 from computer_history.sources.activitywatch.position import (
     RESUME_OVERLAP_SECONDS,
     position_at,
@@ -58,6 +58,7 @@ __all__ = [
     "DEFAULT_AW_URL",
     "MAX_TEXT_LENGTH",
     "MAX_URL_LENGTH",
+    "PROJECTORS",
     "RESUME_OVERLAP_SECONDS",
     "STABILITY_MARGIN_SECONDS",
     "WEB_SOURCE",

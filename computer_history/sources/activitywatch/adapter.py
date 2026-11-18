@@ -9,6 +9,7 @@ from typing import Any
 from computer_history.sources.activitywatch.client import AWApi, AWError
 from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
 from computer_history.sources.activitywatch.history import history_before, history_floor
+from computer_history.sources.activitywatch.normalize import PROJECTORS
 from computer_history.sources.activitywatch.position import position_at, resume_start
 from computer_history.sources.activitywatch.pull import SourcePull, pull_source
 from computer_history.sources.contract import Pull
@@ -16,6 +17,8 @@ from computer_history.sources.contract import Pull
 
 class ActivityWatch:
     """Reads ActivityWatch through the client for the ingest runner."""
+
+    projectors = PROJECTORS
 
     def __init__(self, client: AWApi) -> None:
         self.client = client

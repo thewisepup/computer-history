@@ -9,9 +9,15 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import NamedTuple
 
-from computer_history.sources.commit import StreamFailure, commit_pull, failure_of
+from computer_history.sources.commit import (
+    StrayObservation,
+    StreamFailure,
+    commit_pull,
+    failure_of,
+)
 from computer_history.sources.contract import HistorySource, Pull, SourceUnavailable
-from computer_history.store import Progress, get_progress, to_utc
+from computer_history.sources.projection import projector_for
+from computer_history.store import Progress, Projector, UnclaimedSource, get_progress, to_utc
 
 __all__ = [
     "BACKFILL_CHUNK",
@@ -218,6 +224,7 @@ def run_backfill(
     """
     _distinct([plan.stream for plan in plans])
     clock = clock or (lambda: datetime.now(UTC))
+    project = projector_for([source])
     results: list[BackfillResult] = []
     stream = None
     try:
@@ -226,10 +233,10 @@ def run_backfill(
                 continue
             stream = plan.stream
             results.append(BackfillResult(plan))
-            _backfill_stream(conn, source, results[-1], clock, on_chunk)
+            _backfill_stream(conn, source, project, results[-1], clock, on_chunk)
             if on_stream is not None:
                 on_stream(results[-1])
-    except (SourceUnavailable, sqlite3.Error) as exc:
+    except (SourceUnavailable, sqlite3.Error, UnclaimedSource, StrayObservation) as exc:
         return BackfillRun(_committed(results), failure_of(stream, exc))
     except KeyboardInterrupt:
         return BackfillRun(_committed(results), interrupted=True)
@@ -243,6 +250,7 @@ def _committed(results: list[BackfillResult]) -> tuple[BackfillResult, ...]:
 def _backfill_stream(
     conn: sqlite3.Connection,
     source: HistorySource,
+    project: Projector,
     result: BackfillResult,
     clock: Clock,
     on_chunk: Callable[[ChunkDone], None] | None,
@@ -262,6 +270,7 @@ def _backfill_stream(
             conn,
             plan.stream,
             pulled,
+            project=project,
             now=now,
             progress_from=complete if index == last and attempt else None,
             only_if_none=True,

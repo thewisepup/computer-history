@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from db_states import write_locked
 from fake_aw import FakeAW
+from projectors import no_signal
 
 from computer_history import cli
 from computer_history.cli import app as cli_app
@@ -86,7 +87,7 @@ def settled(conn: sqlite3.Connection, source: str = WINDOW_SOURCE) -> datetime |
 def set_progress(conn: sqlite3.Connection, source: str, until: datetime) -> None:
     """Give the source progress the way incremental ingest would, with an empty batch."""
     update = ProgressUpdate(source, position_at(until), settled_until=until)
-    insert_observations(conn, [], progress=update)
+    insert_observations(conn, [], progress=update, project=no_signal)
 
 
 def window_plan(fake: FakeAW, conn: sqlite3.Connection, **kwargs: Any):
@@ -425,7 +426,9 @@ def test_cli_reports_progress_without_a_settled_time_as_existing(
 ) -> None:
     use_aw(history_aw(datetime.now(UTC)))
     conn = connect(db_path)
-    insert_observations(conn, [], progress=ProgressUpdate(WINDOW_SOURCE, "spool.jsonl:7"))
+    insert_observations(
+        conn, [], progress=ProgressUpdate(WINDOW_SOURCE, "spool.jsonl:7"), project=no_signal
+    )
     conn.close()
     code, out, _ = run(capsys, "--db-path", str(db_path), "backfill")
     assert code == 0

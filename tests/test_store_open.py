@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
+from projectors import no_signal
 
 from computer_history.store import (
     Observation,
@@ -43,6 +44,7 @@ def test_read_purpose_connection_refuses_writes(db_path: Path) -> None:
             insert_observations(
                 store.conn,
                 [Observation("s", "1", "2026-11-17T10:00:00Z", "2026-11-17T10:01:00Z", "{}")],
+                project=no_signal,
             )
 
 

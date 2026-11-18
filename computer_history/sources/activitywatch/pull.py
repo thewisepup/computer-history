@@ -11,7 +11,6 @@ from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
 from computer_history.sources.activitywatch.discovery import AWSource
-from computer_history.sources.activitywatch.normalize import project_signal
 from computer_history.store import Observation, to_utc
 
 log = logging.getLogger(__name__)
@@ -170,7 +169,6 @@ def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
         started_at=event.start,
         ended_at=event.end,
         payload=json.dumps(event.raw),
-        signal=project_signal(source, event.raw),
     )
 
 

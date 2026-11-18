@@ -8,14 +8,8 @@ import sys
 from collections.abc import Sequence
 
 from computer_history.cli.db import db_busy_hint, store_unavailable
-from computer_history.sources import project_signal
-from computer_history.store import (
-    Purpose,
-    RebuildAborted,
-    open_store,
-    rebuild_signals,
-    resolve_db_path,
-)
+from computer_history.sources import reproject_signals
+from computer_history.store import Purpose, RebuildAborted, open_store, resolve_db_path
 
 
 def cmd_rebuild_signals(args: argparse.Namespace) -> int:
@@ -26,7 +20,7 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
         return store_unavailable(store)
     with store:
         try:
-            result = rebuild_signals(conn, project_signal, allow_shrink=args.allow_shrink)
+            result = reproject_signals(conn, allow_shrink=args.allow_shrink)
         except RebuildAborted as exc:
             print(f"rebuild-signals aborted: {exc}", file=sys.stderr)
             if exc.failed:
@@ -37,6 +31,12 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
             if exc.shrink:
                 print(
                     "  if the mapping change is meant to drop them, re-run with --allow-shrink",
+                    file=sys.stderr,
+                )
+            if exc.unclaimed:
+                print(
+                    "  this computer-history has no adapter for that source;"
+                    " rebuild with the version that ingested it",
                     file=sys.stderr,
                 )
             return 1

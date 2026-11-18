@@ -72,16 +72,20 @@ automation suggestions.
 computer_history/
   store/        # SQLite, one module per concern: db (connections + migrations),
                 # opening (open for a purpose, report the database's state),
-                # observations (ingest writes), signals (rebuild),
+                # observations (ingest writes, projecting each new row),
+                # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
                 # queries), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
-                # backfill (plan + run in chunks), commit (the one write step,
-                # a pull and its progress, and failure classification, shared by
-                # both), then one adapter per source: activitywatch/, ax_text, screenshots
-                # activitywatch/: client, discovery, pull, normalize, adapter
-                # (ActivityWatch), position (its progress encoding), history
-                # (where a stream's history begins, for backfill)
+                # backfill (plan + run in chunks), projection (routes each
+                # observation to its adapter's projector, for ingest and
+                # rebuild-signals), commit (the one write step, a pull, its
+                # signals and its progress, and failure classification, shared
+                # by poll and backfill), then one adapter per source:
+                # activitywatch/, ax_text, screenshots
+                # activitywatch/: client, discovery, pull, normalize (its
+                # projectors), adapter (ActivityWatch), position (its progress
+                # encoding), history (where a stream's history begins, for backfill)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -152,7 +156,10 @@ signals (
 ```
 
 - 1:1 with observations; **PK = observation id** (stable across rebuilds).
-- Written in the same transaction as the observation.
+- Written in the same transaction as the observation, projected from its
+  stored payload by the projector of the adapter that claims its source (§4).
+  Ingest and rebuild route through the same `sources/projection.py`, so a
+  rebuild reproduces ingest's rows exactly.
 - Disposable: `rebuild-signals` wipes and re-projects from raw. No per-row
   versions; one meta-table row records the mapping code version.
 - `extras` is write-only: display, never filter/aggregate. A query needing a
@@ -292,8 +299,9 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 
 ## 4. Ingestion
 
-Adapter contract: _the adapter pulls from the stored position; the runner
-writes `observations` + `signals` + the new progress in one transaction._
+Adapter contract: _the adapter pulls raw observations from the stored
+position and supplies a projector per stream; the runner writes
+`observations` + their `signals` + the new progress in one transaction._
 Idempotent via `(source, source_id)`.
 Only adapters know payload dialects; everything downstream reads `signals`.
 
@@ -304,6 +312,24 @@ Only adapters know payload dialects; everything downstream reads `signals`.
   (`None` leaves progress as it is) and `settled_until`. A *stream* is what
   the store calls a source. Failures raise `SourceUnavailable` (`AWError` is
   one).
+- Every adapter names `projectors`: for each stream it can ever feed (not only
+  the ones it feeds now), a function from a stored payload to its `Signal`, or
+  `None` for no signal (AFK). An adapter keeps it on the class, so
+  `rebuild-signals` can use it without connecting to the source.
+  `projector_for(sources)` (`sources/projection.py`) routes an observation to
+  the projector of the adapter claiming its stream; two adapters claiming one
+  stream differently are refused. The store calls that projector on each
+  newly inserted row (re-read duplicates are never projected) and on every
+  row at rebuild, in observation-id order: one seam, the same input.
+- `reproject_signals(conn)` rebuilds through the known adapters
+  (`KNOWN_SOURCES`). An observation whose source no adapter claims raises the
+  store's `UnclaimedSource`, and the commit step refuses a pull holding an
+  observation from another stream (`StrayObservation`). At ingest either one
+  rolls back that stream's batch and is reported as an `ADAPTER` failure;
+  other streams and sources go on, and `--watch` keeps polling. A rebuild
+  checks every stored source against the claims before projecting anything
+  and aborts with signals unchanged; it is never counted as a malformed
+  payload.
 - A `HistorySource` also supports backfill: `parts`, `history_start`,
   `history_before` (planning facts) and `pull_range(stream, start, end, now=)`.
   Sources with nothing to backfill (the spool) implement only `Source`.

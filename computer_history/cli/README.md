@@ -39,7 +39,9 @@ Ingested from http://127.0.0.1:5600/api/0 into .../ComputerHistory/history.db
 harmless), `held back` is events still growing — they land on a later poll.
 Re-running always inserts 0 for data it already has. `--watch` is the
 long-running collector: one log line per cycle, survives ActivityWatch
-outages and locked databases.
+outages and locked databases. A stream whose events no adapter can project
+is reported (`error on aw-window: no source adapter projects observations
+from 'aw-window'`, exit 1) while the other streams are still ingested.
 
 ## status — is everything healthy?
 
@@ -101,9 +103,17 @@ Rebuilt signals in .../history.db from stored observations
   skipped                   0  (malformed payloads)
 ```
 
-Wipes `signals` and re-projects every stored observation. Needed only after
-changing `project_signal` or `text.py`. Aborts (and rolls back) if too many
-rows fail to project or the result would shrink suspiciously.
+Wipes `signals` and re-projects every stored observation through its source
+adapter's projector, the same one ingest used. Needed only after changing a
+projector (ActivityWatch: `normalize.py`) or `text.py`. Aborts (and rolls
+back) if too many rows fail to project or the result would shrink
+suspiciously. It also aborts, without counting them as malformed, when
+observations come from a source this version has no adapter for:
+
+```
+rebuild-signals aborted: no source adapter projects 'ax-text', the source of 12 stored observations (first id: 7); rolled back, signals unchanged
+  this computer-history has no adapter for that source; rebuild with the version that ingested it
+```
 
 ## When the database can't be used
 

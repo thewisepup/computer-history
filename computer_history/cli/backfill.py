@@ -209,6 +209,9 @@ def _failed(failure: StreamFailure, database: str, *, busy_hint: str | None = No
     """Print why planning or the run stopped, and return the exit code."""
     if failure.kind is FailureKind.SOURCE:
         return source_failed(failure.error)
+    if failure.kind is FailureKind.ADAPTER:
+        print(f"backfill stopped: {failure.error}", file=sys.stderr)
+        return 1
     print(f"{database}: {failure.error}", file=sys.stderr)
     if busy_hint is not None and failure.kind is FailureKind.DATABASE_BUSY:
         print(busy_hint, file=sys.stderr)

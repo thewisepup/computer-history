@@ -2,8 +2,9 @@
 
 Only this package knows SQL. Commands open the database with open_store,
 which reports its state. Ingest writes through insert_observations, the only
-way a source's progress moves. rebuild-signals uses rebuild_signals, and
-status and backfill use the read queries.
+way a source's progress moves. It and rebuild_signals both turn a stored
+payload into its signal with the projector the caller passes, and status and
+backfill use the read queries.
 """
 
 from computer_history.store.db import (
@@ -15,12 +16,7 @@ from computer_history.store.db import (
     schema_version,
     transaction,
 )
-from computer_history.store.observations import (
-    InsertResult,
-    Observation,
-    Signal,
-    insert_observations,
-)
+from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
@@ -28,6 +24,8 @@ from computer_history.store.signals import (
     Projector,
     RebuildAborted,
     RebuildResult,
+    Signal,
+    UnclaimedSource,
     rebuild_signals,
 )
 from computer_history.store.status import (
@@ -56,6 +54,7 @@ __all__ = [
     "Signal",
     "SourceSummary",
     "StoreState",
+    "UnclaimedSource",
     "connect",
     "default_db_path",
     "find_gaps",

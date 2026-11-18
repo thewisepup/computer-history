@@ -1,14 +1,16 @@
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from projectors import payload_fields
 
 from computer_history.store import (
     Gap,
     InsertResult,
     Observation,
     ProgressUpdate,
-    Signal,
+    UnclaimedSource,
     find_gaps,
     get_progress,
     insert_observations,
@@ -30,8 +32,7 @@ def window(source_id: str, start: float = 0, end: float = 1, title: str = "t") -
         source_id=source_id,
         started_at=at(start),
         ended_at=at(end),
-        payload='{"app": "Code"}',
-        signal=Signal(app="Code", title=title),
+        payload=json.dumps({"app": "Code", "title": title}),
     )
 
 
@@ -56,11 +57,11 @@ def settled(conn: sqlite3.Connection, source: str) -> datetime | None:
 
 
 def test_insert_writes_observation_and_signal(conn: sqlite3.Connection) -> None:
-    result = insert_observations(conn, [window("1", title="hello")])
+    result = insert_observations(conn, [window("1", title="hello")], project=payload_fields)
     assert result == InsertResult(inserted=1, skipped=0)
     obs = conn.execute("SELECT * FROM observations").fetchone()
     sig = conn.execute("SELECT * FROM signals").fetchone()
-    assert obs["payload"] == '{"app": "Code"}'
+    assert obs["payload"] == '{"app": "Code", "title": "hello"}'
     assert sig["observation_id"] == obs["id"]
     assert (sig["source"], sig["started_at"], sig["ended_at"]) == (
         obs["source"],
@@ -72,47 +73,55 @@ def test_insert_writes_observation_and_signal(conn: sqlite3.Connection) -> None:
 
 def test_reinsert_adds_zero_rows(conn: sqlite3.Connection) -> None:
     batch = [window("1"), window("2"), afk("1")]
-    assert insert_observations(conn, batch) == InsertResult(3, 0)
-    assert insert_observations(conn, batch) == InsertResult(0, 3)
+    assert insert_observations(conn, batch, project=payload_fields) == InsertResult(3, 0)
+    assert insert_observations(conn, batch, project=payload_fields) == InsertResult(0, 3)
     assert count(conn, "observations") == 3
     assert count(conn, "signals") == 2
 
 
 def test_duplicate_in_same_batch_is_skipped(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, [window("1"), window("1"), window("2")]) == InsertResult(2, 1)
+    assert insert_observations(
+        conn, [window("1"), window("1"), window("2")], project=payload_fields
+    ) == InsertResult(2, 1)
 
 
 def test_same_source_id_in_different_sources_is_not_a_duplicate(
     conn: sqlite3.Connection,
 ) -> None:
-    assert insert_observations(conn, [window("1"), afk("1")]) == InsertResult(2, 0)
+    assert insert_observations(
+        conn, [window("1"), afk("1")], project=payload_fields
+    ) == InsertResult(2, 0)
 
 
 def test_mixed_new_and_duplicate_batch(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1")])
-    assert insert_observations(conn, [window("1"), window("2")]) == InsertResult(1, 1)
+    insert_observations(conn, [window("1")], project=payload_fields)
+    assert insert_observations(
+        conn, [window("1"), window("2")], project=payload_fields
+    ) == InsertResult(1, 1)
     assert count(conn, "observations") == count(conn, "signals") == 2
 
 
 def test_duplicate_never_overwrites_existing_signal(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1", title="original")])
-    insert_observations(conn, [window("1", title="changed")])
+    insert_observations(conn, [window("1", title="original")], project=payload_fields)
+    insert_observations(conn, [window("1", title="changed")], project=payload_fields)
     titles = [row[0] for row in conn.execute("SELECT title FROM signals")]
     assert titles == ["original"]
 
 
 def test_afk_observation_gets_no_signal(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, [afk("1")]) == InsertResult(1, 0)
+    assert insert_observations(conn, [afk("1")], project=payload_fields) == InsertResult(1, 0)
     assert count(conn, "observations") == 1
     assert count(conn, "signals") == 0
 
 
 def test_empty_batch(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, []) == InsertResult(0, 0)
+    assert insert_observations(conn, [], project=payload_fields) == InsertResult(0, 0)
 
 
 def test_generator_input(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, (window(str(i)) for i in range(3))) == InsertResult(3, 0)
+    assert insert_observations(
+        conn, (window(str(i)) for i in range(3)), project=payload_fields
+    ) == InsertResult(3, 0)
 
 
 def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
@@ -121,11 +130,10 @@ def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
         source_id="1",
         started_at="2026-11-17T11:00:00+01:00",
         ended_at="2026-11-17T10:01:30.5Z",
-        payload="{}",
-        signal=Signal(app="Code"),
+        payload='{"app": "Code"}',
     )
     progress = ProgressUpdate("aw-window", "p", settled_until="2026-11-17T05:01:30-05:00")
-    insert_observations(conn, [obs], progress=progress)
+    insert_observations(conn, [obs], progress=progress, project=payload_fields)
     o = conn.execute("SELECT started_at, ended_at, ingested_at FROM observations").fetchone()
     s = conn.execute("SELECT started_at, ended_at FROM signals").fetchone()
     canonical = ("2026-11-17T10:00:00.000000Z", "2026-11-17T10:01:30.500000Z")
@@ -151,7 +159,7 @@ def test_invalid_observation_rejects_whole_batch(
     conn: sqlite3.Connection, bad: Observation
 ) -> None:
     with pytest.raises(ValueError):
-        insert_observations(conn, [window("ok"), bad])
+        insert_observations(conn, [window("ok"), bad], project=payload_fields)
     assert count(conn, "observations") == 0
 
 
@@ -169,13 +177,13 @@ def fail_signal_titled(conn: sqlite3.Connection, title: str) -> None:
 
 
 def test_failed_signal_rolls_back_whole_batch_and_progress(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [], progress=advance("aw-window", 0))
+    insert_observations(conn, [], progress=advance("aw-window", 0), project=payload_fields)
     before = get_progress(conn, "aw-window")
     fail_signal_titled(conn, "boom")
     batch = [window("1"), window("2", title="boom"), window("3")]
 
     with pytest.raises(sqlite3.IntegrityError, match="injected signal failure"):
-        insert_observations(conn, batch, progress=advance("aw-window", 5))
+        insert_observations(conn, batch, progress=advance("aw-window", 5), project=payload_fields)
 
     assert not conn.in_transaction
     assert count(conn, "observations") == 0
@@ -187,30 +195,55 @@ def test_failed_batch_rolls_back_first_progress(conn: sqlite3.Connection) -> Non
     fail_signal_titled(conn, "boom")
     first = ProgressUpdate("aw-window", "p", settled_until=at(5), only_if_none=True)
     with pytest.raises(sqlite3.IntegrityError):
-        insert_observations(conn, [window("1", title="boom")], progress=first)
+        insert_observations(
+            conn, [window("1", title="boom")], progress=first, project=payload_fields
+        )
     assert get_progress(conn, "aw-window") is None
+
+
+def test_unclaimed_source_rolls_back_whole_batch_and_progress(conn: sqlite3.Connection) -> None:
+    def claims_windows_only(source: str, payload: str):
+        if source != "aw-window":
+            raise UnclaimedSource(source)
+        return payload_fields(source, payload)
+
+    with pytest.raises(UnclaimedSource, match="'aw-afk'"):
+        insert_observations(
+            conn,
+            [window("1"), afk("1")],
+            progress=advance("aw-afk", 1),
+            project=claims_windows_only,
+        )
+    assert count(conn, "observations") == count(conn, "signals") == 0
+    assert get_progress(conn, "aw-afk") is None
 
 
 def test_retry_after_failure_succeeds(conn: sqlite3.Connection) -> None:
     fail_signal_titled(conn, "boom")
     batch = [window("1"), window("2", title="boom")]
     with pytest.raises(sqlite3.IntegrityError):
-        insert_observations(conn, batch, progress=advance("aw-window", 5))
+        insert_observations(conn, batch, progress=advance("aw-window", 5), project=payload_fields)
     conn.execute("DROP TRIGGER temp.fail_signal")
 
-    assert insert_observations(conn, batch, progress=advance("aw-window", 5)) == (2, 0, True)
+    assert insert_observations(
+        conn, batch, progress=advance("aw-window", 5), project=payload_fields
+    ) == (2, 0, True)
     assert settled(conn, "aw-window") == at(5)
 
 
 def test_progress_advances_with_batch(conn: sqlite3.Connection) -> None:
-    result = insert_observations(conn, [window("1")], progress=advance("aw-window", 1))
+    result = insert_observations(
+        conn, [window("1")], progress=advance("aw-window", 1), project=payload_fields
+    )
     assert result == InsertResult(inserted=1, skipped=0, progress_moved=True)
     assert settled(conn, "aw-window") == at(1)
 
 
 def test_progress_advances_even_when_batch_is_all_duplicates(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1")])
-    insert_observations(conn, [window("1")], progress=advance("aw-window", 9))
+    insert_observations(conn, [window("1")], project=payload_fields)
+    insert_observations(
+        conn, [window("1")], progress=advance("aw-window", 9), project=payload_fields
+    )
     assert settled(conn, "aw-window") == at(9)
 
 
@@ -222,7 +255,7 @@ def test_insert_inside_open_transaction_is_refused(conn: sqlite3.Connection) -> 
             "INSERT INTO work_types (name, status, created_at) VALUES ('kept', 'active', 'now')"
         )
         with pytest.raises(RuntimeError, match="inside transaction"):
-            insert_observations(conn, [window("1")])
+            insert_observations(conn, [window("1")], project=payload_fields)
     assert count(conn, "observations") == 0
     assert count(conn, "work_types") == 1
 
@@ -236,9 +269,12 @@ def test_source_summary(conn: sqlite3.Connection) -> None:
         conn,
         [window("1", 0, 5), window("2", 1, 3)],
         progress=advance("aw-window", 5),
+        project=payload_fields,
     )
-    insert_observations(conn, [afk("1", 0, 2), afk("2", -3, -1)])
-    insert_observations(conn, [], progress=ProgressUpdate("aw-web", "spool.jsonl:0"))
+    insert_observations(conn, [afk("1", 0, 2), afk("2", -3, -1)], project=payload_fields)
+    insert_observations(
+        conn, [], progress=ProgressUpdate("aw-web", "spool.jsonl:0"), project=payload_fields
+    )
 
     rows = {row.source: row for row in source_summary(conn)}
     assert list(rows) == ["aw-afk", "aw-web", "aw-window"]
@@ -250,7 +286,9 @@ def test_source_summary(conn: sqlite3.Connection) -> None:
 
 
 def test_table_counts(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1"), afk("1")], progress=advance("aw-afk", 1))
+    insert_observations(
+        conn, [window("1"), afk("1")], progress=advance("aw-afk", 1), project=payload_fields
+    )
     counts = table_counts(conn)
     assert counts["observations"] == 2
     assert counts["signals"] == 1
@@ -271,7 +309,11 @@ def test_gaps_whole_range_when_no_observations(conn: sqlite3.Connection) -> None
 
 
 def test_no_gaps_when_continuous(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1", -5, 20), window("2", 20, 40), window("3", 40, 70)])
+    insert_observations(
+        conn,
+        [window("1", -5, 20), window("2", 20, 40), window("3", 40, 70)],
+        project=payload_fields,
+    )
     assert gaps(conn, 0, 60) == []
 
 
@@ -280,32 +322,37 @@ def test_gaps_merge_overlapping_observations(conn: sqlite3.Connection) -> None:
     insert_observations(
         conn,
         [window("a", 10, 30), window("b", 15, 25), window("c", 20, 35), window("d", 45, 50)],
+        project=payload_fields,
     )
     assert gaps(conn, 0, 60) == [(0, 10), (35, 45), (50, 60)]
 
 
 def test_gaps_at_range_edges_are_clipped(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("before", -30, 5), window("after", 55, 90)])
+    insert_observations(
+        conn, [window("before", -30, 5), window("after", 55, 90)], project=payload_fields
+    )
     assert gaps(conn, 0, 60) == [(5, 55)]
 
 
 def test_gaps_ignore_observations_outside_range(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("before", -30, 0), window("after", 60, 90)])
+    insert_observations(
+        conn, [window("before", -30, 0), window("after", 60, 90)], project=payload_fields
+    )
     assert gaps(conn, 0, 60) == [(0, 60)]
 
 
 def test_gaps_ignore_other_sources(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [afk("1", 0, 60)])
+    insert_observations(conn, [afk("1", 0, 60)], project=payload_fields)
     assert gaps(conn, 0, 60) == [(0, 60)]
 
 
 def test_zero_length_observation_does_not_split_a_gap(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("instant", 30, 30)])
+    insert_observations(conn, [window("instant", 30, 30)], project=payload_fields)
     assert gaps(conn, 0, 60, min_gap_seconds=45 * 60) == [(0, 60)]
 
 
 def test_gaps_min_length_filter(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("a", 1, 30), window("b", 31, 50)])
+    insert_observations(conn, [window("a", 1, 30), window("b", 31, 50)], project=payload_fields)
     assert gaps(conn, 0, 60) == [(0, 1), (30, 31), (50, 60)]
     assert gaps(conn, 0, 60, min_gap_seconds=120) == [(50, 60)]
 

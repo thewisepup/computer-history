@@ -10,34 +10,19 @@ from typing import NamedTuple
 
 from computer_history.store.db import transaction
 from computer_history.store.progress import ProgressUpdate, write_with_batch
+from computer_history.store.signals import Projector, SignalRow, write_signals
 from computer_history.store.timefmt import utc_iso
 
 
 @dataclass(frozen=True)
-class Signal:
-    """One observation's normalized, queryable fields. extras is a JSON string."""
-
-    app: str | None = None
-    domain: str | None = None
-    url: str | None = None
-    title: str | None = None
-    text: str | None = None
-    extras: str | None = None
-
-
-@dataclass(frozen=True)
 class Observation:
-    """One raw source event, plus its signal if it has content.
-
-    payload is the source's JSON, stored verbatim.
-    """
+    """One raw source event. payload is the source's JSON, stored verbatim."""
 
     source: str
     source_id: str
     started_at: datetime | str
     ended_at: datetime | str
     payload: str
-    signal: Signal | None = None
 
 
 class InsertResult(NamedTuple):
@@ -52,23 +37,18 @@ VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (source, source_id) DO NOTHING
 """
 
-INSERT_SIGNAL = """
-INSERT INTO signals
-  (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-
 
 def insert_observations(
     conn: sqlite3.Connection,
     observations: Iterable[Observation],
     *,
+    project: Projector,
     progress: ProgressUpdate | None = None,
     now: datetime | None = None,
 ) -> InsertResult:
     """Atomically write a batch of observations, their signals and optionally the source's progress.
 
-    Already stored observations are skipped with their signals, and the write is stamped with now.
+    Only new observations are projected, and the write is stamped with now.
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -78,41 +58,24 @@ def insert_observations(
     rows = [_prepare(observation) for observation in observations]
     ingested_at = utc_iso(datetime.now(UTC) if now is None else now)
     inserted = 0
+    signals: list[SignalRow] = []
     with transaction(conn):
-        for source, source_id, started, ended, payload, signal in rows:
+        for source, source_id, started, ended, payload in rows:
             result = conn.execute(
                 _INSERT_OBSERVATION, (source, source_id, started, ended, payload, ingested_at)
             )
             if result.rowcount == 0:
                 continue
             inserted += 1
+            signal = project(source, payload)
             if signal is not None:
-                conn.execute(
-                    INSERT_SIGNAL, signal_params(result.lastrowid, source, started, ended, signal)
-                )
+                signals.append((result.lastrowid, source, started, ended, signal))
+        write_signals(conn, signals)
         moved = progress is not None and write_with_batch(conn, progress, advanced_at=ingested_at)
     return InsertResult(inserted=inserted, skipped=len(rows) - inserted, progress_moved=moved)
 
 
-def signal_params(
-    observation_id: int, source: str, started_at: str, ended_at: str, signal: Signal
-) -> tuple[int | str | None, ...]:
-    """The insert parameters for one signal row. Also used by rebuild_signals."""
-    return (
-        observation_id,
-        source,
-        started_at,
-        ended_at,
-        signal.app,
-        signal.domain,
-        signal.url,
-        signal.title,
-        signal.text,
-        signal.extras,
-    )
-
-
-def _prepare(observation: Observation) -> tuple[str, str, str, str, str, Signal | None]:
+def _prepare(observation: Observation) -> tuple[str, str, str, str, str]:
     """Validate one observation and convert its timestamps."""
     if not observation.source:
         raise ValueError(f"observation {observation.source_id!r} has no source")
@@ -124,11 +87,4 @@ def _prepare(observation: Observation) -> tuple[str, str, str, str, str, Signal 
         raise ValueError(
             f"observation {observation.source}/{observation.source_id} ends before it starts"
         )
-    return (
-        observation.source,
-        observation.source_id,
-        started,
-        ended,
-        observation.payload,
-        observation.signal,
-    )
+    return observation.source, observation.source_id, started, ended, observation.payload

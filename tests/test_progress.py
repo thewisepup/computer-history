@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from fake_aw import FakeAW, at
+from projectors import no_signal
 
 from computer_history import store
 from computer_history.sources import (
@@ -59,7 +60,9 @@ def test_store_round_trips_an_opaque_position_with_settled_until_set_separately(
     conn: sqlite3.Connection,
 ) -> None:
     update = ProgressUpdate("ax-text", SPOOL_POSITION, settled_until="2026-11-17T05:30:00-05:00")
-    result = insert_observations(conn, [text_capture("c1", 0, 0)], progress=update, now=at(40))
+    result = insert_observations(
+        conn, [text_capture("c1", 0, 0)], progress=update, now=at(40), project=no_signal
+    )
     assert result == InsertResult(inserted=1, skipped=0, progress_moved=True)
     progress = get_progress(conn, "ax-text")
     assert progress is not None
@@ -69,15 +72,21 @@ def test_store_round_trips_an_opaque_position_with_settled_until_set_separately(
 
 
 def test_position_without_a_settled_time_is_kept(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [], progress=ProgressUpdate("ax-text", SPOOL_POSITION))
+    insert_observations(
+        conn, [], progress=ProgressUpdate("ax-text", SPOOL_POSITION), project=no_signal
+    )
     progress = get_progress(conn, "ax-text")
     assert progress is not None
     assert (progress.position, progress.settled_until) == (SPOOL_POSITION, None)
 
 
 def test_advance_replaces_the_previous_progress(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [], progress=ProgressUpdate("ax-text", "a.jsonl:10"))
-    insert_observations(conn, [], progress=ProgressUpdate("ax-text", "b.jsonl:0", at(9)))
+    insert_observations(
+        conn, [], progress=ProgressUpdate("ax-text", "a.jsonl:10"), project=no_signal
+    )
+    insert_observations(
+        conn, [], progress=ProgressUpdate("ax-text", "b.jsonl:0", at(9)), project=no_signal
+    )
     progress = get_progress(conn, "ax-text")
     assert progress is not None
     assert (progress.position, progress.settled_until) == ("b.jsonl:0", at(9))
@@ -88,8 +97,12 @@ def test_repeating_the_same_progress_does_not_refresh_it(
     conn: sqlite3.Connection, settled_until: datetime | None
 ) -> None:
     update = ProgressUpdate("ax-text", SPOOL_POSITION, settled_until)
-    assert insert_observations(conn, [], progress=update, now=at(10)).progress_moved
-    again = insert_observations(conn, [text_capture("c1", 0, 1)], progress=update, now=at(20))
+    assert insert_observations(
+        conn, [], progress=update, now=at(10), project=no_signal
+    ).progress_moved
+    again = insert_observations(
+        conn, [text_capture("c1", 0, 1)], progress=update, now=at(20), project=no_signal
+    )
     assert again == InsertResult(inserted=1, skipped=0, progress_moved=False)
     progress = get_progress(conn, "ax-text")
     assert progress is not None and progress.advanced_at == at(10)
@@ -108,24 +121,32 @@ def test_a_changed_position_or_settled_time_refreshes_progress(
     conn: sqlite3.Connection, changed: ProgressUpdate
 ) -> None:
     first = ProgressUpdate("ax-text", SPOOL_POSITION, at(5))
-    insert_observations(conn, [], progress=first, now=at(10))
-    assert insert_observations(conn, [], progress=changed, now=at(20)).progress_moved
+    insert_observations(conn, [], progress=first, now=at(10), project=no_signal)
+    assert insert_observations(
+        conn, [], progress=changed, now=at(20), project=no_signal
+    ).progress_moved
     progress = get_progress(conn, "ax-text")
     assert progress is not None and progress.advanced_at == at(20)
 
 
 def test_set_if_none_sets_absent_progress(conn: sqlite3.Connection) -> None:
     first = ProgressUpdate("ax-text", SPOOL_POSITION, at(5), only_if_none=True)
-    assert insert_observations(conn, [text_capture("c1", 0, 1)], progress=first).progress_moved
+    assert insert_observations(
+        conn, [text_capture("c1", 0, 1)], progress=first, project=no_signal
+    ).progress_moved
     progress = get_progress(conn, "ax-text")
     assert progress is not None and progress.position == SPOOL_POSITION
 
 
 def test_set_if_none_never_overwrites(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [], progress=ProgressUpdate("ax-text", "a.jsonl:10", at(1)))
+    insert_observations(
+        conn, [], progress=ProgressUpdate("ax-text", "a.jsonl:10", at(1)), project=no_signal
+    )
     before = get_progress(conn, "ax-text")
     first = ProgressUpdate("ax-text", "b.jsonl:0", at(9), only_if_none=True)
-    result = insert_observations(conn, [text_capture("c1", 0, 1)], progress=first)
+    result = insert_observations(
+        conn, [text_capture("c1", 0, 1)], progress=first, project=no_signal
+    )
     assert result == InsertResult(inserted=1, skipped=0, progress_moved=False)
     assert get_progress(conn, "ax-text") == before
 
@@ -164,7 +185,7 @@ def test_status_summary_reads_settled_until_for_an_opaque_position(
     conn: sqlite3.Connection,
 ) -> None:
     update = ProgressUpdate("ax-text", SPOOL_POSITION, settled_until=at(30))
-    insert_observations(conn, [text_capture("c1", 0, 10)], progress=update)
+    insert_observations(conn, [text_capture("c1", 0, 10)], progress=update, project=no_signal)
     (summary,) = source_summary(conn)
     assert summary[:5] == ("ax-text", 1, at(0), at(10), at(30))
     assert summary.advanced_at is not None
@@ -175,7 +196,7 @@ def test_backfill_plans_up_to_settled_until_for_an_opaque_position(
 ) -> None:
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=at(-3 * 1440))
     update = ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION, settled_until=at(30))
-    insert_observations(conn, [], progress=update)
+    insert_observations(conn, [], progress=update, project=no_signal)
     (plan,) = plan_all_backfills(conn, ActivityWatch(fake), now=at(60)).plans
     assert plan.settled_until == plan.end == at(30)
     assert plan.chunks[-1].end == at(30)
@@ -184,7 +205,9 @@ def test_backfill_plans_up_to_settled_until_for_an_opaque_position(
 def test_backfill_keeps_progress_that_has_no_settled_time(conn: sqlite3.Connection) -> None:
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=at(-3 * 1440))
     fake.add(WINDOW_BUCKET, 1440, 60, {"app": "Code"})  # a day after the bucket was created
-    insert_observations(conn, [], progress=ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION))
+    insert_observations(
+        conn, [], progress=ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION), project=no_signal
+    )
     before = get_progress(conn, WINDOW_SOURCE)
     (plan,) = plan_all_backfills(conn, ActivityWatch(fake), now=at(60)).plans
     assert plan.has_progress and plan.settled_until is None
@@ -222,7 +245,7 @@ def observation_rows(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
 def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path: Path) -> None:
     path = tmp_path / "old.db"
     old = previous_version(path)
-    insert_observations(old, [text_capture("c1", 0, 1)])
+    insert_observations(old, [text_capture("c1", 0, 1)], project=no_signal)
     last_seen = utc_iso(at(55))
     old.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?)", ("aw-afk", last_seen)
@@ -243,7 +266,7 @@ def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path:
 def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
     """An old database holding the first pull and a cursor at its frontier, then migrated."""
     old = previous_version(path)
-    insert_observations(old, first_pull.observations)
+    insert_observations(old, first_pull.observations, project=no_signal)
     old.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?)",
         (WINDOW_SOURCE, utc_iso(first_pull.frontier)),
@@ -258,7 +281,7 @@ def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Conn
     update = ProgressUpdate(
         WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier
     )
-    insert_observations(conn, first_pull.observations, progress=update)
+    insert_observations(conn, first_pull.observations, progress=update, project=no_signal)
     return conn
 
 

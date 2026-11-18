@@ -85,7 +85,8 @@ def _print_summary(summary: CycleSummary, aw_url: str, db_path: Path) -> int:
             source_failed(failure.error, stream=failure.stream)
             continue
         print(f"error{_on(failure)}: {_reason(failure)}", file=sys.stderr)
-        print(db_busy_hint(db_path), file=sys.stderr)
+        if failure.kind is not FailureKind.ADAPTER:
+            print(db_busy_hint(db_path), file=sys.stderr)
     return 0 if summary.ok else 1
 
 
@@ -94,6 +95,6 @@ def _on(failure: StreamFailure) -> str:
 
 
 def _reason(failure: StreamFailure) -> str:
-    if failure.kind is FailureKind.SOURCE:
+    if failure.kind in (FailureKind.SOURCE, FailureKind.ADAPTER):
         return failure.error
     return f"database error: {failure.error}"

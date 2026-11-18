@@ -9,9 +9,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import NoReturn
 
-from computer_history.sources.commit import FailureKind, StreamFailure, commit_pull, failure_of
+from computer_history.sources.commit import (
+    FailureKind,
+    StrayObservation,
+    StreamFailure,
+    commit_pull,
+    failure_of,
+)
 from computer_history.sources.contract import Source, SourceUnavailable
-from computer_history.store import get_progress
+from computer_history.sources.projection import projector_for
+from computer_history.store import Projector, UnclaimedSource, get_progress
 
 __all__ = [
     "POLL_INTERVAL_SECONDS",
@@ -52,9 +59,11 @@ def poll(
 ) -> CycleSummary:
     """Poll every stream of every source once, each stream in its own commit.
 
-    An unavailable source skips the rest of its streams and a busy database ends the cycle.
+    An unavailable source skips the rest of its streams, a busy database ends the cycle, and a
+    stream whose observations cannot be projected is skipped.
     """
     at = datetime.now(UTC) if now is None else now
+    project = projector_for(sources)
     outcomes: dict[str, IngestOutcome] = {}
     failures: list[StreamFailure] = []
     seen: set[str] = set()
@@ -64,7 +73,10 @@ def poll(
             streams = list(source.streams())
             _claim(seen, streams)
             for stream in streams:
-                outcomes[stream] = _poll_stream(conn, source, stream, now=at)
+                try:
+                    outcomes[stream] = _poll_stream(conn, source, stream, project, now=at)
+                except (UnclaimedSource, StrayObservation) as exc:
+                    failures.append(failure_of(stream, exc))
         except (SourceUnavailable, sqlite3.Error) as exc:
             failure = failure_of(stream, exc)
             if failure.kind is FailureKind.DATABASE:
@@ -84,11 +96,11 @@ def _claim(seen: set[str], streams: list[str]) -> None:
 
 
 def _poll_stream(
-    conn: sqlite3.Connection, source: Source, stream: str, *, now: datetime
+    conn: sqlite3.Connection, source: Source, stream: str, project: Projector, *, now: datetime
 ) -> IngestOutcome:
     progress = get_progress(conn, stream)
     pulled = source.pull_after(stream, None if progress is None else progress.position, now=now)
-    written = commit_pull(conn, stream, pulled, now=now, progress_from=pulled)
+    written = commit_pull(conn, stream, pulled, project=project, now=now, progress_from=pulled)
     return IngestOutcome(written.inserted, written.skipped, pulled.held_back, pulled.settled_until)
 
 

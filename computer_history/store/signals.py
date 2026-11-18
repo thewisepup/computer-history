@@ -1,28 +1,68 @@
-"""Rebuild the signals table from the stored observations.
+"""The signals table: its row shape, its writes, and the rebuild from stored observations.
 
-The caller passes the projector function. Observations are only read, never
-written.
+Signals come from a projector the caller passes. Observations are only read, never written.
 """
 
 from __future__ import annotations
 
 import logging
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterable
+from dataclasses import dataclass
 from typing import NamedTuple
 
 from computer_history.store.db import transaction
-from computer_history.store.observations import INSERT_SIGNAL, Signal, signal_params
 
 log = logging.getLogger(__name__)
-
-Projector = Callable[[str, str], Signal | None]
 
 DEFAULT_BATCH_SIZE = 1000
 MAX_FAILURE_RATIO = 0.5
 MIN_KEPT_RATIO = 0.5
 SHRINK_CHECK_MIN_SIGNALS = 50
 MAX_LOGGED_FAILURES = 20
+
+
+@dataclass(frozen=True)
+class Signal:
+    """One observation's normalized, queryable fields. extras is a JSON string."""
+
+    app: str | None = None
+    domain: str | None = None
+    url: str | None = None
+    title: str | None = None
+    text: str | None = None
+    extras: str | None = None
+
+
+Projector = Callable[[str, str], Signal | None]
+
+
+class UnclaimedSource(LookupError):
+    """No source adapter projects observations from this source."""
+
+    def __init__(self, source: str) -> None:
+        super().__init__(f"no source adapter projects observations from {source!r}")
+        self.source = source
+
+
+_INSERT_SIGNAL = """
+INSERT INTO signals
+  (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+SignalRow = tuple[int, str, str, str, Signal]
+
+
+def write_signals(conn: sqlite3.Connection, rows: Iterable[SignalRow]) -> None:
+    """Insert one signal row per (observation id, source, started_at, ended_at, signal)."""
+    conn.executemany(
+        _INSERT_SIGNAL,
+        (
+            (*keys, signal.app, signal.domain, signal.url, signal.title, signal.text, signal.extras)
+            for *keys, signal in rows
+        ),
+    )
 
 
 class RebuildResult(NamedTuple):
@@ -42,24 +82,26 @@ class RebuildAborted(RuntimeError):
         failed: int = 0,
         failed_ids: tuple[int, ...] = (),
         shrink: bool = False,
+        unclaimed: str | None = None,
     ) -> None:
         super().__init__(f"{reason}; rolled back, signals unchanged")
         self.failed = failed
         self.failed_ids = failed_ids
         self.shrink = shrink
+        self.unclaimed = unclaimed
 
 
 def rebuild_signals(
     conn: sqlite3.Connection,
     project: Projector,
     *,
+    claimed: Collection[str] | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     allow_shrink: bool = False,
 ) -> RebuildResult:
     """Wipe the signals table and re-project every observation, atomically.
 
-    Aborts if too many observations fail or the result would shrink far below
-    the existing signals, unless allow_shrink is passed.
+    It rolls back if the result looks wrong.
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -69,7 +111,7 @@ def rebuild_signals(
         raise ValueError(f"batch_size must be positive, got {batch_size}")
     projected = failed = scanned = 0
     failed_ids: list[int] = []
-    batch: list[tuple[int | str | None, ...]] = []
+    batch: list[SignalRow] = []
 
     def check_failures(total: int) -> None:
         bound = projected + failed + (total - scanned)
@@ -83,6 +125,8 @@ def rebuild_signals(
             )
 
     with transaction(conn):
+        if claimed is not None:
+            _refuse_unclaimed(conn, claimed)
         before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
         total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
         conn.execute("DELETE FROM signals")
@@ -93,6 +137,8 @@ def rebuild_signals(
             scanned += 1
             try:
                 signal = project(source, payload)
+            except UnclaimedSource as exc:
+                raise _unclaimed(conn, exc.source) from exc
             except Exception as exc:
                 failed += 1
                 if len(failed_ids) < MAX_LOGGED_FAILURES:
@@ -109,12 +155,12 @@ def rebuild_signals(
             if signal is None:
                 continue
             projected += 1
-            batch.append(signal_params(observation_id, source, started_at, ended_at, signal))
+            batch.append((observation_id, source, started_at, ended_at, signal))
             if len(batch) >= batch_size:
-                conn.executemany(INSERT_SIGNAL, batch)
+                write_signals(conn, batch)
                 batch.clear()
         if batch:
-            conn.executemany(INSERT_SIGNAL, batch)
+            write_signals(conn, batch)
         if failed > MAX_LOGGED_FAILURES:
             log.warning(
                 "rebuild-signals: %d more observations skipped (not logged individually)",
@@ -138,4 +184,22 @@ def rebuild_signals(
         signals_after=projected,
         skipped=failed,
         failed_ids=tuple(failed_ids),
+    )
+
+
+def _refuse_unclaimed(conn: sqlite3.Connection, claimed: Collection[str]) -> None:
+    for (source,) in conn.execute("SELECT DISTINCT source FROM observations ORDER BY source"):
+        if source not in claimed:
+            raise _unclaimed(conn, source) from UnclaimedSource(source)
+
+
+def _unclaimed(conn: sqlite3.Connection, source: str) -> RebuildAborted:
+    count, first_id = conn.execute(
+        "SELECT COUNT(*), MIN(id) FROM observations WHERE source = ?", (source,)
+    ).fetchone()
+    plural = "" if count == 1 else "s"
+    return RebuildAborted(
+        f"no source adapter projects {source!r}, the source of {count:,} stored"
+        f" observation{plural} (first id: {first_id})",
+        unclaimed=source,
     )

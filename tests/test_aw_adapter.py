@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 from fake_aw import T0, FakeAW, at
+from projectors import AW
 
 from computer_history.sources import (
     FailureKind,
@@ -111,7 +112,7 @@ def ingest_range(
 ) -> IngestOutcome:
     """Pull an explicit range through the adapter and store it, leaving progress alone."""
     pulled = ActivityWatch(fake).pull_range(stream, start, end, now=now)
-    written = insert_observations(conn, pulled.observations)
+    written = insert_observations(conn, pulled.observations, project=AW)
     return IngestOutcome(written.inserted, written.skipped, pulled.held_back, pulled.settled_until)
 
 
@@ -166,7 +167,7 @@ def test_superseded_event_is_settled_even_if_it_just_ended() -> None:
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})  # ends at 1:00, superseded
     fake.add(WINDOW_BUCKET, 1, 1, {"app": "B"})
     pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
-    assert [o.signal.app for o in pull.observations] == ["A"]
+    assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["A"]
 
 
 @pytest.mark.parametrize(
@@ -205,7 +206,7 @@ def test_event_created_during_the_pull_counts_as_latest() -> None:
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "Old"})
     pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
     # "Old" is now superseded (settled); "New" is still growing and must wait.
-    assert [o.signal.app for o in pull.observations] == ["Old"]
+    assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["Old"]
     assert pull.held_back == 1
     assert pull.frontier == at(1)
 
@@ -714,9 +715,9 @@ def test_url_is_capped() -> None:
 
 def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     import computer_history.sources as sources
-    from computer_history.sources import backfill, commit, contract, runner
+    from computer_history.sources import backfill, commit, contract, projection, runner
 
-    modules = (contract, commit, runner, backfill, aw)
+    modules = (contract, commit, projection, runner, backfill, aw)
     assert sources.__all__ == [name for module in modules for name in module.__all__]
     for module in modules:
         for name in module.__all__:

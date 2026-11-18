@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
+from projectors import no_signal
 
 import computer_history
 from computer_history import cli
@@ -505,7 +506,7 @@ def test_status_checks_sources_without_progress_up_to_latest_observation(
         for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
     ]
     conn = connect(db_path)
-    insert_observations(conn, obs)
+    insert_observations(conn, obs, project=no_signal)
     conn.close()
     use_aw(FakeAW({}))
     _, out, _ = run(capsys, "--db-path", str(db_path), "status")
@@ -524,8 +525,10 @@ def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_pat
         "ax-text", "2026-11-18T10.jsonl:48213", settled_until=now - timedelta(minutes=8)
     )
     conn = connect(db_path)
-    insert_observations(conn, obs, progress=spool)
-    insert_observations(conn, [], progress=ProgressUpdate("screenshot", "shots/0042"))
+    insert_observations(conn, obs, progress=spool, project=no_signal)
+    insert_observations(
+        conn, [], progress=ProgressUpdate("screenshot", "shots/0042"), project=no_signal
+    )
     conn.close()
     use_aw(FakeAW({}))
     code, out, _ = run(capsys, "--db-path", str(db_path), "status")

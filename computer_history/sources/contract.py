@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from computer_history.store import Observation
+from computer_history.store import Observation, Signal
 
-__all__ = ["HistorySource", "Pull", "Source", "SourceUnavailable"]
+__all__ = [
+    "HistorySource",
+    "Projecting",
+    "Pull",
+    "Source",
+    "SourceUnavailable",
+    "StreamProjector",
+]
+
+StreamProjector = Callable[[str], Signal | None]
 
 
 class SourceUnavailable(RuntimeError):
@@ -29,7 +38,13 @@ class Pull:
     settled_until: datetime | None
 
 
-class Source(Protocol):
+class Projecting(Protocol):
+    """Maps each stream an adapter can feed to the function that projects its stored payloads."""
+
+    projectors: Mapping[str, StreamProjector]
+
+
+class Source(Projecting, Protocol):
     """A source of observations, split into named streams, each with its own progress."""
 
     def streams(self) -> Sequence[str]:

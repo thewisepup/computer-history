@@ -1,7 +1,8 @@
 """An in-memory source adapter for runner tests, shaped like an append-only capture spool.
 
 Each stream is a list of captures in arrival order. Its position is "<stream>.jsonl:<offset>",
-so a poll resumes exactly after the last capture it consumed.
+so a poll resumes exactly after the last capture it consumed. A capture's signal is titled with its
+id, and every payload projected is recorded.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from computer_history.sources import Pull, SourceUnavailable
-from computer_history.store import Observation
+from computer_history.store import Observation, Signal
 
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 
@@ -33,6 +34,9 @@ class FakeSource:
 
     def __init__(self, *streams: str) -> None:
         self.captures: dict[str, list[Capture]] = {stream: [] for stream in streams}
+        self.projectors = {stream: self.project for stream in streams}
+        self.projected: list[str] = []
+        self.strays: dict[str, str] = {}
         self.unsettled: set[str] = set()
         self.down: set[str] = set()
         self.listing_down = False
@@ -91,6 +95,10 @@ class FakeSource:
         self.positions.append(new_position)
         return Pull(observations, len(held), new_position, until)
 
+    def project(self, payload: str) -> Signal:
+        self.projected.append(payload)
+        return Signal(title=json.loads(payload)["id"])
+
     def _enter(self, stream: str) -> None:
         self.pulled.append(stream)
         if self.before_pull is not None:
@@ -98,8 +106,8 @@ class FakeSource:
         if stream in self.down:
             raise SourceUnavailable(f"fake {stream} spool is unreadable")
 
-    @staticmethod
-    def _observations(stream: str, captures: list[Capture]) -> tuple[Observation, ...]:
+    def _observations(self, stream: str, captures: list[Capture]) -> tuple[Observation, ...]:
+        source = self.strays.get(stream, stream)
         return tuple(
-            Observation(stream, c.id, c.start, c.end, json.dumps({"id": c.id})) for c in captures
+            Observation(source, c.id, c.start, c.end, json.dumps({"id": c.id})) for c in captures
         )
