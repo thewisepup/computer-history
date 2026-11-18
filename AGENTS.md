@@ -271,6 +271,8 @@ Every change is reviewed against these. The standards reviewer agent
 - Docs track structure: this file's banner and DESIGN.md's layout are updated
   in the same commit that changes the layout.
 - `pytest` and `ruff check computer_history tests` green before any commit.
+- Commit subjects are plain descriptions, no ticket/milestone prefix (an
+  issue-tracker key gets prepended once Jira/Linear is in use).
 - Changing `project_signal` or `text.py` changes what a rebuild produces:
   run `rebuild-signals` and keep the ingest/rebuild identity test green.
 
