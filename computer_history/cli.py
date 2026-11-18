@@ -62,12 +62,9 @@ COMMANDS = {
 }
 
 POLL_INTERVAL_SECONDS = 60
-# status: look for coverage gaps this far back from each source's cursor...
 STATUS_WINDOW = timedelta(hours=24)
-# ...and report only gaps at least this long.
 MIN_GAP_SECONDS = 300
 MAX_GAPS_SHOWN = 10
-# status only probes reachability; don't hang on a wedged server.
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
@@ -82,8 +79,8 @@ class CycleSummary:
     at: datetime
     outcomes: dict[str, IngestOutcome] = field(default_factory=dict)
     error: str | None = None
-    failed_source: str | None = None  # None with an error: failed before any source
-    database_error: bool = False  # the store failed, not ActivityWatch
+    failed_source: str | None = None
+    database_error: bool = False
 
     @property
     def ok(self) -> bool:
@@ -104,12 +101,10 @@ class CycleSummary:
 def run_cycle(
     conn: sqlite3.Connection, client: AWApi, *, now: datetime | None = None
 ) -> CycleSummary:
-    """One incremental poll of every source; never raises for a transient failure.
+    """One incremental poll of every source. Never raises for a transient failure.
 
     An unreachable ActivityWatch or a locked database ends the cycle and is
-    returned in the summary, together with the outcomes of the sources that
-    committed before it. Those stay committed; the next cycle resumes from the
-    cursors. Other database errors are not transient and propagate.
+    reported in the summary. Sources that committed before it stay committed.
     """
     at = datetime.now(UTC) if now is None else now
     outcomes: dict[str, IngestOutcome] = {}
@@ -140,8 +135,7 @@ def watch(
 ) -> None:
     """Poll forever (until Ctrl-C), one logged line per cycle.
 
-    Cycles start every interval seconds; a transient failure is logged and
-    retried next cycle.
+    A transient failure is logged and retried next cycle.
     """
     sleep = time.sleep if sleep is None else sleep
     while True:
@@ -224,7 +218,6 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
         print(aw_line)
         return 0
-    # Read-only: status never creates, migrates or writes the store.
     conn = connect_readonly(db_path)
     try:
         version, expected = schema_version(conn), load_migrations()[-1].version
@@ -287,9 +280,6 @@ def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> Non
         if end is None or first is None:
             print(f"  {s.source}: no observations yet")
             continue
-        # Ending at the cursor, not now: the last ~2 minutes are never settled yet.
-        # Starting no earlier than the first event: time before recording began
-        # is not a gap.
         start = max(end - STATUS_WINDOW, first)
         if start >= end:
             print(f"  {s.source}: no settled span to check yet")
@@ -308,7 +298,6 @@ def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> Non
 
 def _print_counts(counts: dict[str, int]) -> None:
     print("Rows:")
-    # observations and signals first; the rest (empty until later milestones) after.
     ordered = sorted(counts, key=lambda name: (name not in ("observations", "signals"), name))
     width = max((len(name) for name in ordered), default=0)
     for name in ordered:
@@ -360,7 +349,7 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
 
 
 def _ids(ids: Sequence[int], total: int) -> str:
-    """Like "3, 7, 9", plus "(and N more)" when the ids are a sample."""
+    """Format ids like "3, 7, 9", plus "(and N more)" when they are a sample."""
     text = ", ".join(str(i) for i in ids) or "-"
     if total > len(ids):
         text += f" (and {total - len(ids):,} more)"
@@ -371,11 +360,9 @@ def _ids(ids: Sequence[int], total: int) -> str:
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
-    """Plan every source, then (unless --dry-run) ingest each plan chunk by chunk.
+    """Plan every source, then ingest each plan chunk by chunk.
 
-    All planning (AW discovery and probes, cursors read read-only) happens before
-    the store is opened, so an unreachable AW creates nothing. A missing database
-    is then created: backfill may be the first command ever run.
+    All planning happens before the database is opened or created.
     """
     db_path = resolve_db_path(args.db_path)
     client = AWClient(args.aw_url)
@@ -384,13 +371,11 @@ def cmd_backfill(args: argparse.Namespace) -> int:
         print("--start must be before --end", file=sys.stderr)
         return 2
     try:
-        buckets = client.get_buckets()  # one listing for discovery and every plan
+        buckets = client.get_buckets()
         sources = discover_sources(client, buckets=buckets)
         if not sources:
             print("no ActivityWatch sources found (no window, AFK or web buckets)")
             return 0
-        # Read-only. A cursor that an ingest writes after this read is still safe:
-        # the plan merely ends at now instead, and init_cursor never overwrites it.
         cursors = _read_cursors(db_path, [s.name for s in sources])
         if cursors is None:
             return 1
@@ -447,7 +432,7 @@ def cmd_backfill(args: argparse.Namespace) -> int:
         return 0
     finally:
         conn.close()
-    if results:  # at least one chunk committed
+    if results:
         print(_RESUME_HINT, file=sys.stderr)
     return code
 
@@ -461,11 +446,7 @@ _RESUME_HINT = (
 def _backfill_one(
     conn: sqlite3.Connection, client: AWApi, plan: BackfillPlan, results: list[BackfillResult]
 ) -> None:
-    """Run one plan, printing a line per chunk and a closing summary for the source.
-
-    The running totals join results after the first committed chunk, so the
-    caller can still print them if a later chunk fails.
-    """
+    """Run one plan, printing a line per chunk and a closing summary for the source."""
     total = len(plan.chunks)
     width = len(str(total))
     began = time.monotonic()
@@ -493,9 +474,6 @@ def _backfill_one(
         f" held back {result.held_back:,}",
         flush=True,
     )
-    # With no cursor before the run, ingest reads from the backfill's frontier (or
-    # from the beginning): it covers every incomplete chunk. With one, the holes
-    # before it are backfill's to fill.
     later = (
         "`computer-history ingest` picks them up once settled"
         if plan.cursor is None
@@ -571,10 +549,9 @@ def _print_backfill_totals(results: list[BackfillResult]) -> None:
 
 
 def _read_cursors(db_path: Path, sources: Sequence[str]) -> dict[str, str | None] | None:
-    """Cursors from an existing store, read-only.
+    """Read the sources' cursors from the database, if there is one.
 
-    Empty when there is no database (or an unmigrated one); None after
-    printing why it could not be read.
+    Returns None after printing why the database could not be read.
     """
     if not db_path.exists():
         return {}
@@ -602,7 +579,7 @@ def _span(chunk: Chunk) -> str:
 
 
 def _when_arg(value: str) -> datetime:
-    """An ISO date or datetime; local time unless it carries an offset."""
+    """An ISO date or datetime. Local time unless it carries an offset."""
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
@@ -610,7 +587,7 @@ def _when_arg(value: str) -> datetime:
             f"not an ISO date or datetime: {value!r} (e.g. 2026-11-01 or 2026-11-01T09:00)"
         ) from exc
     if parsed.tzinfo is None:
-        parsed = parsed.astimezone()  # naive -> the local zone
+        parsed = parsed.astimezone()
     return parsed.astimezone(UTC)
 
 
@@ -618,10 +595,7 @@ def _when_arg(value: str) -> datetime:
 
 
 def _open_store(db_path: Path) -> sqlite3.Connection | None:
-    """Open (and migrate if needed) the store, or None after printing why it failed.
-
-    A lock held by another writer surfaces here once the busy timeout runs out.
-    """
+    """Open (and migrate if needed) the database, or None after printing why it failed."""
     try:
         return connect(db_path)
     except sqlite3.OperationalError as exc:
@@ -638,7 +612,7 @@ def _db_busy_hint(db_path: Path) -> str:
 
 
 def _duration(seconds: float) -> str:
-    """Like 42s, 3m 12s, 2h 5m, 1d 3h: the two largest non-zero units."""
+    """Format seconds like 42s, 3m 12s, 2h 5m or 1d 3h."""
     total = max(0, round(seconds))
     if total < 60:
         return f"{total}s"
@@ -660,7 +634,7 @@ def _lag(delta: timedelta) -> str:
 
 
 def _when(value: datetime | None) -> str:
-    """Local wall-clock time, minute precision; a dash for missing."""
+    """Local wall-clock time, to the minute. A dash when missing."""
     return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
@@ -696,7 +670,7 @@ def build_parser() -> argparse.ArgumentParser:
         "~/Library/Application Support/ComputerHistory/history.db)"
     )
     parser.add_argument("--db-path", help=db_help)
-    # Also accepted after the subcommand; SUPPRESS keeps a value given before it.
+    # Accepted before or after the subcommand.
     db = argparse.ArgumentParser(add_help=False)
     db.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
     aw = argparse.ArgumentParser(add_help=False)

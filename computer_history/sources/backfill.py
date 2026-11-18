@@ -4,18 +4,15 @@ Backfill writes through the same path as incremental ingest, so the settled
 rule, start-based ownership and duplicate handling all apply unchanged.
 Re-running it re-reads ActivityWatch and inserts nothing.
 
-The range runs from the earliest bucket's creation time (rounded down to local
-midnight) up to the source's cursor, or now if it has none; --start and --end
-override. A quick probe checks each bucket for events older than the start and
-warns if it finds any. The range is ingested in fixed chunks, oldest first,
-one commit each.
+The range runs from the earliest bucket's creation time up to the source's
+cursor, or now if it has none. --start and --end override that. The range is
+ingested in fixed chunks, oldest first, one commit each.
 
-Historical chunks always finish; the last chunk usually holds back the current
-window/tab/AFK event, which a later ingest picks up once it settles. If the
-source had no cursor and the range covered all of its history, the cursor is
-set at the end, so the next ingest continues from there instead of re-reading
-history. A cursor written meanwhile by a running ingest --watch wins; an
-existing cursor is never moved.
+The last chunk usually holds back the current window/tab/AFK event, which a
+later ingest picks up once it settles. If the source had no cursor and the
+range covered all of its history, the cursor is set at the end, so the next
+ingest continues from there instead of re-reading history. An existing cursor
+is never moved.
 """
 
 from __future__ import annotations
@@ -46,8 +43,6 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-# A week of window events is a few thousand rows, well within what
-# ActivityWatch serves comfortably.
 BACKFILL_CHUNK = timedelta(days=7)
 _PROBE_GUARD = timedelta(microseconds=1)
 
@@ -59,12 +54,10 @@ class Chunk(NamedTuple):
 
 @dataclass(frozen=True)
 class BackfillPlan:
-    """What run_backfill will pull for one source. Built without writing.
+    """What run_backfill will pull for one source. Built without writing anything.
 
-    start is None when it could not be determined; there are no chunks then.
-    earlier lists, per bucket, the newest event found before the start:
-    history the plan does not cover. An unreadable timestamp there still
-    counts as earlier history, failing safe so the cursor is not set.
+    start is None when it could not be determined. earlier lists, per bucket,
+    the newest event found before the start: history the plan does not cover.
     """
 
     source: AWSource
@@ -76,7 +69,7 @@ class BackfillPlan:
 
     @property
     def covers_history(self) -> bool:
-        """The range starts at or before every event of the source (probe-checked)."""
+        """The range starts at or before every event of the source."""
         return self.start is not None and not self.earlier
 
 
@@ -85,8 +78,7 @@ class BackfillResult:
     """Running totals of one source's backfill.
 
     incomplete holds every chunk that ended early and how far it got. Every
-    event starting before complete_until is stored. cursor_set says whether
-    this run wrote the cursor there.
+    event starting before complete_until is stored.
     """
 
     source: str
@@ -112,9 +104,8 @@ def plan_backfill(
 ) -> BackfillPlan:
     """The chunked range to backfill for one source.
 
-    Reads ActivityWatch (bucket metadata plus one probe per bucket); writes
-    nothing. Pass a bucket listing you already have, otherwise one is fetched
-    when needed.
+    Reads ActivityWatch but writes nothing. Pass a bucket listing you already
+    have, otherwise one is fetched when needed.
     """
     if chunk <= timedelta(0):
         raise ValueError(f"chunk width must be positive: {chunk}")
@@ -152,9 +143,8 @@ def run_backfill(
 ) -> BackfillResult:
     """Ingest every chunk of the plan in order, then set the cursor if it had none.
 
-    Each chunk commits on its own, so an error mid-run keeps the finished
-    chunks and re-running resumes cheaply. on_chunk is called after each chunk
-    with (index, chunk, outcome, totals_so_far).
+    Each chunk commits on its own, so re-running after an error resumes
+    cheaply. on_chunk is called after each chunk.
     """
     clock = clock or (lambda: datetime.now(UTC))
     result = BackfillResult(plan.source.name)
@@ -194,12 +184,9 @@ def _history_floor(buckets: Mapping[str, Any], source: AWSource) -> datetime | N
 
 
 def _event_before(client: AWApi, bucket_id: str, start: datetime) -> tuple[bool, datetime | None]:
-    """Whether the bucket has an event beginning before start, and when it began.
+    """Whether the bucket has an event beginning before the start, and when it began.
 
-    An event whose timestamp cannot be read still counts as earlier history,
-    failing safe so the cursor is never set past events nobody stored. The
-    query stops just short of start, so an event starting exactly there (which
-    belongs to the first chunk) cannot hide an earlier one.
+    An event whose timestamp cannot be read still counts as earlier history.
     """
     for raw in client.get_events(bucket_id, end=start - _PROBE_GUARD, limit=1):
         try:

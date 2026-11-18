@@ -15,11 +15,7 @@ from computer_history.store.timefmt import utc_iso
 
 @dataclass(frozen=True)
 class Signal:
-    """One observation's normalized, queryable fields.
-
-    source/started_at/ended_at are copied from the owning observation, so they
-    cannot disagree. extras is a JSON string.
-    """
+    """One observation's normalized, queryable fields. extras is a JSON string."""
 
     app: str | None = None
     domain: str | None = None
@@ -33,9 +29,8 @@ class Signal:
 class Observation:
     """One raw source event, plus its signal if it has content.
 
-    payload is the source's JSON, stored verbatim. signal is None for
-    state-only sources such as AFK. source_id is required: without one,
-    duplicate detection cannot work.
+    payload is the source's JSON, stored verbatim. signal is None for sources
+    with no content, such as AFK.
     """
 
     source: str
@@ -75,12 +70,10 @@ def insert_observations(
     *,
     advance_cursor: Cursor | None = None,
 ) -> InsertResult:
-    """Write a batch of observations, their signals, and optionally a cursor, atomically.
+    """Write a batch of observations, their signals, and optionally a cursor.
 
-    Everything commits together or nothing does, so a crash can never leave the
-    cursor ahead of the data it covers. An observation already stored (same
-    source and source_id) is skipped along with its signal; any other failure
-    rolls back the whole batch and raises.
+    Everything commits together or nothing does. An observation that is
+    already stored is skipped, along with its signal.
 
     Opens its own transaction, so it must not be called inside transaction().
     """
@@ -90,8 +83,6 @@ def insert_observations(
             "it must not be called inside transaction()"
         )
     rows = [_prepare(observation) for observation in observations]
-    # Validate the cursor before taking the write lock, like the rows: a bad
-    # cursor must not roll back a finished batch.
     cursor = (
         None
         if advance_cursor is None
@@ -119,9 +110,7 @@ def insert_observations(
 def _signal_params(
     observation_id: int, source: str, started_at: str, ended_at: str, signal: Signal
 ) -> tuple[int | str | None, ...]:
-    """Shared with rebuild_signals, so a rebuilt row is built exactly like an
-    ingested one. Timestamps must already be canonical.
-    """
+    """The insert parameters for one signal row. Also used by rebuild_signals."""
     return (
         observation_id,
         source,
@@ -137,7 +126,7 @@ def _signal_params(
 
 
 def _prepare(observation: Observation) -> tuple[str, str, str, str, str, Signal | None]:
-    """Validate and canonicalize before the write lock is taken."""
+    """Validate one observation and convert its timestamps."""
     if not observation.source:
         raise ValueError(f"observation {observation.source_id!r} has no source")
     if not observation.source_id:

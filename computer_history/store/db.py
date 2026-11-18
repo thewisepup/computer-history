@@ -1,8 +1,7 @@
-"""SQLite connections, explicit transactions and the schema migration runner.
+"""SQLite connections, transactions and the schema migration runner.
 
-Connections run in autocommit mode: nothing starts a transaction implicitly.
-Every multi-statement write goes through transaction(), so atomicity is
-visible at the call site.
+Nothing starts a transaction implicitly. Every multi-statement write goes
+through transaction().
 """
 
 from __future__ import annotations
@@ -56,11 +55,7 @@ def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection
 
 
 def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
-    """Open an existing database for reading only: never creates or migrates.
-
-    Used by status. Fails if the file does not exist; callers should check
-    schema_version() before querying.
-    """
+    """Open an existing database for reading only. Fails if the file does not exist."""
     path = resolve_db_path(db_path).resolve()
     conn = sqlite3.connect(
         path.as_uri() + "?mode=ro",
@@ -74,17 +69,15 @@ def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.C
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    """Run the block as one transaction; roll back on any error.
+    """Run the block as one transaction, rolling back on any error.
 
-    Takes the write lock up front, so concurrent writers wait at the start
-    instead of failing midway. Not reentrant: nesting raises.
+    Takes the write lock up front. Nesting raises an error.
     """
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn
         conn.execute("COMMIT")
     except BaseException:
-        # Some failures roll back on their own; never leave a transaction open.
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
@@ -95,10 +88,7 @@ def schema_version(conn: sqlite3.Connection) -> int:
 
 
 def load_migrations(directory: Traversable | None = None) -> list[Migration]:
-    """Read the NNN_description.sql files, sorted and checked to run 1..N with no gaps.
-
-    Defaults to the migrations/ directory shipped inside this package.
-    """
+    """Read the numbered migration files from the package's migrations directory."""
     global _default_migrations
     if directory is None:
         if _default_migrations is not None:
@@ -122,7 +112,7 @@ def load_migrations(directory: Traversable | None = None) -> list[Migration]:
 
 
 def _validate_sequence(migrations: Sequence[Migration]) -> list[Migration]:
-    """Sort and require versions 1..N with no gaps, wherever the list came from."""
+    """Sort the migrations and require versions 1..N with no gaps."""
     ordered = sorted(migrations)
     versions = [m.version for m in ordered]
     if versions != list(range(1, len(ordered) + 1)):
@@ -131,7 +121,7 @@ def _validate_sequence(migrations: Sequence[Migration]) -> list[Migration]:
 
 
 def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = None) -> int:
-    """Apply every migration the database has not seen; return the new schema version.
+    """Apply every migration the database has not seen yet.
 
     Each migration commits fully or not at all. Migration files must not
     contain BEGIN/COMMIT/SAVEPOINT.
@@ -147,22 +137,17 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = N
         if migration.version <= current:
             continue
         with transaction(conn):
-            # Re-check under the write lock: another process may have just migrated.
+            # Another process may have just migrated.
             if schema_version(conn) >= migration.version:
                 continue
             for statement in _split_statements(migration.sql):
                 conn.execute(statement)
-            # PRAGMAs cannot take bound parameters; the version is an int from the filename.
             conn.execute(f"PRAGMA user_version = {int(migration.version)}")
     return schema_version(conn)
 
 
 def _split_statements(script: str) -> list[str]:
-    """Split a SQL script into single statements.
-
-    Uses SQLite's own tokenizer, so semicolons inside strings, comments and
-    trigger bodies are handled correctly.
-    """
+    """Split a SQL script into single statements, using SQLite's own tokenizer."""
     statements = []
     buffer = ""
     for piece in script.split(";"):
@@ -171,8 +156,6 @@ def _split_statements(script: str) -> list[str]:
             if buffer.strip() != ";":
                 statements.append(buffer)
             buffer = ""
-    # Whatever remains is trailing comments (harmless) or an unterminated
-    # statement (raises when run).
     if buffer[:-1].strip():
         statements.append(buffer[:-1])
     return statements

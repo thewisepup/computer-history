@@ -1,6 +1,4 @@
--- Timestamps are UTC ISO-8601 TEXT with uniform precision, so string
--- comparison is chronological. No BEGIN/COMMIT: the migration runner wraps
--- each migration in one transaction.
+-- All timestamps are UTC ISO-8601 text.
 
 -- Layer 1: raw observations (immutable, insert-only).
 CREATE TABLE observations (
@@ -70,8 +68,6 @@ CREATE TABLE block_tags (
   PRIMARY KEY (block_id, tag)
 );
 
--- A zero-length signal counts if its instant falls inside the block
--- (including exactly at started_at).
 CREATE VIEW block_evidence_v AS
 SELECT
   b.id AS block_id,

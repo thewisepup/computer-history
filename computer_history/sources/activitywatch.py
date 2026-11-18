@@ -13,20 +13,19 @@ Buckets are discovered by their type, never by name::
 
 Several buckets may feed one source, and event ids are only unique per bucket,
 so source_id is "bucket_id/event_id". The stored payload is the event as
-ActivityWatch sent it, re-serialized once from JSON.
+ActivityWatch sent it.
 
-How pulling stays safe:
+How pulling works:
 
 * An event belongs to the pull whose range contains its start time, so a
   stored payload is never a clipped or truncated copy.
 * An event that may still be growing (the bucket's latest, ending within the
   stability margin) is held back for a later poll. Held back means delayed,
   never lost.
-* The cursor is the frontier: every event starting before it is stored. While
-  one window, tab or AFK state lasts, the cursor waits at that event's start,
-  so cursor lag grows with the current event. That is expected, not a stall.
-* Explicit ranges (backfill) never touch the cursor. The outcome's frontier
-  says how much of the range is done; re-pull the rest once it has settled.
+* Every event starting before the cursor is stored. While one window, tab or
+  AFK state lasts, the cursor waits at that event's start, so cursor lag grows
+  with the current event. That is expected, not a stall.
+* Explicit ranges (used by backfill) never touch the cursor.
 """
 
 from __future__ import annotations
@@ -80,14 +79,9 @@ log = logging.getLogger(__name__)
 DEFAULT_AW_URL = "http://127.0.0.1:5600/api/0"
 REQUEST_TIMEOUT_SECONDS = 30
 
-# An event that may still be growing is ingested only once its end is older
-# than this (twice the 60s poll interval).
 STABILITY_MARGIN_SECONDS = 120
-# Incremental pulls re-read this much before the cursor; dedup drops the repeats.
 CURSOR_OVERLAP_SECONDS = 600
-# AW is queried this far before a pull's start, so owned events are never clipped.
 CLIP_GUARD = timedelta(seconds=1)
-# An owned event ending within this of an explicit query end may be end-clipped.
 _END_CLIP_TOLERANCE = timedelta(milliseconds=1)
 
 MAX_TEXT_LENGTH = 2000
@@ -115,7 +109,7 @@ class _NotFound(AWError):
 
 
 class AWApi(Protocol):
-    """The read-only subset of the AW API the adapter uses (fakes implement this)."""
+    """The read-only part of the ActivityWatch API this module uses."""
 
     def get_buckets(self) -> dict[str, dict[str, Any]]: ...
 
@@ -132,7 +126,7 @@ class AWApi(Protocol):
 
 
 class AWClient:
-    """Minimal stdlib (urllib) client for the ActivityWatch REST API. GET only."""
+    """Small read-only client for the ActivityWatch REST API."""
 
     def __init__(
         self, base_url: str = DEFAULT_AW_URL, timeout: float = REQUEST_TIMEOUT_SECONDS
@@ -156,8 +150,8 @@ class AWClient:
     ) -> list[dict[str, Any]]:
         """Events overlapping the range, newest first, clipped to the range.
 
-        The limit keeps the newest events, so a limited page drops the oldest.
-        Pass limit=-1 (all) whenever completeness matters.
+        A limit keeps the newest events and drops the oldest. Pass limit=-1
+        for all of them.
         """
         params: dict[str, Any] = {"limit": limit}
         if start is not None:
@@ -193,7 +187,7 @@ class AWClient:
             if exc.code == 404:
                 raise _NotFound(f"ActivityWatch 404 for {url}") from exc
             raise AWError(f"ActivityWatch HTTP {exc.code} for {url}") from exc
-        except (URLError, OSError) as exc:  # includes timeouts and refused connections
+        except (URLError, OSError) as exc:
             raise AWError(f"ActivityWatch unreachable at {self.base_url}: {exc}") from exc
         except ValueError as exc:
             raise AWError(f"ActivityWatch returned invalid JSON for {url}") from exc
@@ -211,10 +205,10 @@ class AWSource:
 
 
 def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None) -> list[AWSource]:
-    """Map ActivityWatch buckets to store sources by bucket type, sorted by name.
+    """Map ActivityWatch buckets to sources by bucket type.
 
-    Buckets of other types are ignored; a source with no bucket is absent.
-    Pass a bucket listing you already have, otherwise one is fetched.
+    Buckets of other types are ignored. Pass a bucket listing you already
+    have, otherwise one is fetched.
     """
     grouped: dict[str, list[str]] = {}
     listing = client.get_buckets() if buckets is None else buckets
@@ -230,11 +224,9 @@ def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None)
 
 
 def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | None:
-    """The signal for one ActivityWatch event payload, or None for AFK.
+    """The signal for one event payload, or None for AFK.
 
-    Accepts the event as a dict or as the stored JSON text. rebuild-signals
-    re-runs this over stored payloads, so the output must depend on the
-    payload alone.
+    Accepts the event as a dict or as the stored JSON text.
     """
     if source == AFK_SOURCE:
         return None
@@ -256,23 +248,23 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
 
 
 def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str | None:
-    """Whitespace stripped and collapsed, length capped; empty becomes None."""
+    """Strip and collapse whitespace and cap the length. Empty becomes None."""
     if value is None:
         return None
     return " ".join(_scrub(value).split())[:limit] or None
 
 
 def clean_url(value: str | None) -> str | None:
-    """Control characters removed, trimmed, length capped; empty becomes None."""
+    """Remove control characters and cap the length. Empty becomes None."""
     if value is None:
         return None
     return _sanitize_url(value)[:MAX_URL_LENGTH] or None
 
 
 def extract_domain(url: str | None) -> str | None:
-    """Lowercased host of an http(s) URL, without port or a leading www.
+    """The lowercased host of a web URL, without port or a leading www.
 
-    Missing, unparseable and non-web URLs (chrome://, file://, ...) become None.
+    Missing, unreadable and non-web URLs (chrome://, file://, ...) become None.
     """
     if not url:
         return None
@@ -290,7 +282,7 @@ def extract_domain(url: str | None) -> str | None:
 
 
 def _take_str(data: dict[str, Any], key: str) -> str | None:
-    """Pop the key if it holds a string; anything else stays behind for extras."""
+    """Pop and return the key if it holds a string."""
     value = data.get(key)
     if isinstance(value, str):
         del data[key]
@@ -299,21 +291,19 @@ def _take_str(data: dict[str, Any], key: str) -> str | None:
 
 
 def _extras(leftover: dict[str, Any]) -> str | None:
-    # Sorted keys: a rebuild must reproduce the same text byte for byte.
     return json.dumps(leftover, sort_keys=True) if leftover else None
 
 
-# Control characters: a real URL never contains them unencoded.
 _URL_CONTROL_CHARS = dict.fromkeys([*range(0x20), 0x7F])
 
 
 def _sanitize_url(value: str) -> str:
-    """Remove control characters anywhere; trim spaces at the ends."""
+    """Remove control characters and trim spaces."""
     return _scrub(value).translate(_URL_CONTROL_CHARS).strip(" ")
 
 
 def _scrub(value: str) -> str:
-    # Replace broken characters (lone surrogates) that SQLite cannot store.
+    # Replace characters SQLite cannot store.
     return value.encode("utf-8", "replace").decode("utf-8")
 
 
@@ -329,14 +319,13 @@ class _Event:
 
 
 def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
-    """Timing for one raw event; None (logged) if it is malformed."""
+    """The timing of one raw event, or None if it is malformed."""
     try:
         event_id = raw["id"]
         if isinstance(event_id, bool) or not isinstance(event_id, int | str) or event_id == "":
             raise ValueError(f"bad id {event_id!r}")
         start = to_utc(raw["timestamp"])
         duration = float(raw.get("duration") or 0)
-        # A negative or non-finite duration becomes zero; the payload keeps the original.
         duration = duration if math.isfinite(duration) and duration > 0 else 0.0
         end = start + timedelta(seconds=duration)
     except (KeyError, TypeError, ValueError, AttributeError, OverflowError) as exc:
@@ -347,10 +336,10 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
 
 @dataclass(frozen=True)
 class BucketPull:
-    """The settled events one bucket owns in a pull, and how far they reach.
+    """The settled events one bucket contributed to a pull.
 
-    Every event starting in the pull's range before the frontier is included;
-    held_back counts owned events not yet settled.
+    Every event starting before the frontier is included. held_back counts
+    events that have not settled yet.
     """
 
     bucket_id: str
@@ -368,9 +357,9 @@ def pull_bucket(
     end: datetime | str | None = None,
     now: datetime | None = None,
 ) -> BucketPull:
-    """Settled events of one bucket that start in the range. Writes nothing.
+    """The settled events of one bucket that start in the range. Writes nothing.
 
-    No start means the beginning of the bucket; no end means up to now.
+    No start means the beginning of the bucket, and no end means up to now.
     """
     now = _now(now)
     start_dt = None if start is None else to_utc(start)
@@ -379,8 +368,6 @@ def pull_bucket(
         raise ValueError(f"empty pull range: [{start_dt.isoformat()}, {end_dt.isoformat()})")
     settled_before = now - timedelta(seconds=STABILITY_MARGIN_SECONDS)
 
-    # Read the bucket's newest event before the range: anything created in
-    # between only makes the settled rule more cautious.
     newest_raw = client.get_events(bucket_id, limit=1)
     newest = _parse_event(newest_raw[0], bucket_id) if newest_raw else None
     raw_events = client.get_events(
@@ -398,12 +385,12 @@ def pull_bucket(
     held: list[_Event] = []
     for event in events:
         if start_dt is not None and event.start < start_dt:
-            continue  # starts before the range (possibly start-clipped): not ours
+            continue
         if end_dt is not None:
             if event.start >= end_dt:
-                continue  # AW's end is inclusive; ours is exclusive
+                continue
             if event.end >= end_dt - _END_CLIP_TOLERANCE:
-                event = _refetch(client, bucket_id, event)  # possibly end-clipped
+                event = _refetch(client, bucket_id, event)
                 if event is None:
                     continue
         if event.start >= latest_start and event.end >= settled_before:
@@ -435,7 +422,6 @@ def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
         source_id=f"{bucket_id}/{event.id}",
         started_at=event.start,
         ended_at=event.end,
-        # Stored as received, re-serialized once from JSON.
         payload=json.dumps(event.raw),
         signal=project_signal(source, event.raw),
     )
@@ -455,11 +441,9 @@ def ingest_source(
 ) -> IngestOutcome:
     """Pull one source's buckets and write the batch and cursor together.
 
-    With no explicit range this is an incremental poll: it reads from a little
-    before the cursor (or from the beginning) and advances the cursor in the
-    same transaction. An explicit range (backfill) leaves the cursor alone;
-    check the outcome's frontier to know whether the whole range is done. If
-    any bucket's pull fails, nothing is written for the source.
+    With no explicit range this is an incremental poll: it reads from just
+    before the cursor and advances it. An explicit range (used by backfill)
+    leaves the cursor alone. If any bucket's pull fails, nothing is written.
     """
     now = _now(now)
     incremental = start is None and end is None
@@ -486,10 +470,8 @@ def ingest_source(
 class IngestOutcome(NamedTuple):
     """What one ingest_source call did.
 
-    held_back counts events not yet settled, so not written. frontier is how
-    far the pull reached: every event starting before it is now stored. A
-    frontier short of the requested end means the range is incomplete; re-pull
-    the rest once it has settled. None means the source had no buckets.
+    held_back counts events that have not settled yet. frontier is how far
+    the pull reached: every event starting before it is now stored.
     """
 
     inserted: int
@@ -503,8 +485,7 @@ def ingest_all(
 ) -> dict[str, IngestOutcome]:
     """One incremental poll of every discovered source, keyed by source name.
 
-    Each source commits on its own. An error stops the poll there, and the sources
-    already written stay committed.
+    Each source commits on its own.
     """
     now = _now(now)
     return {

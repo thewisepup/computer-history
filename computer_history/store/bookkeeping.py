@@ -1,8 +1,4 @@
-"""Per-source ingest cursors.
-
-Each setter is a single statement, so it is atomic on its own and also joins
-an enclosing transaction() when called inside one.
-"""
+"""Per-source ingest cursors."""
 
 from __future__ import annotations
 
@@ -13,10 +9,7 @@ from computer_history.store.timefmt import utc_iso
 
 
 def get_cursor(conn: sqlite3.Connection, source: str) -> str | None:
-    """The source's ingestion frontier, or None if never set.
-
-    Returned as the stored UTC string; convert with to_utc() for time math.
-    """
+    """The source's cursor, or None if never set."""
     row = conn.execute(
         "SELECT last_seen FROM ingest_cursors WHERE source = ?", (source,)
     ).fetchone()
@@ -24,11 +17,7 @@ def get_cursor(conn: sqlite3.Connection, source: str) -> str | None:
 
 
 def set_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str) -> None:
-    """Set the frontier. It may move backwards; re-ingesting is harmless.
-
-    When the cursor covers a batch of writes, pass it to insert_observations
-    instead, so the two commit together.
-    """
+    """Set the source's cursor."""
     conn.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?) "
         "ON CONFLICT (source) DO UPDATE SET last_seen = excluded.last_seen",
@@ -37,11 +26,7 @@ def set_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str)
 
 
 def init_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str) -> bool:
-    """Set the frontier only if the source has none yet; True if this call set it.
-
-    Whoever sets it first wins, so a cursor written concurrently (say by a
-    running ingest --watch) is never overwritten. Used by backfill.
-    """
+    """Set the cursor only if the source has none yet. True if this call set it."""
     cur = conn.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?) "
         "ON CONFLICT (source) DO NOTHING",

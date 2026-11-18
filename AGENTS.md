@@ -216,14 +216,16 @@ Never commit the API key or org ID to this repo.
 
 ### Code style (Brandon's rule)
 
-Write self-reading code and omit comments. A comment earns its place only when
-it carries something significant the code cannot show — an invariant, a
-non-obvious constraint — or enumerates values, e.g.
-`source TEXT NOT NULL, -- 'aw-window' | 'aw-afk' | 'aw-web'`. One short line,
-then stop; a paragraph of rationale belongs in a commit message or ticket, not
-next to the code. Write comments and docstrings in plain English a user can
-read: no references to DESIGN.md or other docs, no Sphinx/reST markup
-(`:func:`, `:class:`, double backticks), no deep technical digressions.
+Write self-reading code with no comments. The rare exceptions: enumerating
+values (`source TEXT NOT NULL, -- 'aw-window' | 'aw-afk' | 'aw-web'`) and a
+single plain sentence for something a reader truly cannot see in the code.
+Never write reasoning-style comments — "X; because Y", "X: so that Z", or any
+clause justifying the code. Rationale belongs in commit messages and tickets.
+
+Docstrings simply say what the function does, in one or two plain-English
+sentences anyone can read. No references to DESIGN.md or other docs, no
+Sphinx/reST markup (`:func:`, double backticks), no contracts-and-caveats
+essays, no technical digressions.
 
 Key concepts:
 - FastAPI = the normal HTTP API (curl, scripts, a future frontend).

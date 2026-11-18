@@ -1,8 +1,4 @@
-"""Read queries for ``status``: per-source freshness, row counts, coverage gaps.
-
-Timestamps come back as aware UTC ``datetime`` objects, ready for lag math and
-local-time display.
-"""
+"""Read queries for status: per-source freshness, row counts, coverage gaps."""
 
 from __future__ import annotations
 
@@ -16,9 +12,9 @@ from computer_history.store.timefmt import to_utc, utc_iso
 class SourceSummary(NamedTuple):
     source: str
     observation_count: int
-    earliest_started_at: datetime | None  # None: no observations yet
-    latest_ended_at: datetime | None  # None: no observations yet
-    cursor: datetime | None  # None: cursor never set
+    earliest_started_at: datetime | None
+    latest_ended_at: datetime | None
+    cursor: datetime | None
 
 
 class Gap(NamedTuple):
@@ -61,7 +57,6 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
             "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         )
     ]
-    # Table names come from SQLite itself, not user input.
     return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
 
 
@@ -72,11 +67,10 @@ def find_gaps(
     end: datetime | str,
     min_gap_seconds: float = 0,
 ) -> list[Gap]:
-    """Spans of ``[start, end)`` that no observation from ``source`` covers.
+    """The spans of the range that no observation from the source covers.
 
-    Overlapping observations are merged first; zero-length ones cover nothing.
-    Only gaps of at least ``min_gap_seconds`` are returned (every gap is > 0s).
-    A gap is missing data, not idle time.
+    Overlapping observations are merged first. A gap is missing data, not
+    idle time.
     """
     start_text, end_text = utc_iso(start), utc_iso(end)
     if end_text <= start_text:
@@ -87,7 +81,6 @@ def find_gaps(
         "ORDER BY started_at",
         (source, end_text, start_text),
     )
-    # Canonical timestamps compare correctly as text; parse only the gap edges.
     gaps: list[tuple[str, str]] = []
     covered_until = start_text
     for started, ended in rows:
