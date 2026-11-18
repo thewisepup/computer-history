@@ -90,6 +90,18 @@ docs/
 One SQLite file (e.g. `~/Library/Application Support/ComputerHistory/history.db`).
 Screenshots live on disk as files; the DB stores paths and extracted text.
 
+**Time rule (decided):** every stored timestamp is UTC ISO-8601 at uniform
+precision, so TEXT comparison works lexicographically. The single exception to
+UTC-everywhere: week and day *boundaries* are computed in the user's local
+timezone at query/generation time (a UTC week boundary would land mid-Sunday
+locally), and blocks spanning a boundary are clipped into each side when
+summing.
+
+**Naming rule (decided):** project names, work-type names and tags are
+normalized to lowercase (and trimmed) on write, so case variants can never
+create duplicates ("YouTube" vs "youtube"). Display casing is a later
+nicety.
+
 ### 3.1 Layer 1: raw observations (immutable)
 
 The extensibility requirement ("new capture sources plug in without schema
@@ -109,9 +121,15 @@ observations (
 )
 ```
 
-Rules: insert-only. Never updated, never deleted (retention is a later
-feature). The original source payload is preserved verbatim; normalization
-happens at read time or into derived tables, never by editing this row.
+Rules: insert-only — no updates, no deletes, no upsert carve-outs (retention
+is a later feature). Because some sources grow events in place (ActivityWatch
+extends the current window event's duration), adapters follow a
+**settled-events rule**: only events that are closed — superseded by a newer
+event, or older than a short stability margin — are ingested; the
+currently-growing event is simply not ingested yet. Classification runs
+hourly, so the few minutes of ingest lag are invisible, and immutability holds
+with no exceptions. The original source payload is preserved verbatim;
+normalization happens into derived tables, never by editing this row.
 
 ### 3.2 Layer 1.5: signals (normalized, rebuildable)
 
@@ -140,8 +158,8 @@ signals (
 Rules:
 
 - **1:1 with observations; PK = the observation id.** Signals carry no
-  original information, and stable ids mean rebuilds can never dangle
-  `block_evidence` links or corrected blocks.
+  original information, and stable ids make rebuilds invisible to anything
+  that references a signal.
 - **Written in the same transaction** as their observation, by the adapter —
   drift between the layers can only come from mapping bugs, never crashes.
 - **Disposable by design.** `rebuild-signals` (CLI) wipes and re-projects the
@@ -166,9 +184,11 @@ projects (
   name           TEXT NOT NULL UNIQUE,
   status         TEXT NOT NULL,    -- 'proposed' | 'confirmed' | 'archived'
   merged_into_id INTEGER REFERENCES projects(id),  -- set on merge; blocks re-pointed
-  created_by     TEXT NOT NULL,    -- 'ai' | 'user'
   created_at     TEXT NOT NULL
 )
+-- No created_by column: status already carries the provenance that matters
+-- (AI-created projects are born 'proposed', user-created ones 'confirmed');
+-- after approval, origin changes no behavior, so it isn't stored.
 
 work_types (
   id          INTEGER PRIMARY KEY,
@@ -194,8 +214,6 @@ blocks (
 )
 
 block_tags (block_id, tag)         -- optional, search/filter only, never totals
-
-block_evidence (block_id, signal_id)  -- signals supporting the label; signal id = observation id; derived, recomputable
 ```
 
 Key decisions encoded here:
@@ -216,13 +234,17 @@ Key decisions encoded here:
 - Projects, work types and tags never reference each other; they meet only
   inside a block. Every cross-question (bottleneck = project × work type) is
   an aggregation over blocks, not a stored relationship.
-- `block_evidence` gives every label and every bottleneck claim traceable
-  evidence, per the "honest about uncertainty" principle. Its FK targets
-  `signals` (what the classifier actually read); because signal ids are
-  observation ids, `rebuild-signals` re-creates identical keys — the rebuild
-  runs as one transaction with deferred FK checks, so evidence never dangles.
-  Membership is derived from time overlap, so it is recomputed
-  deterministically when a block is split.
+- **Evidence is a query, not a table** (final-audit decision). A block's
+  evidence is exactly the signals whose time range overlaps the block's — one
+  indexed range query (kept as a SQL view, `block_evidence_v`, for a stable
+  name). Since the classifier reads *all* signals in a window, a stored
+  evidence table would cache this query while adding rebuild coordination and
+  recompute-on-split machinery for zero information. **Re-add trigger:** the
+  moment the classifier starts selecting or weighting signals (e.g. for
+  corrections-as-rules), "what the model saw" stops being derivable from time
+  overlap and must be stored again. Traceability is unchanged: every label and
+  bottleneck claim still drills down to raw signals, per the "honest about
+  uncertainty" principle.
 
 #### Projects vs. work types vs. tags
 
@@ -323,13 +345,15 @@ their source's payload shape; everything downstream reads `signals`.
 
 - Polls `http://127.0.0.1:5600/api/0` **[proposed]** every 60 seconds for the
   window, AFK, and both Chrome web buckets.
-- **Backfill is opportunistic, never assumed** (decided 2026-11-17): if
-  ActivityWatch history exists on first run, ingest all of it in day-sized
-  pages so it doesn't hold everything in memory. A real user's fresh install
-  has zero history, so nothing downstream — onboarding included — may depend
-  on pre-existing data.
-- AW events can grow in place (the current event's duration extends), so the
-  adapter re-reads a small trailing overlap window and upserts by `source_id`.
+- **No pre-existing history is assumed, anywhere.** A real user's fresh
+  install starts from zero; nothing downstream — onboarding included — may
+  depend on prior data. Ingesting existing ActivityWatch history is a one-time
+  personal convenience for Brandon's own install (about a week of data), done
+  in day-sized pages, not a product feature.
+- AW events grow in place (the current event's duration extends), so the
+  adapter follows the settled-events rule (§3.1): it ingests an event only
+  once it is closed — superseded by a newer event or older than a short
+  stability margin — keeping observations strictly insert-only.
 - Read-only toward ActivityWatch, as today.
 
 ### 4.2 Capture agent (Swift) **[proposed: language + mechanics]**
@@ -403,8 +427,12 @@ The AI client never classifies on the fly; it reads stored results.
    `corrected` blocks. Low-confidence windows get `project_id = NULL`
    (Unassigned) rather than a guess **[proposed]**; likewise
    `work_type_id = NULL` when no active type fits or the list is still empty.
-6. **Catch-up.** On startup (login agent) and after sleep, classify the whole
-   gap since the last successful `classification_run`.
+6. **Catch-up, with a horizon.** On startup (login agent) and after sleep,
+   classify the gap since the last successful `classification_run` — capped by
+   a classification horizon (default 14 days back, configurable). Anything
+   older is ingested and mechanically queryable (breakdowns read signals), but
+   is only classified by an explicit `classify-backfill` command, so a large
+   first ingest can never trigger a surprise LLM burn.
 
 **Prompt-injection posture (deferred, by decision):** titles, URLs, AX text
 and OCR text flow into the classifier prompt. V1 only constrains the output
@@ -421,7 +449,7 @@ hardening is on the Later list.
 | Add project | New `confirmed` row, `created_by='user'`; appears in the next classifier prompt. |
 | Add / rename / re-describe / archive a work type | Rename is reference surgery; description edits steer the next classifier run; archive hides it from the prompt without touching old blocks. Adding a type affects future classification only (re-labelling recent blocks on type changes is deferred — PRD Later), with one exception: the first empty → non-empty transition triggers the one-time bootstrap re-label (§3.3). |
 | Correct a block | Set project / work type / tags; `status → 'corrected'` (locked forever). |
-| Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Each half gets its evidence recomputed from its time range; halves are then correctable independently. |
+| Split a block | `split_block(block_id, at_time)`, snapped to the 5-minute grid. Evidence is a time-range query, so each half's evidence follows automatically; halves are then correctable independently. |
 | Project set changes | Re-label **unconfirmed** blocks from the last 14 days (decided). |
 
 **Scope of time edits in v1: splitting only.** A split subdivides what a block
@@ -436,6 +464,14 @@ real transitions. Users edit interpretation only: nothing ever writes to
 Corrections fix only that block in v1; corrections-as-rules are later.
 All of the above is available from both MCP write tools and the UI, through
 the same service layer.
+
+**The lock is enforced in the write statement, not at read time.** The
+classifier is a read–think–write pipeline; a correction can land between its
+read and its write, and a write based on the stale read would overwrite the
+correction. So the classifier's write-back guards every statement
+(`... WHERE status != 'corrected'`, inside one transaction) — the database,
+whose knowledge is never stale, enforces the lock, and a correction made
+mid-run survives.
 
 ## 7. Weekly review and bottlenecks
 
@@ -542,9 +578,9 @@ user-curated table seeded on first run — the AI selects from it and never
 invents types, the user adds/renames/archives (AI-proposed types and
 consolidation suggestions deferred to PRD Later, as is re-labelling on
 work-type changes); projects / work types / tags never reference each other
-and meet only inside blocks; `block_evidence` FK targets `signals`
-(signal id = observation id), with `rebuild-signals` running as one
-transaction with deferred FK checks. Work types carry a `description` fed into
+and meet only inside blocks; block evidence was first keyed to signals, then
+dropped as a table entirely in the final audit (below) — it is a derived
+time-overlap query. Work types carry a `description` fed into
 the classifier prompt, which is where the user teaches the model which
 synonyms each type absorbs. `work_types` starts empty (no seed list);
 `blocks.work_type_id` is nullable, and cold start is the user asking their AI
@@ -557,3 +593,15 @@ from real data after a day or two, human approves, then a one-time bootstrap
 re-label heals the typeless backlog; the empty `work_types` table is the
 onboarding state, surfaced as a nudge in `get_recording_status` and reviews;
 no `propose_work_types` endpoint and no day-0 interview in v1.
+
+**Settled in the final schema audit (2026-11-17):** `block_evidence` dropped —
+evidence is a derived time-overlap query over signals (kept as a view,
+`block_evidence_v`), with a documented re-add trigger if the classifier ever
+selects/weights signals; `projects.created_by` dropped (status carries the
+provenance that matters); `blocks.confidence` kept; observations strictly
+insert-only via the settled-events rule (no upsert carve-out); classification
+horizon (default 14 days) caps catch-up, with `classify-backfill` for older
+history; all stored timestamps UTC (week/day boundaries converted to local at
+query time, boundary-spanning blocks clipped); project/work-type names and
+tags lowercased on write; the corrected-block lock enforced inside the
+classifier's write statements.
