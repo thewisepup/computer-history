@@ -99,7 +99,12 @@ Current implementation: a Python proof of concept (no desktop app yet).
 cd /Users/brandon/workspace/computer-history
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
+git config core.hooksPath .githooks
 ```
+
+The hook (`.githooks/pre-commit`) runs `ruff check --fix` and `pytest` on every
+commit; CI (`.github/workflows/ci.yml`) runs ruff, pytest and the POC suite on
+pushes to `main`.
 
 (The system `python3` is too old; any Python 3.10+ works.)
 
