@@ -18,7 +18,7 @@ from fake_aw import FakeAW
 from computer_history import cli
 from computer_history.cli import app as cli_app
 from computer_history.cli import backfill as cli_backfill
-from computer_history.cli import shared as cli_shared
+from computer_history.cli import db as cli_db
 from computer_history.sources import (
     AFK_SOURCE,
     BACKFILL_CHUNK,
@@ -472,7 +472,7 @@ def test_cli_backfill_on_a_locked_store_fails_cleanly(
         conn.execute("PRAGMA busy_timeout = 50")  # don't wait the full 5s in a test
         return conn
 
-    monkeypatch.setattr(cli_shared, "connect", quick_connect)
+    monkeypatch.setattr(cli_db, "connect", quick_connect)
     try:
         locker.execute("BEGIN IMMEDIATE")
         code, _, err = run(capsys, "--db-path", str(db_path), "backfill")

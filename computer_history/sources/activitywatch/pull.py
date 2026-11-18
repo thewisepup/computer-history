@@ -67,11 +67,11 @@ def pull_bucket(
     end: datetime | str | None = None,
     now: datetime | None = None,
 ) -> BucketPull:
-    """The settled events of one bucket that start in the range. Writes nothing.
+    """The settled events of one bucket that start in the range; writes nothing.
 
     No start means the beginning of the bucket, and no end means up to now.
     """
-    now = _now(now)
+    now = resolve_now(now)
     start_dt = None if start is None else to_utc(start)
     end_dt = None if end is None else to_utc(end)
     if start_dt is not None and end_dt is not None and end_dt <= start_dt:
@@ -137,5 +137,5 @@ def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
     )
 
 
-def _now(now: datetime | None) -> datetime:
+def resolve_now(now: datetime | None) -> datetime:
     return datetime.now(UTC) if now is None else to_utc(now)

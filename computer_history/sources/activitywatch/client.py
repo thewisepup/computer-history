@@ -65,8 +65,7 @@ class AWClient:
     ) -> list[dict[str, Any]]:
         """Events overlapping the range, newest first, clipped to the range.
 
-        A limit keeps the newest events and drops the oldest. Pass limit=-1
-        for all of them.
+        A limit keeps the newest events, so pass limit=-1 for all of them.
         """
         params: dict[str, Any] = {"limit": limit}
         if start is not None:

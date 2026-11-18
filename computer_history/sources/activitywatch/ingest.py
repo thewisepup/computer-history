@@ -8,18 +8,15 @@ from typing import NamedTuple
 
 from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
-from computer_history.sources.activitywatch.pull import _now, pull_bucket
+from computer_history.sources.activitywatch.pull import pull_bucket, resolve_now
 from computer_history.store import Cursor, get_cursor, insert_observations, to_utc
 
 CURSOR_OVERLAP_SECONDS = 600
 
 
 class IngestOutcome(NamedTuple):
-    """What one ingest_source call did.
-
-    held_back counts events that have not settled yet. frontier is how far
-    the pull reached: every event starting before it is now stored.
-    """
+    """What one ingest_source call did: every event starting before the
+    frontier is now stored, and held_back counts events not settled yet."""
 
     inserted: int
     skipped: int
@@ -38,11 +35,10 @@ def ingest_source(
 ) -> IngestOutcome:
     """Pull one source's buckets and write the batch and cursor together.
 
-    With no explicit range this is an incremental poll: it reads from just
-    before the cursor and advances it. An explicit range (used by backfill)
-    leaves the cursor alone. If any bucket's pull fails, nothing is written.
+    With no explicit range it polls from just before the cursor and advances
+    it; an explicit range (used by backfill) leaves the cursor alone.
     """
-    now = _now(now)
+    now = resolve_now(now)
     incremental = start is None and end is None
     if incremental:
         cursor = get_cursor(conn, source.name)
@@ -71,7 +67,7 @@ def ingest_all(
 
     Each source commits on its own.
     """
-    now = _now(now)
+    now = resolve_now(now)
     return {
         source.name: ingest_source(conn, client, source, now=now)
         for source in discover_sources(client)

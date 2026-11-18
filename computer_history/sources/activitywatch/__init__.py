@@ -1,7 +1,5 @@
 """Pull settled ActivityWatch events into the store.
 
-::
-
     ActivityWatch HTTP API
           |
       client.py      the HTTP calls, nothing else

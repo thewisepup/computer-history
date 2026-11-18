@@ -1,4 +1,4 @@
-"""Helpers every command uses."""
+"""Opening the database from a command."""
 
 from __future__ import annotations
 

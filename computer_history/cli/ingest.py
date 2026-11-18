@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from computer_history.cli.shared import db_busy_hint, open_store
+from computer_history.cli.db import db_busy_hint, open_store
 from computer_history.sources import (
     AWApi,
     AWClient,
@@ -57,10 +57,10 @@ class CycleSummary:
 def run_cycle(
     conn: sqlite3.Connection, client: AWApi, *, now: datetime | None = None
 ) -> CycleSummary:
-    """One incremental poll of every source. Never raises for a transient failure.
+    """One incremental poll of every source; never raises for a transient failure.
 
     An unreachable ActivityWatch or a locked database ends the cycle and is
-    reported in the summary. Sources that committed before it stay committed.
+    reported in the summary, and earlier sources stay committed.
     """
     at = datetime.now(UTC) if now is None else now
     outcomes: dict[str, IngestOutcome] = {}

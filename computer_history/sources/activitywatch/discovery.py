@@ -27,10 +27,9 @@ class AWSource:
 
 
 def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None) -> list[AWSource]:
-    """Map ActivityWatch buckets to sources by bucket type.
+    """Map ActivityWatch buckets to sources by bucket type, ignoring other types.
 
-    Buckets of other types are ignored. Pass a bucket listing you already
-    have, otherwise one is fetched.
+    Pass a bucket listing you already have, otherwise one is fetched.
     """
     grouped: dict[str, list[str]] = {}
     listing = client.get_buckets() if buckets is None else buckets

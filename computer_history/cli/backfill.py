@@ -10,8 +10,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from computer_history.cli.db import db_busy_hint, open_store
 from computer_history.cli.formatting import duration, when
-from computer_history.cli.shared import db_busy_hint, open_store
 from computer_history.sources import (
     BACKFILL_CHUNK,
     AWApi,

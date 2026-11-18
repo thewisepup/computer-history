@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from collections.abc import Sequence
 
-from computer_history.cli.shared import db_busy_hint, open_store
+from computer_history.cli.db import db_busy_hint, open_store
 from computer_history.sources import project_signal
 from computer_history.store import RebuildAborted, rebuild_signals, resolve_db_path
 

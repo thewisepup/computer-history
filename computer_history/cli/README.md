@@ -13,7 +13,7 @@ app.py         parser + dispatch: one entry per command
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk
         |
-shared.py (open the store) and formatting.py (durations, times, sizes)
+db.py (open the store) and formatting.py (durations, times, sizes)
 ```
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the
