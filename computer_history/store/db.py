@@ -12,6 +12,7 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from importlib import resources
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from computer_history.store.paths import resolve_db_path
@@ -32,21 +33,37 @@ class Migration(NamedTuple):
     sql: str
 
 
-def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
-    """Open the database (creating it if needed) and bring its schema up to date.
+class NewerSchema(RuntimeError):
+    """The database was migrated by newer code than this."""
 
-    The path comes from the --db-path flag, then $COMPUTER_HISTORY_DB, then the
-    default location.
+    def __init__(self, version: int, supported: int) -> None:
+        super().__init__(
+            f"database schema version {version} is newer than this code supports ({supported})"
+        )
+        self.version = version
+        self.supported = supported
+
+
+class WalUnavailable(RuntimeError):
+    """SQLite would not switch the database to WAL journaling."""
+
+
+def connect(
+    db_path: str | os.PathLike[str] | None = None, *, create: bool = True
+) -> sqlite3.Connection:
+    """Open the database for writing and bring its schema up to date.
+
+    Creates the file first unless create is False.
     """
     path = resolve_db_path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_SECONDS, isolation_level=None)
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    conn = _open(path, "rwc" if create else "rw")
     try:
-        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
         if mode != "wal":
-            raise RuntimeError(f"could not enable WAL journaling on {path} (got {mode!r})")
+            raise WalUnavailable(f"could not enable WAL journaling on {path} (got {mode!r})")
         migrate(conn)
     except BaseException:
         conn.close()
@@ -56,9 +73,12 @@ def connect(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection
 
 def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
     """Open an existing database for reading only. Fails if the file does not exist."""
-    path = resolve_db_path(db_path).resolve()
+    return _open(resolve_db_path(db_path), "ro")
+
+
+def _open(path: Path, mode: str) -> sqlite3.Connection:
     conn = sqlite3.connect(
-        path.as_uri() + "?mode=ro",
+        f"{path.resolve().as_uri()}?mode={mode}",
         uri=True,
         timeout=BUSY_TIMEOUT_SECONDS,
         isolation_level=None,
@@ -85,6 +105,11 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
 
 def schema_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
+
+
+def supported_version() -> int:
+    """The schema version this code migrates databases to."""
+    return load_migrations()[-1].version
 
 
 def load_migrations(directory: Traversable | None = None) -> list[Migration]:
@@ -129,9 +154,7 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = N
     latest = migrations[-1].version if migrations else 0
     current = schema_version(conn)
     if current > latest:
-        raise RuntimeError(
-            f"database schema version {current} is newer than this code supports ({latest})"
-        )
+        raise NewerSchema(current, latest)
     for migration in migrations:
         if migration.version <= current:
             continue

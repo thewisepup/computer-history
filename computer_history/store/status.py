@@ -14,7 +14,8 @@ class SourceSummary(NamedTuple):
     observation_count: int
     earliest_started_at: datetime | None
     latest_ended_at: datetime | None
-    cursor: datetime | None
+    settled_until: datetime | None
+    advanced_at: datetime | None
 
 
 class Gap(NamedTuple):
@@ -32,19 +33,19 @@ WITH obs AS (
   FROM observations
   GROUP BY source
 )
-SELECT s.source, COALESCE(obs.n, 0), obs.earliest, obs.latest, c.last_seen
-FROM (SELECT source FROM obs UNION SELECT source FROM ingest_cursors) AS s
+SELECT s.source, COALESCE(obs.n, 0), obs.earliest, obs.latest, p.settled_until, p.advanced_at
+FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s
 LEFT JOIN obs USING (source)
-LEFT JOIN ingest_cursors AS c USING (source)
+LEFT JOIN ingest_progress AS p USING (source)
 ORDER BY s.source
 """
 
 
 def source_summary(conn: sqlite3.Connection) -> list[SourceSummary]:
-    """One row per source that has observations or a cursor, sorted by source."""
+    """One row per source that has observations or ingest progress, sorted by source."""
     return [
-        SourceSummary(source, count, _maybe_utc(earliest), _maybe_utc(latest), _maybe_utc(cursor))
-        for source, count, earliest, latest, cursor in conn.execute(_SOURCE_SUMMARY)
+        SourceSummary(source, count, *(_maybe_utc(value) for value in times))
+        for source, count, *times in conn.execute(_SOURCE_SUMMARY)
     ]
 
 

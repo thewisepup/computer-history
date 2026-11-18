@@ -10,16 +10,15 @@ from typing import Any
 
 import pytest
 from fake_aw import FakeAW, at
+from projectors import AW
 
 from computer_history import cli
-from computer_history.cli import db as cli_db
-from computer_history.cli import rebuild as cli_rebuild
 from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
-    ingest_all,
-    project_signal,
+    ActivityWatch,
+    poll,
 )
 from computer_history.store import (
     RebuildAborted,
@@ -58,7 +57,7 @@ def fixture_aw() -> FakeAW:
 
 @pytest.fixture
 def ingested(conn: sqlite3.Connection) -> sqlite3.Connection:
-    ingest_all(conn, fixture_aw(), now=at(30))
+    poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
     return conn
 
 
@@ -73,7 +72,7 @@ def big(conn: sqlite3.Connection) -> sqlite3.Connection:
         fake.add(WINDOW_BUCKET, i, 30, {"app": f"App {i % 7}", "title": f"t{i}"})
     fake.add(AFK_BUCKET, 0, 60, {"status": "not-afk"})
     fake.add(AFK_BUCKET, 1, 60, {"status": "afk"})
-    ingest_all(conn, fake, now=at(BIG + 10))
+    poll(conn, [ActivityWatch(fake)], now=at(BIG + 10))
     assert len(signal_rows(conn)) == BIG
     return conn
 
@@ -115,9 +114,7 @@ def test_rebuild_reproduces_ingested_signals_row_for_row(
     signals, observations = signal_rows(conn), observation_rows(conn)
     assert len(signals) == 7 and len(observations) == 9
 
-    result = rebuild_signals(
-        conn, project_signal, batch_size=batch_size
-    )
+    result = rebuild_signals(conn, AW, batch_size=batch_size)
 
     assert signal_rows(conn) == signals
     assert observation_rows(conn) == observations  # raw layer untouched
@@ -143,12 +140,12 @@ def test_rebuild_repairs_stale_and_missing_signals(ingested: sqlite3.Connection)
             "SELECT id, source, started_at, ended_at FROM observations WHERE id = ?",
             (afk_id,),
         )
-    rebuild_signals(conn, project_signal)
+    rebuild_signals(conn, AW)
     assert signal_rows(conn) == expected
 
 
 def test_rebuild_of_an_empty_store(conn: sqlite3.Connection) -> None:
-    result = rebuild_signals(conn, project_signal)
+    result = rebuild_signals(conn, AW)
     assert (result.signals_before, result.signals_after, result.skipped) == (0, 0, 0)
 
 
@@ -157,13 +154,13 @@ def test_rebuild_refuses_to_run_inside_a_transaction(ingested: sqlite3.Connectio
     before = signal_rows(conn)
     with transaction(conn):
         with pytest.raises(RuntimeError, match="own transaction"):
-            rebuild_signals(conn, project_signal)
+            rebuild_signals(conn, AW)
     assert signal_rows(conn) == before
 
 
 def test_rebuild_rejects_a_nonpositive_batch_size(conn: sqlite3.Connection) -> None:
     with pytest.raises(ValueError, match="batch_size"):
-        rebuild_signals(conn, project_signal, batch_size=0)
+        rebuild_signals(conn, AW, batch_size=0)
 
 
 # --- atomicity -------------------------------------------------------------------
@@ -181,7 +178,7 @@ def test_database_failure_mid_rebuild_rolls_back_everything(
         f"WHEN NEW.observation_id = {last} BEGIN SELECT RAISE(ABORT, 'injected'); END"
     )
     with pytest.raises(sqlite3.DatabaseError, match="injected"):
-        rebuild_signals(conn, project_signal, batch_size=1)
+        rebuild_signals(conn, AW, batch_size=1)
     conn.execute("DROP TRIGGER fail_last")
 
     assert not conn.in_transaction
@@ -199,7 +196,7 @@ def test_interrupt_mid_rebuild_rolls_back_everything(ingested: sqlite3.Connectio
         calls += 1
         if calls == 6:
             raise KeyboardInterrupt  # not a malformed payload: never skipped
-        return project_signal(source, payload)
+        return AW(source, payload)
 
     with pytest.raises(KeyboardInterrupt):
         rebuild_signals(conn, interrupted, batch_size=1)
@@ -241,7 +238,7 @@ def test_malformed_payload_is_skipped_counted_and_logged(
     corrupt_payload(conn, bad)
 
     with caplog.at_level(logging.WARNING):
-        result = rebuild_signals(conn, project_signal)
+        result = rebuild_signals(conn, AW)
 
     assert result.skipped == 1 and result.failed_ids == (bad,)
     assert result.signals_after == len(expected) - 1
@@ -256,7 +253,7 @@ def test_malformed_afk_payload_is_not_a_failure(ingested: sqlite3.Connection) ->
         "SELECT id FROM observations WHERE source = ? ORDER BY id LIMIT 1", (AFK_SOURCE,)
     ).fetchone()[0]
     corrupt_payload(conn, afk_id)  # AFK has no content to project, so it is never parsed
-    result = rebuild_signals(conn, project_signal)
+    result = rebuild_signals(conn, AW)
     assert result.skipped == 0
     assert signal_rows(conn) == expected
 
@@ -272,7 +269,7 @@ def test_only_the_first_failures_are_logged_individually(
     for obs_id in bad:
         corrupt_payload(conn, obs_id)
     with caplog.at_level(logging.WARNING):
-        result = rebuild_signals(conn, project_signal)
+        result = rebuild_signals(conn, AW)
     assert result.skipped == 3  # 3 of 7 content observations: under half
     assert result.failed_ids == (min(bad),)
     messages = [r.getMessage() for r in caplog.records]
@@ -288,7 +285,7 @@ def test_more_than_half_failing_aborts_and_rolls_back(ingested: sqlite3.Connecti
         corrupt_payload(conn, obs_id)
 
     with pytest.raises(RebuildAborted) as exc:
-        rebuild_signals(conn, project_signal)
+        rebuild_signals(conn, AW)
 
     assert exc.value.failed == 4
     assert exc.value.failed_ids == tuple(ids[:4])
@@ -349,7 +346,7 @@ def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
     conn = big
 
     def drops_odd_titles(source: str, payload: str):
-        signal = project_signal(source, payload)
+        signal = AW(source, payload)
         if signal is not None and int(signal.title[1:]) % 2:
             return None
         return signal
@@ -380,7 +377,7 @@ def test_cli_rebuild_signals_reports_counts(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         expected = signal_rows(conn)
     finally:
         conn.close()
@@ -405,7 +402,7 @@ def test_cli_rebuild_signals_reports_skipped_rows(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         bad = observation_id(conn, WEB_SOURCE, "HN")
         corrupt_payload(conn, bad)
     finally:
@@ -424,7 +421,7 @@ def test_cli_rebuild_signals_abort_exits_nonzero(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         ids = [row[0] for row in signal_rows(conn)]
         for obs_id in ids:
             corrupt_payload(conn, obs_id)
@@ -468,7 +465,7 @@ def test_cli_rebuild_signals_says_how_many_ids_it_left_out(
     monkeypatch.setattr(signals_module, "MAX_LOGGED_FAILURES", 1)
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         bad = sorted(observation_id(conn, WEB_SOURCE, t) for t in ("GitHub", "HN"))
         for obs_id in bad:
             corrupt_payload(conn, obs_id)
@@ -485,38 +482,25 @@ def test_cli_rebuild_signals_allow_shrink(
     capsys: pytest.CaptureFixture[str], db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(signals_module, "SHRINK_CHECK_MIN_SIGNALS", 1)
-    monkeypatch.setattr(cli_rebuild, "project_signal", lambda source, payload: None)
+    fake = FakeAW({AFK_BUCKET: "afkstatus"})
+    fake.add(AFK_BUCKET, 0, 60, {"status": "not-afk"})
+    fake.add(AFK_BUCKET, 1, 60, {"status": "afk"})
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fake)], now=at(30))
+        with transaction(conn):  # signals an older mapping gave, which the current one drops
+            conn.execute(
+                "INSERT INTO signals (observation_id, source, started_at, ended_at) "
+                "SELECT id, source, started_at, ended_at FROM observations"
+            )
     finally:
         conn.close()
 
     code, _, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
     assert code == 1
-    assert "shrink from 7 to 0 rows" in err and "first failing" not in err
+    assert "shrink from 2 to 0 rows" in err and "first failing" not in err
     assert "--allow-shrink" in err
 
     code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals", "--allow-shrink")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
-
-
-@pytest.mark.parametrize("command", ["rebuild-signals", "ingest"])
-def test_cli_reports_a_locked_db_at_open_without_a_traceback(
-    command: str,
-    capsys: pytest.CaptureFixture[str],
-    db_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    connect(db_path).close()
-
-    def locked(*args: Any, **kwargs: Any) -> None:
-        raise sqlite3.OperationalError("database is locked")  # e.g. while migrating
-
-    monkeypatch.setattr(cli_db, "connect", locked)
-    code, out, err = run(capsys, "--db-path", str(db_path), command)
-    assert code == 1
-    assert out == ""
-    assert f"cannot open {db_path}: database is locked" in err
-    assert f"Is another process writing to {db_path}?" in err

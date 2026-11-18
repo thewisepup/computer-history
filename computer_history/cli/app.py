@@ -9,10 +9,10 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from computer_history.cli.backfill import cmd_backfill
-from computer_history.cli.ingest import POLL_INTERVAL_SECONDS, cmd_ingest
+from computer_history.cli.ingest import cmd_ingest
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
-from computer_history.sources import DEFAULT_AW_URL
+from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events into the store.",
@@ -74,8 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--end",
                 type=when_arg,
-                help="stop at this ISO date/datetime (default: the source's ingest cursor,"
-                " or now; never later than those)",
+                help="stop at this ISO date/datetime (default: the time the source's ingest"
+                " is settled until, or now; never later than those)",
             )
             sub.add_argument(
                 "--dry-run",

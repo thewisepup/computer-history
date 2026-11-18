@@ -1,23 +1,24 @@
-"""Pull settled ActivityWatch events into the store.
+"""The ActivityWatch source adapter: settled window, AFK and web events.
 
     ActivityWatch HTTP API
           |
-      client.py      the HTTP calls, nothing else
+      client.py      the HTTP calls, nothing else (AWError: source unavailable)
           |
-      discovery.py   buckets -> sources (aw-window, aw-afk, aw-web)
+      discovery.py   buckets -> streams (aw-window, aw-afk, aw-web)
           |
-      pull.py        fetch one bucket's events, keep the settled ones
-          |
-      normalize.py   raw payload -> signal (app, domain, url, title)
-          |
-      ingest.py      the orchestrator: batch + cursor, one atomic write
-          |
-      store/ (SQLite)
+      pull.py        fetch each bucket's events, keep the settled ones as raw observations
+          |          (a source's frontier is the earliest bucket frontier)
+      adapter.py     ActivityWatch: the adapter the ingest runner drives
+                     position.py: the frontier is the position, rewound on resume
+                     history.py: where a stream's history begins, for backfill
+                     normalize.py: its projectors, stored payload -> signal
+                     (app, domain, url, title)
 
 An event that may still be growing is held back for a later poll: delayed,
-never lost. Every event starting before a source's cursor is stored.
+never lost. Every event starting before a stream's settled-until time is stored.
 """
 
+from computer_history.sources.activitywatch.adapter import ActivityWatch
 from computer_history.sources.activitywatch.client import (
     DEFAULT_AW_URL,
     AWApi,
@@ -31,17 +32,18 @@ from computer_history.sources.activitywatch.discovery import (
     AWSource,
     discover_sources,
 )
-from computer_history.sources.activitywatch.ingest import (
-    CURSOR_OVERLAP_SECONDS,
-    IngestOutcome,
-    ingest_all,
-    ingest_source,
+from computer_history.sources.activitywatch.normalize import PROJECTORS, project_signal
+from computer_history.sources.activitywatch.position import (
+    RESUME_OVERLAP_SECONDS,
+    position_at,
+    resume_start,
 )
-from computer_history.sources.activitywatch.normalize import project_signal
 from computer_history.sources.activitywatch.pull import (
     STABILITY_MARGIN_SECONDS,
     BucketPull,
+    SourcePull,
     pull_bucket,
+    pull_source,
 )
 from computer_history.text import (
     MAX_TEXT_LENGTH,
@@ -53,10 +55,11 @@ from computer_history.text import (
 
 __all__ = [
     "AFK_SOURCE",
-    "CURSOR_OVERLAP_SECONDS",
     "DEFAULT_AW_URL",
     "MAX_TEXT_LENGTH",
     "MAX_URL_LENGTH",
+    "PROJECTORS",
+    "RESUME_OVERLAP_SECONDS",
     "STABILITY_MARGIN_SECONDS",
     "WEB_SOURCE",
     "WINDOW_SOURCE",
@@ -64,14 +67,16 @@ __all__ = [
     "AWClient",
     "AWError",
     "AWSource",
+    "ActivityWatch",
     "BucketPull",
-    "IngestOutcome",
+    "SourcePull",
     "clean_text",
     "clean_url",
     "discover_sources",
     "extract_domain",
-    "ingest_all",
-    "ingest_source",
+    "position_at",
     "project_signal",
     "pull_bucket",
+    "pull_source",
+    "resume_start",
 ]

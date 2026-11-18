@@ -1,0 +1,37 @@
+# Wayfinder map: Deepen ingest modules before M2
+
+Label: wayfinder:map
+
+## Destination
+
+The four deepening candidates from the 2026-11-18 architecture review are
+implemented, tested and reviewed, so M2 (AX-text JSONL spool, `(file, offset)`
+cursor) ships as one new source adapter plus one projector, with no edits to
+orchestration, cursor rules, status, or the CLI.
+
+## Notes
+
+- **Execution override:** each ticket is an incremental, verifiable build
+  step; resolving it means code written, tests green, both reviews done.
+- **Review requirement:** every ticket gets two separate review passes by
+  fresh contexts: `/code-review medium` (correctness) and the
+  `standards-reviewer` agent. Fix round goes back to the implementer.
+- Tickets run strictly in order (they share `cli/`, `sources/`, `store/`).
+- One commit per resolved ticket; plain subject, no ticket prefix.
+- Settled decisions (Brandon, 2026-11-18): implement candidates 1–4 of the
+  review (runner, progress, projection, store open). Candidates 5 (datetimes
+  only across the store interface) and 6 (per-source coverage) are out of
+  scope. Ticket order chosen for dependency: store open → progress → runner
+  → projection.
+- Rules every ticket keeps: AGENTS.md "Rules every change keeps",
+  CODING_STANDARDS.md (near-zero comments, layering, CLI holds no business
+  logic), DESIGN.md package layout + `computer_history/cli/README.md` updated
+  in the same commit as any layout or command-output change.
+
+## Decisions so far
+
+<!-- one line per closed ticket: [title](issues/NN-slug.md): gist -->
+- [01 — Open the store by purpose](issues/01-store-open.md): `store.open_store(path, Purpose.READ|WRITE|WRITE_EXISTING) -> OpenedStore` reports READY/MISSING/OUTDATED/NEWER/BUSY/UNREADABLE; no command reads a mismatched schema; newer-schema traceback fixed; CLI only maps states to messages (`cli/db.py`); backfill planning moved to `sources.plan_all_backfills`.
+- [02 — Opaque ingest progress](issues/02-ingest-progress.md): `ingest_progress(source, position, settled_until, advanced_at)` via migration 003; store never decodes `position`; progress moves only inside `insert_observations(progress=ProgressUpdate(...))` (advance or `only_if_none`); AW owns encoding + 600s rewind (`activitywatch/position.py`); backfill's first-time progress rides its last chunk's batch; status/planning use `settled_until`.
+- [03 — Ingest runner + source adapter seam](issues/03-ingest-runner.md): `sources/contract.py` (`Source`: streams + pull_after; `HistorySource` adds backfill ops; `Pull`; `SourceUnavailable`); `ActivityWatch` adapter; `sources/runner.py` poll/watch, `sources/backfill.py` plan + run, shared `sources/commit.py` (commit_pull, failure_of); CLI is parse/call/format; `ingest_source`/`ingest_all`/`run_cycle` gone; fake source in tests.
+- [04 — Sources own signal projection](issues/04-projection.md): adapters declare per-stream `projectors`; `sources/projection.py` routes (`projector_for`, `reproject_signals`, `KNOWN_SOURCES`); the store projects each newly inserted row from its stored payload, so rebuild reproduces ingest exactly; unclaimed sources fail loudly (`UnclaimedSource`, checked up front at rebuild, `FailureKind.ADAPTER` at ingest); `store/signals.py` owns the signal row shape.

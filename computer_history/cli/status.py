@@ -6,15 +6,16 @@ import argparse
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import db_size, duration, lag, when
-from computer_history.sources import AWClient, AWError, discover_sources
+from computer_history.sources import ActivityWatch, AWClient, SourceUnavailable
 from computer_history.store import (
+    Purpose,
     SourceSummary,
-    connect_readonly,
+    StoreState,
     find_gaps,
-    load_migrations,
+    open_store,
     resolve_db_path,
-    schema_version,
     source_summary,
     table_counts,
 )
@@ -28,12 +29,12 @@ STATUS_AW_TIMEOUT_SECONDS = 5
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     now = datetime.now(UTC)
-    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    aw = ActivityWatch(AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS))
     try:
-        sources = discover_sources(client)
+        streams = aw.streams()
         aw_error = None
-    except AWError as exc:
-        sources, aw_error = [], str(exc)
+    except SourceUnavailable as exc:
+        streams, aw_error = [], str(exc)
 
     if aw_error is not None:
         print(f"!! ActivityWatch is UNREACHABLE at {args.aw_url}: nothing new can be ingested.")
@@ -41,39 +42,32 @@ def cmd_status(args: argparse.Namespace) -> int:
         print()
         aw_line = f"ActivityWatch: no  ({args.aw_url})"
     else:
-        names = ", ".join(s.name for s in sources) or "none of window/AFK/web"
+        names = ", ".join(streams) or "none of window/AFK/web"
         aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
 
-    if not db_path.exists():
+    store = open_store(db_path, Purpose.READ)
+    if store.state is StoreState.MISSING:
         print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
         print(aw_line)
         return 0
-    conn = connect_readonly(db_path)
-    try:
-        version, expected = schema_version(conn), load_migrations()[-1].version
-        print(f"Database:      {db_path} ({db_size(db_path)}, schema v{version})")
+    if store.state in (StoreState.BUSY, StoreState.UNREADABLE):
         print(aw_line)
-        if version < expected:
-            print(
-                f"  note: this CLI uses schema v{expected}; `computer-history ingest` will"
-                " migrate the database. No store details until then."
-            )
-            return 0
-        if version > expected:
-            print(
-                f"  note: schema v{version} is newer than this CLI understands"
-                f" (v{expected}); upgrade computer-history."
-            )
-            return 0
-        summaries = source_summary(conn)
+        return store_unavailable(store)
+    print(f"Database:      {db_path} ({db_size(db_path)}, schema v{store.version})")
+    print(aw_line)
+    if store.state is StoreState.OUTDATED:
+        print(f"  note: {outdated_note(store)}. No store details until then.")
+        return 0
+    if store.conn is None:
+        return store_unavailable(store)
+    with store:
+        summaries = source_summary(store.conn)
         print()
         _print_sources(summaries, now)
         print()
-        _print_gaps(conn, summaries)
+        _print_gaps(store.conn, summaries)
         print()
-        _print_counts(table_counts(conn))
-    finally:
-        conn.close()
+        _print_counts(table_counts(store.conn))
     return 0
 
 
@@ -84,28 +78,35 @@ def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
         return
     width = max(len(s.source) for s in summaries)
     for s in summaries:
-        freshness = "never ingested" if s.cursor is None else lag(now - s.cursor)
         print(
             f"  {s.source:<{width}}  {s.observation_count:>8,} observations"
             f"  latest end {when(s.latest_ended_at)}"
-            f"  cursor {when(s.cursor)} ({freshness})"
+            f"  settled until {when(s.settled_until)} ({_freshness(s, now)})"
         )
     print(
-        "  (the cursor waits at the start of the current, still-growing window/tab/AFK"
-        " event, so lag includes that event's length)"
+        "  (a source is settled only up to the start of its current, still-growing"
+        " window/tab/AFK event, so lag includes that event's length)"
     )
+
+
+def _freshness(summary: SourceSummary, now: datetime) -> str:
+    if summary.advanced_at is None:
+        return "never ingested"
+    if summary.settled_until is None:
+        return f"progress moved {duration((now - summary.advanced_at).total_seconds())} ago"
+    return lag(now - summary.settled_until)
 
 
 def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> None:
     print(
         f"Coverage gaps (unobserved: nothing recorded) of {duration(MIN_GAP_SECONDS)} or"
-        f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's cursor"
-        " (or its latest observation, if it has no cursor):"
+        f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's"
+        " settled-until time (or its latest observation, if it has none):"
     )
     if not summaries:
         print("  nothing to check yet")
     for s in summaries:
-        end = s.cursor or s.latest_ended_at
+        end = s.settled_until or s.latest_ended_at
         first = s.earliest_started_at
         if end is None or first is None:
             print(f"  {s.source}: no observations yet")

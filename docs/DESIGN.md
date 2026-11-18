@@ -71,11 +71,21 @@ automation suggestions.
 ```
 computer_history/
   store/        # SQLite, one module per concern: db (connections + migrations),
-                # observations (ingest writes), signals (rebuild), cursors,
-                # status (read queries), timefmt, paths
-  sources/      # one adapter per source: activitywatch/, ax_text, screenshots
-                # activitywatch/: client, discovery, pull, normalize,
-                # ingest (the orchestrator)
+                # opening (open for a purpose, report the database's state),
+                # observations (ingest writes, projecting each new row),
+                # signals (the signal row shape and writes, rebuild),
+                # progress (per-source ingest progress), status (read
+                # queries), timefmt, paths
+  sources/      # contract (the adapter Protocols), runner (poll + watch),
+                # backfill (plan + run in chunks), projection (routes each
+                # observation to its adapter's projector, for ingest and
+                # rebuild-signals), commit (the one write step, a pull, its
+                # signals and its progress, and failure classification, shared
+                # by poll and backfill), then one adapter per source:
+                # activitywatch/, ax_text, screenshots
+                # activitywatch/: client, discovery, pull, normalize (its
+                # projectors), adapter (ActivityWatch), position (its progress
+                # encoding), history (where a stream's history begins, for backfill)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -146,7 +156,10 @@ signals (
 ```
 
 - 1:1 with observations; **PK = observation id** (stable across rebuilds).
-- Written in the same transaction as the observation.
+- Written in the same transaction as the observation, projected from its
+  stored payload by the projector of the adapter that claims its source (§4).
+  Ingest and rebuild route through the same `sources/projection.py`, so a
+  rebuild reproduces ingest's rows exactly.
 - Disposable: `rebuild-signals` wipes and re-projects from raw. No per-row
   versions; one meta-table row records the mapping code version.
 - `extras` is write-only: display, never filter/aggregate. A query needing a
@@ -262,9 +275,22 @@ suggestions (
 ### 3.5 Bookkeeping
 
 ```sql
-ingest_cursors (source, last_seen)      -- per-source ingestion frontier
+ingest_progress (
+  source        TEXT PRIMARY KEY,
+  position      TEXT NOT NULL,     -- opaque to the store; the source encodes it
+  settled_until TEXT,              -- UTC; the source's data is complete up to here
+  advanced_at   TEXT NOT NULL      -- when progress last moved
+)
 classification_runs (id, started_at, finished_at, range, model, status, error)
 ```
+
+- **Progress is opaque and moves only with a batch.** `position` is whatever
+  the source needs to resume (ActivityWatch: a UTC timestamp; the AX-text
+  spool: file + offset). Only `insert_observations` writes it, in the same
+  transaction as the batch, either advancing it (incremental ingest) or
+  setting it only if the source has none (backfill's last chunk). Status's
+  freshness and gap window and backfill planning read `settled_until`;
+  nothing outside the source's adapter decodes `position`.
 
 - Two separate frontiers on purpose: ingestion and classified time move
   independently; a blocks-derived watermark would re-classify fully-AFK
@@ -273,9 +299,52 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 
 ## 4. Ingestion
 
-Adapter contract: _pull since cursor → write `observations` + `signals` in
-one transaction → advance cursor._ Idempotent via `(source, source_id)`.
+Adapter contract: _the adapter pulls raw observations from the stored
+position and supplies a projector per stream; the runner writes
+`observations` + their `signals` + the new progress in one transaction._
+Idempotent via `(source, source_id)`.
 Only adapters know payload dialects; everything downstream reads `signals`.
+
+- An adapter (`sources/contract.py`) is a `Source`: `streams()` names the
+  streams it feeds (ActivityWatch: `aw-window`, `aw-afk`, `aw-web`; the
+  AX-text spool: `ax-text`), and `pull_after(stream, position, now=)` returns
+  a `Pull`: settled observations, a held-back count, the new `position`
+  (`None` leaves progress as it is) and `settled_until`. A *stream* is what
+  the store calls a source. Failures raise `SourceUnavailable` (`AWError` is
+  one).
+- Every adapter names `projectors`: for each stream it can ever feed (not only
+  the ones it feeds now), a function from a stored payload to its `Signal`, or
+  `None` for no signal (AFK). An adapter keeps it on the class, so
+  `rebuild-signals` can use it without connecting to the source.
+  `projector_for(sources)` (`sources/projection.py`) routes an observation to
+  the projector of the adapter claiming its stream; two adapters claiming one
+  stream differently are refused. The store calls that projector on each
+  newly inserted row (re-read duplicates are never projected) and on every
+  row at rebuild, in observation-id order: one seam, the same input.
+- `reproject_signals(conn)` rebuilds through the known adapters
+  (`KNOWN_SOURCES`). An observation whose source no adapter claims raises the
+  store's `UnclaimedSource`, and the commit step refuses a pull holding an
+  observation from another stream (`StrayObservation`). At ingest either one
+  rolls back that stream's batch and is reported as an `ADAPTER` failure;
+  other streams and sources go on, and `--watch` keeps polling. A rebuild
+  checks every stored source against the claims before projecting anything
+  and aborts with signals unchanged; it is never counted as a malformed
+  payload.
+- A `HistorySource` also supports backfill: `parts`, `history_start`,
+  `history_before` (planning facts) and `pull_range(stream, start, end, now=)`.
+  Sources with nothing to backfill (the spool) implement only `Source`.
+- The runner is source-agnostic. `poll(conn, sources)` (`sources/runner.py`)
+  reads every stream of every source, one commit each; an unavailable source
+  skips the rest of its streams and others continue; a busy database ends
+  the cycle; other database errors propagate; two sources feeding one stream
+  are refused. `watch` repeats it every 60s (injected clock for `now`,
+  monotonic timer and sleep for pacing). `run_backfill(conn, source, plans)`
+  (`sources/backfill.py`, beside the planning)
+  commits chunks oldest first, reports incomplete chunks, and sets a stream's
+  first progress in its last chunk's commit (from the first incomplete
+  chunk's pull, else the last one), only if the plan covers all its history;
+  any failure or Ctrl-C stops it and is reported with what committed.
+- The CLI constructs the clients, adapters and connection and passes them in.
 
 ### 4.1 ActivityWatch adapter
 
@@ -301,7 +370,7 @@ observe, write spool files, repeat; all intelligence stays in Python.
   disk. Vision OCR **in the agent**; only text crosses to Python; screenshots
   never leave the Mac. Est. ~75–150 MB/day post-dedup.
 - Spool handoff: hourly-rotated JSONL, one capture per line (UUID =
-  `source_id`); backend tails with a (file, offset) cursor. The filesystem is
+  `source_id`); backend tails with a (file, offset) position. The filesystem is
   the queue; backend downtime just accumulates files.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement);
   periodic macOS Screen Recording re-confirmation (surface as coverage
@@ -456,8 +525,8 @@ M6 replaces it.
 - [ ] Content-role text only, ~10 KB cap, hash-skip unchanged text,
       `kAXSecureTextField` always skipped.
 - [ ] Per-call timeout verified: a hung app costs one capture, not the agent.
-- [ ] Hourly-rotated JSONL spool; backend adapter tails via (file, offset)
-      cursor into observations + signals.
+- [ ] Hourly-rotated JSONL spool; backend adapter tails via a (file, offset)
+      ingest position into observations + signals.
 - [ ] Kill the backend for a day → spool accumulates, catch-up ingests all.
 
 ### M3 — Capture agent: screenshots + OCR
@@ -474,7 +543,7 @@ M6 replaces it.
 
 - [ ] LaunchAgents for backend and capture agent; both start at login.
 - [ ] Reboot test: recording resumes with no manual steps.
-- [ ] Sleep test: cursors advance across wake; the gap is ingested, and real
+- [ ] Sleep test: ingest progress advances across wake; the gap is ingested, and real
       coverage gaps are reported as warnings, never guessed.
 - [ ] From here, data accumulates unattended (the eval corpus for M5).
 

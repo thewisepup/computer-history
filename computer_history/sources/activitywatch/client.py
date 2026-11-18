@@ -9,13 +9,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from computer_history.sources.contract import SourceUnavailable
 from computer_history.store import to_utc
 
 DEFAULT_AW_URL = "http://127.0.0.1:5600/api/0"
 REQUEST_TIMEOUT_SECONDS = 30
 
 
-class AWError(RuntimeError):
+class AWError(SourceUnavailable):
     """ActivityWatch was unreachable or answered with something unusable."""
 
 

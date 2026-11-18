@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from computer_history.store import DB_ENV_VAR, connect
+from computer_history.store import db as store_db
 
 
 @pytest.fixture(autouse=True)
@@ -21,3 +22,9 @@ def conn(db_path: Path):
     connection = connect(db_path)
     yield connection
     connection.close()
+
+
+@pytest.fixture
+def quick_busy_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give up on a locked database after 50ms instead of the real timeout."""
+    monkeypatch.setattr(store_db, "BUSY_TIMEOUT_SECONDS", 0.05)

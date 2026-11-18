@@ -1,12 +1,15 @@
-"""Turn one raw event payload into a signal."""
+"""Turn one raw event payload into a signal: the adapter's projectors."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from functools import partial
+from types import MappingProxyType
 from typing import Any
 
 from computer_history.sources.activitywatch.discovery import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources.contract import StreamProjector
 from computer_history.store import Signal
 from computer_history.text import clean_text, clean_url, extract_domain
 
@@ -33,6 +36,11 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
     return Signal(
         url=clean_url(url), domain=extract_domain(url), title=title, extras=_extras(data)
     )
+
+
+PROJECTORS: Mapping[str, StreamProjector] = MappingProxyType(
+    {source: partial(project_signal, source) for source in (WINDOW_SOURCE, AFK_SOURCE, WEB_SOURCE)}
+)
 
 
 def _take_str(data: dict[str, Any], key: str) -> str | None:

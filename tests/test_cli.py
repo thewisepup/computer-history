@@ -10,17 +10,31 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
+from projectors import no_signal
 
 import computer_history
 from computer_history import cli
+from computer_history.cli import backfill as cli_backfill
 from computer_history.cli import formatting
 from computer_history.cli import ingest as cli_ingest
 from computer_history.cli import status as cli_status
-from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, AWError
+from computer_history.sources import (
+    AFK_SOURCE,
+    POLL_INTERVAL_SECONDS,
+    WINDOW_SOURCE,
+    ActivityWatch,
+    AWError,
+    FailureKind,
+    StreamFailure,
+    poll,
+    watch,
+)
 from computer_history.store import (
     DB_ENV_VAR,
     Observation,
+    ProgressUpdate,
     connect,
     insert_observations,
     table_counts,
@@ -34,8 +48,8 @@ UNREACHABLE = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: [Errno 
 def seeded_aw(now: datetime) -> FakeAW:
     """An hour of history ending ~now, with a 30-minute window-watcher gap.
 
-    aw-window: 0-10m, (gap), 40m-59.5m (still growing: held back, cursor = 40m).
-    aw-afk:    0-30m, 30m-59.5m (held back, cursor = 30m). No gaps.
+    aw-window: 0-10m, (gap), 40m-59.5m (still growing: held back, settled until 40m).
+    aw-afk:    0-30m, 30m-59.5m (held back, settled until 30m). No gaps.
     """
     fake = FakeAW(
         {WINDOW_BUCKET: "currentwindow", AFK_BUCKET: "afkstatus"},
@@ -116,7 +130,7 @@ def test_ingest_writes_rows_and_prints_counts(capsys, use_aw, db_path: Path) -> 
     counts = counts_in(db_path)
     assert counts["observations"] == 2
     assert counts["signals"] == 1  # AFK has no signal
-    assert counts["ingest_cursors"] == 2
+    assert counts["ingest_progress"] == 2
 
 
 def test_ingest_honors_db_env_var_and_flag_after_subcommand(
@@ -150,31 +164,35 @@ def test_ingest_with_aw_down_fails_cleanly(capsys, use_aw, db_path: Path) -> Non
 # --- watch cycle -------------------------------------------------------------------
 
 
-def test_run_cycle_returns_outcomes(conn: sqlite3.Connection) -> None:
+def poll_aw(conn: sqlite3.Connection, fake: FakeAW, *, now: datetime | None = None):
+    return poll(conn, [ActivityWatch(fake)], now=now)
+
+
+def test_poll_returns_outcomes(conn: sqlite3.Connection) -> None:
     now = datetime.now(UTC)
-    summary = cli.run_cycle(conn, seeded_aw(now), now=now)
+    summary = poll_aw(conn, seeded_aw(now), now=now)
     assert summary.ok
     assert summary.at == now
     assert set(summary.outcomes) == {AFK_SOURCE, WINDOW_SOURCE}
     assert summary.outcomes[WINDOW_SOURCE].inserted == 1
-    assert "aw-window +1 (0 dup, 1 held)" in summary.line()
+    assert "aw-window +1 (0 dup, 1 held)" in cli_ingest.cycle_line(summary)
 
 
-def test_run_cycle_swallows_aw_errors(conn: sqlite3.Connection) -> None:
-    summary = cli.run_cycle(conn, DownAW())
+def test_poll_reports_aw_errors(conn: sqlite3.Connection) -> None:
+    summary = poll_aw(conn, DownAW())
     assert not summary.ok
     assert summary.outcomes == {}
-    assert summary.error == UNREACHABLE
-    assert summary.line() == f"ingest failed: {UNREACHABLE}"
+    assert summary.failures == (StreamFailure(None, UNREACHABLE, FailureKind.SOURCE),)
+    assert cli_ingest.cycle_line(summary) == f"ingest failed: {UNREACHABLE}"
 
 
-def test_run_cycle_swallows_aw_errors_mid_pull(conn: sqlite3.Connection) -> None:
+def test_poll_reports_aw_errors_mid_pull(conn: sqlite3.Connection) -> None:
     class BrokenEvents(FakeAW):
         def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
             raise AWError("ActivityWatch HTTP 500 for /events")
 
-    summary = cli.run_cycle(conn, BrokenEvents({WINDOW_BUCKET: "currentwindow"}))
-    assert summary.error == "ActivityWatch HTTP 500 for /events"
+    summary = poll_aw(conn, BrokenEvents({WINDOW_BUCKET: "currentwindow"}))
+    assert [f.error for f in summary.failures] == ["ActivityWatch HTTP 500 for /events"]
     assert table_counts(conn)["observations"] == 0
 
 
@@ -203,10 +221,16 @@ def test_watch_survives_aw_outage_and_logs_each_cycle(
             raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt):
-        cli.watch(conn, flaky, sleep=fake_sleep)
+        watch(
+            conn,
+            [ActivityWatch(flaky)],
+            report=cli_ingest.log_cycle,
+            interval=POLL_INTERVAL_SECONDS,
+            sleep=fake_sleep,
+        )
 
     assert len(sleeps) == 2
-    assert all(0 <= s <= cli.POLL_INTERVAL_SECONDS for s in sleeps)
+    assert all(0 <= s <= POLL_INTERVAL_SECONDS for s in sleeps)
     failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
     assert failed.levelno == logging.WARNING
     assert UNREACHABLE in failed.getMessage()
@@ -232,12 +256,12 @@ def half_broken_aw(now: datetime) -> HalfBrokenAW:
     return fake
 
 
-def test_run_cycle_keeps_outcomes_committed_before_a_failure(conn: sqlite3.Connection) -> None:
-    summary = cli.run_cycle(conn, half_broken_aw(datetime.now(UTC)))
+def test_poll_keeps_outcomes_committed_before_a_failure(conn: sqlite3.Connection) -> None:
+    summary = poll_aw(conn, half_broken_aw(datetime.now(UTC)))
     assert not summary.ok
-    assert list(summary.outcomes) == [AFK_SOURCE]  # sources run in name order
-    assert summary.failed_source == WINDOW_SOURCE
-    assert summary.line() == (
+    assert list(summary.outcomes) == [AFK_SOURCE]  # streams run in name order
+    assert [f.stream for f in summary.failures] == [WINDOW_SOURCE]
+    assert cli_ingest.cycle_line(summary) == (
         "aw-afk +1 (0 dup, 1 held); "
         "then ingest failed on aw-window: ActivityWatch HTTP 500 for /events"
     )
@@ -254,63 +278,60 @@ def test_ingest_prints_partial_progress_then_fails(capsys, use_aw, db_path: Path
     assert counts_in(db_path)["observations"] == 1
 
 
-def test_run_cycle_survives_a_locked_database(db_path: Path) -> None:
+def test_poll_survives_a_locked_database(db_path: Path) -> None:
     conn, locker = connect(db_path), connect(db_path)
     try:
         conn.execute("PRAGMA busy_timeout = 50")  # don't wait the full 5s in a test
         locker.execute("BEGIN IMMEDIATE")  # e.g. a concurrent one-shot ingest
         aw = seeded_aw(datetime.now(UTC))
-        summary = cli.run_cycle(conn, aw)
-        assert not summary.ok
-        assert summary.database_error
-        assert summary.failed_source == AFK_SOURCE
-        assert summary.error == "database error: database is locked"
+        summary = poll_aw(conn, aw)
+        assert summary.failures == (
+            StreamFailure(AFK_SOURCE, "database is locked", FailureKind.DATABASE_BUSY),
+        )
+        assert cli_ingest.cycle_line(summary) == (
+            "ingest failed on aw-afk: database error: database is locked"
+        )
         locker.execute("ROLLBACK")
-        assert cli.run_cycle(conn, aw).ok  # next cycle recovers
+        assert poll_aw(conn, aw).ok  # next cycle recovers
         assert table_counts(conn)["observations"] == 2
     finally:
         conn.close()
         locker.close()
 
 
-def test_run_cycle_lets_hard_database_errors_propagate(
-    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def corrupt(*args: Any, **kwargs: Any) -> None:
-        raise sqlite3.DatabaseError("database disk image is malformed")
-
-    monkeypatch.setattr(cli_ingest, "ingest_source", corrupt)
-    with pytest.raises(sqlite3.DatabaseError, match="malformed"):
-        cli.run_cycle(conn, seeded_aw(datetime.now(UTC)))
-
-
 def test_watch_survives_a_locked_database_and_logs_the_real_delay(
-    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    db_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
-    real_ingest = cli_ingest.ingest_source
-    calls = 0
-
-    def locked_once(*args: Any, **kwargs: Any):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise sqlite3.OperationalError("database is locked")
-        return real_ingest(*args, **kwargs)
-
-    monkeypatch.setattr(cli_ingest, "ingest_source", locked_once)
-    # Each cycle reads the clock twice: the failed cycle took 15s, the next one 2s.
+    conn, locker = connect(db_path), connect(db_path)
+    conn.execute("PRAGMA busy_timeout = 50")
+    locker.execute("BEGIN IMMEDIATE")
+    # The failed cycle took 15s, the next one 2s.
+    start = datetime.now(UTC)
     ticks = iter([0.0, 15.0, 100.0, 102.0])
-    monkeypatch.setattr(cli_ingest.time, "monotonic", lambda: next(ticks))
     sleeps: list[float] = []
 
     def fake_sleep(seconds: float) -> None:
         sleeps.append(seconds)
+        if locker.in_transaction:
+            locker.execute("ROLLBACK")
         if len(sleeps) == 2:
             raise KeyboardInterrupt
 
-    with pytest.raises(KeyboardInterrupt):
-        cli.watch(conn, seeded_aw(datetime.now(UTC)), sleep=fake_sleep)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            watch(
+                conn,
+                [ActivityWatch(seeded_aw(start))],
+                report=cli_ingest.log_cycle,
+                interval=POLL_INTERVAL_SECONDS,
+                clock=lambda: start,
+                monotonic=lambda: next(ticks),
+                sleep=fake_sleep,
+            )
+    finally:
+        conn.close()
+        locker.close()
 
     assert sleeps == [45.0, 58.0]
     failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
@@ -322,22 +343,29 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
 
 
 def test_ingest_watch_exits_zero_on_ctrl_c(
-    capsys, use_aw, db_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+    capsys, use_aw, db_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
-    use_aw(seeded_aw(datetime.now(UTC)))
+    seeded = seeded_aw(datetime.now(UTC))
 
-    def interrupt(seconds: float) -> None:
-        raise KeyboardInterrupt
+    class InterruptedAW(FakeAW):
+        """Ctrl-C arrives while the window stream is being read."""
 
-    monkeypatch.setattr(cli_ingest.time, "sleep", interrupt)
+        def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
+            if bucket_id == WINDOW_BUCKET:
+                raise KeyboardInterrupt
+            return super().get_events(bucket_id, **kwargs)
+
+    fake = InterruptedAW({})
+    fake.buckets, fake.events = seeded.buckets, seeded.events
+    use_aw(fake)
     code, _, err = run(capsys, "--db-path", str(db_path), "ingest", "--watch")
     assert code == 0
     assert "Traceback" not in err
     messages = [r.getMessage() for r in caplog.records if r.name == cli_ingest.__name__]
     assert any("every 60s" in m for m in messages)
     assert messages[-1] == "stopped"
-    assert counts_in(db_path)["observations"] == 2
+    assert counts_in(db_path)["observations"] == 1  # the AFK stream committed first
 
 
 # --- status ------------------------------------------------------------------------
@@ -351,10 +379,10 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert code == 0
     assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-window)" in out
     assert re.search(rf"Database:\s+{re.escape(str(db_path))} \(\d+(\.\d)? [KM]?B", out)
-    assert "schema v2" in out
-    # Per-source rows: count, latest end, cursor and human lag (~20m / ~30m).
-    assert re.search(r"aw-window\s+1 observations .* cursor .* \(20m( \d+s)? behind now\)", out)
-    assert re.search(r"aw-afk\s+1 observations .* cursor .* \(30m( \d+s)? behind now\)", out)
+    assert f"schema v{SUPPORTED}" in out
+    # Per-source rows: count, latest end, settled-until time and human lag (~20m / ~30m).
+    assert re.search(r"aw-window\s+1 observations .* settled until .* \(20m( \d+s)? behind", out)
+    assert re.search(r"aw-afk\s+1 observations .* settled until .* \(30m( \d+s)? behind", out)
     # The seeded 10m-40m window gap is a coverage warning; AFK has none.
     gap = re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out)
     assert gap == ["30m"]
@@ -365,13 +393,13 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert re.search(r"signals\s+1\n", out)
 
 
-def test_status_gap_window_ends_at_cursor_not_now(capsys, use_aw, db_path: Path) -> None:
-    # The held (still-growing) event after the cursor must not show up as a trailing gap,
+def test_status_gap_window_ends_at_settled_time_not_now(capsys, use_aw, db_path: Path) -> None:
+    # The held (still-growing) event after the settled time must not show up as a trailing gap,
     # and time before the first observation is not a gap either.
     now = datetime.now(UTC)
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=60))
     fake.add(WINDOW_BUCKET, 50, 590, {"app": "Code"})
-    fake.add(WINDOW_BUCKET, 59.9, 1, {"app": "Code"})  # held: cursor at 59.9m
+    fake.add(WINDOW_BUCKET, 59.9, 1, {"app": "Code"})  # held: settled until 59.9m
     use_aw(fake)
     run(capsys, "--db-path", str(db_path), "ingest")
     _, out, _ = run(capsys, "--db-path", str(db_path), "status")
@@ -456,20 +484,21 @@ def test_status_does_not_migrate_an_old_schema(capsys, use_aw, db_path: Path) ->
 
 
 def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
-    conn = connect(db_path)
-    conn.execute("PRAGMA user_version = 99")
-    conn.close()
+    newer_db(db_path)
     use_aw(FakeAW({}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
-    assert code == 0
-    assert "schema v99 is newer than this CLI understands (v2)" in out
+    code, out, err = run(capsys, "--db-path", str(db_path), "status")
+    assert code == 1
+    assert f"schema v{SUPPORTED + 1})" in out
+    assert "ActivityWatch: yes" in out
+    assert "Sources:" not in out
+    assert f"schema v{SUPPORTED + 1} is newer than this CLI understands (v{SUPPORTED})" in err
 
 
-def test_status_checks_cursorless_sources_up_to_latest_observation(
+def test_status_checks_sources_without_progress_up_to_latest_observation(
     capsys, use_aw, db_path: Path
 ) -> None:
     now = datetime.now(UTC)
-    # A backfilled source has observations but no cursor.
+    # A partly backfilled source has observations but no progress.
     obs = [
         Observation(
             WINDOW_SOURCE, f"w/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), "{}"
@@ -477,13 +506,38 @@ def test_status_checks_cursorless_sources_up_to_latest_observation(
         for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
     ]
     conn = connect(db_path)
-    insert_observations(conn, obs)
+    insert_observations(conn, obs, project=no_signal)
     conn.close()
     use_aw(FakeAW({}))
     _, out, _ = run(capsys, "--db-path", str(db_path), "status")
-    assert "24h up to each source's cursor (or its latest observation, if it has no cursor)" in out
+    assert "24h up to each source's settled-until time (or its latest observation" in out
     assert "(never ingested)" in out
     assert re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+
+
+def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_path: Path) -> None:
+    now = datetime.now(UTC)
+    obs = [
+        Observation("ax-text", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), "")
+        for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
+    ]
+    spool = ProgressUpdate(
+        "ax-text", "2026-11-18T10.jsonl:48213", settled_until=now - timedelta(minutes=8)
+    )
+    conn = connect(db_path)
+    insert_observations(conn, obs, progress=spool, project=no_signal)
+    insert_observations(
+        conn, [], progress=ProgressUpdate("screenshot", "shots/0042"), project=no_signal
+    )
+    conn.close()
+    use_aw(FakeAW({}))
+    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    assert code == 0
+    assert re.search(r"ax-text\s+2 observations .* settled until .* \(8m( \d+s)? behind now\)", out)
+    assert re.search(r"screenshot\s+0 observations .* until - \(progress moved \d+s ago\)", out)
+    # The window ends at settled_until: the 2m after the last capture is not a gap.
+    assert re.findall(r"warning: no ax-text coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+    assert "screenshot: no observations yet" in out
 
 
 def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:
@@ -500,6 +554,97 @@ def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: 
     )
     assert seen == ["http://127.0.0.1:5666/api/0"]
     assert "(http://127.0.0.1:5666/api/0;" in out
+
+
+# --- every command against an unusable database -------------------------------------
+
+EVERY_COMMAND = [
+    ["ingest"],
+    ["status"],
+    ["rebuild-signals"],
+    ["backfill"],
+    ["backfill", "--dry-run"],
+]
+
+
+@pytest.fixture
+def aw_everywhere(monkeypatch: pytest.MonkeyPatch) -> FakeAW:
+    fake = seeded_aw(datetime.now(UTC))
+    for module in (cli_ingest, cli_status, cli_backfill):
+        monkeypatch.setattr(module, "AWClient", lambda *args, **kwargs: fake)
+    return fake
+
+
+@pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
+def test_every_command_refuses_a_newer_schema(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    newer_db(db_path)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert (
+        f"cannot use {db_path}: schema v{SUPPORTED + 1} is newer than this CLI understands"
+        f" (v{SUPPORTED}); upgrade computer-history"
+    ) in err
+    assert "Traceback" not in err
+    assert user_version(db_path) == SUPPORTED + 1
+
+
+@pytest.mark.parametrize("command", [["ingest"], ["rebuild-signals"], ["backfill"]], ids=" ".join)
+def test_writing_commands_report_a_locked_db_at_open(
+    capsys, aw_everywhere: FakeAW, db_path: Path, quick_busy_timeout: None, command: list[str]
+) -> None:
+    outdated_db(db_path)
+    with write_locked(db_path):
+        code, out, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert out == ""
+    assert f"cannot open {db_path}: database is locked" in err
+    assert f"Is another process writing to {db_path}?" in err
+    assert "Traceback" not in err
+    assert user_version(db_path) == SUPPORTED - 1
+
+
+@pytest.mark.parametrize("command", [["ingest"], ["backfill"]], ids=" ".join)
+def test_writing_commands_migrate_an_outdated_db(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    outdated_db(db_path)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 0, err
+    assert user_version(db_path) == SUPPORTED
+
+
+def test_rebuild_signals_migrates_an_outdated_db(capsys, db_path: Path) -> None:
+    outdated_db(db_path)
+    code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals")
+    assert code == 0
+    assert re.search(r"signals after\s+0\n", out)
+    assert user_version(db_path) == SUPPORTED
+
+
+def test_backfill_dry_run_refuses_an_outdated_db(
+    capsys, aw_everywhere: FakeAW, db_path: Path
+) -> None:
+    outdated_db(db_path)
+    code, out, err = run(capsys, "--db-path", str(db_path), "backfill", "--dry-run")
+    assert code == 1
+    assert out == ""
+    assert f"cannot read {db_path}: this CLI uses schema v{SUPPORTED}" in err
+    assert "`computer-history ingest` will migrate the database" in err
+    assert user_version(db_path) == SUPPORTED - 1
+
+
+@pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
+def test_every_command_reports_a_file_that_is_not_a_database(
+    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+) -> None:
+    db_path.write_bytes(b"not a database" * 100)
+    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    assert code == 1
+    assert f"cannot open {db_path}: file is not a database" in err
+    assert "Is another process writing" not in err
+    assert "Traceback" not in err
 
 
 # --- formatting ----------------------------------------------------------------------
