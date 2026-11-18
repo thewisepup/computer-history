@@ -20,7 +20,6 @@ from computer_history.store import (
 TABLES = {
     "observations",
     "signals",
-    "signals_meta",
     "projects",
     "work_types",
     "blocks",
@@ -57,7 +56,7 @@ def raw_connection(path: Path) -> sqlite3.Connection:
 def test_fresh_db_has_full_schema(conn: sqlite3.Connection) -> None:
     assert schema_objects(conn, "table") == TABLES
     assert schema_objects(conn, "view") == VIEWS
-    assert schema_version(conn) == LATEST == 1
+    assert schema_version(conn) == LATEST == 2
 
 
 def test_connection_settings(conn: sqlite3.Connection) -> None:

@@ -1,8 +1,8 @@
 """Rebuild the disposable ``signals`` table from raw ``observations`` (DESIGN.md §3.2).
 
 The store does not know any source's payload dialect, so the caller passes the
-projector (for ActivityWatch: ``sources.project_signal``) and the version of the
-mapping code it implements. ``observations`` is only read, never written.
+projector (for ActivityWatch: ``sources.project_signal``). ``observations`` is
+only read, never written.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import sqlite3
 from collections.abc import Callable
 from typing import NamedTuple
 
-from computer_history.store.bookkeeping import get_mapping_version, set_mapping_version
 from computer_history.store.db import transaction
 from computer_history.store.writes import _INSERT_SIGNAL, Signal, _signal_params
 
@@ -43,8 +42,6 @@ class RebuildResult(NamedTuple):
     # have no signal row now. ``failed_ids`` holds the first few of their ids.
     skipped: int
     failed_ids: tuple[int, ...]
-    previous_mapping_version: int | None
-    mapping_version: int
 
 
 class RebuildAborted(RuntimeError):
@@ -73,15 +70,13 @@ def rebuild_signals(
     conn: sqlite3.Connection,
     project: Projector,
     *,
-    mapping_version: int,
     batch_size: int = DEFAULT_BATCH_SIZE,
     allow_shrink: bool = False,
 ) -> RebuildResult:
     """Wipe ``signals`` and re-project every observation with ``project``, atomically.
 
-    One transaction: the wipe, every re-inserted row and the new
-    ``signals_meta.mapping_version`` commit together, or (on any error, or a
-    crash) none of it does and the old signals stay. Rows are built like
+    One transaction: the wipe and every re-inserted row commit together, or (on
+    any error, or a crash) none of it does and the old signals stay. Rows are built like
     :func:`insert_observations` builds them: ``source``/``started_at``/``ended_at``
     copied from the observation row as stored, ``observation_id`` as the key.
 
@@ -132,7 +127,6 @@ def rebuild_signals(
             )
 
     with transaction(conn):
-        previous = get_mapping_version(conn)
         before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
         # Stable for the whole scan: the write lock keeps other writers out.
         total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
@@ -184,12 +178,9 @@ def rebuild_signals(
                 failed_ids=tuple(failed_ids),
                 shrink=True,
             )
-        set_mapping_version(conn, mapping_version)
     return RebuildResult(
         signals_before=before,
         signals_after=projected,
         skipped=failed,
         failed_ids=tuple(failed_ids),
-        previous_mapping_version=previous,
-        mapping_version=int(mapping_version),
     )

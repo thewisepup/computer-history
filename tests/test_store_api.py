@@ -12,11 +12,9 @@ from computer_history.store import (
     connect_readonly,
     find_gaps,
     get_cursor,
-    get_mapping_version,
     insert_observations,
     schema_version,
     set_cursor,
-    set_mapping_version,
     source_summary,
     table_counts,
     transaction,
@@ -229,14 +227,6 @@ def test_set_cursor_joins_enclosing_transaction(conn: sqlite3.Connection) -> Non
     assert get_cursor(conn, "aw-window") is None
 
 
-def test_mapping_version_round_trip(conn: sqlite3.Connection) -> None:
-    assert get_mapping_version(conn) is None
-    set_mapping_version(conn, 1)
-    set_mapping_version(conn, 2)
-    assert get_mapping_version(conn) == 2
-    assert count(conn, "signals_meta") == 1
-
-
 # --- reads ------------------------------------------------------------------------
 
 
@@ -334,7 +324,7 @@ def test_connect_readonly_reads_but_refuses_writes(db_path, conn: sqlite3.Connec
     insert_observations(conn, [window("1")])
     ro = connect_readonly(db_path)
     try:
-        assert schema_version(ro) == 1
+        assert schema_version(ro) == 2
         assert ro.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 1
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             ro.execute("DELETE FROM observations")

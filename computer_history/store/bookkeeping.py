@@ -1,4 +1,4 @@
-"""Ingest cursors and the signals mapping version (DESIGN.md §3.2, §3.5).
+"""Ingest cursors (DESIGN.md §3.5).
 
 Each setter is a single statement, so it is atomic on its own and also joins an
 enclosing ``transaction()`` when called inside one.
@@ -50,17 +50,3 @@ def init_cursor(conn: sqlite3.Connection, source: str, last_seen: datetime | str
         (source, utc_iso(last_seen)),
     )
     return cur.rowcount == 1
-
-
-def get_mapping_version(conn: sqlite3.Connection) -> int | None:
-    """The mapping code version current ``signals`` rows were built with, if recorded."""
-    row = conn.execute("SELECT mapping_version FROM signals_meta WHERE id = 1").fetchone()
-    return None if row is None else row[0]
-
-
-def set_mapping_version(conn: sqlite3.Connection, version: int) -> None:
-    conn.execute(
-        "INSERT INTO signals_meta (id, mapping_version) VALUES (1, ?) "
-        "ON CONFLICT (id) DO UPDATE SET mapping_version = excluded.mapping_version",
-        (int(version),),
-    )

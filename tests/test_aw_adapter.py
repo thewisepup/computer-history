@@ -18,7 +18,6 @@ from computer_history.sources import activitywatch as aw
 from computer_history.sources.activitywatch import (
     AFK_SOURCE,
     CURSOR_OVERLAP_SECONDS,
-    MAPPING_VERSION,
     STABILITY_MARGIN_SECONDS,
     WEB_SOURCE,
     WINDOW_SOURCE,
@@ -36,8 +35,6 @@ from computer_history.sources.activitywatch import (
 from computer_history.store import (
     Signal,
     get_cursor,
-    get_mapping_version,
-    set_mapping_version,
     table_counts,
     to_utc,
     utc_iso,
@@ -316,7 +313,6 @@ def test_ingest_all_writes_observations_and_signals(conn: sqlite3.Connection) ->
     assert conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[
         0
     ] == 0
-    assert get_mapping_version(conn) == MAPPING_VERSION
 
 
 def test_payload_is_stored_verbatim_up_to_json_round_trip(conn: sqlite3.Connection) -> None:
@@ -661,35 +657,6 @@ def test_url_is_capped() -> None:
     signal = project_signal(WEB_SOURCE, {"data": {"url": url}})
     assert len(signal.url) == aw.MAX_URL_LENGTH
     assert signal.domain == "example.com"
-
-
-# --- mapping version ordering ----------------------------------------------------
-
-
-def test_mapping_version_is_recorded_before_any_signal_exists(
-    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake = window_aw()
-    fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
-
-    def failing_insert(*args: Any, **kwargs: Any) -> None:
-        raise sqlite3.OperationalError("disk I/O error")
-
-    monkeypatch.setattr(aw, "insert_observations", failing_insert)
-    with pytest.raises(sqlite3.OperationalError):
-        ingest_source(conn, fake, WINDOW, now=at(10))
-    # The invariant: a meta row may exist without signals (vacuously true), but
-    # signals never exist without a meta row.
-    assert get_mapping_version(conn) == MAPPING_VERSION
-    assert table_counts(conn)["signals"] == 0
-
-
-def test_ingest_never_overwrites_a_recorded_mapping_version(conn: sqlite3.Connection) -> None:
-    set_mapping_version(conn, MAPPING_VERSION - 1)  # signals built by older code
-    fake = window_aw()
-    fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
-    ingest_source(conn, fake, WINDOW, now=at(10))
-    assert get_mapping_version(conn) == MAPPING_VERSION - 1  # mismatch stays visible
 
 
 # --- package surface -------------------------------------------------------------

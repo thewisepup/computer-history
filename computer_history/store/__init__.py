@@ -7,10 +7,8 @@ uses the queries in :mod:`.reads`.
 
 from computer_history.store.bookkeeping import (
     get_cursor,
-    get_mapping_version,
     init_cursor,
     set_cursor,
-    set_mapping_version,
 )
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
@@ -63,7 +61,6 @@ __all__ = [
     "default_db_path",
     "find_gaps",
     "get_cursor",
-    "get_mapping_version",
     "init_cursor",
     "insert_observations",
     "load_migrations",
@@ -72,7 +69,6 @@ __all__ = [
     "resolve_db_path",
     "schema_version",
     "set_cursor",
-    "set_mapping_version",
     "source_summary",
     "table_counts",
     "to_utc",

@@ -20,7 +20,6 @@ from pathlib import Path
 from computer_history.sources import (
     BACKFILL_CHUNK,
     DEFAULT_AW_URL,
-    MAPPING_VERSION,
     AWApi,
     AWClient,
     AWError,
@@ -329,12 +328,7 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
     if conn is None:
         return 1
     try:
-        result = rebuild_signals(
-            conn,
-            project_signal,
-            mapping_version=MAPPING_VERSION,
-            allow_shrink=args.allow_shrink,
-        )
+        result = rebuild_signals(conn, project_signal, allow_shrink=args.allow_shrink)
     except RebuildAborted as exc:
         print(f"rebuild-signals aborted: {exc}", file=sys.stderr)
         if exc.failed:
@@ -354,14 +348,9 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
         return 1
     finally:
         conn.close()
-    previous = result.previous_mapping_version
     print(f"Rebuilt signals in {db_path} from stored observations")
     print(f"  signals before   {result.signals_before:>10,}")
     print(f"  signals after    {result.signals_after:>10,}")
-    print(
-        f"  mapping version  {result.mapping_version:>10}"
-        f"  (was {'none' if previous is None else previous})"
-    )
     print(f"  skipped          {result.skipped:>10,}  (malformed payloads)")
     if result.skipped:
         print(

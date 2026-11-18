@@ -14,7 +14,6 @@ from fake_aw import FakeAW, at
 from computer_history import cli
 from computer_history.sources import (
     AFK_SOURCE,
-    MAPPING_VERSION,
     WEB_SOURCE,
     WINDOW_SOURCE,
     ingest_all,
@@ -23,9 +22,7 @@ from computer_history.sources import (
 from computer_history.store import (
     RebuildAborted,
     connect,
-    get_mapping_version,
     rebuild_signals,
-    set_mapping_version,
     transaction,
 )
 from computer_history.store import rebuild as rebuild_module
@@ -60,7 +57,6 @@ def fixture_aw() -> FakeAW:
 @pytest.fixture
 def ingested(conn: sqlite3.Connection) -> sqlite3.Connection:
     ingest_all(conn, fixture_aw(), now=at(30))
-    assert get_mapping_version(conn) == MAPPING_VERSION
     return conn
 
 
@@ -118,15 +114,13 @@ def test_rebuild_reproduces_ingested_signals_row_for_row(
     assert len(signals) == 7 and len(observations) == 9
 
     result = rebuild_signals(
-        conn, project_signal, mapping_version=MAPPING_VERSION, batch_size=batch_size
+        conn, project_signal, batch_size=batch_size
     )
 
     assert signal_rows(conn) == signals
     assert observation_rows(conn) == observations  # raw layer untouched
     assert result.signals_before == result.signals_after == 7
     assert result.skipped == 0 and result.failed_ids == ()
-    assert result.previous_mapping_version == result.mapping_version == MAPPING_VERSION
-    assert get_mapping_version(conn) == MAPPING_VERSION
     assert conn.execute(
         "SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)
     ).fetchone()[0] == 0
@@ -147,24 +141,13 @@ def test_rebuild_repairs_stale_and_missing_signals(ingested: sqlite3.Connection)
             "SELECT id, source, started_at, ended_at FROM observations WHERE id = ?",
             (afk_id,),
         )
-    rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+    rebuild_signals(conn, project_signal)
     assert signal_rows(conn) == expected
 
 
-def test_rebuild_records_the_new_mapping_version(ingested: sqlite3.Connection) -> None:
-    conn = ingested
-    set_mapping_version(conn, MAPPING_VERSION - 1)  # signals built by older code
-    result = rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
-    assert result.previous_mapping_version == MAPPING_VERSION - 1
-    assert result.mapping_version == MAPPING_VERSION
-    assert get_mapping_version(conn) == MAPPING_VERSION
-
-
 def test_rebuild_of_an_empty_store(conn: sqlite3.Connection) -> None:
-    result = rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+    result = rebuild_signals(conn, project_signal)
     assert (result.signals_before, result.signals_after, result.skipped) == (0, 0, 0)
-    assert result.previous_mapping_version is None
-    assert get_mapping_version(conn) == MAPPING_VERSION
 
 
 def test_rebuild_refuses_to_run_inside_a_transaction(ingested: sqlite3.Connection) -> None:
@@ -172,13 +155,13 @@ def test_rebuild_refuses_to_run_inside_a_transaction(ingested: sqlite3.Connectio
     before = signal_rows(conn)
     with transaction(conn):
         with pytest.raises(RuntimeError, match="own transaction"):
-            rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+            rebuild_signals(conn, project_signal)
     assert signal_rows(conn) == before
 
 
 def test_rebuild_rejects_a_nonpositive_batch_size(conn: sqlite3.Connection) -> None:
     with pytest.raises(ValueError, match="batch_size"):
-        rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION, batch_size=0)
+        rebuild_signals(conn, project_signal, batch_size=0)
 
 
 # --- atomicity -------------------------------------------------------------------
@@ -188,7 +171,6 @@ def test_database_failure_mid_rebuild_rolls_back_everything(
     ingested: sqlite3.Connection,
 ) -> None:
     conn = ingested
-    set_mapping_version(conn, MAPPING_VERSION - 1)
     signals, observations = signal_rows(conn), observation_rows(conn)
     last = signals[-1][0]
     # Fail the insert of the last signal, after the wipe and earlier batches ran.
@@ -197,18 +179,16 @@ def test_database_failure_mid_rebuild_rolls_back_everything(
         f"WHEN NEW.observation_id = {last} BEGIN SELECT RAISE(ABORT, 'injected'); END"
     )
     with pytest.raises(sqlite3.DatabaseError, match="injected"):
-        rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION, batch_size=1)
+        rebuild_signals(conn, project_signal, batch_size=1)
     conn.execute("DROP TRIGGER fail_last")
 
     assert not conn.in_transaction
     assert signal_rows(conn) == signals
     assert observation_rows(conn) == observations
-    assert get_mapping_version(conn) == MAPPING_VERSION - 1
 
 
 def test_interrupt_mid_rebuild_rolls_back_everything(ingested: sqlite3.Connection) -> None:
     conn = ingested
-    set_mapping_version(conn, MAPPING_VERSION - 1)
     signals = signal_rows(conn)
     calls = 0
 
@@ -220,10 +200,9 @@ def test_interrupt_mid_rebuild_rolls_back_everything(ingested: sqlite3.Connectio
         return project_signal(source, payload)
 
     with pytest.raises(KeyboardInterrupt):
-        rebuild_signals(conn, interrupted, mapping_version=MAPPING_VERSION, batch_size=1)
+        rebuild_signals(conn, interrupted, batch_size=1)
     assert not conn.in_transaction
     assert signal_rows(conn) == signals
-    assert get_mapping_version(conn) == MAPPING_VERSION - 1
 
 
 def test_rolled_back_rebuild_is_invisible_to_other_connections(
@@ -241,7 +220,7 @@ def test_rolled_back_rebuild_is_invisible_to_other_connections(
 
     try:
         with pytest.raises(KeyboardInterrupt):
-            rebuild_signals(conn, peeking, mapping_version=MAPPING_VERSION)
+            rebuild_signals(conn, peeking)
         assert seen == [len(signals)]
         assert signal_rows(other) == signals
     finally:
@@ -260,12 +239,11 @@ def test_malformed_payload_is_skipped_counted_and_logged(
     corrupt_payload(conn, bad)
 
     with caplog.at_level(logging.WARNING):
-        result = rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+        result = rebuild_signals(conn, project_signal)
 
     assert result.skipped == 1 and result.failed_ids == (bad,)
     assert result.signals_after == len(expected) - 1
     assert signal_rows(conn) == [row for row in expected if row[0] != bad]
-    assert get_mapping_version(conn) == MAPPING_VERSION
     assert any(f"observation {bad} " in r.getMessage() for r in caplog.records)
 
 
@@ -276,7 +254,7 @@ def test_malformed_afk_payload_is_not_a_failure(ingested: sqlite3.Connection) ->
         "SELECT id FROM observations WHERE source = ? ORDER BY id LIMIT 1", (AFK_SOURCE,)
     ).fetchone()[0]
     corrupt_payload(conn, afk_id)  # AFK has no content to project, so it is never parsed
-    result = rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+    result = rebuild_signals(conn, project_signal)
     assert result.skipped == 0
     assert signal_rows(conn) == expected
 
@@ -292,7 +270,7 @@ def test_only_the_first_failures_are_logged_individually(
     for obs_id in bad:
         corrupt_payload(conn, obs_id)
     with caplog.at_level(logging.WARNING):
-        result = rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+        result = rebuild_signals(conn, project_signal)
     assert result.skipped == 3  # 3 of 7 content observations: under half
     assert result.failed_ids == (min(bad),)
     messages = [r.getMessage() for r in caplog.records]
@@ -302,21 +280,19 @@ def test_only_the_first_failures_are_logged_individually(
 
 def test_more_than_half_failing_aborts_and_rolls_back(ingested: sqlite3.Connection) -> None:
     conn = ingested
-    set_mapping_version(conn, MAPPING_VERSION - 1)
     signals = signal_rows(conn)
     ids = [row[0] for row in signals]
     for obs_id in ids[:4]:  # 4 of 7 content observations
         corrupt_payload(conn, obs_id)
 
     with pytest.raises(RebuildAborted) as exc:
-        rebuild_signals(conn, project_signal, mapping_version=MAPPING_VERSION)
+        rebuild_signals(conn, project_signal)
 
     assert exc.value.failed == 4
     assert exc.value.failed_ids == tuple(ids[:4])
     assert "rolled back" in str(exc.value)
     assert not conn.in_transaction
     assert signal_rows(conn) == signals
-    assert get_mapping_version(conn) == MAPPING_VERSION - 1
 
 
 def test_a_projector_bug_failing_every_row_aborts(ingested: sqlite3.Connection) -> None:
@@ -329,9 +305,8 @@ def test_a_projector_bug_failing_every_row_aborts(ingested: sqlite3.Connection) 
         raise TypeError("bug")
 
     with pytest.raises(RebuildAborted):
-        rebuild_signals(conn, broken, mapping_version=MAPPING_VERSION + 1)
+        rebuild_signals(conn, broken)
     assert signal_rows(conn) == signals
-    assert get_mapping_version(conn) == MAPPING_VERSION
 
 
 def test_a_projector_failing_every_row_aborts_early(big: sqlite3.Connection) -> None:
@@ -345,7 +320,7 @@ def test_a_projector_failing_every_row_aborts_early(big: sqlite3.Connection) -> 
         raise TypeError("bug")
 
     with pytest.raises(RebuildAborted) as exc:
-        rebuild_signals(conn, broken, mapping_version=MAPPING_VERSION + 1)
+        rebuild_signals(conn, broken)
     # Stops once failures exceed half of everything that could still be content,
     # i.e. after about half the table rather than after scanning all of it.
     assert attempts == exc.value.failed
@@ -353,7 +328,6 @@ def test_a_projector_failing_every_row_aborts_early(big: sqlite3.Connection) -> 
     assert len(exc.value.failed_ids) == rebuild_module.MAX_LOGGED_FAILURES
     assert not exc.value.shrink
     assert signal_rows(conn) == signals
-    assert get_mapping_version(conn) == MAPPING_VERSION
 
 
 def test_a_projector_wrongly_returning_none_aborts_as_a_shrink(big: sqlite3.Connection) -> None:
@@ -364,10 +338,9 @@ def test_a_projector_wrongly_returning_none_aborts_as_a_shrink(big: sqlite3.Conn
         return None  # raises nothing, so nothing counts as failed
 
     with pytest.raises(RebuildAborted, match=rf"shrink from {BIG} to 0 rows") as exc:
-        rebuild_signals(conn, drops_everything, mapping_version=MAPPING_VERSION + 1)
+        rebuild_signals(conn, drops_everything)
     assert exc.value.shrink and exc.value.failed == 0
     assert signal_rows(conn) == signals
-    assert get_mapping_version(conn) == MAPPING_VERSION
 
 
 def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
@@ -379,29 +352,28 @@ def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
             return None
         return signal
 
-    result = rebuild_signals(conn, drops_odd_titles, mapping_version=MAPPING_VERSION + 1)
+    result = rebuild_signals(conn, drops_odd_titles)
     assert (result.signals_before, result.signals_after) == (BIG, BIG // 2)
 
 
 def test_allow_shrink_overrides_the_shrink_check(big: sqlite3.Connection) -> None:
     conn = big
     result = rebuild_signals(
-        conn, lambda source, payload: None, mapping_version=MAPPING_VERSION + 1, allow_shrink=True
+        conn, lambda source, payload: None, allow_shrink=True
     )
     assert (result.signals_before, result.signals_after) == (BIG, 0)
-    assert get_mapping_version(conn) == MAPPING_VERSION + 1
 
 
 def test_small_stores_may_shrink(ingested: sqlite3.Connection) -> None:
     conn = ingested  # 7 signals: below SHRINK_CHECK_MIN_SIGNALS
-    result = rebuild_signals(conn, lambda source, payload: None, mapping_version=MAPPING_VERSION)
+    result = rebuild_signals(conn, lambda source, payload: None)
     assert (result.signals_before, result.signals_after) == (7, 0)
 
 
 # --- CLI ---------------------------------------------------------------------------
 
 
-def test_cli_rebuild_signals_reports_counts_and_version(
+def test_cli_rebuild_signals_reports_counts(
     capsys: pytest.CaptureFixture[str], db_path: Path
 ) -> None:
     conn = connect(db_path)
@@ -417,7 +389,6 @@ def test_cli_rebuild_signals_reports_counts_and_version(
     assert str(db_path) in out
     assert re.search(r"signals before\s+7\n", out)
     assert re.search(r"signals after\s+7\n", out)
-    assert re.search(rf"mapping version\s+{MAPPING_VERSION}\s+\(was {MAPPING_VERSION}\)", out)
     assert re.search(r"skipped\s+0\s", out)
     assert "warning" not in out
     conn = connect(db_path)
@@ -477,7 +448,6 @@ def test_cli_rebuild_signals_on_a_fresh_db(
     code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
-    assert re.search(rf"mapping version\s+{MAPPING_VERSION}\s+\(was none\)", out)
 
 
 def test_cli_rebuild_signals_refuses_a_missing_db(

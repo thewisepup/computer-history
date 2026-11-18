@@ -93,9 +93,7 @@ from computer_history.store import (
     Observation,
     Signal,
     get_cursor,
-    get_mapping_version,
     insert_observations,
-    set_mapping_version,
     to_utc,
 )
 
@@ -103,7 +101,6 @@ __all__ = [
     "AFK_SOURCE",
     "CURSOR_OVERLAP_SECONDS",
     "DEFAULT_AW_URL",
-    "MAPPING_VERSION",
     "STABILITY_MARGIN_SECONDS",
     "WEB_SOURCE",
     "WINDOW_SOURCE",
@@ -138,9 +135,6 @@ CLIP_GUARD = timedelta(seconds=1)
 # An owned event ending within this of an explicit query end may be end-clipped.
 _END_CLIP_TOLERANCE = timedelta(milliseconds=1)
 
-# Bump whenever project_signal()'s output changes; rebuild-signals compares it
-# with the version recorded in signals_meta.
-MAPPING_VERSION = 1
 MAX_TEXT_LENGTH = 2000
 MAX_URL_LENGTH = 4096
 
@@ -287,7 +281,7 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
     ``payload`` is the AW event (``{"id", "timestamp", "duration", "data"}``), as a
     dict or as the JSON text stored in ``observations.payload``. ``rebuild-signals``
     re-runs this over stored payloads, so the output must depend on the payload
-    alone. Bump :data:`MAPPING_VERSION` whenever the output changes.
+    alone.
     """
     if source == AFK_SOURCE:
         return None
@@ -538,15 +532,6 @@ def ingest_source(
     ]
     frontier = min((pull.frontier for pull in pulls), default=None)
     advance = Cursor(source.name, frontier) if incremental and frontier is not None else None
-    # Seed the mapping version BEFORE the first signal can exist, never after. It
-    # cannot join insert_observations' transaction (that call opens its own), so
-    # order is the guarantee: "no meta row" then always means "no signals". If the
-    # batch fails, meta=MAPPING_VERSION with zero signals is vacuously true. The
-    # reverse order is unsafe: a crash between the two would leave signals without
-    # a meta row, and a later code version would then record itself over them, so
-    # rebuild-signals would never notice the mismatch.
-    if get_mapping_version(conn) is None:
-        set_mapping_version(conn, MAPPING_VERSION)
     observations = [obs for pull in pulls for obs in pull.observations]
     result = insert_observations(conn, observations, advance_cursor=advance)
     return IngestOutcome(

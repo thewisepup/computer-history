@@ -347,7 +347,7 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert code == 0
     assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-window)" in out
     assert re.search(rf"Database:\s+{re.escape(str(db_path))} \(\d+(\.\d)? [KM]?B", out)
-    assert "schema v1" in out
+    assert "schema v2" in out
     # Per-source rows: count, latest end, cursor and human lag (~20m / ~30m).
     assert re.search(r"aw-window\s+1 observations .* cursor .* \(20m( \d+s)? behind now\)", out)
     assert re.search(r"aw-afk\s+1 observations .* cursor .* \(30m( \d+s)? behind now\)", out)
@@ -458,7 +458,7 @@ def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
     use_aw(FakeAW({}))
     code, out, _ = run(capsys, "--db-path", str(db_path), "status")
     assert code == 0
-    assert "schema v99 is newer than this CLI understands (v1)" in out
+    assert "schema v99 is newer than this CLI understands (v2)" in out
 
 
 def test_status_checks_cursorless_sources_up_to_latest_observation(
