@@ -1,7 +1,7 @@
 # 01 — Package skeleton + tooling
 
 Type: task
-Status: open
+Status: resolved
 
 ## Task
 
@@ -24,3 +24,23 @@ POC's behavior.
 
 `pytest` green, `unittest` green, `computer-history --help` prints the
 command list.
+
+## Answer
+
+Done (Opus 5.5 implementer + medium code review, 2026-11-17).
+
+- `computer_history/` package: `__init__.py`, `store/`, `sources/`, `cli.py`
+  (argparse; four stub subcommands exiting 1; global `--db-path`).
+- `pyproject.toml`: distribution renamed `computer-history-poc` →
+  `computer-history` (stale venvs need `pip uninstall computer-history-poc`);
+  console script `computer-history = computer_history.cli:main`; pytest +
+  ruff in dev extra; pytest collects only `tests/`; ruff excludes the frozen
+  POC files (34 pre-existing findings).
+- `tests/test_cli.py`: 6 tests, STUB_COMMANDS derived from `cli.COMMANDS`.
+- Review fixes applied: dropped opaque `metavar="COMMAND"`, derived test
+  command list, AGENTS.md "rewrite in progress" note + git-repo correction.
+- Verified: pytest 6 passed, POC unittest 12 passed, ruff clean,
+  `history.py serve` still healthy.
+- Note for ticket 02: `--db-path` help already documents the
+  `$COMPUTER_HISTORY_DB` fallback and the Application Support default —
+  implement resolution exactly as documented.

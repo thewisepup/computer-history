@@ -6,6 +6,15 @@ detailed API reference (parameters, error codes, curl examples).
 
 _Last updated: 2026-11-16._
 
+> **Rewrite in progress (M1, 2026-11-17):** the v1 rewrite from
+> `docs/DESIGN.md` is being built as the `computer_history/` package
+> (tickets in `.scratch/m1-store-ingest/`). New-package tests run with
+> `.venv/bin/python -m pytest` (plus `ruff check`); the POC suite below
+> still runs with unittest. The distribution was renamed
+> `computer-history-poc` → `computer-history`; stale venvs need
+> `pip uninstall computer-history-poc` before reinstalling. This file is
+> fully updated when M1 lands.
+
 ---
 
 ## 1. What this project is
@@ -229,4 +238,4 @@ desktop app rather than a Python POC.
 - Fetches all window events before the end boundary (to catch events that
   overlap the range), which gets slow with long histories.
 - Pagination is over live data, not a frozen snapshot.
-- The project is not a git repository yet.
+- (Fixed 2026-11-17: the project is now a git repository.)

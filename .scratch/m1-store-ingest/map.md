@@ -40,6 +40,10 @@ cross-checked with the POC's `/usage` numbers.
 
 <!-- one line per closed ticket: [title](issues/NN-slug.md): gist -->
 
+- [01 — Package skeleton + tooling](issues/01-package-skeleton.md): package +
+  CLI stubs + pytest/ruff in place; distribution renamed to
+  `computer-history`; POC untouched and green.
+
 ## Not yet specified
 
 (none — M1 is fully ticketed; everything beyond it is out of scope)
