@@ -75,9 +75,13 @@ computer_history/
                 # observations (ingest writes), signals (rebuild),
                 # progress (per-source ingest progress), status (read
                 # queries), timefmt, paths
-  sources/      # one adapter per source: activitywatch/, ax_text, screenshots
-                # activitywatch/: client, discovery, pull, normalize,
-                # position (its progress encoding), ingest (the orchestrator)
+  sources/      # contract (the adapter Protocols), runner (poll + watch),
+                # backfill (plan + run in chunks), commit (the one write step,
+                # a pull and its progress, and failure classification, shared by
+                # both), then one adapter per source: activitywatch/, ax_text, screenshots
+                # activitywatch/: client, discovery, pull, normalize, adapter
+                # (ActivityWatch), position (its progress encoding), history
+                # (where a stream's history begins, for backfill)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -288,10 +292,33 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 
 ## 4. Ingestion
 
-Adapter contract: _pull from the stored position → write `observations` +
-`signals` + the new progress in one transaction._ Idempotent via
-`(source, source_id)`.
+Adapter contract: _the adapter pulls from the stored position; the runner
+writes `observations` + `signals` + the new progress in one transaction._
+Idempotent via `(source, source_id)`.
 Only adapters know payload dialects; everything downstream reads `signals`.
+
+- An adapter (`sources/contract.py`) is a `Source`: `streams()` names the
+  streams it feeds (ActivityWatch: `aw-window`, `aw-afk`, `aw-web`; the
+  AX-text spool: `ax-text`), and `pull_after(stream, position, now=)` returns
+  a `Pull`: settled observations, a held-back count, the new `position`
+  (`None` leaves progress as it is) and `settled_until`. A *stream* is what
+  the store calls a source. Failures raise `SourceUnavailable` (`AWError` is
+  one).
+- A `HistorySource` also supports backfill: `parts`, `history_start`,
+  `history_before` (planning facts) and `pull_range(stream, start, end, now=)`.
+  Sources with nothing to backfill (the spool) implement only `Source`.
+- The runner is source-agnostic. `poll(conn, sources)` (`sources/runner.py`)
+  reads every stream of every source, one commit each; an unavailable source
+  skips the rest of its streams and others continue; a busy database ends
+  the cycle; other database errors propagate; two sources feeding one stream
+  are refused. `watch` repeats it every 60s (injected clock for `now`,
+  monotonic timer and sleep for pacing). `run_backfill(conn, source, plans)`
+  (`sources/backfill.py`, beside the planning)
+  commits chunks oldest first, reports incomplete chunks, and sets a stream's
+  first progress in its last chunk's commit (from the first incomplete
+  chunk's pull, else the last one), only if the plan covers all its history;
+  any failure or Ctrl-C stops it and is reported with what committed.
+- The CLI constructs the clients, adapters and connection and passes them in.
 
 ### 4.1 ActivityWatch adapter
 

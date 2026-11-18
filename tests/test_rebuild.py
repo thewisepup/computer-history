@@ -17,7 +17,8 @@ from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
-    ingest_all,
+    ActivityWatch,
+    poll,
     project_signal,
 )
 from computer_history.store import (
@@ -57,7 +58,7 @@ def fixture_aw() -> FakeAW:
 
 @pytest.fixture
 def ingested(conn: sqlite3.Connection) -> sqlite3.Connection:
-    ingest_all(conn, fixture_aw(), now=at(30))
+    poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
     return conn
 
 
@@ -72,7 +73,7 @@ def big(conn: sqlite3.Connection) -> sqlite3.Connection:
         fake.add(WINDOW_BUCKET, i, 30, {"app": f"App {i % 7}", "title": f"t{i}"})
     fake.add(AFK_BUCKET, 0, 60, {"status": "not-afk"})
     fake.add(AFK_BUCKET, 1, 60, {"status": "afk"})
-    ingest_all(conn, fake, now=at(BIG + 10))
+    poll(conn, [ActivityWatch(fake)], now=at(BIG + 10))
     assert len(signal_rows(conn)) == BIG
     return conn
 
@@ -379,7 +380,7 @@ def test_cli_rebuild_signals_reports_counts(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         expected = signal_rows(conn)
     finally:
         conn.close()
@@ -404,7 +405,7 @@ def test_cli_rebuild_signals_reports_skipped_rows(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         bad = observation_id(conn, WEB_SOURCE, "HN")
         corrupt_payload(conn, bad)
     finally:
@@ -423,7 +424,7 @@ def test_cli_rebuild_signals_abort_exits_nonzero(
 ) -> None:
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         ids = [row[0] for row in signal_rows(conn)]
         for obs_id in ids:
             corrupt_payload(conn, obs_id)
@@ -467,7 +468,7 @@ def test_cli_rebuild_signals_says_how_many_ids_it_left_out(
     monkeypatch.setattr(signals_module, "MAX_LOGGED_FAILURES", 1)
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
         bad = sorted(observation_id(conn, WEB_SOURCE, t) for t in ("GitHub", "HN"))
         for obs_id in bad:
             corrupt_payload(conn, obs_id)
@@ -487,7 +488,7 @@ def test_cli_rebuild_signals_allow_shrink(
     monkeypatch.setattr(cli_rebuild, "project_signal", lambda source, payload: None)
     conn = connect(db_path)
     try:
-        ingest_all(conn, fixture_aw(), now=at(30))
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
     finally:
         conn.close()
 

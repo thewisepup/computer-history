@@ -1,23 +1,24 @@
-"""Pull settled ActivityWatch events into the store.
+"""The ActivityWatch source adapter: settled window, AFK and web events.
 
     ActivityWatch HTTP API
           |
-      client.py      the HTTP calls, nothing else
+      client.py      the HTTP calls, nothing else (AWError: source unavailable)
           |
-      discovery.py   buckets -> sources (aw-window, aw-afk, aw-web)
+      discovery.py   buckets -> streams (aw-window, aw-afk, aw-web)
           |
       pull.py        fetch each bucket's events, keep the settled ones
           |          (a source's frontier is the earliest bucket frontier)
       normalize.py   raw payload -> signal (app, domain, url, title)
           |
-      ingest.py      the orchestrator: batch + progress, one atomic write
-          |          (position.py: progress is a UTC time, rewound on resume)
-      store/ (SQLite)
+      adapter.py     ActivityWatch: the adapter the ingest runner drives
+                     position.py: the frontier is the position, rewound on resume
+                     history.py: where a stream's history begins, for backfill
 
 An event that may still be growing is held back for a later poll: delayed,
-never lost. Every event starting before a source's settled-until time is stored.
+never lost. Every event starting before a stream's settled-until time is stored.
 """
 
+from computer_history.sources.activitywatch.adapter import ActivityWatch
 from computer_history.sources.activitywatch.client import (
     DEFAULT_AW_URL,
     AWApi,
@@ -31,16 +32,10 @@ from computer_history.sources.activitywatch.discovery import (
     AWSource,
     discover_sources,
 )
-from computer_history.sources.activitywatch.ingest import (
-    IngestOutcome,
-    ingest_all,
-    ingest_source,
-    outcome_of,
-)
 from computer_history.sources.activitywatch.normalize import project_signal
 from computer_history.sources.activitywatch.position import (
     RESUME_OVERLAP_SECONDS,
-    progress_at,
+    position_at,
     resume_start,
 )
 from computer_history.sources.activitywatch.pull import (
@@ -71,17 +66,14 @@ __all__ = [
     "AWClient",
     "AWError",
     "AWSource",
+    "ActivityWatch",
     "BucketPull",
-    "IngestOutcome",
     "SourcePull",
     "clean_text",
     "clean_url",
     "discover_sources",
     "extract_domain",
-    "ingest_all",
-    "ingest_source",
-    "outcome_of",
-    "progress_at",
+    "position_at",
     "project_signal",
     "pull_bucket",
     "pull_source",

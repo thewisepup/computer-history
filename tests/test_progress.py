@@ -14,12 +14,14 @@ from computer_history import store
 from computer_history.sources import (
     RESUME_OVERLAP_SECONDS,
     WINDOW_SOURCE,
+    ActivityWatch,
     AWSource,
+    BackfillProgress,
     IngestOutcome,
     SourcePull,
-    ingest_source,
     plan_all_backfills,
-    progress_at,
+    poll,
+    position_at,
     pull_source,
     run_backfill,
 )
@@ -174,7 +176,7 @@ def test_backfill_plans_up_to_settled_until_for_an_opaque_position(
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=at(-3 * 1440))
     update = ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION, settled_until=at(30))
     insert_observations(conn, [], progress=update)
-    (plan,) = plan_all_backfills(conn, fake, now=at(60))
+    (plan,) = plan_all_backfills(conn, ActivityWatch(fake), now=at(60)).plans
     assert plan.settled_until == plan.end == at(30)
     assert plan.chunks[-1].end == at(30)
 
@@ -184,11 +186,11 @@ def test_backfill_keeps_progress_that_has_no_settled_time(conn: sqlite3.Connecti
     fake.add(WINDOW_BUCKET, 1440, 60, {"app": "Code"})  # a day after the bucket was created
     insert_observations(conn, [], progress=ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION))
     before = get_progress(conn, WINDOW_SOURCE)
-    (plan,) = plan_all_backfills(conn, fake, now=at(60))
+    (plan,) = plan_all_backfills(conn, ActivityWatch(fake), now=at(60)).plans
     assert plan.has_progress and plan.settled_until is None
     assert plan.end == at(60) and plan.covers_history
-    result = run_backfill(conn, fake, plan, clock=lambda: at(60))
-    assert result.inserted == 1 and not result.progress_set
+    (result,) = run_backfill(conn, ActivityWatch(fake), [plan], clock=lambda: at(60)).results
+    assert result.inserted == 1 and result.progress is BackfillProgress.KEPT_UNSETTLED
     assert get_progress(conn, WINDOW_SOURCE) == before
 
 
@@ -253,9 +255,10 @@ def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connec
 def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
     """A current database holding the first pull and progress at its frontier."""
     conn = connect(path)
-    insert_observations(
-        conn, first_pull.observations, progress=progress_at(WINDOW_SOURCE, first_pull.frontier)
+    update = ProgressUpdate(
+        WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier
     )
+    insert_observations(conn, first_pull.observations, progress=update)
     return conn
 
 
@@ -270,9 +273,9 @@ def test_migrated_cursor_resumes_like_progress_written_today(tmp_path: Path, pre
     try:
         fake.add(WINDOW_BUCKET, 58, 60, {"app": "C"})
         fake.queries.clear()
-        outcome = ingest_source(conn, fake, WINDOW, now=at(70))
+        outcome = poll(conn, [ActivityWatch(fake)], now=at(70)).outcomes[WINDOW_SOURCE]
         # B is re-read through the overlap and skipped, C lands, A is never re-read.
-        assert outcome == IngestOutcome(inserted=1, skipped=1, held_back=0, frontier=at(70))
+        assert outcome == IngestOutcome(inserted=1, skipped=1, held_back=0, settled_until=at(70))
         starts = [to_utc(q["start"]) for q in fake.queries if q.get("limit") == -1]
         overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
         assert starts == [at(55) - overlap - CLIP_GUARD]

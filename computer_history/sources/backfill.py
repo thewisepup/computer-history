@@ -1,43 +1,35 @@
-"""One-time, chunked ingest of existing ActivityWatch history (backfill).
-
-Each chunk commits on its own, oldest first, and the last chunk's commit also
-sets the source's progress if it had none and the range covered its history.
-"""
+"""Backfill: plan a source's history in fixed-width chunks, then ingest them oldest first."""
 
 from __future__ import annotations
 
-import logging
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, NamedTuple
+from enum import Enum
+from typing import NamedTuple
 
-from computer_history.sources.activitywatch import (
-    AWApi,
-    AWSource,
-    IngestOutcome,
-    discover_sources,
-    outcome_of,
-    progress_at,
-    pull_source,
-)
-from computer_history.store import Progress, get_progress, insert_observations, to_utc
+from computer_history.sources.commit import StreamFailure, commit_pull, failure_of
+from computer_history.sources.contract import HistorySource, Pull, SourceUnavailable
+from computer_history.store import Progress, get_progress, to_utc
 
 __all__ = [
     "BACKFILL_CHUNK",
     "BackfillPlan",
+    "BackfillProgress",
     "BackfillResult",
+    "BackfillRun",
     "Chunk",
+    "ChunkDone",
+    "Planning",
     "plan_all_backfills",
     "plan_backfill",
     "run_backfill",
 ]
 
-log = logging.getLogger(__name__)
-
 BACKFILL_CHUNK = timedelta(days=7)
-_PROBE_GUARD = timedelta(microseconds=1)
+
+Clock = Callable[[], datetime]
 
 
 class Chunk(NamedTuple):
@@ -47,12 +39,13 @@ class Chunk(NamedTuple):
 
 @dataclass(frozen=True)
 class BackfillPlan:
-    """What run_backfill will pull for one source, built without writing anything.
+    """What a backfill will pull for one stream, built without writing anything.
 
-    earlier lists history found before the start that the plan does not cover.
+    earlier lists parts with history before the start that the plan does not cover.
     """
 
-    source: AWSource
+    stream: str
+    parts: tuple[str, ...]
     start: datetime | None
     end: datetime
     settled_until: datetime | None
@@ -62,41 +55,23 @@ class BackfillPlan:
 
     @property
     def covers_history(self) -> bool:
-        """The range starts at or before every event of the source."""
+        """The range starts at or before every event of the stream."""
         return self.start is not None and not self.earlier
 
 
-@dataclass
-class BackfillResult:
-    """Running totals of one source's backfill.
-
-    Every event starting before complete_until is stored.
-    """
-
-    source: str
-    chunks_done: int = 0
-    inserted: int = 0
-    skipped: int = 0
-    held_back: int = 0
-    incomplete: list[tuple[Chunk, datetime]] = field(default_factory=list)
-    complete_until: datetime | None = None
-    progress_set: bool = False
-
-
 def plan_backfill(
-    client: AWApi,
-    source: AWSource,
+    source: HistorySource,
+    stream: str,
     *,
     progress: Progress | None,
     now: datetime,
     start: datetime | None = None,
     end: datetime | None = None,
     chunk: timedelta = BACKFILL_CHUNK,
-    buckets: Mapping[str, Any] | None = None,
 ) -> BackfillPlan:
-    """The chunked range to backfill for one source.
+    """The chunked range to backfill for one stream, up to where its progress is settled.
 
-    Reads ActivityWatch but writes nothing.
+    Reads the source but writes nothing.
     """
     if chunk <= timedelta(0):
         raise ValueError(f"chunk width must be positive: {chunk}")
@@ -105,135 +80,231 @@ def plan_backfill(
     stop = now if settled is None else min(settled, now)
     if end is not None:
         stop = min(stop, to_utc(end))
-    if start is not None:
-        begin: datetime | None = to_utc(start)
-    else:
-        begin = _history_floor(client.get_buckets() if buckets is None else buckets, source)
+    begin = source.history_start(stream) if start is None else to_utc(start)
+    parts = source.parts(stream)
+    has_progress = progress is not None
     if begin is None or begin >= stop:
-        return BackfillPlan(source, begin, stop, settled, (), has_progress=progress is not None)
-    earlier = []
-    for bucket_id in source.bucket_ids:
-        found, began = _event_before(client, bucket_id, begin)
-        if found:
-            earlier.append((bucket_id, began))
+        return BackfillPlan(stream, parts, begin, stop, settled, (), has_progress=has_progress)
     chunks = []
     edge = begin
     while edge < stop:
         chunks.append(Chunk(edge, min(edge + chunk, stop)))
         edge += chunk
     return BackfillPlan(
-        source,
+        stream,
+        parts,
         begin,
         stop,
         settled,
         tuple(chunks),
-        tuple(earlier),
-        has_progress=progress is not None,
+        source.history_before(stream, begin),
+        has_progress=has_progress,
     )
+
+
+@dataclass(frozen=True)
+class Planning:
+    """Every stream's plan, or the failure that stopped planning."""
+
+    plans: tuple[BackfillPlan, ...] = ()
+    failure: StreamFailure | None = None
 
 
 def plan_all_backfills(
     conn: sqlite3.Connection | None,
-    client: AWApi,
+    source: HistorySource,
     *,
     now: datetime,
     start: datetime | None = None,
     end: datetime | None = None,
-) -> list[BackfillPlan]:
-    """Plan every discovered source from its stored progress, or from none without a database.
+) -> Planning:
+    """Plan every stream of the source from its stored progress, or from none without a database.
 
-    Lists the buckets once and writes nothing.
+    Writes nothing.
     """
-    buckets = client.get_buckets()
-    return [
-        plan_backfill(
-            client,
-            source,
-            progress=None if conn is None else get_progress(conn, source.name),
-            now=now,
-            start=start,
-            end=end,
-            buckets=buckets,
-        )
-        for source in discover_sources(client, buckets=buckets)
-    ]
+    plans = []
+    stream = None
+    try:
+        for stream in _distinct(source.streams()):
+            progress = None if conn is None else get_progress(conn, stream)
+            plans.append(
+                plan_backfill(source, stream, progress=progress, now=now, start=start, end=end)
+            )
+    except (SourceUnavailable, sqlite3.Error) as exc:
+        return Planning(failure=failure_of(stream, exc))
+    return Planning(tuple(plans))
+
+
+def _distinct(streams: Sequence[str]) -> list[str]:
+    if len(set(streams)) != len(streams):
+        raise ValueError(f"a stream is listed more than once: {list(streams)}")
+    return list(streams)
+
+
+class BackfillProgress(Enum):
+    SET = "set"  # the last chunk's commit set the stream's first progress
+    KEPT = "kept"  # the stream already had progress with a settled-until time
+    KEPT_UNSETTLED = "kept unsettled"  # the stream already had progress without one
+    NOT_COVERED = "not covered"  # the range starts after some of the stream's history
+    NO_POSITION = "no position"  # the source gave no position to resume from
+    SET_MEANWHILE = "set meanwhile"  # another ingest set the stream's progress first
+
+
+@dataclass(frozen=True)
+class ChunkDone:
+    """One committed chunk of a stream's backfill.
+
+    incomplete_from is where its unsettled events may begin, if any were held back.
+    """
+
+    stream: str
+    index: int
+    total: int
+    chunk: Chunk
+    inserted: int
+    skipped: int
+    held_back: int
+    incomplete_from: datetime | None
+    seconds: float
+
+
+@dataclass
+class BackfillResult:
+    """Running totals of one stream's backfill, and how its progress ended up once it finishes.
+
+    Every event starting before complete_until is stored.
+    """
+
+    plan: BackfillPlan
+    chunks_done: int = 0
+    inserted: int = 0
+    skipped: int = 0
+    held_back: int = 0
+    seconds: float = 0.0
+    incomplete: list[tuple[Chunk, datetime]] = field(default_factory=list)
+    complete_until: datetime | None = None
+    progress: BackfillProgress | None = None
+
+    @property
+    def stream(self) -> str:
+        return self.plan.stream
+
+
+@dataclass(frozen=True)
+class BackfillRun:
+    """The streams a backfill committed chunks for, and why it stopped early, if it did."""
+
+    results: tuple[BackfillResult, ...]
+    failure: StreamFailure | None = None
+    interrupted: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.failure is None and not self.interrupted
 
 
 def run_backfill(
     conn: sqlite3.Connection,
-    client: AWApi,
-    plan: BackfillPlan,
+    source: HistorySource,
+    plans: Sequence[BackfillPlan],
     *,
-    on_chunk: Callable[[int, Chunk, IngestOutcome, BackfillResult], None] | None = None,
-    clock: Callable[[], datetime] | None = None,
-) -> BackfillResult:
-    """Ingest every chunk of the plan in order, each in its own commit.
+    clock: Clock | None = None,
+    on_chunk: Callable[[ChunkDone], None] | None = None,
+    on_stream: Callable[[BackfillResult], None] | None = None,
+) -> BackfillRun:
+    """Ingest every planned chunk, oldest first and each in its own commit, stopping at a failure.
 
-    The last commit also sets the source's progress if it had none and the plan covers its history.
+    A stream's last commit also sets its first progress when the plan covers all its history.
     """
+    _distinct([plan.stream for plan in plans])
     clock = clock or (lambda: datetime.now(UTC))
-    result = BackfillResult(plan.source.name)
+    results: list[BackfillResult] = []
+    stream = None
+    try:
+        for plan in plans:
+            if not plan.chunks:
+                continue
+            stream = plan.stream
+            results.append(BackfillResult(plan))
+            _backfill_stream(conn, source, results[-1], clock, on_chunk)
+            if on_stream is not None:
+                on_stream(results[-1])
+    except (SourceUnavailable, sqlite3.Error) as exc:
+        return BackfillRun(_committed(results), failure_of(stream, exc))
+    except KeyboardInterrupt:
+        return BackfillRun(_committed(results), interrupted=True)
+    return BackfillRun(tuple(results))
+
+
+def _committed(results: list[BackfillResult]) -> tuple[BackfillResult, ...]:
+    return tuple(result for result in results if result.chunks_done)
+
+
+def _backfill_stream(
+    conn: sqlite3.Connection,
+    source: HistorySource,
+    result: BackfillResult,
+    clock: Clock,
+    on_chunk: Callable[[ChunkDone], None] | None,
+) -> None:
+    plan = result.plan
+    attempt = not plan.has_progress and plan.covers_history
+    first_incomplete: Pull | None = None
     last = len(plan.chunks) - 1
     for index, piece in enumerate(plan.chunks):
         now = clock()
-        pulled = pull_source(client, plan.source, start=piece.start, end=piece.end, now=now)
-        incomplete = list(result.incomplete)
-        if pulled.frontier is not None and pulled.frontier < piece.end:
-            incomplete.append((piece, pulled.frontier))
-        complete_until = incomplete[0][1] if incomplete else plan.end
-        progress = (
-            progress_at(plan.source.name, complete_until, only_if_none=True)
-            if index == last and not plan.has_progress and plan.covers_history
-            else None
+        pulled = source.pull_range(plan.stream, piece.start, piece.end, now=now)
+        incomplete_from = _incomplete_from(pulled, piece)
+        if incomplete_from is not None and first_incomplete is None:
+            first_incomplete = pulled
+        complete = first_incomplete or pulled
+        written = commit_pull(
+            conn,
+            plan.stream,
+            pulled,
+            now=now,
+            progress_from=complete if index == last and attempt else None,
+            only_if_none=True,
         )
-        written = insert_observations(conn, pulled.observations, progress=progress, now=now)
-        outcome = outcome_of(pulled, written)
+        seconds = (clock() - now).total_seconds()
         result.chunks_done += 1
-        result.inserted += outcome.inserted
-        result.skipped += outcome.skipped
-        result.held_back += outcome.held_back
-        result.incomplete = incomplete
+        result.inserted += written.inserted
+        result.skipped += written.skipped
+        result.held_back += pulled.held_back
+        result.seconds += seconds
+        if incomplete_from is not None:
+            result.incomplete.append((piece, incomplete_from))
         if index == last:
-            result.complete_until = complete_until
-            result.progress_set = written.progress_moved
+            result.complete_until = result.incomplete[0][1] if result.incomplete else plan.end
+            result.progress = _progress_outcome(plan, written.progress_sent, written.progress_moved)
         if on_chunk is not None:
-            on_chunk(index, piece, outcome, result)
-    return result
-
-
-def _history_floor(buckets: Mapping[str, Any], source: AWSource) -> datetime | None:
-    """Local midnight on or before the earliest bucket creation time, if any."""
-    created = []
-    for bucket_id in source.bucket_ids:
-        meta = buckets.get(bucket_id)
-        value = meta.get("created") if isinstance(meta, Mapping) else None
-        try:
-            created.append(to_utc(value))
-        except (TypeError, ValueError, AttributeError):
-            log.warning("bucket %s has no usable 'created' time (%r)", bucket_id, value)
-    if not created:
-        return None
-    local = min(created).astimezone()
-    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
-
-
-def _event_before(client: AWApi, bucket_id: str, start: datetime) -> tuple[bool, datetime | None]:
-    """Whether the bucket has an event beginning before the start, and when it began.
-
-    An event whose timestamp cannot be read still counts as earlier history.
-    """
-    for raw in client.get_events(bucket_id, end=start - _PROBE_GUARD, limit=1):
-        try:
-            began = to_utc(raw["timestamp"])
-        except (KeyError, TypeError, ValueError, AttributeError) as exc:
-            log.warning(
-                "malformed ActivityWatch event in %s before %s: %s; treating it as"
-                " history the backfill does not cover",
-                bucket_id,
-                start.isoformat(),
-                exc,
+            on_chunk(
+                ChunkDone(
+                    plan.stream,
+                    index,
+                    len(plan.chunks),
+                    piece,
+                    written.inserted,
+                    written.skipped,
+                    pulled.held_back,
+                    incomplete_from,
+                    seconds,
+                )
             )
-            return True, None
-        if began < start:
-            return True, began
-    return False, None
+
+
+def _incomplete_from(pulled: Pull, piece: Chunk) -> datetime | None:
+    """Where the chunk stops being complete, or None if all of it is stored."""
+    if pulled.settled_until is None:
+        return piece.start if pulled.held_back else None
+    return pulled.settled_until if pulled.settled_until < piece.end else None
+
+
+def _progress_outcome(plan: BackfillPlan, sent: bool, moved: bool) -> BackfillProgress:
+    if plan.has_progress:
+        return BackfillProgress.KEPT if plan.settled_until else BackfillProgress.KEPT_UNSETTLED
+    if not plan.covers_history:
+        return BackfillProgress.NOT_COVERED
+    if not sent:
+        return BackfillProgress.NO_POSITION
+    return BackfillProgress.SET if moved else BackfillProgress.SET_MEANWHILE

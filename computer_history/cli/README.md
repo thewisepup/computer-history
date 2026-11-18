@@ -3,17 +3,19 @@
 The command line for the local activity store: it ingests settled
 ActivityWatch events into SQLite and reports on what is stored. All business
 logic lives in `sources/` and `store/`; this package only parses arguments,
-calls one function, and formats the result.
+builds the clients, source adapters and connection, calls one function, and
+formats the result.
 
 ```
 app.py         parser + dispatch: one entry per command
   |
-  +-- ingest.py    one poll, or the --watch loop
+  +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   +-- status.py    freshness, coverage gaps, row counts
   +-- rebuild.py   rebuild-signals
-  +-- backfill.py  plan, then ingest history chunk by chunk
+  +-- backfill.py  plan, then ingest history chunk by chunk through the runner
         |
-db.py (unusable-database messages) and formatting.py (durations, times, sizes)
+db.py and sources.py (unusable database / source messages),
+formatting.py (durations, times, sizes)
 ```
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the

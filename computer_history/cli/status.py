@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import db_size, duration, lag, when
-from computer_history.sources import AWClient, AWError, discover_sources
+from computer_history.sources import ActivityWatch, AWClient, SourceUnavailable
 from computer_history.store import (
     Purpose,
     SourceSummary,
@@ -29,12 +29,12 @@ STATUS_AW_TIMEOUT_SECONDS = 5
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     now = datetime.now(UTC)
-    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    aw = ActivityWatch(AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS))
     try:
-        sources = discover_sources(client)
+        streams = aw.streams()
         aw_error = None
-    except AWError as exc:
-        sources, aw_error = [], str(exc)
+    except SourceUnavailable as exc:
+        streams, aw_error = [], str(exc)
 
     if aw_error is not None:
         print(f"!! ActivityWatch is UNREACHABLE at {args.aw_url}: nothing new can be ingested.")
@@ -42,7 +42,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print()
         aw_line = f"ActivityWatch: no  ({args.aw_url})"
     else:
-        names = ", ".join(s.name for s in sources) or "none of window/AFK/web"
+        names = ", ".join(streams) or "none of window/AFK/web"
         aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
 
     store = open_store(db_path, Purpose.READ)
