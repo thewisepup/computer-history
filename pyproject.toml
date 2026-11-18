@@ -24,6 +24,9 @@ py-modules = ["history", "history_mcp"]
 [tool.setuptools.packages.find]
 include = ["computer_history*"]
 
+[tool.setuptools.package-data]
+"computer_history.store" = ["migrations/*.sql"]
+
 [tool.pytest.ini_options]
 # Only the new package's tests. The POC suite (test_history.py, test_mcp.py)
 # runs separately via `python -m unittest`.

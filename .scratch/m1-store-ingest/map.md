@@ -43,6 +43,10 @@ cross-checked with the POC's `/usage` numbers.
 - [01 — Package skeleton + tooling](issues/01-package-skeleton.md): package +
   CLI stubs + pytest/ruff in place; distribution renamed to
   `computer-history`; POC untouched and green.
+- [02 — Store: connection, migrations, schema 001](issues/02-store-migrations-schema.md):
+  full §3 schema via atomic `user_version` migrations; explicit
+  `transaction()` (isolation_level=None); canonical `utc_iso()` timestamps —
+  all later writers must use both.
 
 ## Not yet specified
 

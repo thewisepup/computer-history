@@ -54,7 +54,7 @@ Current implementation: a Python proof of concept (no desktop app yet).
 | --- | --- |
 | Language / framework | Python 3.10+ (verified with Homebrew 3.12), FastAPI + Uvicorn |
 | Capture | ActivityWatch v0.14.2, local HTTP API at `http://127.0.0.1:5600/api/0` |
-| Storage | None. No database; reads ActivityWatch live. Optional JSON exports go to `output/` (gitignored) |
+| Storage | POC: none (reads ActivityWatch live; optional JSON exports in `output/`, gitignored). Rewrite (M1+): SQLite at `~/Library/Application Support/ComputerHistory/history.db`, overridable via `COMPUTER_HISTORY_DB` or `--db-path` |
 | AI access | MCP server (Streamable HTTP) mounted on the same app at `http://127.0.0.1:8765/mcp` |
 | Platform | macOS (MVP is Mac-focused) |
 
