@@ -12,6 +12,8 @@ import pytest
 from fake_aw import FakeAW, at
 
 from computer_history import cli
+from computer_history.cli import rebuild as cli_rebuild
+from computer_history.cli import shared as cli_shared
 from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
@@ -483,7 +485,7 @@ def test_cli_rebuild_signals_allow_shrink(
     capsys: pytest.CaptureFixture[str], db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(signals_module, "SHRINK_CHECK_MIN_SIGNALS", 1)
-    monkeypatch.setattr(cli, "project_signal", lambda source, payload: None)
+    monkeypatch.setattr(cli_rebuild, "project_signal", lambda source, payload: None)
     conn = connect(db_path)
     try:
         ingest_all(conn, fixture_aw(), now=at(30))
@@ -512,7 +514,7 @@ def test_cli_reports_a_locked_db_at_open_without_a_traceback(
     def locked(*args: Any, **kwargs: Any) -> None:
         raise sqlite3.OperationalError("database is locked")  # e.g. while migrating
 
-    monkeypatch.setattr(cli, "connect", locked)
+    monkeypatch.setattr(cli_shared, "connect", locked)
     code, out, err = run(capsys, "--db-path", str(db_path), command)
     assert code == 1
     assert out == ""

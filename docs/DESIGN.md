@@ -81,7 +81,8 @@ computer_history/
   review/       # bottleneck ranking, weekly review, suggestions
   api/          # FastAPI routes under /api
   mcp/          # MCP tools (read + write)
-  cli.py        # serve, status, backfill, rebuild-signals, classify-now, review-now
+  cli/          # one module per command, dispatched by app.py
+                # (serve, classify-now, review-now arrive with later milestones)
 ui/             # React app, built into static files FastAPI serves
 capture-agent/  # Swift CLI (separate build)
 docs/

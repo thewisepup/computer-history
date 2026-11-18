@@ -20,7 +20,9 @@ _Last updated: 2026-11-16._
 > (HTTP), `discovery` (buckets → sources), `pull` (settled events),
 > `normalize` (payload → signal), `ingest` (the orchestrator);
 > `sources/backfill.py` consumes it; `text.py` is the shared text/URL
-> normalization. Rewrite tests:
+> normalization; `cli/` has one module per command (`ingest`, `status`,
+> `rebuild`, `backfill`) dispatched by `app.py`, with `shared.py` and
+> `formatting.py` as helpers. Rewrite tests:
 > `.venv/bin/python -m pytest` (219) + `ruff check computer_history tests`;
 > the POC suite below still runs with unittest. The distribution was renamed
 > `computer-history-poc` → `computer-history`; stale venvs need

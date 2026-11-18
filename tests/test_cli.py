@@ -14,6 +14,9 @@ from fake_aw import FakeAW
 
 import computer_history
 from computer_history import cli
+from computer_history.cli import formatting
+from computer_history.cli import ingest as cli_ingest
+from computer_history.cli import status as cli_status
 from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, AWError
 from computer_history.store import (
     DB_ENV_VAR,
@@ -58,7 +61,8 @@ def use_aw(monkeypatch: pytest.MonkeyPatch):
     """Make the CLI talk to the given fake instead of a real AWClient."""
 
     def install(fake: FakeAW) -> FakeAW:
-        monkeypatch.setattr(cli, "AWClient", lambda *args, **kwargs: fake)
+        monkeypatch.setattr(cli_ingest, "AWClient", lambda *args, **kwargs: fake)
+        monkeypatch.setattr(cli_status, "AWClient", lambda *args, **kwargs: fake)
         return fake
 
     return install
@@ -203,7 +207,7 @@ def test_watch_survives_aw_outage_and_logs_each_cycle(
 
     assert len(sleeps) == 2
     assert all(0 <= s <= cli.POLL_INTERVAL_SECONDS for s in sleeps)
-    failed, succeeded = [r for r in caplog.records if r.name == cli.__name__]
+    failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
     assert failed.levelno == logging.WARNING
     assert UNREACHABLE in failed.getMessage()
     assert "retrying in 60s" in failed.getMessage()
@@ -275,7 +279,7 @@ def test_run_cycle_lets_hard_database_errors_propagate(
     def corrupt(*args: Any, **kwargs: Any) -> None:
         raise sqlite3.DatabaseError("database disk image is malformed")
 
-    monkeypatch.setattr(cli, "ingest_source", corrupt)
+    monkeypatch.setattr(cli_ingest, "ingest_source", corrupt)
     with pytest.raises(sqlite3.DatabaseError, match="malformed"):
         cli.run_cycle(conn, seeded_aw(datetime.now(UTC)))
 
@@ -284,7 +288,7 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
     conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
-    real_ingest = cli.ingest_source
+    real_ingest = cli_ingest.ingest_source
     calls = 0
 
     def locked_once(*args: Any, **kwargs: Any):
@@ -294,10 +298,10 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
             raise sqlite3.OperationalError("database is locked")
         return real_ingest(*args, **kwargs)
 
-    monkeypatch.setattr(cli, "ingest_source", locked_once)
+    monkeypatch.setattr(cli_ingest, "ingest_source", locked_once)
     # Each cycle reads the clock twice: the failed cycle took 15s, the next one 2s.
     ticks = iter([0.0, 15.0, 100.0, 102.0])
-    monkeypatch.setattr(cli.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(cli_ingest.time, "monotonic", lambda: next(ticks))
     sleeps: list[float] = []
 
     def fake_sleep(seconds: float) -> None:
@@ -309,7 +313,7 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
         cli.watch(conn, seeded_aw(datetime.now(UTC)), sleep=fake_sleep)
 
     assert sleeps == [45.0, 58.0]
-    failed, succeeded = [r for r in caplog.records if r.name == cli.__name__]
+    failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
     assert failed.levelno == logging.WARNING
     assert failed.getMessage() == (
         "ingest failed on aw-afk: database error: database is locked; retrying in 45s"
@@ -326,11 +330,11 @@ def test_ingest_watch_exits_zero_on_ctrl_c(
     def interrupt(seconds: float) -> None:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli.time, "sleep", interrupt)
+    monkeypatch.setattr(cli_ingest.time, "sleep", interrupt)
     code, _, err = run(capsys, "--db-path", str(db_path), "ingest", "--watch")
     assert code == 0
     assert "Traceback" not in err
-    messages = [r.getMessage() for r in caplog.records if r.name == cli.__name__]
+    messages = [r.getMessage() for r in caplog.records if r.name == cli_ingest.__name__]
     assert any("every 60s" in m for m in messages)
     assert messages[-1] == "stopped"
     assert counts_in(db_path)["observations"] == 2
@@ -490,7 +494,7 @@ def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: 
         seen.append(base_url)
         return FakeAW({})
 
-    monkeypatch.setattr(cli, "AWClient", fake_client)
+    monkeypatch.setattr(cli_status, "AWClient", fake_client)
     _, out, _ = run(
         capsys, "--db-path", str(db_path), "status", "--aw-url", "http://127.0.0.1:5666/api/0"
     )
@@ -522,16 +526,16 @@ def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: 
     ],
 )
 def test_duration(seconds: float, text: str) -> None:
-    assert cli._duration(seconds) == text
+    assert formatting.duration(seconds) == text
 
 
 def test_lag() -> None:
-    assert cli._lag(timedelta(seconds=42)) == "42s behind now"
-    assert cli._lag(timedelta(seconds=-90)) == "1m 30s ahead of now"
+    assert formatting.lag(timedelta(seconds=42)) == "42s behind now"
+    assert formatting.lag(timedelta(seconds=-90)) == "1m 30s ahead of now"
 
 
 @pytest.mark.parametrize(
     ("n", "text"), [(0, "0 B"), (1023, "1023 B"), (1536, "1.5 KB"), (5 * 1024**2, "5.0 MB")]
 )
 def test_bytes(n: int, text: str) -> None:
-    assert cli._bytes(n) == text
+    assert formatting.human_size(n) == text

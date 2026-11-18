@@ -16,6 +16,9 @@ import pytest
 from fake_aw import FakeAW
 
 from computer_history import cli
+from computer_history.cli import app as cli_app
+from computer_history.cli import backfill as cli_backfill
+from computer_history.cli import shared as cli_shared
 from computer_history.sources import (
     AFK_SOURCE,
     BACKFILL_CHUNK,
@@ -258,7 +261,7 @@ def test_init_cursor_only_sets_an_absent_cursor(conn) -> None:
 @pytest.fixture
 def use_aw(monkeypatch: pytest.MonkeyPatch):
     def install(fake: FakeAW) -> FakeAW:
-        monkeypatch.setattr(cli, "AWClient", lambda *args, **kwargs: fake)
+        monkeypatch.setattr(cli_backfill, "AWClient", lambda *args, **kwargs: fake)
         return fake
 
     return install
@@ -403,10 +406,10 @@ def test_cli_rejects_bad_ranges(capsys, use_aw, db_path: Path) -> None:
 
 
 def test_when_arg_reads_naive_values_as_local_time() -> None:
-    parsed = cli._when_arg("2026-11-01")
+    parsed = cli_app.when_arg("2026-11-01")
     assert parsed.tzinfo is UTC
     assert parsed == datetime(2026, 11, 1).astimezone().astimezone(UTC)
-    assert cli._when_arg("2026-11-01T09:00+00:00") == datetime(2026, 11, 1, 9, tzinfo=UTC)
+    assert cli_app.when_arg("2026-11-01T09:00+00:00") == datetime(2026, 11, 1, 9, tzinfo=UTC)
 
 
 class DownAW(FakeAW):
@@ -469,7 +472,7 @@ def test_cli_backfill_on_a_locked_store_fails_cleanly(
         conn.execute("PRAGMA busy_timeout = 50")  # don't wait the full 5s in a test
         return conn
 
-    monkeypatch.setattr(cli, "connect", quick_connect)
+    monkeypatch.setattr(cli_shared, "connect", quick_connect)
     try:
         locker.execute("BEGIN IMMEDIATE")
         code, _, err = run(capsys, "--db-path", str(db_path), "backfill")
