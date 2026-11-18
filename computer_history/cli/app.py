@@ -74,8 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--end",
                 type=when_arg,
-                help="stop at this ISO date/datetime (default: the source's ingest cursor,"
-                " or now; never later than those)",
+                help="stop at this ISO date/datetime (default: the time the source's ingest"
+                " is settled until, or now; never later than those)",
             )
             sub.add_argument(
                 "--dry-run",

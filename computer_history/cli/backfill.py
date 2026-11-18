@@ -144,7 +144,7 @@ def _backfill_one(
     )
     later = (
         "`computer-history ingest` picks them up once settled"
-        if plan.cursor is None
+        if not plan.has_progress
         else "re-run backfill later to fill them"
     )
     for chunk, frontier in result.incomplete:
@@ -152,30 +152,37 @@ def _backfill_one(
             f"  note: {plan.source.name} events from {when(frontier)} to {when(chunk.end)}"
             f" had not settled yet (held back); {later}"
         )
-    if result.cursor_set:
+    if result.progress_set:
         print(
-            f"  cursor set to {when(result.complete_until)}: `computer-history ingest`"
-            " continues from there without re-reading history"
+            f"  progress set: settled until {when(result.complete_until)};"
+            " `computer-history ingest` continues from there without re-reading history"
         )
-    elif plan.cursor is not None:
-        print(f"  cursor unchanged at {when(plan.cursor)} (incremental ingest owns what follows)")
+    elif plan.settled_until is not None:
+        print(
+            f"  progress unchanged: settled until {when(plan.settled_until)}"
+            " (incremental ingest owns what follows)"
+        )
+    elif plan.has_progress:
+        print("  progress unchanged: it has no settled-until time (incremental ingest owns it)")
     elif not plan.covers_history:
         print(
-            "  cursor not set: this range does not start before all of the source's"
+            "  progress not set: this range does not start before all of the source's"
             " history, so the next `ingest` reads from the beginning"
         )
     else:
-        print("  cursor not set: another ingest set it meanwhile")
+        print("  progress not set: another ingest set it meanwhile")
 
 
 def _print_plan(plan: BackfillPlan, *, list_chunks: bool) -> None:
     name = plan.source.name
     buckets = len(plan.source.bucket_ids)
     head = f"  {name} ({buckets} bucket{'s' if buckets != 1 else ''}):"
-    if plan.cursor is not None:
-        bound = f"up to its cursor {when(plan.cursor)}"
+    if plan.settled_until is not None:
+        bound = f"up to its settled-until time {when(plan.settled_until)}"
+    elif plan.has_progress:
+        bound = "up to now (its ingest progress has no settled-until time)"
     else:
-        bound = "up to now (no cursor yet)"
+        bound = "up to now (no ingest progress yet)"
     if plan.start is None:
         print(
             f"{head} cannot tell where its history begins (no bucket has a usable"
@@ -195,7 +202,7 @@ def _print_plan(plan: BackfillPlan, *, list_chunks: bool) -> None:
         newest = "has an unreadable timestamp" if began is None else f"starts {when(began)}"
         print(
             f"    warning: {bucket_id} has events before {when(plan.start)}"
-            f" (the newest {newest}); they are NOT included and the cursor will not be"
+            f" (the newest {newest}); they are NOT included and progress will not be"
             " set. Pass an earlier --start to include them."
         )
     if list_chunks:

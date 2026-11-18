@@ -72,11 +72,12 @@ automation suggestions.
 computer_history/
   store/        # SQLite, one module per concern: db (connections + migrations),
                 # opening (open for a purpose, report the database's state),
-                # observations (ingest writes), signals (rebuild), cursors,
-                # status (read queries), timefmt, paths
+                # observations (ingest writes), signals (rebuild),
+                # progress (per-source ingest progress), status (read
+                # queries), timefmt, paths
   sources/      # one adapter per source: activitywatch/, ax_text, screenshots
                 # activitywatch/: client, discovery, pull, normalize,
-                # ingest (the orchestrator)
+                # position (its progress encoding), ingest (the orchestrator)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -263,9 +264,22 @@ suggestions (
 ### 3.5 Bookkeeping
 
 ```sql
-ingest_cursors (source, last_seen)      -- per-source ingestion frontier
+ingest_progress (
+  source        TEXT PRIMARY KEY,
+  position      TEXT NOT NULL,     -- opaque to the store; the source encodes it
+  settled_until TEXT,              -- UTC; the source's data is complete up to here
+  advanced_at   TEXT NOT NULL      -- when progress last moved
+)
 classification_runs (id, started_at, finished_at, range, model, status, error)
 ```
+
+- **Progress is opaque and moves only with a batch.** `position` is whatever
+  the source needs to resume (ActivityWatch: a UTC timestamp; the AX-text
+  spool: file + offset). Only `insert_observations` writes it, in the same
+  transaction as the batch, either advancing it (incremental ingest) or
+  setting it only if the source has none (backfill's last chunk). Status's
+  freshness and gap window and backfill planning read `settled_until`;
+  nothing outside the source's adapter decodes `position`.
 
 - Two separate frontiers on purpose: ingestion and classified time move
   independently; a blocks-derived watermark would re-classify fully-AFK
@@ -274,8 +288,9 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 
 ## 4. Ingestion
 
-Adapter contract: _pull since cursor → write `observations` + `signals` in
-one transaction → advance cursor._ Idempotent via `(source, source_id)`.
+Adapter contract: _pull from the stored position → write `observations` +
+`signals` + the new progress in one transaction._ Idempotent via
+`(source, source_id)`.
 Only adapters know payload dialects; everything downstream reads `signals`.
 
 ### 4.1 ActivityWatch adapter
@@ -302,7 +317,7 @@ observe, write spool files, repeat; all intelligence stays in Python.
   disk. Vision OCR **in the agent**; only text crosses to Python; screenshots
   never leave the Mac. Est. ~75–150 MB/day post-dedup.
 - Spool handoff: hourly-rotated JSONL, one capture per line (UUID =
-  `source_id`); backend tails with a (file, offset) cursor. The filesystem is
+  `source_id`); backend tails with a (file, offset) position. The filesystem is
   the queue; backend downtime just accumulates files.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement);
   periodic macOS Screen Recording re-confirmation (surface as coverage
@@ -457,8 +472,8 @@ M6 replaces it.
 - [ ] Content-role text only, ~10 KB cap, hash-skip unchanged text,
       `kAXSecureTextField` always skipped.
 - [ ] Per-call timeout verified: a hung app costs one capture, not the agent.
-- [ ] Hourly-rotated JSONL spool; backend adapter tails via (file, offset)
-      cursor into observations + signals.
+- [ ] Hourly-rotated JSONL spool; backend adapter tails via a (file, offset)
+      ingest position into observations + signals.
 - [ ] Kill the backend for a day → spool accumulates, catch-up ingests all.
 
 ### M3 — Capture agent: screenshots + OCR
@@ -475,7 +490,7 @@ M6 replaces it.
 
 - [ ] LaunchAgents for backend and capture agent; both start at login.
 - [ ] Reboot test: recording resumes with no manual steps.
-- [ ] Sleep test: cursors advance across wake; the gap is ingested, and real
+- [ ] Sleep test: ingest progress advances across wake; the gap is ingested, and real
       coverage gaps are reported as warnings, never guessed.
 - [ ] From here, data accumulates unattended (the eval corpus for M5).
 

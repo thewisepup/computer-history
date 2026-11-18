@@ -1,15 +1,11 @@
 """The SQLite store: schema migrations and persistence.
 
 Only this package knows SQL. Commands open the database with open_store,
-which reports its state. Writers use insert_observations and the cursor
-setters, rebuild-signals uses rebuild_signals, status uses the read queries.
+which reports its state. Ingest writes through insert_observations, the only
+way a source's progress moves. rebuild-signals uses rebuild_signals, and
+status and backfill use the read queries.
 """
 
-from computer_history.store.cursors import (
-    get_cursor,
-    init_cursor,
-    set_cursor,
-)
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
@@ -20,7 +16,6 @@ from computer_history.store.db import (
     transaction,
 )
 from computer_history.store.observations import (
-    Cursor,
     InsertResult,
     Observation,
     Signal,
@@ -28,6 +23,7 @@ from computer_history.store.observations import (
 )
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
+from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.signals import (
     Projector,
     RebuildAborted,
@@ -46,12 +42,13 @@ from computer_history.store.timefmt import to_utc, utc_iso
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
-    "Cursor",
     "Gap",
     "InsertResult",
     "Migration",
     "Observation",
     "OpenedStore",
+    "Progress",
+    "ProgressUpdate",
     "Projector",
     "Purpose",
     "RebuildAborted",
@@ -62,8 +59,7 @@ __all__ = [
     "connect",
     "default_db_path",
     "find_gaps",
-    "get_cursor",
-    "init_cursor",
+    "get_progress",
     "insert_observations",
     "load_migrations",
     "migrate",
@@ -71,7 +67,6 @@ __all__ = [
     "rebuild_signals",
     "resolve_db_path",
     "schema_version",
-    "set_cursor",
     "source_summary",
     "table_counts",
     "to_utc",

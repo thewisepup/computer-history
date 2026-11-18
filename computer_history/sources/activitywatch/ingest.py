@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import NamedTuple
 
 from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
-from computer_history.sources.activitywatch.pull import pull_bucket, resolve_now
-from computer_history.store import Cursor, get_cursor, insert_observations, to_utc
-
-CURSOR_OVERLAP_SECONDS = 600
+from computer_history.sources.activitywatch.position import progress_at, resume_start
+from computer_history.sources.activitywatch.pull import SourcePull, pull_source, resolve_now
+from computer_history.store import (
+    InsertResult,
+    get_progress,
+    insert_observations,
+)
 
 
 class IngestOutcome(NamedTuple):
@@ -24,6 +27,11 @@ class IngestOutcome(NamedTuple):
     frontier: datetime | None
 
 
+def outcome_of(pulled: SourcePull, written: InsertResult) -> IngestOutcome:
+    """The ingest outcome of a pull once its events have been written."""
+    return IngestOutcome(written.inserted, written.skipped, pulled.held_back, pulled.frontier)
+
+
 def ingest_source(
     conn: sqlite3.Connection,
     client: AWApi,
@@ -33,31 +41,23 @@ def ingest_source(
     end: datetime | str | None = None,
     now: datetime | None = None,
 ) -> IngestOutcome:
-    """Pull one source's buckets and write the batch and cursor together.
+    """Pull one source's buckets and write the batch and its progress together.
 
-    With no explicit range it polls from just before the cursor and advances
-    it; an explicit range (used by backfill) leaves the cursor alone.
+    With no explicit range it polls from just before the stored position and
+    advances it; an explicit range leaves the progress alone.
     """
-    now = resolve_now(now)
     incremental = start is None and end is None
     if incremental:
-        cursor = get_cursor(conn, source.name)
-        if cursor is not None:
-            start = to_utc(cursor) - timedelta(seconds=CURSOR_OVERLAP_SECONDS)
-    pulls = [
-        pull_bucket(client, source.name, bucket_id, start=start, end=end, now=now)
-        for bucket_id in source.bucket_ids
-    ]
-    frontier = min((pull.frontier for pull in pulls), default=None)
-    advance = Cursor(source.name, frontier) if incremental and frontier is not None else None
-    observations = [obs for pull in pulls for obs in pull.observations]
-    result = insert_observations(conn, observations, advance_cursor=advance)
-    return IngestOutcome(
-        inserted=result.inserted,
-        skipped=result.skipped,
-        held_back=sum(pull.held_back for pull in pulls),
-        frontier=frontier,
+        progress = get_progress(conn, source.name)
+        if progress is not None:
+            start = resume_start(progress.position)
+    pulled = pull_source(client, source, start=start, end=end, now=now)
+    advance = (
+        progress_at(source.name, pulled.frontier)
+        if incremental and pulled.frontier is not None
+        else None
     )
+    return outcome_of(pulled, insert_observations(conn, pulled.observations, progress=advance))
 
 
 def ingest_all(

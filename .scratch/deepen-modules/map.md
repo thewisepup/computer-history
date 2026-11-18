@@ -32,3 +32,4 @@ orchestration, cursor rules, status, or the CLI.
 
 <!-- one line per closed ticket: [title](issues/NN-slug.md): gist -->
 - [01 — Open the store by purpose](issues/01-store-open.md): `store.open_store(path, Purpose.READ|WRITE|WRITE_EXISTING) -> OpenedStore` reports READY/MISSING/OUTDATED/NEWER/BUSY/UNREADABLE; no command reads a mismatched schema; newer-schema traceback fixed; CLI only maps states to messages (`cli/db.py`); backfill planning moved to `sources.plan_all_backfills`.
+- [02 — Opaque ingest progress](issues/02-ingest-progress.md): `ingest_progress(source, position, settled_until, advanced_at)` via migration 003; store never decodes `position`; progress moves only inside `insert_observations(progress=ProgressUpdate(...))` (advance or `only_if_none`); AW owns encoding + 600s rewind (`activitywatch/position.py`); backfill's first-time progress rides its last chunk's batch; status/planning use `settled_until`.

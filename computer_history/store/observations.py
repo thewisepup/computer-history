@@ -1,4 +1,4 @@
-"""The single write path for raw data: observations, their signals, the cursor."""
+"""The single write path for raw data: observations, their signals, ingest progress."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import NamedTuple
 
-from computer_history.store.cursors import set_cursor
 from computer_history.store.db import transaction
+from computer_history.store.progress import ProgressUpdate, write_with_batch
 from computer_history.store.timefmt import utc_iso
 
 
@@ -40,14 +40,10 @@ class Observation:
     signal: Signal | None = None
 
 
-class Cursor(NamedTuple):
-    source: str
-    last_seen: datetime | str
-
-
 class InsertResult(NamedTuple):
     inserted: int
     skipped: int
+    progress_moved: bool = False
 
 
 _INSERT_OBSERVATION = """
@@ -67,11 +63,12 @@ def insert_observations(
     conn: sqlite3.Connection,
     observations: Iterable[Observation],
     *,
-    advance_cursor: Cursor | None = None,
+    progress: ProgressUpdate | None = None,
+    now: datetime | None = None,
 ) -> InsertResult:
-    """Write a batch of observations, their signals, and optionally a cursor, atomically.
+    """Atomically write a batch of observations, their signals and optionally the source's progress.
 
-    Observations already stored are skipped, along with their signals.
+    Already stored observations are skipped with their signals, and the write is stamped with now.
     """
     if conn.in_transaction:
         raise RuntimeError(
@@ -79,12 +76,7 @@ def insert_observations(
             "it must not be called inside transaction()"
         )
     rows = [_prepare(observation) for observation in observations]
-    cursor = (
-        None
-        if advance_cursor is None
-        else Cursor(advance_cursor.source, utc_iso(advance_cursor.last_seen))
-    )
-    ingested_at = utc_iso(datetime.now(UTC))
+    ingested_at = utc_iso(datetime.now(UTC) if now is None else now)
     inserted = 0
     with transaction(conn):
         for source, source_id, started, ended, payload, signal in rows:
@@ -98,9 +90,8 @@ def insert_observations(
                 conn.execute(
                     INSERT_SIGNAL, signal_params(result.lastrowid, source, started, ended, signal)
                 )
-        if cursor is not None:
-            set_cursor(conn, cursor.source, cursor.last_seen)
-    return InsertResult(inserted=inserted, skipped=len(rows) - inserted)
+        moved = progress is not None and write_with_batch(conn, progress, advanced_at=ingested_at)
+    return InsertResult(inserted=inserted, skipped=len(rows) - inserted, progress_moved=moved)
 
 
 def signal_params(

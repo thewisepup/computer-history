@@ -1,18 +1,7 @@
 """One-time, chunked ingest of existing ActivityWatch history (backfill).
 
-Backfill writes through the same path as incremental ingest, so the settled
-rule, start-based ownership and duplicate handling all apply unchanged.
-Re-running it re-reads ActivityWatch and inserts nothing.
-
-The range runs from the earliest bucket's creation time up to the source's
-cursor, or now if it has none. --start and --end override that. The range is
-ingested in fixed chunks, oldest first, one commit each.
-
-The last chunk usually holds back the current window/tab/AFK event, which a
-later ingest picks up once it settles. If the source had no cursor and the
-range covered all of its history, the cursor is set at the end, so the next
-ingest continues from there instead of re-reading history. An existing cursor
-is never moved.
+Each chunk commits on its own, oldest first, and the last chunk's commit also
+sets the source's progress if it had none and the range covered its history.
 """
 
 from __future__ import annotations
@@ -29,9 +18,11 @@ from computer_history.sources.activitywatch import (
     AWSource,
     IngestOutcome,
     discover_sources,
-    ingest_source,
+    outcome_of,
+    progress_at,
+    pull_source,
 )
-from computer_history.store import get_cursor, init_cursor, to_utc
+from computer_history.store import Progress, get_progress, insert_observations, to_utc
 
 __all__ = [
     "BACKFILL_CHUNK",
@@ -64,9 +55,10 @@ class BackfillPlan:
     source: AWSource
     start: datetime | None
     end: datetime
-    cursor: datetime | None
+    settled_until: datetime | None
     chunks: tuple[Chunk, ...]
     earlier: tuple[tuple[str, datetime | None], ...] = ()
+    has_progress: bool = False
 
     @property
     def covers_history(self) -> bool:
@@ -88,14 +80,14 @@ class BackfillResult:
     held_back: int = 0
     incomplete: list[tuple[Chunk, datetime]] = field(default_factory=list)
     complete_until: datetime | None = None
-    cursor_set: bool = False
+    progress_set: bool = False
 
 
 def plan_backfill(
     client: AWApi,
     source: AWSource,
     *,
-    cursor: datetime | str | None,
+    progress: Progress | None,
     now: datetime,
     start: datetime | None = None,
     end: datetime | None = None,
@@ -109,8 +101,8 @@ def plan_backfill(
     if chunk <= timedelta(0):
         raise ValueError(f"chunk width must be positive: {chunk}")
     now = to_utc(now)
-    cursor_dt = None if cursor is None else to_utc(cursor)
-    stop = now if cursor_dt is None else min(cursor_dt, now)
+    settled = None if progress is None else progress.settled_until
+    stop = now if settled is None else min(settled, now)
     if end is not None:
         stop = min(stop, to_utc(end))
     if start is not None:
@@ -118,7 +110,7 @@ def plan_backfill(
     else:
         begin = _history_floor(client.get_buckets() if buckets is None else buckets, source)
     if begin is None or begin >= stop:
-        return BackfillPlan(source, begin, stop, cursor_dt, ())
+        return BackfillPlan(source, begin, stop, settled, (), has_progress=progress is not None)
     earlier = []
     for bucket_id in source.bucket_ids:
         found, began = _event_before(client, bucket_id, begin)
@@ -129,7 +121,15 @@ def plan_backfill(
     while edge < stop:
         chunks.append(Chunk(edge, min(edge + chunk, stop)))
         edge += chunk
-    return BackfillPlan(source, begin, stop, cursor_dt, tuple(chunks), tuple(earlier))
+    return BackfillPlan(
+        source,
+        begin,
+        stop,
+        settled,
+        tuple(chunks),
+        tuple(earlier),
+        has_progress=progress is not None,
+    )
 
 
 def plan_all_backfills(
@@ -140,7 +140,7 @@ def plan_all_backfills(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> list[BackfillPlan]:
-    """Plan every discovered source from its stored cursor, or from none without a database.
+    """Plan every discovered source from its stored progress, or from none without a database.
 
     Lists the buckets once and writes nothing.
     """
@@ -149,7 +149,7 @@ def plan_all_backfills(
         plan_backfill(
             client,
             source,
-            cursor=None if conn is None else get_cursor(conn, source.name),
+            progress=None if conn is None else get_progress(conn, source.name),
             now=now,
             start=start,
             end=end,
@@ -167,28 +167,37 @@ def run_backfill(
     on_chunk: Callable[[int, Chunk, IngestOutcome, BackfillResult], None] | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> BackfillResult:
-    """Ingest every chunk of the plan in order, then set the cursor if it had none.
+    """Ingest every chunk of the plan in order, each in its own commit.
 
-    Each chunk commits on its own, so re-running after an error resumes cheaply.
+    The last commit also sets the source's progress if it had none and the plan covers its history.
     """
     clock = clock or (lambda: datetime.now(UTC))
     result = BackfillResult(plan.source.name)
+    last = len(plan.chunks) - 1
     for index, piece in enumerate(plan.chunks):
-        outcome = ingest_source(
-            conn, client, plan.source, start=piece.start, end=piece.end, now=clock()
+        now = clock()
+        pulled = pull_source(client, plan.source, start=piece.start, end=piece.end, now=now)
+        incomplete = list(result.incomplete)
+        if pulled.frontier is not None and pulled.frontier < piece.end:
+            incomplete.append((piece, pulled.frontier))
+        complete_until = incomplete[0][1] if incomplete else plan.end
+        progress = (
+            progress_at(plan.source.name, complete_until, only_if_none=True)
+            if index == last and not plan.has_progress and plan.covers_history
+            else None
         )
+        written = insert_observations(conn, pulled.observations, progress=progress, now=now)
+        outcome = outcome_of(pulled, written)
         result.chunks_done += 1
         result.inserted += outcome.inserted
         result.skipped += outcome.skipped
         result.held_back += outcome.held_back
-        if outcome.frontier is not None and outcome.frontier < piece.end:
-            result.incomplete.append((piece, outcome.frontier))
+        result.incomplete = incomplete
+        if index == last:
+            result.complete_until = complete_until
+            result.progress_set = written.progress_moved
         if on_chunk is not None:
             on_chunk(index, piece, outcome, result)
-    if plan.chunks:
-        result.complete_until = result.incomplete[0][1] if result.incomplete else plan.end
-    if plan.cursor is None and plan.covers_history and result.complete_until is not None:
-        result.cursor_set = init_cursor(conn, plan.source.name, result.complete_until)
     return result
 
 

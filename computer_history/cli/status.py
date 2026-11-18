@@ -78,28 +78,35 @@ def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
         return
     width = max(len(s.source) for s in summaries)
     for s in summaries:
-        freshness = "never ingested" if s.cursor is None else lag(now - s.cursor)
         print(
             f"  {s.source:<{width}}  {s.observation_count:>8,} observations"
             f"  latest end {when(s.latest_ended_at)}"
-            f"  cursor {when(s.cursor)} ({freshness})"
+            f"  settled until {when(s.settled_until)} ({_freshness(s, now)})"
         )
     print(
-        "  (the cursor waits at the start of the current, still-growing window/tab/AFK"
-        " event, so lag includes that event's length)"
+        "  (a source is settled only up to the start of its current, still-growing"
+        " window/tab/AFK event, so lag includes that event's length)"
     )
+
+
+def _freshness(summary: SourceSummary, now: datetime) -> str:
+    if summary.advanced_at is None:
+        return "never ingested"
+    if summary.settled_until is None:
+        return f"progress moved {duration((now - summary.advanced_at).total_seconds())} ago"
+    return lag(now - summary.settled_until)
 
 
 def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> None:
     print(
         f"Coverage gaps (unobserved: nothing recorded) of {duration(MIN_GAP_SECONDS)} or"
-        f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's cursor"
-        " (or its latest observation, if it has no cursor):"
+        f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's"
+        " settled-until time (or its latest observation, if it has none):"
     )
     if not summaries:
         print("  nothing to check yet")
     for s in summaries:
-        end = s.cursor or s.latest_ended_at
+        end = s.settled_until or s.latest_ended_at
         first = s.earliest_started_at
         if end is None or first is None:
             print(f"  {s.source}: no observations yet")

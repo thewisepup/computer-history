@@ -4,15 +4,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from computer_history.store import (
-    Cursor,
     Gap,
     InsertResult,
     Observation,
+    ProgressUpdate,
     Signal,
     find_gaps,
-    get_cursor,
+    get_progress,
     insert_observations,
-    set_cursor,
     source_summary,
     table_counts,
     transaction,
@@ -44,6 +43,15 @@ def count(conn: sqlite3.Connection, table: str) -> int:
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
+def advance(source: str, minutes: float) -> ProgressUpdate:
+    return ProgressUpdate(source, f"pos-{minutes}", settled_until=at(minutes))
+
+
+def settled(conn: sqlite3.Connection, source: str) -> datetime | None:
+    progress = get_progress(conn, source)
+    return None if progress is None else progress.settled_until
+
+
 # --- insert_observations -------------------------------------------------------
 
 
@@ -64,25 +72,25 @@ def test_insert_writes_observation_and_signal(conn: sqlite3.Connection) -> None:
 
 def test_reinsert_adds_zero_rows(conn: sqlite3.Connection) -> None:
     batch = [window("1"), window("2"), afk("1")]
-    assert insert_observations(conn, batch) == (3, 0)
-    assert insert_observations(conn, batch) == (0, 3)
+    assert insert_observations(conn, batch) == InsertResult(3, 0)
+    assert insert_observations(conn, batch) == InsertResult(0, 3)
     assert count(conn, "observations") == 3
     assert count(conn, "signals") == 2
 
 
 def test_duplicate_in_same_batch_is_skipped(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, [window("1"), window("1"), window("2")]) == (2, 1)
+    assert insert_observations(conn, [window("1"), window("1"), window("2")]) == InsertResult(2, 1)
 
 
 def test_same_source_id_in_different_sources_is_not_a_duplicate(
     conn: sqlite3.Connection,
 ) -> None:
-    assert insert_observations(conn, [window("1"), afk("1")]) == (2, 0)
+    assert insert_observations(conn, [window("1"), afk("1")]) == InsertResult(2, 0)
 
 
 def test_mixed_new_and_duplicate_batch(conn: sqlite3.Connection) -> None:
     insert_observations(conn, [window("1")])
-    assert insert_observations(conn, [window("1"), window("2")]) == (1, 1)
+    assert insert_observations(conn, [window("1"), window("2")]) == InsertResult(1, 1)
     assert count(conn, "observations") == count(conn, "signals") == 2
 
 
@@ -94,17 +102,17 @@ def test_duplicate_never_overwrites_existing_signal(conn: sqlite3.Connection) ->
 
 
 def test_afk_observation_gets_no_signal(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, [afk("1")]) == (1, 0)
+    assert insert_observations(conn, [afk("1")]) == InsertResult(1, 0)
     assert count(conn, "observations") == 1
     assert count(conn, "signals") == 0
 
 
 def test_empty_batch(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, []) == (0, 0)
+    assert insert_observations(conn, []) == InsertResult(0, 0)
 
 
 def test_generator_input(conn: sqlite3.Connection) -> None:
-    assert insert_observations(conn, (window(str(i)) for i in range(3))) == (3, 0)
+    assert insert_observations(conn, (window(str(i)) for i in range(3))) == InsertResult(3, 0)
 
 
 def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
@@ -116,15 +124,17 @@ def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
         payload="{}",
         signal=Signal(app="Code"),
     )
-    cursor = Cursor("aw-window", "2026-11-17T05:01:30-05:00")
-    insert_observations(conn, [obs], advance_cursor=cursor)
+    progress = ProgressUpdate("aw-window", "p", settled_until="2026-11-17T05:01:30-05:00")
+    insert_observations(conn, [obs], progress=progress)
     o = conn.execute("SELECT started_at, ended_at, ingested_at FROM observations").fetchone()
     s = conn.execute("SELECT started_at, ended_at FROM signals").fetchone()
     canonical = ("2026-11-17T10:00:00.000000Z", "2026-11-17T10:01:30.500000Z")
     assert tuple(o[:2]) == tuple(s) == canonical
     assert len(o["ingested_at"]) == len("2026-11-17T10:00:00.000000Z")
     assert o["ingested_at"].endswith("Z")
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:01:30.000000Z"
+    stored = conn.execute("SELECT settled_until, advanced_at FROM ingest_progress").fetchone()
+    assert stored["settled_until"] == "2026-11-17T10:01:30.000000Z"
+    assert stored["advanced_at"] == o["ingested_at"]
 
 
 @pytest.mark.parametrize(
@@ -158,71 +168,63 @@ def fail_signal_titled(conn: sqlite3.Connection, title: str) -> None:
     )
 
 
-def test_failed_signal_rolls_back_whole_batch_and_cursor(conn: sqlite3.Connection) -> None:
-    set_cursor(conn, "aw-window", at(0))
+def test_failed_signal_rolls_back_whole_batch_and_progress(conn: sqlite3.Connection) -> None:
+    insert_observations(conn, [], progress=advance("aw-window", 0))
+    before = get_progress(conn, "aw-window")
     fail_signal_titled(conn, "boom")
     batch = [window("1"), window("2", title="boom"), window("3")]
 
     with pytest.raises(sqlite3.IntegrityError, match="injected signal failure"):
-        insert_observations(conn, batch, advance_cursor=Cursor("aw-window", at(5)))
+        insert_observations(conn, batch, progress=advance("aw-window", 5))
 
     assert not conn.in_transaction
     assert count(conn, "observations") == 0
     assert count(conn, "signals") == 0
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:00:00.000000Z"
+    assert get_progress(conn, "aw-window") == before
+
+
+def test_failed_batch_rolls_back_first_progress(conn: sqlite3.Connection) -> None:
+    fail_signal_titled(conn, "boom")
+    first = ProgressUpdate("aw-window", "p", settled_until=at(5), only_if_none=True)
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_observations(conn, [window("1", title="boom")], progress=first)
+    assert get_progress(conn, "aw-window") is None
 
 
 def test_retry_after_failure_succeeds(conn: sqlite3.Connection) -> None:
     fail_signal_titled(conn, "boom")
     batch = [window("1"), window("2", title="boom")]
     with pytest.raises(sqlite3.IntegrityError):
-        insert_observations(conn, batch, advance_cursor=Cursor("aw-window", at(5)))
+        insert_observations(conn, batch, progress=advance("aw-window", 5))
     conn.execute("DROP TRIGGER temp.fail_signal")
 
-    assert insert_observations(conn, batch, advance_cursor=Cursor("aw-window", at(5))) == (2, 0)
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:05:00.000000Z"
+    assert insert_observations(conn, batch, progress=advance("aw-window", 5)) == (2, 0, True)
+    assert settled(conn, "aw-window") == at(5)
 
 
-def test_cursor_advances_with_batch(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1")], advance_cursor=Cursor("aw-window", at(1)))
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:01:00.000000Z"
+def test_progress_advances_with_batch(conn: sqlite3.Connection) -> None:
+    result = insert_observations(conn, [window("1")], progress=advance("aw-window", 1))
+    assert result == InsertResult(inserted=1, skipped=0, progress_moved=True)
+    assert settled(conn, "aw-window") == at(1)
 
 
-def test_cursor_advances_even_when_batch_is_all_duplicates(conn: sqlite3.Connection) -> None:
+def test_progress_advances_even_when_batch_is_all_duplicates(conn: sqlite3.Connection) -> None:
     insert_observations(conn, [window("1")])
-    insert_observations(conn, [window("1")], advance_cursor=Cursor("aw-window", at(9)))
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:09:00.000000Z"
+    insert_observations(conn, [window("1")], progress=advance("aw-window", 9))
+    assert settled(conn, "aw-window") == at(9)
 
 
 def test_insert_inside_open_transaction_is_refused(conn: sqlite3.Connection) -> None:
     # Refused up front with the caller's transaction intact: a prior write in the
     # enclosing transaction must survive the refusal.
     with transaction(conn):
-        set_cursor(conn, "aw-afk", "2026-11-17T10:00:00Z")
+        conn.execute(
+            "INSERT INTO work_types (name, status, created_at) VALUES ('kept', 'active', 'now')"
+        )
         with pytest.raises(RuntimeError, match="inside transaction"):
             insert_observations(conn, [window("1")])
     assert count(conn, "observations") == 0
-    assert get_cursor(conn, "aw-afk") == "2026-11-17T10:00:00.000000Z"
-
-
-# --- cursors and mapping version -------------------------------------------------
-
-
-def test_cursor_round_trip_and_upsert(conn: sqlite3.Connection) -> None:
-    assert get_cursor(conn, "aw-window") is None
-    set_cursor(conn, "aw-window", at(1))
-    set_cursor(conn, "aw-afk", "2026-11-17T10:02:00Z")
-    set_cursor(conn, "aw-window", at(3))
-    assert get_cursor(conn, "aw-window") == "2026-11-17T10:03:00.000000Z"
-    assert get_cursor(conn, "aw-afk") == "2026-11-17T10:02:00.000000Z"
-    assert count(conn, "ingest_cursors") == 2
-
-
-def test_set_cursor_joins_enclosing_transaction(conn: sqlite3.Connection) -> None:
-    with pytest.raises(ZeroDivisionError), transaction(conn):
-        set_cursor(conn, "aw-window", at(1))
-        raise ZeroDivisionError
-    assert get_cursor(conn, "aw-window") is None
+    assert count(conn, "work_types") == 1
 
 
 # --- reads ------------------------------------------------------------------------
@@ -233,25 +235,26 @@ def test_source_summary(conn: sqlite3.Connection) -> None:
     insert_observations(
         conn,
         [window("1", 0, 5), window("2", 1, 3)],
-        advance_cursor=Cursor("aw-window", at(5)),
+        progress=advance("aw-window", 5),
     )
     insert_observations(conn, [afk("1", 0, 2), afk("2", -3, -1)])
-    set_cursor(conn, "aw-web", at(0))
+    insert_observations(conn, [], progress=ProgressUpdate("aw-web", "spool.jsonl:0"))
 
     rows = {row.source: row for row in source_summary(conn)}
     assert list(rows) == ["aw-afk", "aw-web", "aw-window"]
-    assert rows["aw-window"] == ("aw-window", 2, at(0), at(5), at(5))
-    assert rows["aw-afk"] == ("aw-afk", 2, at(-3), at(2), None)
-    assert rows["aw-web"] == ("aw-web", 0, None, None, at(0))
+    assert rows["aw-window"][:5] == ("aw-window", 2, at(0), at(5), at(5))
+    assert rows["aw-afk"] == ("aw-afk", 2, at(-3), at(2), None, None)
+    assert rows["aw-web"][:5] == ("aw-web", 0, None, None, None)
+    assert rows["aw-web"].advanced_at is not None
     assert rows["aw-window"].latest_ended_at.tzinfo is not None
 
 
 def test_table_counts(conn: sqlite3.Connection) -> None:
-    insert_observations(conn, [window("1"), afk("1")], advance_cursor=Cursor("aw-afk", at(1)))
+    insert_observations(conn, [window("1"), afk("1")], progress=advance("aw-afk", 1))
     counts = table_counts(conn)
     assert counts["observations"] == 2
     assert counts["signals"] == 1
-    assert counts["ingest_cursors"] == 1
+    assert counts["ingest_progress"] == 1
     assert counts["blocks"] == 0
     assert "sqlite_sequence" not in counts
 

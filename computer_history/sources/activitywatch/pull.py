@@ -1,4 +1,4 @@
-"""Fetch one bucket's events for a range and keep the settled ones."""
+"""Fetch a source's bucket events for a range and keep the settled ones."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
+from computer_history.sources.activitywatch.discovery import AWSource
 from computer_history.sources.activitywatch.normalize import project_signal
 from computer_history.store import Observation, to_utc
 
@@ -113,6 +114,42 @@ def pull_bucket(
     else:
         frontier = now if end_dt is None else min(end_dt, now)
     return BucketPull(bucket_id, tuple(observations), frontier, len(held))
+
+
+@dataclass(frozen=True)
+class SourcePull:
+    """The settled events pulled from every bucket of a source.
+
+    Every event starting before the frontier is included, and held_back counts the rest.
+    """
+
+    observations: tuple[Observation, ...]
+    held_back: int
+    frontier: datetime | None
+
+
+def pull_source(
+    client: AWApi,
+    source: AWSource,
+    *,
+    start: datetime | str | None = None,
+    end: datetime | str | None = None,
+    now: datetime | None = None,
+) -> SourcePull:
+    """Pull the settled events of every bucket of one source for the range; writes nothing.
+
+    Its frontier is the earliest of the buckets' frontiers.
+    """
+    now = resolve_now(now)
+    pulls = [
+        pull_bucket(client, source.name, bucket_id, start=start, end=end, now=now)
+        for bucket_id in source.bucket_ids
+    ]
+    return SourcePull(
+        observations=tuple(obs for pull in pulls for obs in pull.observations),
+        held_back=sum(pull.held_back for pull in pulls),
+        frontier=min((pull.frontier for pull in pulls), default=None),
+    )
 
 
 def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:

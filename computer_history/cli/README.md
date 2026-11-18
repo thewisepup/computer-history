@@ -22,7 +22,7 @@ venv activated (or aliased).
 ## ingest — the everyday command
 
 ```bash
-computer-history ingest            # one poll: catch up since the cursor
+computer-history ingest            # one poll: catch up from where the last one stopped
 computer-history ingest --watch    # poll every 60s until Ctrl-C
 ```
 
@@ -46,19 +46,21 @@ computer-history status
 ```
 
 ```
-Database:      .../ComputerHistory/history.db (5.2 MB, schema v2)
+Database:      .../ComputerHistory/history.db (5.2 MB, schema v3)
 ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
 
 Sources:
-  aw-window     3,451 observations  latest end 2026-11-18 10:10  cursor 2026-11-18 10:10 (5s behind now)
+  aw-window     3,451 observations  latest end 2026-11-18 10:10  settled until 2026-11-18 10:10 (5s behind now)
   ...
 Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   warning: no aw-web coverage from 2026-11-17 10:45 to 2026-11-17 12:25 (1h 39m)
 ```
 
 Read-only: never creates, migrates or writes. Gaps are reported as
-unobserved time, never assumed idle. Small cursor lag is normal — the cursor
-waits at the start of the current, still-growing event.
+unobserved time, never assumed idle, and are checked up to each source's
+settled-until time. Small lag is normal — a source is settled only up to the
+start of its current, still-growing event. A source whose progress has no
+settled time shows `settled until - (progress moved 30s ago)` instead.
 
 ## backfill — one-time history import
 
@@ -70,11 +72,18 @@ computer-history backfill --start 2026-11-01  # override where it starts
 
 ```
 Backfilling http://127.0.0.1:5600/api/0 into .../history.db (7d chunks)
-  aw-window (1 bucket): [2026-11-12 00:00, 2026-11-18 10:10) up to its cursor, 1 chunk
+  aw-window (1 bucket): [2026-11-12 00:00, 2026-11-18 10:10) up to its settled-until time 2026-11-18 10:10, 1 chunk
+  ...
+  aw-window done in 2s: inserted 3,451, skipped 0, held back 1
+  progress set: settled until 2026-11-18 10:05; `computer-history ingest` continues from there without re-reading history
 ```
 
 Imports existing ActivityWatch history in 7-day chunks, oldest first, one
-commit each. Safe to re-run; an interrupted run resumes by re-running.
+commit each. Safe to re-run; an interrupted run resumes by re-running. A
+source with no ingest progress gets it in the last chunk's commit (only if the
+range covers all its history); existing progress is never moved. A source
+whose progress has no settled time is backfilled up to now and its progress
+is left alone.
 
 ## rebuild-signals — regenerate the derived layer
 
@@ -99,15 +108,15 @@ rows fail to project or the result would shrink suspiciously.
 Every command opens the store the same way and refuses, with exit code 1 and
 no traceback, when the database is:
 
-- **newer** than this CLI (`cannot use ...: schema v3 is newer than this CLI
-  understands (v2); upgrade computer-history`). Nothing is read or written.
+- **newer** than this CLI (`cannot use ...: schema v4 is newer than this CLI
+  understands (v3); upgrade computer-history`). Nothing is read or written.
 - **busy** while opening for write, e.g. another process is migrating
   (`cannot open ...: database is locked` plus a try-again hint).
 - **not a database** (`cannot open ...: file is not a database`).
 
 An **outdated** schema is migrated by `ingest`, `backfill` and
 `rebuild-signals`. `status` and `backfill --dry-run` never migrate: status
-prints `note: this CLI uses schema v2; computer-history ingest will migrate
+prints `note: this CLI uses schema v3; computer-history ingest will migrate
 the database` and stops there, and a dry run refuses. A **missing** database
 is created by `ingest` and `backfill` (only once planning succeeds), shown as
 "not created yet" by `status`, and refused by `rebuild-signals`.

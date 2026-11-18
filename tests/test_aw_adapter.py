@@ -17,7 +17,7 @@ from fake_aw import T0, FakeAW, at
 from computer_history.sources import activitywatch as aw
 from computer_history.sources.activitywatch import (
     AFK_SOURCE,
-    CURSOR_OVERLAP_SECONDS,
+    RESUME_OVERLAP_SECONDS,
     STABILITY_MARGIN_SECONDS,
     WEB_SOURCE,
     WINDOW_SOURCE,
@@ -35,7 +35,7 @@ from computer_history.sources.activitywatch import (
 from computer_history.sources.activitywatch import client as aw_client
 from computer_history.store import (
     Signal,
-    get_cursor,
+    get_progress,
     table_counts,
     to_utc,
     utc_iso,
@@ -88,6 +88,11 @@ def rows(conn: sqlite3.Connection, source: str) -> list[sqlite3.Row]:
 
 
 WINDOW = AWSource(WINDOW_SOURCE, (WINDOW_BUCKET,))
+
+
+def settled(conn: sqlite3.Connection, source: str):
+    progress = get_progress(conn, source)
+    return None if progress is None else progress.settled_until
 
 
 # --- discovery ---------------------------------------------------------------
@@ -357,7 +362,7 @@ def test_malformed_events_are_skipped_and_negative_duration_clamped(
     assert json.loads(clamped["payload"])["duration"] == -3.0  # raw kept as received
 
 
-# --- ingest: idempotency and cursors ------------------------------------------
+# --- ingest: idempotency and progress -----------------------------------------
 
 
 def test_reingesting_the_same_range_adds_nothing(conn: sqlite3.Connection) -> None:
@@ -379,8 +384,8 @@ def test_reingesting_the_same_range_adds_nothing(conn: sqlite3.Connection) -> No
         name: r.inserted for name, r in first.items()
     }
     assert table_counts(conn) == before
-    # An explicit range never touches the cursor.
-    assert get_cursor(conn, WINDOW_SOURCE) is None
+    # An explicit range never touches the progress.
+    assert get_progress(conn, WINDOW_SOURCE) is None
 
 
 def test_repeated_incremental_polls_add_nothing(conn: sqlite3.Connection) -> None:
@@ -392,7 +397,7 @@ def test_repeated_incremental_polls_add_nothing(conn: sqlite3.Connection) -> Non
     assert table_counts(conn) == before
 
 
-def test_cursor_is_start_of_held_event_and_polls_pick_up_new_events(
+def test_progress_settles_at_held_event_and_polls_pick_up_new_events(
     conn: sqlite3.Connection,
 ) -> None:
     fake = window_aw()
@@ -402,7 +407,7 @@ def test_cursor_is_start_of_held_event_and_polls_pick_up_new_events(
 
     now = at(2.5) + timedelta(seconds=1)
     assert ingest_source(conn, fake, WINDOW, now=now) == IngestOutcome(2, 0, 1, at(2))
-    assert get_cursor(conn, WINDOW_SOURCE) == utc_iso(at(2))
+    assert settled(conn, WINDOW_SOURCE) == at(2)
 
     # "C" grows in place, then is superseded by "D" (still growing).
     growing["duration"] = 90
@@ -411,18 +416,18 @@ def test_cursor_is_start_of_held_event_and_polls_pick_up_new_events(
     result = ingest_source(conn, fake, WINDOW, now=now)
     # A and B are re-read through the overlap and skipped; C lands with its final length.
     assert result == IngestOutcome(inserted=1, skipped=2, held_back=1, frontier=at(3.5))
-    assert get_cursor(conn, WINDOW_SOURCE) == utc_iso(at(3.5))
+    assert settled(conn, WINDOW_SOURCE) == at(3.5)
     c_row = rows(conn, WINDOW_SOURCE)[-1]
     assert c_row["ended_at"] == utc_iso(at(2) + timedelta(seconds=90))
 
-    # Once D is older than the margin, it settles and the cursor moves to the poll time.
+    # Once D is older than the margin, it settles and progress moves to the poll time.
     later = at(3.5) + timedelta(seconds=20 + STABILITY_MARGIN_SECONDS + 1)
     assert ingest_source(conn, fake, WINDOW, now=later).inserted == 1
-    assert get_cursor(conn, WINDOW_SOURCE) == utc_iso(later)
+    assert settled(conn, WINDOW_SOURCE) == later
     assert len(rows(conn, WINDOW_SOURCE)) == 4
 
 
-def test_cursor_is_min_over_buckets_and_dead_bucket_does_not_pin_it(
+def test_progress_is_min_over_buckets_and_dead_bucket_does_not_pin_it(
     conn: sqlite3.Connection,
 ) -> None:
     fake = FakeAW({WEB_BUCKET: "web.tab.current", OLD_WEB_BUCKET: "web.tab.current"})
@@ -431,11 +436,11 @@ def test_cursor_is_min_over_buckets_and_dead_bucket_does_not_pin_it(
     fake.add(WEB_BUCKET, 5, 30, {"url": "https://b.example/"})  # current tab
     source = AWSource(WEB_SOURCE, (OLD_WEB_BUCKET, WEB_BUCKET))
     ingest_source(conn, fake, source, now=at(5.5) + timedelta(seconds=1))
-    assert get_cursor(conn, WEB_SOURCE) == utc_iso(at(5))
-    # Both buckets idle long enough: the cursor reaches the poll time.
+    assert settled(conn, WEB_SOURCE) == at(5)
+    # Both buckets idle long enough: progress reaches the poll time.
     now = at(30)
     ingest_source(conn, fake, source, now=now)
-    assert get_cursor(conn, WEB_SOURCE) == utc_iso(now)
+    assert settled(conn, WEB_SOURCE) == now
     assert len(rows(conn, WEB_SOURCE)) == 3
 
 
@@ -444,15 +449,15 @@ def test_late_arriving_event_inside_the_overlap_is_picked_up(conn: sqlite3.Conne
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     now = at(10)
     ingest_source(conn, fake, WINDOW, now=now)
-    assert get_cursor(conn, WINDOW_SOURCE) == utc_iso(now)
-    # A queued heartbeat reaches AW late, stamped before the cursor.
+    assert settled(conn, WINDOW_SOURCE) == now
+    # A queued heartbeat reaches AW late, stamped before the settled-until time.
     fake.add(WINDOW_BUCKET, 9, 30, {"app": "Late"})
     ingest_source(conn, fake, WINDOW, now=at(15))
     assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == [
         "A",
         "Late",
     ]
-    assert CURSOR_OVERLAP_SECONDS >= 60
+    assert RESUME_OVERLAP_SECONDS >= 60
 
 
 # --- clipping defence ----------------------------------------------------------
@@ -466,7 +471,7 @@ def test_event_straddling_the_query_start_is_never_stored_clipped(
     fake.add(WINDOW_BUCKET, 60, 10, {"app": "Next"})
     ingest_source(conn, fake, WINDOW, now=at(65))
     fake.add(WINDOW_BUCKET, 61, 10, {"app": "Later"})
-    # Both the next poll (cursor - overlap = 55 min) and this explicit range query
+    # Both the next poll (position - overlap = 55 min) and this explicit range query
     # AW from inside "Long", so AW returns it clipped; neither may store that copy.
     ingest_source(conn, fake, WINDOW, now=at(70))
     ingest_source(conn, fake, WINDOW, start=at(30), end=at(70), now=at(70))
@@ -582,7 +587,7 @@ def test_awerror_aborts_the_source_without_writing(conn: sqlite3.Connection) -> 
     with pytest.raises(AWError):
         ingest_source(conn, fake, AWSource(WEB_SOURCE, (OLD_WEB_BUCKET, WEB_BUCKET)), now=at(30))
     assert table_counts(conn)["observations"] == 0
-    assert get_cursor(conn, WEB_SOURCE) is None
+    assert get_progress(conn, WEB_SOURCE) is None
 
 
 # --- explicit ranges reaching into the stability margin ---------------------------
@@ -600,7 +605,7 @@ def test_backfill_chunk_with_growing_event_reports_it_held_back(
     outcome = ingest_source(conn, fake, WINDOW, start=at(0), end=at(10), now=now)
     assert outcome == IngestOutcome(inserted=1, skipped=0, held_back=1, frontier=at(5))
     assert (WINDOW_BUCKET, growing["id"]) in fake.refetches
-    assert get_cursor(conn, WINDOW_SOURCE) is None  # explicit ranges never move it
+    assert get_progress(conn, WINDOW_SOURCE) is None  # explicit ranges never set progress
 
     # Re-pulling [frontier, end) once the event has settled completes the chunk.
     later = at(12) + timedelta(seconds=STABILITY_MARGIN_SECONDS + 1)
@@ -627,18 +632,18 @@ def test_range_ending_in_the_future_with_a_held_event(conn: sqlite3.Connection) 
     assert fake.refetches == []  # ends before the query end: never end-clipped
 
 
-def test_incremental_outcome_reports_held_back_and_cursor(conn: sqlite3.Connection) -> None:
+def test_incremental_outcome_reports_held_back_and_progress(conn: sqlite3.Connection) -> None:
     fake = full_aw()
     fake.add(WINDOW_BUCKET, 25, 4 * 60, {"app": "Current"})  # ends 1 min before now
     outcomes = ingest_all(conn, fake, now=at(30))
     assert outcomes[WINDOW_SOURCE] == IngestOutcome(2, 0, held_back=1, frontier=at(25))
-    assert get_cursor(conn, WINDOW_SOURCE) == utc_iso(outcomes[WINDOW_SOURCE].frontier)
+    assert settled(conn, WINDOW_SOURCE) == outcomes[WINDOW_SOURCE].frontier
 
 
 def test_source_without_buckets_has_no_frontier(conn: sqlite3.Connection) -> None:
     outcome = ingest_source(conn, window_aw(), AWSource(WEB_SOURCE, ()), now=at(1))
     assert outcome == IngestOutcome(0, 0, held_back=0, frontier=None)
-    assert get_cursor(conn, WEB_SOURCE) is None
+    assert get_progress(conn, WEB_SOURCE) is None
 
 
 # --- URL sanitization ----------------------------------------------------------

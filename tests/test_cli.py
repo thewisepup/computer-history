@@ -23,6 +23,7 @@ from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, AWError
 from computer_history.store import (
     DB_ENV_VAR,
     Observation,
+    ProgressUpdate,
     connect,
     insert_observations,
     table_counts,
@@ -36,8 +37,8 @@ UNREACHABLE = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: [Errno 
 def seeded_aw(now: datetime) -> FakeAW:
     """An hour of history ending ~now, with a 30-minute window-watcher gap.
 
-    aw-window: 0-10m, (gap), 40m-59.5m (still growing: held back, cursor = 40m).
-    aw-afk:    0-30m, 30m-59.5m (held back, cursor = 30m). No gaps.
+    aw-window: 0-10m, (gap), 40m-59.5m (still growing: held back, settled until 40m).
+    aw-afk:    0-30m, 30m-59.5m (held back, settled until 30m). No gaps.
     """
     fake = FakeAW(
         {WINDOW_BUCKET: "currentwindow", AFK_BUCKET: "afkstatus"},
@@ -118,7 +119,7 @@ def test_ingest_writes_rows_and_prints_counts(capsys, use_aw, db_path: Path) -> 
     counts = counts_in(db_path)
     assert counts["observations"] == 2
     assert counts["signals"] == 1  # AFK has no signal
-    assert counts["ingest_cursors"] == 2
+    assert counts["ingest_progress"] == 2
 
 
 def test_ingest_honors_db_env_var_and_flag_after_subcommand(
@@ -353,10 +354,10 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert code == 0
     assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-window)" in out
     assert re.search(rf"Database:\s+{re.escape(str(db_path))} \(\d+(\.\d)? [KM]?B", out)
-    assert "schema v2" in out
-    # Per-source rows: count, latest end, cursor and human lag (~20m / ~30m).
-    assert re.search(r"aw-window\s+1 observations .* cursor .* \(20m( \d+s)? behind now\)", out)
-    assert re.search(r"aw-afk\s+1 observations .* cursor .* \(30m( \d+s)? behind now\)", out)
+    assert f"schema v{SUPPORTED}" in out
+    # Per-source rows: count, latest end, settled-until time and human lag (~20m / ~30m).
+    assert re.search(r"aw-window\s+1 observations .* settled until .* \(20m( \d+s)? behind", out)
+    assert re.search(r"aw-afk\s+1 observations .* settled until .* \(30m( \d+s)? behind", out)
     # The seeded 10m-40m window gap is a coverage warning; AFK has none.
     gap = re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out)
     assert gap == ["30m"]
@@ -367,13 +368,13 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert re.search(r"signals\s+1\n", out)
 
 
-def test_status_gap_window_ends_at_cursor_not_now(capsys, use_aw, db_path: Path) -> None:
-    # The held (still-growing) event after the cursor must not show up as a trailing gap,
+def test_status_gap_window_ends_at_settled_time_not_now(capsys, use_aw, db_path: Path) -> None:
+    # The held (still-growing) event after the settled time must not show up as a trailing gap,
     # and time before the first observation is not a gap either.
     now = datetime.now(UTC)
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=60))
     fake.add(WINDOW_BUCKET, 50, 590, {"app": "Code"})
-    fake.add(WINDOW_BUCKET, 59.9, 1, {"app": "Code"})  # held: cursor at 59.9m
+    fake.add(WINDOW_BUCKET, 59.9, 1, {"app": "Code"})  # held: settled until 59.9m
     use_aw(fake)
     run(capsys, "--db-path", str(db_path), "ingest")
     _, out, _ = run(capsys, "--db-path", str(db_path), "status")
@@ -468,11 +469,11 @@ def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
     assert f"schema v{SUPPORTED + 1} is newer than this CLI understands (v{SUPPORTED})" in err
 
 
-def test_status_checks_cursorless_sources_up_to_latest_observation(
+def test_status_checks_sources_without_progress_up_to_latest_observation(
     capsys, use_aw, db_path: Path
 ) -> None:
     now = datetime.now(UTC)
-    # A backfilled source has observations but no cursor.
+    # A partly backfilled source has observations but no progress.
     obs = [
         Observation(
             WINDOW_SOURCE, f"w/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), "{}"
@@ -484,9 +485,32 @@ def test_status_checks_cursorless_sources_up_to_latest_observation(
     conn.close()
     use_aw(FakeAW({}))
     _, out, _ = run(capsys, "--db-path", str(db_path), "status")
-    assert "24h up to each source's cursor (or its latest observation, if it has no cursor)" in out
+    assert "24h up to each source's settled-until time (or its latest observation" in out
     assert "(never ingested)" in out
     assert re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+
+
+def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_path: Path) -> None:
+    now = datetime.now(UTC)
+    obs = [
+        Observation("ax-text", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), "")
+        for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
+    ]
+    spool = ProgressUpdate(
+        "ax-text", "2026-11-18T10.jsonl:48213", settled_until=now - timedelta(minutes=8)
+    )
+    conn = connect(db_path)
+    insert_observations(conn, obs, progress=spool)
+    insert_observations(conn, [], progress=ProgressUpdate("screenshot", "shots/0042"))
+    conn.close()
+    use_aw(FakeAW({}))
+    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    assert code == 0
+    assert re.search(r"ax-text\s+2 observations .* settled until .* \(8m( \d+s)? behind now\)", out)
+    assert re.search(r"screenshot\s+0 observations .* until - \(progress moved \d+s ago\)", out)
+    # The window ends at settled_until: the 2m after the last capture is not a gap.
+    assert re.findall(r"warning: no ax-text coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+    assert "screenshot: no observations yet" in out
 
 
 def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:
