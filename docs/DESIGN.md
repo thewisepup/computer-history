@@ -429,18 +429,18 @@ eval corpus; the scariest risk (TCC under LaunchAgents) is exercised first.
 Accepted cost: the aha moment arrives at M5. The POC serves AI clients until
 M6 replaces it.
 
-### M1 — Package + store + AW ingest
+### M1 — Package + store + AW ingest ✅ (2026-11-17)
 
-- [ ] Package skeleton (`store/`, `sources/`, `cli.py`) with tests running.
-- [ ] Schema created on first run: all §3 tables + the `block_evidence_v` view.
-- [ ] AW adapter polls window / AFK / Chrome buckets (settled events only) and
+- [x] Package skeleton (`store/`, `sources/`, `cli.py`) with tests running.
+- [x] Schema created on first run: all §3 tables + the `block_evidence_v` view.
+- [x] AW adapter polls window / AFK / Chrome buckets (settled events only) and
       writes observations + signals in one transaction.
-- [ ] AW data visibly normalized: `app`, `domain`, `url`, `title` populated in
+- [x] AW data visibly normalized: `app`, `domain`, `url`, `title` populated in
       `signals`; payloads verbatim in `observations`.
-- [ ] Re-running ingest over the same range adds zero rows (idempotency test).
-- [ ] `status` CLI: per-source cursor freshness + coverage gaps.
-- [ ] `rebuild-signals` wipes and re-projects; result identical (test).
-- [ ] One-time `backfill` ingests Brandon's existing AW history.
+- [x] Re-running ingest over the same range adds zero rows (idempotency test).
+- [x] `status` CLI: per-source cursor freshness + coverage gaps.
+- [x] `rebuild-signals` wipes and re-projects; result identical (test).
+- [x] One-time `backfill` ingests Brandon's existing AW history.
 
 ### M2 — Capture agent: AX text
 

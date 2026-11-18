@@ -68,6 +68,10 @@ cross-checked with the POC's `/usage` numbers.
   (plan-before-open, fail-safe cursor init via `init_cursor`, resume hints);
   live run stored 5,709 observations / 5,627 signals from 2026-11-12 on;
   re-run inserted zero.
+- [08 — Sanity check: everything, live](issues/08-sanity-check.md): all green
+  live — verbatim payloads vs AW API, deterministic rebuild (identical
+  checksums), and per-app day totals matching the POC oracle to 0.1s.
+  **M1 complete; map closed.**
 
 ## Not yet specified
 

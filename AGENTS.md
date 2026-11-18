@@ -6,14 +6,20 @@ detailed API reference (parameters, error codes, curl examples).
 
 _Last updated: 2026-11-16._
 
-> **Rewrite in progress (M1, 2026-11-17):** the v1 rewrite from
-> `docs/DESIGN.md` is being built as the `computer_history/` package
-> (tickets in `.scratch/m1-store-ingest/`). New-package tests run with
-> `.venv/bin/python -m pytest` (plus `ruff check`); the POC suite below
-> still runs with unittest. The distribution was renamed
+> **Rewrite status (2026-11-17): M1 complete.** The v1 rewrite from
+> `docs/DESIGN.md` lives in the `computer_history/` package (M1 tickets and
+> decisions: `.scratch/m1-store-ingest/`). What exists: SQLite store at
+> `~/Library/Application Support/ComputerHistory/history.db` (full §3 schema
+> via `user_version` migrations), ActivityWatch adapter (settled events,
+> idempotent, start-based cursors), and the CLI `computer-history
+> ingest [--watch] | status | rebuild-signals | backfill` (`--db-path` /
+> `$COMPUTER_HISTORY_DB` override). Rewrite tests:
+> `.venv/bin/python -m pytest` (223) + `ruff check computer_history tests`;
+> the POC suite below still runs with unittest. The distribution was renamed
 > `computer-history-poc` → `computer-history`; stale venvs need
-> `pip uninstall computer-history-poc` before reinstalling. This file is
-> fully updated when M1 lands.
+> `pip uninstall computer-history-poc` before reinstalling. The POC
+> (`history.py`, `history_mcp.py`) still serves REST/MCP until M6 replaces
+> it. Next: M2 (Swift capture agent, AX text).
 
 ---
 
