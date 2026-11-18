@@ -415,18 +415,19 @@ The AI client never classifies on the fly; it reads stored results.
    "programming" and "DevOps" land in "software engineering" if that's how the
    user sliced it). The model returns,
    per window: project (existing, or a proposed new one), work type (selected
-   from the list, never invented), up to 3 tags **[proposed]**, confidence,
-   one-line summary. The prompt also states what a project is (an outcome
+   from the list, never invented), as many genuinely useful tags as fit
+   (decided; lowercased, deduped), confidence, one-line summary. The prompt also states what a project is (an outcome
    being worked toward, never a kind of activity — "Video Editing" is a work
    type, not a project).
 3. **Project proposal.** A new project name in the response creates a
    `proposed` project row immediately and labels the window with it (decided).
-4. **Block assembly [proposed].** Merge consecutive windows with the same
+4. **Block assembly (decided).** Merge consecutive windows with the same
    (project, work type) into one block; split at AFK gaps over 5 minutes.
 5. **Write-back.** Insert blocks with `status='auto'`. Never touch
    `corrected` blocks. Low-confidence windows get `project_id = NULL`
-   (Unassigned) rather than a guess **[proposed]**; likewise
-   `work_type_id = NULL` when no active type fits or the list is still empty.
+   (Unassigned) rather than a guess (decided; threshold default 0.5,
+   configurable — **[value proposed]**); likewise `work_type_id = NULL` when
+   no active type fits or the list is still empty.
 6. **Catch-up, with a horizon.** On startup (login agent) and after sleep,
    classify the gap since the last successful `classification_run` — capped by
    a classification horizon (default 14 days back, configurable). Anything
@@ -480,13 +481,29 @@ mid-run survives.
   2-second target since they call the LLM).
 - While `work_types` is empty, reviews carry the onboarding nudge (§3.3) in
   place of a work-type breakdown.
-- **Ranking is deterministic, in the backend** (decided): score each
+- **Ranking is two-stage: deterministic shortlist, then AI selection
+  (decided).** Stage 1, in the backend with no LLM: score each
   (project × work type) pair — **[proposed] formula:** `hours × distinct days
-  it recurs`, over confirmed-work blocks only (no `personal`, no Unassigned).
-- The LLM then takes the top-ranked pairs **with evidence blocks** and writes
-  the review narrative plus 1–3 suggestions, each with: evidence, a workflow,
-  and a ready-to-run prompt or Claude Code command. Stored in
-  `reviews` / `suggestions` so Claude, ChatGPT and the UI all see the same.
+  it recurs` — over work blocks only (NULL project / NULL work type excluded).
+  Deterministic scoring answers *how big is it*: same data in, same ranking
+  out, every number auditable against blocks.
+- The shortlist is cut by **materiality, not rank**: every pair clearing a
+  floor (**[proposed]:** ≥2 hours in the week, or ≥30 minutes recurring on 3+
+  days) is included, capped at ~15 by score for prompt sanity. Nothing both
+  meaningful and automatable can fall outside the shortlist, because
+  meaningful is the only inclusion criterion; a sparse week passes 4 pairs, a
+  heavy one 14.
+- Generation (scheduled or on-demand) first triggers a classification
+  catch-up, so the week's final hours are labelled before scoring.
+- Stage 2, AI judgment: the LLM receives the shortlisted pairs **with
+  their evidence** and answers *which are automatable* — selecting and
+  ordering the 1–3 worth suggesting, then writing the review narrative and
+  each suggestion's evidence, workflow, and ready-to-run prompt or Claude Code
+  command. Two constraints keep it honest: it may not introduce candidates
+  outside the shortlist, and every pick must cite the evidence it was handed.
+  The full stage-1 ranking is stored in `reviews.body`; the AI's picks become
+  the `suggestions` rows. All stored, so Claude, ChatGPT and the UI see the
+  same.
 
 ## 8. Interfaces
 
@@ -556,15 +573,23 @@ The POC keeps running until M3, when the new system replaces it.
 
 Carried from discussion, each tagged **[proposed]** above where it appears:
 
-1. Work-type list contents (§3.2)
-2. Tags: LLM assigns up to 3, user-editable (§5)
-3. Block assembly: merge-same-label, split at >5-min AFK gaps (§5)
-4. Low-confidence → Unassigned, excluded from ranking (§5, §7)
-5. Bottleneck formula: hours × recurring days (§7)
-6. Capture agent: Swift, triggers, spool handoff, ~200–500 MB/day estimate (§4.2)
-7. URL layout `/api` + `/` + `/mcp` (§2)
-8. AW polling interval (§4.1)
-9. Partial-week on-demand breakdowns: covered by `get_time_breakdown` over any range, so no separate tool — confirm this is enough
+1. Bottleneck stage-1 formula *value*: hours × distinct recurring days (§7) — the two-stage mechanism is decided, the formula itself is not
+2. Capture agent: Swift, triggers, spool handoff, storage budget (§4.2) — under active design discussion
+3. Low-confidence threshold value: default 0.5, configurable (§5)
+4. URL layout `/api` + `/` + `/mcp` (§2)
+5. AW polling interval: 60s (§4.1)
+6. Partial-week on-demand breakdowns: covered by `get_time_breakdown` over any range, so no separate tool — confirm this is enough
+7. Review `body` JSON shape: range / totals / bottlenecks / narrative (§3.4)
+8. Multiple reviews per week coexist as rows; `get_weekly_review` serves the latest (§3.4)
+9. Empty weeks still store a review ("no classified work"), so a missing review always means a bug (§7)
+10. Keep `reviews.trigger` (flagged as the one defensible cut in the final audit)
+
+**Settled 2026-11-18:** bottleneck ranking is two-stage (deterministic
+shortlist answers "how big", AI selection over that shortlist answers "how
+automatable", constrained to cite evidence and never add candidates); block
+assembly decided (5-min windows, merge same-label neighbors, split at >5-min
+AFK gaps); low-confidence → NULL project decided (threshold value still open);
+tags are uncapped — as many genuinely useful ones as fit, lowercased.
 
 **Settled in the 2026-11-17 data-model review** (reflected above): two-layer
 observations + signals; signals PK = observation id; full wipe-and-rebuild
