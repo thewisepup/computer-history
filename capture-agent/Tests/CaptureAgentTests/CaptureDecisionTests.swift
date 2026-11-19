@@ -74,6 +74,14 @@ final class DecisionFixture {
     #expect(fixture.run(for: 2) == [.capture(plainApp, .app)])
 }
 
+@Test func aFocusedDenylistedAppIsExcludedWhileAPlainAppIsInFront() {
+    let fixture = DecisionFixture()
+    fixture.mac.frontmost = plainApp
+    fixture.mac.focused = onePassword
+    #expect(fixture.run(for: 2) == [.excluded(onePassword, .heartbeat)])
+    #expect(fixture.mac.calls.isEmpty)
+}
+
 @Test func pauseAndResumeAreEachOneOutcomeWhateverThePresence() {
     let fixture = DecisionFixture()
     _ = fixture.decision

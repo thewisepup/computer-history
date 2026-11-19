@@ -17,7 +17,7 @@ public struct FocusedApplication: Equatable, Sendable {
     }
 }
 
-/// Follows which app macOS shows in front by listening for activations, because `NSWorkspace.frontmostApplication` read from another thread only catches up when the main run loop next wakes.
+/// Follows which app macOS shows in front by listening for app activations.
 public final class LiveFrontmostApplication: @unchecked Sendable {
     private let lock = NSLock()
     private var processIdentifier: pid_t?
@@ -38,28 +38,28 @@ public final class LiveFrontmostApplication: @unchecked Sendable {
         observer.map(NSWorkspace.shared.notificationCenter.removeObserver)
     }
 
-    /// The app in front, which need not hold keyboard focus: a locked Passwords window is frontmost while the previous app keeps focus.
+    /// Returns the app macOS shows in front.
     public func application() -> FocusedApplication? {
         lock.withLock { processIdentifier }.flatMap(describeApplication)
-    }
-
-    /// Asks the system-wide accessibility element for the focused application, falling back to the app in front.
-    public func focusedApplication() -> FocusedApplication? {
-        CaptureAgent.focusedApplication(
-            accessibilityPid: {
-                guard case .value(let app) = LiveAccessibilityElement.systemWide.element("AXFocusedApplication") else {
-                    return nil
-                }
-                return app.processIdentifier
-            },
-            workspacePid: { lock.withLock { processIdentifier } },
-            describe: describeApplication
-        )
     }
 
     private func set(_ value: pid_t?) {
         lock.withLock { processIdentifier = value }
     }
+}
+
+/// Asks the system-wide accessibility element for the focused application, falling back to the given app in front.
+public func focusedApplication(orFrontmost frontmost: () -> FocusedApplication?) -> FocusedApplication? {
+    focusedApplication(
+        accessibilityPid: {
+            guard case .value(let app) = LiveAccessibilityElement.systemWide.element("AXFocusedApplication") else {
+                return nil
+            }
+            return app.processIdentifier
+        },
+        workspacePid: { frontmost()?.processIdentifier },
+        describe: describeApplication
+    )
 }
 
 private func describeApplication(_ pid: pid_t) -> FocusedApplication? {

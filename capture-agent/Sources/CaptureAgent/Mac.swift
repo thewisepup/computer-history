@@ -30,7 +30,7 @@ public struct LiveMac: Mac, Sendable {
     public func sleep(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
     public func samplePresence() -> Presence { presence.sample() }
     public func accessibilityTrusted() -> Bool { isAccessibilityTrusted(prompt: false) }
-    public func focusedApplication() -> FocusedApplication? { frontmost.focusedApplication() }
+    public func focusedApplication() -> FocusedApplication? { CaptureAgent.focusedApplication(orFrontmost: frontmost.application) }
     public func frontmostApplication() -> FocusedApplication? { frontmost.application() }
 
     public func applicationElement(_ processIdentifier: pid_t) -> LiveAccessibilityElement {
