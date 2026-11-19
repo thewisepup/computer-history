@@ -1,62 +1,63 @@
 import Foundation
 
 /// Each tick asks the capture decision what to do, then reads the focused window or writes a gap record into the spool.
-final class CaptureLoop<Element: AccessibilityElement> {
-    private var decision: CaptureDecision<Element>
-    private let isPaused: () -> Bool
-    private let presence: () -> Presence
-    private let accessibilityTrusted: () -> Bool
-    private let read: (FocusedApplication) -> WindowText
+final class CaptureLoop<M: Mac> {
+    private var decision: CaptureDecision<M.Element>
+    private let mac: M
+    private let pause: PauseSwitch
+    private let pollInterval: TimeInterval
+    private let reader: WindowTextReader<M.Element>
     private let spool: SpoolWriter
     private let counts: CaptureCounts
-    private let uptime: () -> TimeInterval
-    private let now: () -> Date
     private let log: (String) -> Void
 
-    init(
-        settings: CaptureSettings,
-        denylist: Denylist,
-        apps: AppWatch,
-        windows: WindowWatch<Element>,
-        isPaused: @escaping () -> Bool,
-        presence: @escaping () -> Presence,
-        accessibilityTrusted: @escaping () -> Bool,
-        read: @escaping (FocusedApplication) -> WindowText,
-        spool: SpoolWriter,
-        counts: CaptureCounts,
-        uptime: @escaping () -> TimeInterval,
-        now: @escaping () -> Date,
-        log: @escaping (String) -> Void
-    ) {
+    init(settings: AgentSettings, mac: M, spool: SpoolWriter, counts: CaptureCounts, log: @escaping (String) -> Void) {
         self.decision = CaptureDecision(
-            settings: settings, denylist: denylist, paused: isPaused(), apps: apps, windows: windows, start: uptime()
+            settings: settings.capture,
+            denylist: settings.denylist,
+            paused: settings.pause.isPaused,
+            apps: AppWatch(focusedApplication: mac.focusedApplication),
+            windows: WindowWatch(applicationElement: mac.applicationElement),
+            start: mac.uptime()
         )
-        self.isPaused = isPaused
-        self.presence = presence
-        self.accessibilityTrusted = accessibilityTrusted
-        self.read = read
+        self.mac = mac
+        self.pause = settings.pause
+        self.pollInterval = settings.capture.pollInterval
+        self.reader = WindowTextReader(
+            settings: settings.windowText,
+            applicationElement: mac.applicationElement,
+            fileExists: mac.fileExists,
+            now: mac.uptime
+        )
         self.spool = spool
         self.counts = counts
-        self.uptime = uptime
-        self.now = now
         self.log = log
+    }
+
+    /// Ticks once per poll interval by the Mac's clock for as long as the condition holds.
+    func run(while keepGoing: () -> Bool) {
+        while keepGoing() {
+            let started = mac.uptime()
+            tick()
+            mac.sleep(max(0, started + pollInterval - mac.uptime()))
+        }
     }
 
     func tick() {
         let silenceBefore = decision.silence
         let outcome = decision.tick(
-            paused: isPaused(), presence: presence(), accessibilityTrusted: accessibilityTrusted, at: uptime()
+            paused: pause.isPaused, presence: mac.samplePresence(), accessibilityTrusted: mac.accessibilityTrusted, at: mac.uptime()
         )
         if decision.silence != silenceBefore { logSilence() }
         switch outcome {
         case .nothing:
             return
         case .paused:
-            if write(.paused(at: now())) { decision.recordedPause(true) }
+            if write(.paused(at: mac.now())) { decision.recordedPause(true) }
         case .resumed:
-            if write(.resumed(at: now())) { decision.recordedPause(false) }
+            if write(.resumed(at: mac.now())) { decision.recordedPause(false) }
         case .excluded(let application, let trigger):
-            if write(.excluded(at: now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
+            if write(.excluded(at: mac.now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
                 counts.recordExcluded()
             }
         case .capture(let application, let trigger):
@@ -65,10 +66,10 @@ final class CaptureLoop<Element: AccessibilityElement> {
     }
 
     private func capture(_ application: FocusedApplication, trigger: SpoolRecord.Trigger) {
-        let capturedAt = now()
-        let started = uptime()
-        let window = read(application)
-        counts.recordRead(seconds: uptime() - started)
+        let capturedAt = mac.now()
+        let started = mac.uptime()
+        let window = reader.read(application)
+        counts.recordRead(seconds: mac.uptime() - started)
         let record = SpoolRecord.capture(
             at: capturedAt,
             trigger: trigger,
@@ -105,39 +106,16 @@ final class CaptureLoop<Element: AccessibilityElement> {
     }
 }
 
-/// Starts the thread that polls focus and captures for the life of the process, reading through the live accessibility API.
-public func startCaptureThread(
+/// Starts the thread that polls focus and captures through the given Mac for the life of the process.
+public func startCaptureThread<M: Mac & Sendable>(
+    mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
     counts: CaptureCounts,
     log: @escaping @Sendable (String) -> Void
 ) {
-    LiveAccessibilityElement.setProcessCallTimeout(settings.windowText.callTimeout)
-    let presence = LivePresence()
-    let pause = settings.pause
     let thread = Thread {
-        let uptime = { ProcessInfo.processInfo.systemUptime }
-        let reader = WindowTextReader(settings: settings.windowText)
-        let loop = CaptureLoop(
-            settings: settings.capture,
-            denylist: settings.denylist,
-            apps: AppWatch(focusedApplication: focusedApplication),
-            windows: WindowWatch(applicationElement: LiveAccessibilityElement.application),
-            isPaused: { pause.isPaused },
-            presence: presence.sample,
-            accessibilityTrusted: { isAccessibilityTrusted(prompt: false) },
-            read: reader.read,
-            spool: spool,
-            counts: counts,
-            uptime: uptime,
-            now: Date.init,
-            log: log
-        )
-        while true {
-            let started = uptime()
-            loop.tick()
-            Thread.sleep(forTimeInterval: max(0, started + settings.capture.pollInterval - uptime()))
-        }
+        CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log).run { true }
     }
     thread.name = "capture"
     thread.stackSize = 8 << 20

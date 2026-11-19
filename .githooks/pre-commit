@@ -11,3 +11,8 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
   exit 1
 fi
 "$PY" -m pytest -q
+if git diff --cached --name-only --no-renames \
+  | grep -qE '^(capture-agent/|fixtures/spool/|computer_history/sources/ax_text/|tests/test_capture_e2e\.py$)'; then
+  capture-agent/scripts/test.sh
+  capture-agent/scripts/e2e.sh
+fi

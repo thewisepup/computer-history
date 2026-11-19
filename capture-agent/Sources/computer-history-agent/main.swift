@@ -28,7 +28,11 @@ case .run:
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
         spool: spool,
         counts: counts,
-        startCapturing: { startCaptureThread(settings: settings, spool: spool, counts: counts, log: log) },
+        startCapturing: {
+            startCaptureThread(
+                mac: LiveMac(callTimeout: settings.windowText.callTimeout), settings: settings, spool: spool, counts: counts, log: log
+            )
+        },
         log: log
     ).run()
 case .install:
@@ -43,6 +47,8 @@ case .resume:
     finish(resumeCapture(pause))
 case .checkConfig:
     finish(checkConfig(settings))
+case .scriptedSession(let script):
+    finish(runScriptedSession(script: URL(fileURLWithPath: script), settings: settings, homes: userHomes(), log: { print($0) }))
 case .usage:
     finish(.usage)
 }

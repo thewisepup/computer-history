@@ -1,52 +1,41 @@
 import Foundation
 
-final class ScriptedMac {
+/// A pretend Mac on a virtual clock, whose focused app, presence and accessibility trees are set by a script or a test.
+final class ScriptedMac: Mac, @unchecked Sendable {
+    let start: Date
     var clock: TimeInterval = 0
     var callCost: TimeInterval = 0.001
     var callTimeout: TimeInterval = 0.25
+    var presence = Presence(idleSeconds: 0, locked: false, asleep: false)
+    var trusted = true
+    var focused: FocusedApplication?
+    var apps: [pid_t: ScriptedElement] = [:]
     var calls: [String] = []
 
-    func node(
-        _ name: String,
-        role: String,
-        _ attributes: [String: String] = [:],
-        children: [ScriptedElement] = []
-    ) -> ScriptedElement {
-        ScriptedElement(mac: self, name: name, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children)
+    init(start: Date = Date(timeIntervalSince1970: 0)) {
+        self.start = start
     }
 
-    func text(_ value: String) -> ScriptedElement {
-        node(value, role: "AXStaticText", ["AXValue": value])
-    }
+    func uptime() -> TimeInterval { clock }
+    func now() -> Date { start.addingTimeInterval(clock) }
+    func sleep(_ seconds: TimeInterval) { clock += seconds }
+    func samplePresence() -> Presence { presence }
+    func accessibilityTrusted() -> Bool { trusted }
+    func focusedApplication() -> FocusedApplication? { focused }
 
-    func window(_ title: String, children: [ScriptedElement]) -> ScriptedElement {
-        node("window", role: "AXWindow", ["AXTitle": title], children: children)
-    }
-
-    func app(window: ScriptedElement?) -> ScriptedElement {
-        let app = node("app", role: "AXApplication")
-        app.focusedWindow = window
+    func applicationElement(_ processIdentifier: pid_t) -> ScriptedElement {
+        guard let app = apps[processIdentifier] else { preconditionFailure("no scripted app has pid \(processIdentifier)") }
         return app
     }
 
-    func reader(
-        _ apps: [pid_t: ScriptedElement],
-        settings: WindowTextSettings = WindowTextSettings(),
-        electronBundles: Set<String> = []
-    ) -> WindowTextReader<ScriptedElement> {
-        WindowTextReader(
-            settings: settings,
-            applicationElement: { apps[$0]! },
-            fileExists: { path in electronBundles.contains { path.hasPrefix($0) } },
-            now: { self.clock }
-        )
-    }
+    func fileExists(_ path: String) -> Bool { false }
 
-    func reads(of name: String) -> [String] {
-        calls.filter { $0.hasPrefix(name + ".") }
+    func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
+        ScriptedElement(mac: self, name: name, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children)
     }
 }
 
+/// One element of a scripted accessibility tree, where every call costs virtual time and a call for an attribute it hangs on times out.
 final class ScriptedElement: AccessibilityElement {
     let mac: ScriptedMac
     let name: String
@@ -68,7 +57,7 @@ final class ScriptedElement: AccessibilityElement {
     }
 
     func element(_ attribute: String) -> AccessibilityResult<ScriptedElement> {
-        perform(attribute) { focusedWindow.map { .value($0) } ?? .missing }
+        perform(attribute) { attribute == "AXFocusedWindow" ? focusedWindow.map { .value($0) } ?? .missing : .missing }
     }
 
     func elements(_ attribute: String) -> AccessibilityResult<[ScriptedElement]> {
@@ -91,9 +80,7 @@ final class ScriptedElement: AccessibilityElement {
         mac.clock += mac.callCost
         return body()
     }
-}
 
-extension ScriptedElement: Hashable {
     static func == (lhs: ScriptedElement, rhs: ScriptedElement) -> Bool { lhs === rhs }
     func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
 }

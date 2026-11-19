@@ -3,7 +3,7 @@ import PackageDescription
 
 /// The capture agent macOS starts at login, which writes captures to the spool for the backend.
 ///
-///     computer-history-agent/main.swift   load the settings, parse the command line, build the real I/O, run
+///     computer-history-agent/main.swift   load the settings, parse the command line, pick LiveMac, run
 ///           |
 ///     AgentSettings.swift   the folder, spool and settings from the environment and agent-config.json
 ///     AgentCommand.swift    the commands the binary accepts and what each prints
@@ -29,6 +29,13 @@ import PackageDescription
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
+///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
+///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements
+///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool
+///           |
+///     ScratchFolderCheck.swift   refuses the agent's real folder, or one that holds a database
+///     ScriptPlayer.swift    builds the script's apps on a ScriptedMac and applies each step as it comes due
+///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record and its JSON line
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps

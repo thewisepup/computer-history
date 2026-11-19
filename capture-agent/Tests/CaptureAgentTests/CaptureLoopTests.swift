@@ -6,40 +6,24 @@ final class LoopFixture {
     let focus = FocusFixture()
     let spool = TempSpool()
     let counts = CaptureCounts()
-    let pause: PauseSwitch
-    var presence = present
-    var trusted = true
     var windowText = WindowTextSettings()
     var denylist = Denylist()
     var logged: [String] = []
-    private var nextTick: TimeInterval = 0
     private lazy var writer = spool.writer()
 
     var mac: ScriptedMac { focus.mac }
-
-    init() {
-        pause = PauseSwitch(file: spool.directory.appendingPathComponent("folder/\(AgentSettings.pauseFileName)"))
+    var settings: AgentSettings {
+        var settings = AgentSettings(folder: spool.directory.appendingPathComponent("folder"), spoolDirectory: spool.directory)
+        settings.windowText = windowText
+        settings.denylist = denylist
+        return settings
     }
+    var pause: PauseSwitch { settings.pause }
 
-    lazy var loop: CaptureLoop<ScriptedElement> = makeLoop()
+    lazy var loop: CaptureLoop<ScriptedMac> = makeLoop()
 
-    func makeLoop() -> CaptureLoop<ScriptedElement> {
-        let reader = mac.reader(focus.apps, settings: windowText)
-        return CaptureLoop(
-            settings: CaptureSettings(),
-            denylist: denylist,
-            apps: focus.appWatch,
-            windows: focus.windowWatch,
-            isPaused: { self.pause.isPaused },
-            presence: { self.presence },
-            accessibilityTrusted: { self.trusted },
-            read: reader.read,
-            spool: writer,
-            counts: counts,
-            uptime: { self.mac.clock },
-            now: { self.spool.clock.now },
-            log: { self.logged.append($0) }
-        )
+    func makeLoop() -> CaptureLoop<ScriptedMac> {
+        CaptureLoop(settings: settings, mac: mac, spool: writer, counts: counts, log: { self.logged.append($0) })
     }
 
     func restart() {
@@ -47,12 +31,8 @@ final class LoopFixture {
     }
 
     func run(for seconds: TimeInterval) {
-        let end = nextTick + seconds
-        while nextTick < end {
-            mac.clock = max(mac.clock, nextTick)
-            loop.tick()
-            nextTick += 0.5
-        }
+        let end = mac.clock + seconds
+        loop.run { mac.clock < end }
     }
 
     func records() throws -> [[String: Any]] {
@@ -84,14 +64,14 @@ final class LoopFixture {
     #expect(records[0]["bundle_id"] as? String == "com.apple.TextEdit")
     #expect(records[0]["window_title"] as? String == "Notes")
     #expect(records[0]["text"] as? String == "hello")
-    #expect(records[0]["captured_at"] as? String == "2026-11-18T09:00:00.000Z")
+    #expect(records[0]["captured_at"] as? String == "2026-11-18T09:00:01.002Z")
     #expect(fixture.counts.take().written == 1)
 }
 
 @Test func capturesAnAppSwitchAndATabSwitchOncePerSettledChange() throws {
     let fixture = LoopFixture()
     fixture.run(for: 10)
-    fixture.focus.focused = chrome
+    fixture.mac.focused = chrome
     fixture.run(for: 5)
     fixture.focus.tab.attributes["AXTitle"] = "Pull requests"
     fixture.run(for: 5)
@@ -103,14 +83,14 @@ final class LoopFixture {
 
 @Test func silenceMakesNoAccessibilityCallsAndCaptureResumesAfterwards() throws {
     let fixture = LoopFixture()
-    fixture.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
+    fixture.mac.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
     fixture.run(for: 60)
     #expect(try fixture.records().isEmpty)
     #expect(fixture.mac.calls.isEmpty)
-    fixture.presence = Presence(idleSeconds: 200, locked: false, asleep: false)
+    fixture.mac.presence = Presence(idleSeconds: 200, locked: false, asleep: false)
     fixture.run(for: 60)
     #expect(try fixture.records().isEmpty)
-    fixture.presence = present
+    fixture.mac.presence = present
     fixture.run(for: 2)
     #expect(try fixture.triggers() == ["heartbeat"])
     #expect(fixture.logged == ["silent: locked", "silent: idle", "capturing again"])
@@ -133,7 +113,7 @@ final class LoopFixture {
 
 @Test func skipsCapturesWithoutAccessibility() throws {
     let fixture = LoopFixture()
-    fixture.trusted = false
+    fixture.mac.trusted = false
     fixture.run(for: 40)
     #expect(try fixture.records().isEmpty)
     #expect(fixture.counts.take().written == 0)
@@ -152,11 +132,11 @@ final class LoopFixture {
 
 @Test func aSwitchWithoutAccessibilityIsCapturedOnceItIsGranted() throws {
     let fixture = LoopFixture()
-    fixture.trusted = false
+    fixture.mac.trusted = false
     fixture.run(for: 5)
-    fixture.focus.focused = chrome
+    fixture.mac.focused = chrome
     fixture.run(for: 5)
-    fixture.trusted = true
+    fixture.mac.trusted = true
     fixture.run(for: 0.5)
     #expect(try fixture.triggers() == ["app"])
 }
@@ -164,7 +144,7 @@ final class LoopFixture {
 @Test func aDenylistedAppYieldsExcludedRecordsOnSwitchAndHeartbeatWithNoCallsOnItsWindow() throws {
     let fixture = LoopFixture()
     fixture.run(for: 2)
-    fixture.focus.focused = onePassword
+    fixture.mac.focused = onePassword
     fixture.run(for: 3)
     fixture.focus.vault.attributes["AXTitle"] = "Another item"
     fixture.run(for: 60)
@@ -185,9 +165,9 @@ final class LoopFixture {
 
 @Test func switchingAwayFromADenylistedAppCapturesTheNextApp() throws {
     let fixture = LoopFixture()
-    fixture.focus.focused = onePassword
+    fixture.mac.focused = onePassword
     fixture.run(for: 2)
-    fixture.focus.focused = plainApp
+    fixture.mac.focused = plainApp
     fixture.run(for: 2)
     #expect(try fixture.kinds() == ["excluded", "capture"])
     #expect(try fixture.triggers() == ["heartbeat", "app"])
@@ -201,7 +181,7 @@ final class LoopFixture {
     #expect(try !fixture.pause.pause())
     fixture.run(for: 1)
     let callsWhilePaused = fixture.mac.calls.count
-    fixture.focus.focused = chrome
+    fixture.mac.focused = chrome
     fixture.run(for: 120)
     #expect(fixture.mac.calls.count == callsWhilePaused)
     #expect(try fixture.kinds() == ["capture", "paused"])
@@ -239,15 +219,15 @@ final class LoopFixture {
     fixture.run(for: 2)
     try fixture.pause.pause()
     fixture.run(for: 1)
-    fixture.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
+    fixture.mac.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
     fixture.run(for: 30)
-    fixture.presence = present
+    fixture.mac.presence = present
     fixture.run(for: 30)
     #expect(try fixture.kinds() == ["capture", "paused"])
-    fixture.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
+    fixture.mac.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
     fixture.run(for: 1)
     #expect(try fixture.resumeAndRun(for: 30) == ["capture", "paused", "resumed"])
-    fixture.presence = present
+    fixture.mac.presence = present
     fixture.run(for: 2)
     #expect(try fixture.kinds() == ["capture", "paused", "resumed", "capture"])
     #expect(fixture.logged == [
@@ -260,7 +240,7 @@ final class LoopFixture {
     let fixture = LoopFixture()
     try fixture.pause.pause()
     fixture.restart()
-    fixture.focus.focused = onePassword
+    fixture.mac.focused = onePassword
     fixture.run(for: 60)
     #expect(try fixture.records().isEmpty)
 }
@@ -276,8 +256,8 @@ extension LoopFixture {
 
 @Test func excludedRecordsNeedNoAccessibilityGrant() throws {
     let fixture = LoopFixture()
-    fixture.trusted = false
-    fixture.focus.focused = onePassword
+    fixture.mac.trusted = false
+    fixture.mac.focused = onePassword
     fixture.run(for: 2)
     #expect(try fixture.kinds() == ["excluded"])
 }

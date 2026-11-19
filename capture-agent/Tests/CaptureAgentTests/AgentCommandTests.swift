@@ -10,6 +10,8 @@ import Testing
     (["pause"], .pause),
     (["resume"], .resume),
     (["check-config"], .checkConfig),
+    (["scripted-session", "e2e/session.json"], .scriptedSession(script: "e2e/session.json")),
+    (["scripted-session"], .usage),
     (["pause", "now"], .usage),
     (["install", "now"], .usage),
     (["--help"], .usage),

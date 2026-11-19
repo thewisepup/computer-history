@@ -7,6 +7,7 @@ public enum AgentCommand: Equatable, Sendable {
     case pause
     case resume
     case checkConfig
+    case scriptedSession(script: String)
     case usage
 
     public init(arguments: [String]) {
@@ -18,6 +19,7 @@ public enum AgentCommand: Equatable, Sendable {
         case ["pause"]: self = .pause
         case ["resume"]: self = .resume
         case ["check-config"]: self = .checkConfig
+        case _ where arguments.count == 2 && arguments[0] == "scripted-session": self = .scriptedSession(script: arguments[1])
         default: self = .usage
         }
     }
@@ -30,6 +32,6 @@ public struct CommandOutcome: Equatable, Sendable {
 
     public static let usage = CommandOutcome(
         exitCode: 64,
-        message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status | pause | resume | check-config]"
+        message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status | pause | resume | check-config | scripted-session <script.json>]"
     )
 }
