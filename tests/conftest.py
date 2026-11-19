@@ -8,7 +8,6 @@ from computer_history.store import db as store_db
 
 @pytest.fixture(autouse=True)
 def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Never let a developer's $COMPUTER_HISTORY_DB leak into tests.
     monkeypatch.delenv(DB_ENV_VAR, raising=False)
 
 
@@ -26,5 +25,4 @@ def conn(db_path: Path):
 
 @pytest.fixture
 def quick_busy_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Give up on a locked database after 50ms instead of the real timeout."""
     monkeypatch.setattr(store_db, "BUSY_TIMEOUT_SECONDS", 0.05)

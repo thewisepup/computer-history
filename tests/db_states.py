@@ -1,5 +1,3 @@
-"""Real temp database files in each state open_store reports."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -13,7 +11,6 @@ SUPPORTED = len(load_migrations())
 
 
 def outdated_db(path: Path) -> Path:
-    """A WAL database migrated by every migration but the last."""
     conn = sqlite3.connect(path, isolation_level=None)
     try:
         conn.execute("PRAGMA journal_mode = WAL")
@@ -24,7 +21,6 @@ def outdated_db(path: Path) -> Path:
 
 
 def newer_db(path: Path) -> Path:
-    """A database whose schema version is past what this code supports."""
     connect(path).close()
     conn = sqlite3.connect(path, isolation_level=None)
     try:
@@ -44,7 +40,6 @@ def user_version(path: Path) -> int:
 
 @contextmanager
 def write_locked(path: Path) -> Iterator[None]:
-    """Hold the database's write lock from a second connection."""
     locker = sqlite3.connect(path, isolation_level=None)
     try:
         locker.execute("BEGIN IMMEDIATE")

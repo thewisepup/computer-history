@@ -1,5 +1,3 @@
-"""The ingest runner, driven by an in-memory fake source and the ActivityWatch adapter together."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -39,7 +37,6 @@ def stored(conn: sqlite3.Connection, stream: str) -> list[str]:
 
 
 def window_aw(now: datetime) -> ActivityWatch:
-    """An ActivityWatch with one window event, settled well before now."""
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=30))
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "Code"})
     return ActivityWatch(fake)
@@ -47,16 +44,12 @@ def window_aw(now: datetime) -> ActivityWatch:
 
 @pytest.fixture
 def locker(db_path: Path, conn: sqlite3.Connection):
-    """A second connection to hold the write lock, and a runner connection that gives up fast."""
     conn.execute("PRAGMA busy_timeout = 50")
     other = sqlite3.connect(db_path, isolation_level=None)
     yield other
     if other.in_transaction:
         other.execute("ROLLBACK")
     other.close()
-
-
-# --- polling ---------------------------------------------------------------------------
 
 
 def test_poll_writes_each_stream_with_its_progress_and_resumes_after_it(
@@ -75,9 +68,9 @@ def test_poll_writes_each_stream_with_its_progress_and_resumes_after_it(
 
     spool.add("ax-text", "c3", 5)
     again = poll(conn, [spool], now=at(11))
-    assert again.outcomes["ax-text"] == IngestOutcome(1, 0, 0, at(6))  # nothing read twice
+    assert again.outcomes["ax-text"] == IngestOutcome(1, 0, 0, at(6))
     assert again.outcomes["ocr"] == IngestOutcome(0, 0, 0, None)
-    assert get_progress(conn, "ocr").advanced_at == at(10)  # no position: progress left alone
+    assert get_progress(conn, "ocr").advanced_at == at(10)
     assert stored(conn, "ax-text") == ["c1", "c2", "c3"]
 
 
@@ -104,7 +97,7 @@ def test_unavailable_source_mid_cycle_keeps_earlier_streams_and_other_sources(
     assert summary.failures == (
         StreamFailure("b", "fake b spool is unreadable", FailureKind.SOURCE),
     )
-    assert spool.pulled == ["a", "b"]  # the rest of an unavailable source waits for next cycle
+    assert spool.pulled == ["a", "b"]
     assert stored(conn, "a") == ["a1"] and stored(conn, "c") == []
     assert len(stored(conn, WINDOW_SOURCE)) == 1
 
@@ -141,7 +134,7 @@ def test_busy_database_mid_cycle_keeps_earlier_streams_and_ends_the_cycle(
         StreamFailure("b", "database is locked", FailureKind.DATABASE_BUSY),
     )
     assert stored(conn, "a") == ["a1"] and get_progress(conn, "b") is None
-    assert stored(conn, WINDOW_SOURCE) == []  # the cycle ended: no source after it ran
+    assert stored(conn, WINDOW_SOURCE) == []
 
     locker.execute("ROLLBACK")
     spool.before_pull = None
@@ -220,14 +213,10 @@ def test_poll_refuses_a_stream_fed_by_two_sources(conn: sqlite3.Connection) -> N
     first.add("a", "a1", 0)
     with pytest.raises(ValueError, match="stream 'a' is fed by more than one source"):
         poll(conn, [first, second], now=at(5))
-    assert second.pulled == []  # refused before any of its streams were read
-
-
-# --- backfill ---------------------------------------------------------------------------
+    assert second.pulled == []
 
 
 def three_hours() -> FakeSource:
-    """Captures in each of three one-hour chunks; the one at 1:30 has not settled yet."""
     spool = FakeSource("a")
     for capture_id, minute in [("a1", 10), ("a2", 70), ("held", 90), ("a3", 100), ("a4", 130)]:
         spool.add("a", capture_id, minute)
@@ -256,7 +245,6 @@ def test_backfill_reports_an_incomplete_chunk_once_and_sets_progress_from_it(
     assert result.complete_until == at(90)
     assert result.progress is BackfillProgress.SET
     progress = get_progress(conn, "a")
-    # The position comes from the incomplete chunk's pull, not the last chunk's.
     assert progress.position == spool.positions[1] == f"range:{at(90).isoformat()}"
     assert progress.settled_until == at(90) and progress.advanced_at == at(180)
     assert stored(conn, "a") == ["a1", "a2", "a3", "a4"]
@@ -339,7 +327,7 @@ def test_backfill_reports_progress_set_meanwhile(conn: sqlite3.Connection) -> No
     plan = hourly_plan(spool, conn)
     other = FakeSource("a")
     other.add("a", "elsewhere", 170)
-    poll(conn, [other], now=at(175))  # e.g. `ingest --watch` running alongside
+    poll(conn, [other], now=at(175))
     (result,) = run_backfill(conn, spool, [plan], clock=lambda: at(180)).results
     assert result.progress is BackfillProgress.SET_MEANWHILE
     assert get_progress(conn, "a").position == "a.jsonl:1"

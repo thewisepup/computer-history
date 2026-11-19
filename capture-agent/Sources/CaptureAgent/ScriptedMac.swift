@@ -1,6 +1,5 @@
 import Foundation
 
-/// A pretend Mac on a virtual clock, whose focused app, presence and accessibility trees are set by a script or a test.
 final class ScriptedMac: Mac, @unchecked Sendable {
     let start: Date
     var clock: TimeInterval = 0
@@ -37,7 +36,6 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     }
 }
 
-/// One element of a scripted accessibility tree, where every call costs virtual time and a call for an attribute it hangs on times out.
 final class ScriptedElement: AccessibilityElement {
     let mac: ScriptedMac
     let name: String

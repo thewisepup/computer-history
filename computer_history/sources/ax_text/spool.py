@@ -1,5 +1,3 @@
-"""The spool folder's finished files: list them oldest first, read, remove or set one aside."""
-
 from __future__ import annotations
 
 import os

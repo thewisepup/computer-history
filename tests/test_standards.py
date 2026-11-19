@@ -1,5 +1,3 @@
-"""Mechanical checks for CODING_STANDARDS.md, run on every commit and in CI."""
-
 from __future__ import annotations
 
 import ast

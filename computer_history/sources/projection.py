@@ -1,5 +1,3 @@
-"""Route each observation to the projector of the source adapter that claims its stream."""
-
 from __future__ import annotations
 
 import sqlite3

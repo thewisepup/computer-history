@@ -1,6 +1,5 @@
 import Foundation
 
-/// Joins text pieces with newlines up to a byte cap, and keeps counting the full length past it.
 struct CappedText {
     let capBytes: Int
     private(set) var text = ""

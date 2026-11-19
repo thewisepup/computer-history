@@ -1,5 +1,3 @@
-"""The status command: freshness, coverage gaps, the capture agent and row counts."""
-
 from __future__ import annotations
 
 import argparse

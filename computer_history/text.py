@@ -1,5 +1,3 @@
-"""Text and URL normalization shared by every source."""
-
 from __future__ import annotations
 
 from urllib.parse import urlsplit
@@ -45,7 +43,6 @@ def extract_domain(url: str | None) -> str | None:
 
 
 def _sanitize_url(value: str) -> str:
-    """Remove control characters and trim spaces."""
     return _scrub(value).translate(_URL_CONTROL_CHARS).strip(" ")
 
 

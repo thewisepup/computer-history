@@ -1,10 +1,3 @@
-"""An in-memory source adapter for runner tests, shaped like an append-only capture spool.
-
-Each stream is a list of captures in arrival order. Its position is "<stream>.jsonl:<offset>",
-so a poll resumes exactly after the last capture it consumed. A capture's signal is titled with its
-id, and every payload projected is recorded.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,8 +23,6 @@ class Capture:
 
 
 class FakeSource:
-    """Satisfies both Source and HistorySource; failures and hooks are set per test."""
-
     def __init__(self, *streams: str) -> None:
         self.captures: dict[str, list[Capture]] = {stream: [] for stream in streams}
         self.projectors = {stream: self.project for stream in streams}

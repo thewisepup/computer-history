@@ -1,5 +1,3 @@
-"""The capture spool adapter, driven through the ingest runner against temporary spool folders."""
-
 from __future__ import annotations
 
 import json
@@ -70,7 +68,6 @@ def write_file(folder: Path, name: str, lines: list[str] | bytes) -> Path:
 
 
 def record(n: int, when: datetime, **fields: Any) -> str:
-    """A capture line shaped like the fixture's first record, with its own id and time."""
     data = json.loads(FIXTURE_LINES[0])
     data.update(id=f"00000000-0000-4000-8000-{n:012x}", captured_at=_spool_time(when))
     data.update(fields)
@@ -106,9 +103,6 @@ def healthy_aw(now: datetime = NOW) -> FakeAW:
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=30))
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "Code"})
     return fake
-
-
-# --- the shared fixture ------------------------------------------------------------------
 
 
 def test_the_fixture_ingests_to_its_observations_and_signals(
@@ -190,9 +184,6 @@ def test_rebuild_reprojects_the_spool_to_identical_signals(
     assert signals(conn) == before
     assert result.signals_before == result.signals_after == len(before)
     assert result.skipped == 0
-
-
-# --- removal and re-reading ----------------------------------------------------------------
 
 
 def test_a_crash_between_commit_and_removal_re_reads_nothing_new(
@@ -350,9 +341,6 @@ def test_a_backlog_is_listed_once_per_drain(
     assert listings == [20, 0]
 
 
-# --- unusable lines and files ----------------------------------------------------------------
-
-
 def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     conn: sqlite3.Connection, spool_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -456,9 +444,6 @@ def test_an_unreadable_file_is_moved_aside_and_the_rest_ingested(
     assert f"moved spool file {file_name(1)}" in caplog.text and "cannot read it" in caplog.text
 
 
-# --- text limits -------------------------------------------------------------------------------
-
-
 def test_text_is_capped_at_ten_thousand_characters_and_titles_keep_theirs(
     conn: sqlite3.Connection, spool_dir: Path
 ) -> None:
@@ -472,9 +457,6 @@ def test_text_is_capped_at_ten_thousand_characters_and_titles_keep_theirs(
     assert stored_text == "a" * MAX_AX_TEXT_LENGTH
     assert stored_title == "t" * MAX_TEXT_LENGTH
     assert json.loads(observations(conn)[0][3])["text"] == text
-
-
-# --- two sources in one loop ---------------------------------------------------------------------
 
 
 def test_activitywatch_down_does_not_stop_the_spool(
@@ -528,9 +510,6 @@ def test_watch_polls_activitywatch_and_the_spool_in_one_loop(
     assert all("ax-text +1 (0 dup, 0 held)" in line for line in reports)
     assert all("ActivityWatch unreachable" in line for line in reports)
     assert len(observations(conn)) == 2
-
-
-# --- where the spool is, and the command line ----------------------------------------------
 
 
 def test_the_spool_path_is_the_flag_then_the_env_var_then_beside_the_database(

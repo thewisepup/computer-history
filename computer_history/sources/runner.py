@@ -1,5 +1,3 @@
-"""The ingest runner: polls every stream of every source, once or on a fixed interval."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -92,7 +90,6 @@ def poll(
 
 
 def _claim(seen: set[str], streams: list[str]) -> None:
-    """Record the streams, refusing one that another source already feeds."""
     for stream in streams:
         if stream in seen:
             raise ValueError(f"stream {stream!r} is fed by more than one source")
@@ -108,7 +105,6 @@ def _poll_stream(
     *,
     now: datetime,
 ) -> None:
-    """Pull and commit the stream while the source has more, adding each commit to its outcome."""
     so_far = IngestOutcome(0, 0, 0, None)
     more = True
     while more:

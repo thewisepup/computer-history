@@ -1,5 +1,3 @@
-"""The ActivityWatch source adapter: one stream per watcher type, read from its buckets."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -16,8 +14,6 @@ from computer_history.sources.contract import Pull
 
 
 class ActivityWatch:
-    """Reads ActivityWatch through the client for the ingest runner."""
-
     projectors = PROJECTORS
 
     def __init__(self, client: AWApi) -> None:

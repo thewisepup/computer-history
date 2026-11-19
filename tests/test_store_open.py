@@ -1,5 +1,3 @@
-"""open_store: every database state, through the one entry point, on real temp files."""
-
 from __future__ import annotations
 
 import sqlite3

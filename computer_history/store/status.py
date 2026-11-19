@@ -1,5 +1,3 @@
-"""Read queries for status: per-source freshness, row counts, coverage gaps, payload values."""
-
 from __future__ import annotations
 
 import sqlite3

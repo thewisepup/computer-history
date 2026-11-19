@@ -1,5 +1,3 @@
-"""Commit one pull with its signals and progress, and classify the failures that stop a run."""
-
 from __future__ import annotations
 
 import sqlite3

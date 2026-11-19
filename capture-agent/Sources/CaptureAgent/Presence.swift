@@ -70,7 +70,6 @@ public final class LivePresence: @unchecked Sendable {
     }
 }
 
-/// Whether the Mac still counts as asleep: no input has arrived since the sleep notification, both in uptime seconds.
 func isStillAsleep(sleptAt: TimeInterval, idleSeconds: TimeInterval, uptime: TimeInterval) -> Bool {
     idleSeconds >= uptime - sleptAt
 }

@@ -137,7 +137,6 @@ def load_migrations(directory: Traversable | None = None) -> list[Migration]:
 
 
 def _validate_sequence(migrations: Sequence[Migration]) -> list[Migration]:
-    """Sort the migrations and require versions 1..N with no gaps."""
     ordered = sorted(migrations)
     versions = [m.version for m in ordered]
     if versions != list(range(1, len(ordered) + 1)):
@@ -159,8 +158,7 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = N
         if migration.version <= current:
             continue
         with transaction(conn):
-            # Another process may have just migrated.
-            if schema_version(conn) >= migration.version:
+            if _applied_by_another_process(conn, migration):
                 continue
             for statement in _split_statements(migration.sql):
                 conn.execute(statement)
@@ -168,8 +166,11 @@ def migrate(conn: sqlite3.Connection, migrations: Sequence[Migration] | None = N
     return schema_version(conn)
 
 
+def _applied_by_another_process(conn: sqlite3.Connection, migration: Migration) -> bool:
+    return schema_version(conn) >= migration.version
+
+
 def _split_statements(script: str) -> list[str]:
-    """Split a SQL script into single statements, using SQLite's own tokenizer."""
     statements = []
     buffer = ""
     for piece in script.split(";"):

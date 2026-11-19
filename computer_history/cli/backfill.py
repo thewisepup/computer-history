@@ -1,5 +1,3 @@
-"""The backfill command: plan, then ingest history chunk by chunk."""
-
 from __future__ import annotations
 
 import argparse
@@ -34,7 +32,6 @@ from computer_history.store import (
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
-    """Plan every stream, then ingest each plan chunk by chunk."""
     db_path = resolve_db_path(args.db_path)
     source = ActivityWatch(AWClient(args.aw_url))
     now = datetime.now(UTC)
@@ -71,7 +68,6 @@ def cmd_backfill(args: argparse.Namespace) -> int:
 def _backfill(
     conn: sqlite3.Connection, source: ActivityWatch, plans: list[BackfillPlan], db_path: Path
 ) -> int:
-    """Run every plan, then print the totals and, after a failure, why and how to resume."""
     run = run_backfill(conn, source, plans, on_chunk=_print_chunk, on_stream=_print_done)
     if run.ok:
         print()
@@ -110,7 +106,6 @@ def _print_chunk(done: ChunkDone) -> None:
 
 
 def _print_done(result: BackfillResult) -> None:
-    """The closing summary of one stream's backfill: totals, held-back notes, and its progress."""
     plan = result.plan
     print(
         f"  {result.stream} done in {duration(result.seconds)}:"
@@ -206,7 +201,6 @@ def _print_backfill_totals(results: tuple[BackfillResult, ...]) -> None:
 
 
 def _failed(failure: StreamFailure, database: str, *, busy_hint: str | None = None) -> int:
-    """Print why planning or the run stopped, and return the exit code."""
     if failure.kind is FailureKind.SOURCE:
         return source_failed(failure.error)
     if failure.kind is FailureKind.ADAPTER:

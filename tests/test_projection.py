@@ -1,5 +1,3 @@
-"""Signal projection: each observation goes to its adapter's projector, at ingest and rebuild."""
-
 from __future__ import annotations
 
 import json
@@ -75,12 +73,8 @@ def stored_sources(conn: sqlite3.Connection) -> list[str]:
 
 
 def unclaimed_capture(conn: sqlite3.Connection) -> None:
-    """An observation from a source no adapter of this version projects, e.g. a newer one's."""
     capture = Observation("screenshot", "spool/1", at(0), at(1), '{"text": "hello"}')
     insert_observations(conn, [capture], project=no_signal)
-
-
-# --- routing ---------------------------------------------------------------------------
 
 
 def test_known_sources_project_every_activitywatch_stream() -> None:
@@ -104,9 +98,6 @@ def test_two_sources_projecting_one_stream_differently_are_refused() -> None:
 
 def test_the_same_adapter_listed_twice_is_one_claim() -> None:
     projector_for([ActivityWatch, ActivityWatch(FakeAW({}))])
-
-
-# --- ingest and rebuild agree ------------------------------------------------------------
 
 
 def test_rebuild_reproduces_what_the_runner_ingested_row_for_row(conn: sqlite3.Connection) -> None:
@@ -266,9 +257,6 @@ def test_cli_ingest_prints_an_unprojected_stream_and_exits_nonzero(
     assert "locked" not in err and "Traceback" not in err
 
 
-# --- an unclaimed source at rebuild ----------------------------------------------------------
-
-
 def test_rebuild_with_an_unclaimed_source_aborts_without_calling_it_malformed(
     conn: sqlite3.Connection,
 ) -> None:
@@ -294,7 +282,7 @@ def test_unclaimed_rows_win_over_earlier_malformed_ones(conn: sqlite3.Connection
     poll(conn, [full_aw(datetime.now(UTC))])
     before = signal_rows(conn)
     damage = "UPDATE observations SET payload = '{not json' WHERE source != ?"
-    with transaction(conn):  # test-only damage: every content row ingested so far is unreadable
+    with transaction(conn):
         conn.execute(damage, (AFK_SOURCE,))
     unclaimed_capture(conn)
 

@@ -1,5 +1,3 @@
-"""Open the database for a stated purpose and report the state it is in."""
-
 from __future__ import annotations
 
 import os

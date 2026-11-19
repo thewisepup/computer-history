@@ -1,5 +1,3 @@
-"""What waits in the spool, for status: finished files, files set aside, the newest record."""
-
 from __future__ import annotations
 
 import os
@@ -59,7 +57,6 @@ def spool_backlog(folder: Path) -> SpoolBacklog:
 
 
 def _newest_record(path: Path) -> tuple[datetime, str] | None:
-    """The time and kind of the file's last usable record, or None if it has none or is gone."""
     try:
         lines = read_lines(path)
     except FileNotFoundError:
@@ -81,7 +78,6 @@ def _has_bytes(path: Path) -> bool:
 
 
 def _finished_at(path: Path) -> datetime | None:
-    """The time in a finished file's name, else its write time, or None if it is gone."""
     try:
         return datetime.strptime(path.stem, FINISHED_NAME_FORMAT).replace(tzinfo=UTC)
     except ValueError:

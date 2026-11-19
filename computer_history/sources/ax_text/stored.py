@@ -1,5 +1,3 @@
-"""The agent's stored records, for status: their kinds and flags, the newest, the day's counts."""
-
 from __future__ import annotations
 
 import sqlite3

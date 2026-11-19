@@ -1,5 +1,3 @@
-"""The argument parser and command dispatch."""
-
 from __future__ import annotations
 
 import argparse
@@ -44,9 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
         "~/Library/Application Support/ComputerHistory/history.db)"
     )
     parser.add_argument("--db-path", help=db_help)
-    # Accepted before or after the subcommand.
-    db = argparse.ArgumentParser(add_help=False)
-    db.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
+    db_after_command = argparse.ArgumentParser(add_help=False)
+    db_after_command.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
     aw = argparse.ArgumentParser(add_help=False)
     aw.add_argument(
         "--aw-url",
@@ -55,7 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, help_text in COMMANDS.items():
-        parents = [db, aw] if name in ("ingest", "status", "backfill") else [db]
+        parents = (
+            [db_after_command, aw]
+            if name in ("ingest", "status", "backfill")
+            else [db_after_command]
+        )
         sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
         if name == "rebuild-signals":
             sub.add_argument(

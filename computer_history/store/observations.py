@@ -76,7 +76,6 @@ def insert_observations(
 
 
 def _prepare(observation: Observation) -> tuple[str, str, str, str, str]:
-    """Validate one observation and convert its timestamps."""
     if not observation.source:
         raise ValueError(f"observation {observation.source_id!r} has no source")
     if not observation.source_id:

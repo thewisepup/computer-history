@@ -84,7 +84,6 @@ public final class WindowTextReader<Element: AccessibilityElement> {
     }
 }
 
-/// One launch of an app: its process id, bundle and launch time.
 private struct ProcessLaunch: Hashable {
     let processIdentifier: pid_t
     let bundleURL: URL?

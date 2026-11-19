@@ -21,12 +21,9 @@ def at(minutes: float) -> datetime:
 
 
 class FakeAW:
-    """In-memory stand-in for the AW API with the real server's query semantics."""
-
     def __init__(
         self, buckets: dict[str, str], *, t0: datetime = T0, created: datetime | None = None
     ) -> None:
-        """``created`` (default ``t0``) is every bucket's AW ``created`` time."""
         self.t0 = t0
         self.buckets = {
             bucket_id: {
@@ -43,12 +40,13 @@ class FakeAW:
         self.refetches: list[tuple[str, Any]] = []
         self._next_id = 1
 
-    def add(self, bucket_id: str, start: float, seconds: float, data: dict[str, Any]) -> dict:
-        """Add an event starting ``start`` minutes after ``t0``, lasting ``seconds``."""
+    def add(
+        self, bucket_id: str, start_minutes: float, duration_seconds: float, data: dict[str, Any]
+    ) -> dict:
         raw = {
             "id": self._next_id,
-            "timestamp": (self.t0 + timedelta(minutes=start)).isoformat(),
-            "duration": seconds,
+            "timestamp": (self.t0 + timedelta(minutes=start_minutes)).isoformat(),
+            "duration": duration_seconds,
             "data": data,
         }
         self._next_id += 1
@@ -73,11 +71,11 @@ class FakeAW:
                 ts = to_utc(raw["timestamp"])
                 te = ts + timedelta(seconds=raw["duration"])
             except (KeyError, ValueError):
-                found.append(event)  # malformed: passed through unfiltered
+                found.append(event)
                 continue
             if (start is not None and te < start) or (end is not None and ts > end):
                 continue
-            if start is not None and ts < start:  # AW clips to the query range
+            if start is not None and ts < start:
                 event["timestamp"], ts = start.isoformat(), start
                 event["duration"] = (te - ts).total_seconds()
             if end is not None and te > end:

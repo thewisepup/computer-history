@@ -22,7 +22,9 @@ CONSTANTS
     MaxAgentCrashes,
     MaxIngestCrashes
 
-Names == 0 .. (MaxClock + Cardinality(Records) + 1)
+(* Stamps start at 1, so the fresh agent's lastFinished of 0 (the epoch)   *)
+(* is behind every clock reading, as it is for a real clock.                *)
+Names == 1 .. (MaxClock + Cardinality(Records) + MaxAgentCrashes + 1)
 
 VARIABLES
     (* the agent process: SpoolWriter *)
@@ -32,6 +34,7 @@ VARIABLES
     unwritten,    \* records not yet appended
     acked,        \* records whose append returned
     clock,        \* the wall clock, SpoolTime(now())
+    used,         \* every name the agent has finished a file to (a ghost)
     agentCrashes,
     (* the spool folder *)
     present,      \* finished file names in the spool folder
@@ -49,7 +52,7 @@ VARIABLES
     (* the database *)
     db            \* record ids in observations (UNIQUE (source, source_id))
 
-agentVars  == <<agentUp, lastFinished, openPart, unwritten, acked, clock, agentCrashes>>
+agentVars  == <<agentUp, lastFinished, openPart, unwritten, acked, clock, used, agentCrashes>>
 folderVars == <<present, content, unusable, aside>>
 ingestVars == <<pc, listed, readPath, readRecs, readGone, readUnusable, ingestCrashes>>
 vars == <<agentVars, folderVars, ingestVars, db>>
@@ -67,7 +70,8 @@ Init ==
     /\ openPart = {}
     /\ unwritten = Records
     /\ acked = {}
-    /\ clock = 0
+    /\ clock = 1
+    /\ used = {}
     /\ agentCrashes = 0
     /\ present = {}
     /\ content = [n \in Names |-> {}]
@@ -75,7 +79,7 @@ Init ==
     /\ aside = {}
     /\ pc = [i \in Ingests |-> "idle"]
     /\ listed = [i \in Ingests |-> << >>]
-    /\ readPath = [i \in Ingests |-> 0]
+    /\ readPath = [i \in Ingests |-> 1]
     /\ readRecs = [i \in Ingests |-> {}]
     /\ readGone = [i \in Ingests |-> FALSE]
     /\ readUnusable = [i \in Ingests |-> FALSE]
@@ -91,7 +95,7 @@ AgentStarts ==
     /\ ~agentUp
     /\ agentUp' = TRUE
     /\ lastFinished' = IF present = {} THEN 0 ELSE Max(present)
-    /\ UNCHANGED <<openPart, unwritten, acked, clock, agentCrashes, folderVars, ingestVars, db>>
+    /\ UNCHANGED <<openPart, unwritten, acked, clock, used, agentCrashes, folderVars, ingestVars, db>>
 
 (* SpoolWriter.append: one line written and the call returns. A torn tail  *)
 (* left by an earlier failed write is dropped first, and a torn line never  *)
@@ -102,7 +106,7 @@ AgentAppends ==
         /\ openPart' = openPart \cup {r}
         /\ unwritten' = unwritten \ {r}
         /\ acked' = acked \cup {r}
-    /\ UNCHANGED <<agentUp, lastFinished, clock, agentCrashes, folderVars, ingestVars, db>>
+    /\ UNCHANGED <<agentUp, lastFinished, clock, used, agentCrashes, folderVars, ingestVars, db>>
 
 (* SpoolWriter.finishLocked: a non-empty open.part is renamed with          *)
 (* RENAME_EXCL to the first free stamp at or after                          *)
@@ -119,31 +123,34 @@ AgentFinishes ==
           /\ \E bad \in BOOLEAN :
                 unusable' = IF bad THEN unusable \cup {n} ELSE unusable \ {n}
           /\ lastFinished' = n
+          /\ used' = used \cup {n}
     /\ openPart' = {}
     /\ UNCHANGED <<agentUp, unwritten, acked, clock, agentCrashes, aside, ingestVars, db>>
 
-(* A crash or kill: open.part stays on disk, lastFinished is lost. Time     *)
-(* passes before launchd starts the agent again.                            *)
+(* A crash or kill: open.part stays on disk, lastFinished is lost. launchd *)
+(* restarts the agent seconds later, longer than names ever run ahead of    *)
+(* the clock (two finishes in one millisecond), so a steady clock is past   *)
+(* every name used before the restart.                                      *)
 AgentCrashes ==
     /\ agentUp
     /\ agentCrashes < MaxAgentCrashes
     /\ agentUp' = FALSE
     /\ lastFinished' = 0
     /\ agentCrashes' = agentCrashes + 1
-    /\ clock' = IF clock < MaxClock THEN clock + 1 ELSE clock
-    /\ UNCHANGED <<openPart, unwritten, acked, folderVars, ingestVars, db>>
+    /\ clock' = Max(used \cup {clock}) + 1
+    /\ UNCHANGED <<openPart, unwritten, acked, used, folderVars, ingestVars, db>>
 
 ClockTicks ==
     /\ clock < MaxClock
     /\ clock' = clock + 1
-    /\ UNCHANGED <<agentUp, lastFinished, openPart, unwritten, acked, agentCrashes,
+    /\ UNCHANGED <<agentUp, lastFinished, openPart, unwritten, acked, used, agentCrashes,
                    folderVars, ingestVars, db>>
 
 ClockStepsBackward ==
     /\ ClockStepsBack
-    /\ clock > 0
-    /\ \E c \in 0 .. (clock - 1) : clock' = c
-    /\ UNCHANGED <<agentUp, lastFinished, openPart, unwritten, acked, agentCrashes,
+    /\ clock > 1
+    /\ \E c \in 1 .. (clock - 1) : clock' = c
+    /\ UNCHANGED <<agentUp, lastFinished, openPart, unwritten, acked, used, agentCrashes,
                    folderVars, ingestVars, db>>
 
 -----------------------------------------------------------------------------
@@ -244,7 +251,8 @@ Spec == Init /\ [][Next]_vars
 
 TypeOK ==
     /\ agentUp \in BOOLEAN
-    /\ lastFinished \in Names
+    /\ lastFinished \in Names \cup {0}
+    /\ clock \in Names
     /\ openPart \subseteq Records
     /\ present \subseteq Names
     /\ \A i \in Ingests : pc[i] \in {"idle", "read", "committed", "linked"}
