@@ -5,9 +5,10 @@ from [ActivityWatch](https://activitywatch.net/) and, eventually, attributes
 it to projects and types of work.
 
 > **New here or switching AI assistants?** Start with [AGENTS.md](AGENTS.md).
-> The design and milestones are in [docs/DESIGN.md](docs/DESIGN.md), and the
-> product requirements are in [docs/PRD.md](docs/PRD.md). Connecting ChatGPT
-> is covered by the `connect-chatgpt` skill (`.claude/skills/connect-chatgpt/`).
+> The design is in [docs/DESIGN.md](docs/DESIGN.md), the milestones in
+> [docs/milestones.md](docs/milestones.md), and the product requirements in
+> [docs/PRD.md](docs/PRD.md). Connecting ChatGPT is covered by the
+> `connect-chatgpt` skill (`.claude/skills/connect-chatgpt/`).
 
 The repo holds two separate programs that share nothing at runtime:
 

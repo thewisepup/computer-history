@@ -11,14 +11,13 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp==2.3.0"]
 
 [project.optional-dependencies]
 test = ["httpx>=0.27,<1"]
-dev = ["watchfiles>=0.21,<2", "pytest>=8,<10", "ruff>=0.6,<1"]
+dev = ["watchfiles>=0.21,<2", "pytest>=8,<10", "ruff>=0.6,<1", "hypothesis>=6.100,<7"]
 
 [project.scripts]
 history = "history:main"
 computer-history = "computer_history.cli:main"
 
 [tool.setuptools]
-# POC modules stay top-level until M6; the new code lives in the package.
 py-modules = ["history", "history_mcp"]
 
 [tool.setuptools.packages.find]
@@ -28,14 +27,12 @@ include = ["computer_history*"]
 "computer_history.store" = ["migrations/*.sql"]
 
 [tool.pytest.ini_options]
-# Only the new package's tests. The POC suite (test_history.py, test_mcp.py)
-# runs separately via `python -m unittest`.
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-# POC files are frozen until M6; lint only the new package and its tests.
 extend-exclude = ["history.py", "history_mcp.py", "test_history.py", "test_mcp.py"]
 
 [tool.ruff.lint]

@@ -1,6 +1,5 @@
 -- All timestamps are UTC ISO-8601 text.
 
--- Layer 1: raw observations (immutable, insert-only).
 CREATE TABLE observations (
   id           INTEGER PRIMARY KEY,
   source       TEXT NOT NULL,      -- 'aw-window' | 'aw-afk' | 'aw-web' | 'ax-text' | 'screenshot'
@@ -14,7 +13,6 @@ CREATE TABLE observations (
 
 CREATE INDEX observations_source_started_at ON observations (source, started_at);
 
--- Layer 1.5: normalized signals (rebuildable; 1:1 with content observations).
 CREATE TABLE signals (
   observation_id INTEGER PRIMARY KEY REFERENCES observations (id),
   source      TEXT NOT NULL,
@@ -30,7 +28,6 @@ CREATE TABLE signals (
 
 CREATE INDEX signals_started_at ON signals (started_at);
 
--- Layer 2: derived activity.
 CREATE TABLE projects (
   id             INTEGER PRIMARY KEY,
   name           TEXT NOT NULL UNIQUE,
@@ -86,7 +83,6 @@ JOIN signals AS s
   ON s.started_at < b.ended_at
  AND (s.ended_at > b.started_at OR s.started_at = b.started_at);
 
--- Layer 3: reviews and suggestions (snapshots, never overwritten).
 CREATE TABLE reviews (
   id           INTEGER PRIMARY KEY,
   week_start   TEXT NOT NULL,      -- Monday, local time
@@ -104,7 +100,6 @@ CREATE TABLE suggestions (
   runnable   TEXT NOT NULL
 );
 
--- Bookkeeping.
 CREATE TABLE ingest_cursors (
   source    TEXT PRIMARY KEY,
   last_seen TEXT NOT NULL

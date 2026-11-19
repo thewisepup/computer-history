@@ -1,5 +1,3 @@
-"""Judge the capture agent's records against attended time: unobserved stretches and liveness."""
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence

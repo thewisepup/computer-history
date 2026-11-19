@@ -18,11 +18,11 @@ End-to-end verification that M1 is actually done, against real data.
   (clipped + merged the same way) vs the POC's `/usage` for the same range —
   the correctness oracle for clipping/merge bugs. Investigate any
   discrepancy beyond AFK/settled-margin explanations.
-- Walk the M1 checklist in `docs/DESIGN.md` §9 and tick every box.
+- Walk the M1 checklist in `docs/milestones.md` and tick every box.
 
 ## Acceptance
 
-Every M1 checkbox ticked in DESIGN.md; discrepancies explained or fixed.
+Every M1 checkbox ticked in docs/milestones.md; discrepancies explained or fixed.
 Resolving this ticket closes the map.
 
 ## Answer

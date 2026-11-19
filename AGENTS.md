@@ -8,11 +8,13 @@ summaries.
 
 ## Where things are
 
-- `docs/DESIGN.md` — the v1 spec: data model, ingestion, milestones (§9).
+- `docs/milestones.md` — read first for milestone work: each milestone's
+  scope and checklist, the one record of progress.
+- `docs/DESIGN.md` — the v1 spec: data model, ingestion, interfaces.
   `docs/PRD.md` — product requirements.
-- `computer_history/` — the rewrite (M1 done; next is M2). Each package's
-  `__init__.py` opens with its flow diagram; `computer_history/cli/README.md`
-  shows every command with examples.
+- `computer_history/` — the rewrite. Each package's `__init__.py` opens with
+  its flow diagram; `computer_history/cli/README.md` shows every command with
+  examples.
 - `capture-agent/` — the signed Swift capture agent macOS starts at login;
   its README has the build, install, test and log commands, and the spool
   record format.
@@ -20,6 +22,8 @@ summaries.
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
+- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
+  `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
 - `CODING_STANDARDS.md` — the review checklist the standards reviewer
   enforces.
@@ -34,7 +38,8 @@ git config core.hooksPath .githooks
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
 computer_history tests` must pass; the pre-commit hook runs both, and CI runs
-them plus the POC suite (`python -m unittest`) on pushes to `main`.
+them plus the POC suite (`python -m unittest`) on pushes to `main`. A
+worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
 
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool

@@ -1,5 +1,3 @@
-"""Messages for a database a command cannot use."""
-
 from __future__ import annotations
 
 import sys

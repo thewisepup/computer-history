@@ -1,5 +1,3 @@
-"""The ActivityWatch ingest position: the UTC time a stream is settled up to."""
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta

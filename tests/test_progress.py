@@ -1,5 +1,3 @@
-"""Ingest progress: the store keeps it opaque and moves it only with a batch."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -51,9 +49,6 @@ PROGRESS_MIGRATION = next(m for m in load_migrations() if m.name.endswith("_inge
 
 def text_capture(source_id: str, start: float, end: float) -> Observation:
     return Observation("ax-text", source_id, at(start), at(end), '{"text": "hello"}')
-
-
-# --- the store's rules -------------------------------------------------------------
 
 
 def test_store_round_trips_an_opaque_position_with_settled_until_set_separately(
@@ -178,9 +173,6 @@ def test_bad_progress_updates_are_rejected(kwargs: dict[str, Any]) -> None:
         ProgressUpdate(**kwargs)
 
 
-# --- readers use settled_until, never the position ------------------------------------
-
-
 def test_status_summary_reads_settled_until_for_an_opaque_position(
     conn: sqlite3.Connection,
 ) -> None:
@@ -204,7 +196,7 @@ def test_backfill_plans_up_to_settled_until_for_an_opaque_position(
 
 def test_backfill_keeps_progress_that_has_no_settled_time(conn: sqlite3.Connection) -> None:
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=at(-3 * 1440))
-    fake.add(WINDOW_BUCKET, 1440, 60, {"app": "Code"})  # a day after the bucket was created
+    fake.add(WINDOW_BUCKET, 1440, 60, {"app": "Code"})
     insert_observations(
         conn, [], progress=ProgressUpdate(WINDOW_SOURCE, SPOOL_POSITION), project=no_signal
     )
@@ -215,9 +207,6 @@ def test_backfill_keeps_progress_that_has_no_settled_time(conn: sqlite3.Connecti
     (result,) = run_backfill(conn, ActivityWatch(fake), [plan], clock=lambda: at(60)).results
     assert result.inserted == 1 and result.progress is BackfillProgress.KEPT_UNSETTLED
     assert get_progress(conn, WINDOW_SOURCE) == before
-
-
-# --- migrating from ingest_cursors --------------------------------------------------
 
 
 class RecordingAW(FakeAW):
@@ -231,7 +220,6 @@ class RecordingAW(FakeAW):
 
 
 def previous_version(path: Path) -> sqlite3.Connection:
-    """A WAL database migrated up to just before ingest progress existed."""
     conn = sqlite3.connect(path, isolation_level=None)
     conn.execute("PRAGMA journal_mode = WAL")
     migrate(conn, [m for m in load_migrations() if m.version < PROGRESS_MIGRATION.version])
@@ -264,7 +252,6 @@ def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path:
 
 
 def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
-    """An old database holding the first pull and a cursor at its frontier, then migrated."""
     old = previous_version(path)
     insert_observations(old, first_pull.observations, project=no_signal)
     old.execute(
@@ -276,7 +263,6 @@ def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connec
 
 
 def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
-    """A current database holding the first pull and progress at its frontier."""
     conn = connect(path)
     update = ProgressUpdate(
         WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier
@@ -297,7 +283,6 @@ def test_migrated_cursor_resumes_like_progress_written_today(tmp_path: Path, pre
         fake.add(WINDOW_BUCKET, 58, 60, {"app": "C"})
         fake.queries.clear()
         outcome = poll(conn, [ActivityWatch(fake)], now=at(70)).outcomes[WINDOW_SOURCE]
-        # B is re-read through the overlap and skipped, C lands, A is never re-read.
         assert outcome == IngestOutcome(inserted=1, skipped=1, held_back=0, settled_until=at(70))
         starts = [to_utc(q["start"]) for q in fake.queries if q.get("limit") == -1]
         overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)

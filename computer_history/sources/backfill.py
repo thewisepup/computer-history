@@ -1,5 +1,3 @@
-"""Backfill: plan a source's history in fixed-width chunks, then ingest them oldest first."""
-
 from __future__ import annotations
 
 import sqlite3
@@ -303,7 +301,6 @@ def _backfill_stream(
 
 
 def _incomplete_from(pulled: Pull, piece: Chunk) -> datetime | None:
-    """Where the chunk stops being complete, or None if all of it is stored."""
     if pulled.settled_until is None:
         return piece.start if pulled.held_back else None
     return pulled.settled_until if pulled.settled_until < piece.end else None

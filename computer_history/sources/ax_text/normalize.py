@@ -1,5 +1,3 @@
-"""Turn one stored spool record into a signal: the adapter's projector."""
-
 from __future__ import annotations
 
 import json

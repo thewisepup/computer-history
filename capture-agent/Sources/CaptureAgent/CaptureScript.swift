@@ -1,6 +1,5 @@
 import Foundation
 
-/// A capture session written as JSON: when it starts, the apps and their windows, and the timed steps that change what the Mac shows.
 struct CaptureScript: Decodable, Equatable {
     let start: Date
     let apps: [String: App]
@@ -27,7 +26,6 @@ struct CaptureScript: Decodable, Equatable {
         }
     }
 
-    /// One accessibility element, whose value is repeated `repeat` times and whose calls for the attributes in `hangs` time out.
     struct Node: Decodable, Equatable {
         let role: String
         let title: String?
@@ -162,7 +160,6 @@ struct CaptureScript: Decodable, Equatable {
         steps = try script.decode([Step].self, forKey: .steps)
     }
 
-    /// Reads a script from a JSON file.
     static func load(_ file: URL) throws -> CaptureScript {
         try JSONDecoder().decode(CaptureScript.self, from: Data(contentsOf: file))
     }

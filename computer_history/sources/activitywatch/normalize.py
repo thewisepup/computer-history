@@ -1,5 +1,3 @@
-"""Turn one raw event payload into a signal: the adapter's projectors."""
-
 from __future__ import annotations
 
 import json
@@ -44,7 +42,6 @@ PROJECTORS: Mapping[str, StreamProjector] = MappingProxyType(
 
 
 def _take_str(data: dict[str, Any], key: str) -> str | None:
-    """Pop and return the key if it holds a string."""
     value = data.get(key)
     if isinstance(value, str):
         del data[key]

@@ -115,11 +115,11 @@ final class Recorder: @unchecked Sendable {
 
 @Test func startSaysWhetherCapturingMayStart() throws {
     let recorder = Recorder()
-    #expect(recorder.agent(granted: true).start())
+    #expect(recorder.agent(granted: true).start() == .started)
     let blocked = Recorder()
     let other = blocked.spool.writer()
     try other.start()
-    #expect(!blocked.agent(granted: true).start())
+    #expect(blocked.agent(granted: true).start() == .spoolHeldByAnotherAgent)
 }
 
 @Test func startLogsWhereTheSettingsCameFromAndEveryProblem() throws {

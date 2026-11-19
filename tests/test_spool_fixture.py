@@ -1,5 +1,3 @@
-"""The spool fixture shared with the capture agent parses and has the documented keys."""
-
 from __future__ import annotations
 
 import json

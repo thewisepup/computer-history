@@ -1,6 +1,3 @@
-"""ActivityWatch adapter tests. No network: FakeAW reproduces the real API's
-range semantics (see that module)."""
-
 from __future__ import annotations
 
 import copy
@@ -55,7 +52,6 @@ AFK_BUCKET = "aw-watcher-afk_test-host.local"
 WEB_BUCKET = "aw-watcher-web-chrome_test-host.local"
 OLD_WEB_BUCKET = "aw-watcher-web-chrome"
 
-# Realistic payloads, shaped like the AW API's responses.
 WINDOW_EVENT = {
     "id": 5709,
     "timestamp": "2026-11-17T10:00:00.250000+00:00",
@@ -97,7 +93,6 @@ def rows(conn: sqlite3.Connection, source: str) -> list[sqlite3.Row]:
 
 
 def poll_aw(conn: sqlite3.Connection, fake: FakeAW, *, now) -> dict[str, IngestOutcome]:
-    """One incremental poll of every ActivityWatch stream through the runner."""
     summary = poll(conn, [ActivityWatch(fake)], now=now)
     assert summary.ok, summary.failures
     return summary.outcomes
@@ -110,7 +105,6 @@ def poll_window(conn: sqlite3.Connection, fake: FakeAW, *, now) -> IngestOutcome
 def ingest_range(
     conn: sqlite3.Connection, fake: FakeAW, start, end, *, now, stream: str = WINDOW_SOURCE
 ) -> IngestOutcome:
-    """Pull an explicit range through the adapter and store it, leaving progress alone."""
     pulled = ActivityWatch(fake).pull_range(stream, start, end, now=now)
     written = insert_observations(conn, pulled.observations, project=AW)
     return IngestOutcome(written.inserted, written.skipped, pulled.held_back, pulled.settled_until)
@@ -119,9 +113,6 @@ def ingest_range(
 def settled(conn: sqlite3.Connection, source: str):
     progress = get_progress(conn, source)
     return None if progress is None else progress.settled_until
-
-
-# --- discovery ---------------------------------------------------------------
 
 
 def test_discovery_maps_bucket_types_to_sources() -> None:
@@ -145,9 +136,6 @@ def test_discovery_with_no_known_buckets_is_empty() -> None:
     assert discover_sources(FakeAW({"other": "something.else"})) == []
 
 
-# --- settled-events rule -----------------------------------------------------
-
-
 def test_latest_event_is_held_back_older_events_ingested() -> None:
     fake = window_aw()
     first = fake.add(WINDOW_BUCKET, 0, 60, {"app": "A", "title": "a"})
@@ -164,7 +152,7 @@ def test_latest_event_is_held_back_older_events_ingested() -> None:
 
 def test_superseded_event_is_settled_even_if_it_just_ended() -> None:
     fake = window_aw()
-    fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})  # ends at 1:00, superseded
+    fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     fake.add(WINDOW_BUCKET, 1, 1, {"app": "B"})
     pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
     assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["A"]
@@ -175,7 +163,7 @@ def test_superseded_event_is_settled_even_if_it_just_ended() -> None:
     [
         (STABILITY_MARGIN_SECONDS + 1, True),
         (STABILITY_MARGIN_SECONDS + 0.001, True),
-        (STABILITY_MARGIN_SECONDS, False),  # exactly at the margin: not yet
+        (STABILITY_MARGIN_SECONDS, False),
         (STABILITY_MARGIN_SECONDS - 1, False),
     ],
 )
@@ -188,14 +176,11 @@ def test_latest_event_settles_once_its_end_is_older_than_the_margin(
     pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=now)
     assert len(pull.observations) == (1 if settled else 0)
     assert pull.held_back == (0 if settled else 1)
-    # Nothing held back: the frontier is the pull time; else the held event's start.
     assert pull.frontier == (now if settled else at(0))
 
 
 def test_event_created_during_the_pull_counts_as_latest() -> None:
     class RacingAW(FakeAW):
-        """A new event lands between the 'latest' read and the range query."""
-
         def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
             result = super().get_events(bucket_id, **kwargs)
             if kwargs.get("limit") == 1:
@@ -205,13 +190,9 @@ def test_event_created_during_the_pull_counts_as_latest() -> None:
     fake = RacingAW({WINDOW_BUCKET: "currentwindow"})
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "Old"})
     pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
-    # "Old" is now superseded (settled); "New" is still growing and must wait.
     assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["Old"]
     assert pull.held_back == 1
     assert pull.frontier == at(1)
-
-
-# --- normalization -------------------------------------------------------------
 
 
 def test_window_signal() -> None:
@@ -227,7 +208,6 @@ def test_web_signal_domain_title_hygiene_and_extras() -> None:
     assert signal.domain == "github.com"
     assert signal.title == "M1 ticket 04 · GitHub"
     assert signal.app is None and signal.text is None
-    # Leftover data keys, sorted for byte-stable rebuilds, round-trip losslessly.
     assert signal.extras == '{"audible": false, "incognito": false, "tabCount": 7}'
     assert json.loads(signal.extras) == {"audible": False, "incognito": False, "tabCount": 7}
 
@@ -284,7 +264,7 @@ def test_text_hygiene_collapse_cap_and_empty() -> None:
 def test_lone_surrogates_are_scrubbed() -> None:
     signal = project_signal(WINDOW_SOURCE, {"data": {"app": "Chat", "title": "hi \ud83d there"}})
     assert signal.title == "hi ? there"
-    signal.title.encode("utf-8")  # storable
+    signal.title.encode("utf-8")
 
 
 def test_non_string_fields_and_unknown_keys_go_to_extras() -> None:
@@ -297,9 +277,6 @@ def test_non_string_fields_and_unknown_keys_go_to_extras() -> None:
 def test_missing_data_gives_empty_signal() -> None:
     assert project_signal(WINDOW_SOURCE, {"id": 1}) == Signal()
     assert project_signal(WEB_SOURCE, {"data": {"title": "t"}}) == Signal(title="t")
-
-
-# --- ingest: storage -----------------------------------------------------------
 
 
 def full_aw() -> FakeAW:
@@ -331,7 +308,7 @@ def test_poll_writes_observations_and_signals(conn: sqlite3.Connection) -> None:
     }
     counts = table_counts(conn)
     assert counts["observations"] == 7
-    assert counts["signals"] == 5  # AFK -> observations only
+    assert counts["signals"] == 5
     web = conn.execute(
         "SELECT o.source_id, s.domain, s.url, s.title FROM observations o "
         "JOIN signals s ON s.observation_id = o.id WHERE o.source = ? ORDER BY o.started_at",
@@ -373,9 +350,9 @@ def test_malformed_events_are_skipped_and_negative_duration_clamped(
 ) -> None:
     fake = window_aw()
     fake.events[WINDOW_BUCKET] += [
-        {"id": 900, "duration": 5, "data": {}},  # no timestamp
-        {"id": 901, "timestamp": "2026-11-17T10:00:00", "duration": 5, "data": {}},  # naive
-        {"timestamp": at(0).isoformat(), "duration": 5, "data": {}},  # no id
+        {"id": 900, "duration": 5, "data": {}},
+        {"id": 901, "timestamp": "2026-11-17T10:00:00", "duration": 5, "data": {}},
+        {"timestamp": at(0).isoformat(), "duration": 5, "data": {}},
         {"id": 902, "timestamp": at(1).isoformat(), "duration": -3.0, "data": {"app": "X"}},
     ]
     fake.add(WINDOW_BUCKET, 2, 10, {"app": "Y"})
@@ -383,10 +360,7 @@ def test_malformed_events_are_skipped_and_negative_duration_clamped(
     assert counts(result) == (2, 0)
     clamped = rows(conn, WINDOW_SOURCE)[0]
     assert clamped["started_at"] == clamped["ended_at"]
-    assert json.loads(clamped["payload"])["duration"] == -3.0  # raw kept as received
-
-
-# --- ingest: idempotency and progress -----------------------------------------
+    assert json.loads(clamped["payload"])["duration"] == -3.0
 
 
 def test_reingesting_the_same_range_adds_nothing(conn: sqlite3.Connection) -> None:
@@ -408,7 +382,6 @@ def test_reingesting_the_same_range_adds_nothing(conn: sqlite3.Connection) -> No
         name: r.inserted for name, r in first.items()
     }
     assert table_counts(conn) == before
-    # An explicit range never touches the progress.
     assert get_progress(conn, WINDOW_SOURCE) is None
 
 
@@ -433,18 +406,15 @@ def test_progress_settles_at_held_event_and_polls_pick_up_new_events(
     assert poll_window(conn, fake, now=now) == IngestOutcome(2, 0, 1, at(2))
     assert settled(conn, WINDOW_SOURCE) == at(2)
 
-    # "C" grows in place, then is superseded by "D" (still growing).
     growing["duration"] = 90
     fake.add(WINDOW_BUCKET, 3.5, 20, {"app": "D"})
     now = at(4)
     result = poll_window(conn, fake, now=now)
-    # A and B are re-read through the overlap and skipped; C lands with its final length.
     assert result == IngestOutcome(inserted=1, skipped=2, held_back=1, settled_until=at(3.5))
     assert settled(conn, WINDOW_SOURCE) == at(3.5)
     c_row = rows(conn, WINDOW_SOURCE)[-1]
     assert c_row["ended_at"] == utc_iso(at(2) + timedelta(seconds=90))
 
-    # Once D is older than the margin, it settles and progress moves to the poll time.
     later = at(3.5) + timedelta(seconds=20 + STABILITY_MARGIN_SECONDS + 1)
     assert poll_window(conn, fake, now=later).inserted == 1
     assert settled(conn, WINDOW_SOURCE) == later
@@ -455,12 +425,11 @@ def test_progress_is_min_over_buckets_and_dead_bucket_does_not_pin_it(
     conn: sqlite3.Connection,
 ) -> None:
     fake = FakeAW({WEB_BUCKET: "web.tab.current", OLD_WEB_BUCKET: "web.tab.current"})
-    fake.add(OLD_WEB_BUCKET, -600, 10, {"url": "https://old.example/"})  # dead for 10h
+    fake.add(OLD_WEB_BUCKET, -600, 10, {"url": "https://old.example/"})
     fake.add(WEB_BUCKET, 0, 60, {"url": "https://a.example/"})
-    fake.add(WEB_BUCKET, 5, 30, {"url": "https://b.example/"})  # current tab
+    fake.add(WEB_BUCKET, 5, 30, {"url": "https://b.example/"})
     poll_aw(conn, fake, now=at(5.5) + timedelta(seconds=1))
     assert settled(conn, WEB_SOURCE) == at(5)
-    # Both buckets idle long enough: progress reaches the poll time.
     now = at(30)
     poll_aw(conn, fake, now=now)
     assert settled(conn, WEB_SOURCE) == now
@@ -473,7 +442,6 @@ def test_late_arriving_event_inside_the_overlap_is_picked_up(conn: sqlite3.Conne
     now = at(10)
     poll_window(conn, fake, now=now)
     assert settled(conn, WINDOW_SOURCE) == now
-    # A queued heartbeat reaches AW late, stamped before the settled-until time.
     fake.add(WINDOW_BUCKET, 9, 30, {"app": "Late"})
     poll_window(conn, fake, now=at(15))
     assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == [
@@ -483,19 +451,14 @@ def test_late_arriving_event_inside_the_overlap_is_picked_up(conn: sqlite3.Conne
     assert RESUME_OVERLAP_SECONDS >= 60
 
 
-# --- clipping defence ----------------------------------------------------------
-
-
 def test_event_straddling_the_query_start_is_never_stored_clipped(
     conn: sqlite3.Connection,
 ) -> None:
     fake = window_aw()
-    long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})  # 10:00-11:00
+    long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})
     fake.add(WINDOW_BUCKET, 60, 10, {"app": "Next"})
     poll_window(conn, fake, now=at(65))
     fake.add(WINDOW_BUCKET, 61, 10, {"app": "Later"})
-    # Both the next poll (position - overlap = 55 min) and this explicit range query
-    # AW from inside "Long", so AW returns it clipped; neither may store that copy.
     poll_window(conn, fake, now=at(70))
     ingest_range(conn, fake, at(30), at(70), now=at(70))
     payloads = [json.loads(r["payload"]) for r in rows(conn, WINDOW_SOURCE)]
@@ -506,9 +469,8 @@ def test_event_straddling_the_query_start_is_never_stored_clipped(
 
 def test_range_never_stores_a_start_clipped_first_copy(conn: sqlite3.Connection) -> None:
     fake = window_aw()
-    long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})  # 10:00-11:00
+    long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})
     fake.add(WINDOW_BUCKET, 60, 10, {"app": "Next"})
-    # Fresh DB; the range starts inside "Long", which belongs to an earlier range.
     assert ingest_range(conn, fake, at(30), at(90), now=at(120)).inserted == 1
     assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == [
         "Next"
@@ -522,19 +484,19 @@ def test_chunked_backfill_refetches_end_clipped_events_and_is_idempotent(
 ) -> None:
     fake = window_aw()
     events = [
-        fake.add(WINDOW_BUCKET, 0, 300, {"app": "A"}),  # 0-5 min
-        fake.add(WINDOW_BUCKET, 5, 900, {"app": "B"}),  # 5-20 min: straddles 10
+        fake.add(WINDOW_BUCKET, 0, 300, {"app": "A"}),
+        fake.add(WINDOW_BUCKET, 5, 900, {"app": "B"}),
         fake.add(WINDOW_BUCKET, 20, 60, {"app": "C"}),
-        fake.add(WINDOW_BUCKET, 30, 60, {"app": "D"}),  # starts exactly at a chunk edge
+        fake.add(WINDOW_BUCKET, 30, 60, {"app": "D"}),
     ]
-    fake.add(WINDOW_BUCKET, 100, 5, {"app": "Now"})  # latest; outside the chunks
+    fake.add(WINDOW_BUCKET, 100, 5, {"app": "Now"})
     now = at(200)
     chunks = [(at(0), at(10)), (at(10), at(30)), (at(30), at(40))]
     results = [ingest_range(conn, fake, s, e, now=now) for s, e in chunks]
     assert [r.inserted for r in results] == [2, 1, 1]
     assert (WINDOW_BUCKET, events[1]["id"]) in fake.refetches
     payloads = [json.loads(r["payload"]) for r in rows(conn, WINDOW_SOURCE)]
-    assert payloads == events  # every event whole, none duplicated across chunk edges
+    assert payloads == events
     before = table_counts(conn)
     whole = ingest_range(conn, fake, at(0), at(40), now=now)
     assert whole == IngestOutcome(0, 4, held_back=0, settled_until=at(40))
@@ -544,9 +506,6 @@ def test_chunked_backfill_refetches_end_clipped_events_and_is_idempotent(
 def test_empty_range_is_rejected() -> None:
     with pytest.raises(ValueError):
         pull_bucket(window_aw(), WINDOW_SOURCE, WINDOW_BUCKET, start=at(5), end=at(5))
-
-
-# --- AWClient (urlopen stubbed; no network) -------------------------------------
 
 
 class _Response(io.BytesIO):
@@ -613,24 +572,18 @@ def test_awerror_fails_the_stream_without_writing(conn: sqlite3.Connection) -> N
     assert get_progress(conn, WEB_SOURCE) is None
 
 
-# --- explicit ranges reaching into the stability margin ---------------------------
-
-
 def test_backfill_chunk_with_growing_event_reports_it_held_back(
     conn: sqlite3.Connection,
 ) -> None:
     fake = window_aw()
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
-    growing = fake.add(WINDOW_BUCKET, 5, 7 * 60, {"app": "Growing"})  # 5 min -> now
+    growing = fake.add(WINDOW_BUCKET, 5, 7 * 60, {"app": "Growing"})
     now = at(12)
-    # The chunk ends inside the growing event: AW end-clips it, it is re-fetched
-    # whole, and it is still too young, so it is held back, not silently dropped.
     outcome = ingest_range(conn, fake, at(0), at(10), now=now)
     assert outcome == IngestOutcome(inserted=1, skipped=0, held_back=1, settled_until=at(5))
     assert (WINDOW_BUCKET, growing["id"]) in fake.refetches
-    assert get_progress(conn, WINDOW_SOURCE) is None  # explicit ranges never set progress
+    assert get_progress(conn, WINDOW_SOURCE) is None
 
-    # Re-pulling [frontier, end) once the event has settled completes the chunk.
     later = at(12) + timedelta(seconds=STABILITY_MARGIN_SECONDS + 1)
     resumed = ingest_range(conn, fake, outcome.settled_until, at(10), now=later)
     assert resumed == IngestOutcome(inserted=1, skipped=0, held_back=0, settled_until=at(10))
@@ -642,22 +595,21 @@ def test_range_ending_in_the_future_stops_the_frontier_at_now(conn: sqlite3.Conn
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     now = at(10)
     outcome = ingest_range(conn, fake, at(0), at(60), now=now)
-    # Nothing held back, but [now, end) has not happened yet: frontier = now, not end.
     assert outcome == IngestOutcome(inserted=1, skipped=0, held_back=0, settled_until=now)
 
 
 def test_range_ending_in_the_future_with_a_held_event(conn: sqlite3.Connection) -> None:
     fake = window_aw()
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
-    fake.add(WINDOW_BUCKET, 1, 8.5 * 60, {"app": "Current"})  # ends 30s before now
+    fake.add(WINDOW_BUCKET, 1, 8.5 * 60, {"app": "Current"})
     outcome = ingest_range(conn, fake, at(0), at(60), now=at(10))
     assert outcome == IngestOutcome(inserted=1, skipped=0, held_back=1, settled_until=at(1))
-    assert fake.refetches == []  # ends before the query end: never end-clipped
+    assert fake.refetches == []
 
 
 def test_incremental_outcome_reports_held_back_and_progress(conn: sqlite3.Connection) -> None:
     fake = full_aw()
-    fake.add(WINDOW_BUCKET, 25, 4 * 60, {"app": "Current"})  # ends 1 min before now
+    fake.add(WINDOW_BUCKET, 25, 4 * 60, {"app": "Current"})
     outcomes = poll_aw(conn, fake, now=at(30))
     assert outcomes[WINDOW_SOURCE] == IngestOutcome(2, 0, held_back=1, settled_until=at(25))
     assert settled(conn, WINDOW_SOURCE) == outcomes[WINDOW_SOURCE].settled_until
@@ -691,9 +643,6 @@ def test_adapter_resumes_a_little_before_its_position() -> None:
     assert (pulled.position, pulled.settled_until) == (utc_iso(at(40)), at(40))
 
 
-# --- URL sanitization ----------------------------------------------------------
-
-
 def test_stored_url_and_domain_come_from_the_same_sanitized_string() -> None:
     raw = " \thttps://www.git\nhub.com/a\tb/\x00c\r\n "
     signal = project_signal(WEB_SOURCE, {"data": {"url": raw}})
@@ -708,9 +657,6 @@ def test_url_is_capped() -> None:
     signal = project_signal(WEB_SOURCE, {"data": {"url": url}})
     assert len(signal.url) == aw.MAX_URL_LENGTH
     assert signal.domain == "example.com"
-
-
-# --- package surface -------------------------------------------------------------
 
 
 def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:

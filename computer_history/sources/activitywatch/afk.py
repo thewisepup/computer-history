@@ -1,5 +1,3 @@
-"""Attended time from aw-afk: the stored AFK spans and each AFK bucket's newest event."""
-
 from __future__ import annotations
 
 import sqlite3

@@ -1,5 +1,3 @@
-"""Messages for a source a command cannot read."""
-
 from __future__ import annotations
 
 import sys

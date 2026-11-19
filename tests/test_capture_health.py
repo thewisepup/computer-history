@@ -1,5 +1,3 @@
-"""The capture agent in status: coverage, app agreement, liveness, the spool and the CLI lines."""
-
 from __future__ import annotations
 
 import json
@@ -58,7 +56,6 @@ def at(minutes: float, base: datetime = NOW) -> datetime:
 
 
 def heartbeats(start: float, end: float, kind: str = "capture") -> list[StoredRecord]:
-    """A record every heartbeat from start to end minutes."""
     step = HEARTBEAT_SECONDS / 60
     return [StoredRecord(at(start + i * step), kind) for i in range(int((end - start) / step) + 1)]
 
@@ -86,9 +83,6 @@ def coverage(
         paused_at_start=paused_at_start,
         min_gap_seconds=60,
     )
-
-
-# --- the coverage rule ---------------------------------------------------------------
 
 
 def test_heartbeats_while_active_leave_no_gap() -> None:
@@ -161,9 +155,6 @@ def test_no_afk_data_at_all_leaves_the_silent_stretches_unjudged() -> None:
     result = coverage(records)
     assert result.unobserved == ()
     assert result.unjudged == gaps((-50 + CAPTURE_TOLERANCE.total_seconds() / 60, 0))
-
-
-# --- app agreement ---------------------------------------------------------------------
 
 
 def capture(minutes: float, app: str | None, kind: str = "capture") -> StoredRecord:
@@ -248,9 +239,6 @@ def test_overlapping_spans_from_two_buckets_match_either_app() -> None:
     assert (result.matched, result.differ) == (2, 0)
 
 
-# --- liveness --------------------------------------------------------------------------
-
-
 def test_a_recent_record_means_alive() -> None:
     last = NOW - AGENT_ALIVE_WITHIN + timedelta(seconds=1)
     assert liveness(last, now=NOW, paused=False, active=[]) == "yes"
@@ -268,9 +256,6 @@ def test_silence_while_afk_or_without_afk_data_cannot_be_told() -> None:
 
 def test_a_paused_agent_is_reported_as_paused() -> None:
     assert liveness(at(-30), now=NOW, paused=True, active=[(at(-40), NOW)]) == "paused"
-
-
-# --- the spool backlog ---------------------------------------------------------------
 
 
 def finished_name(when: datetime) -> str:
@@ -332,9 +317,6 @@ def test_a_missing_spool_holds_nothing(tmp_path: Path) -> None:
     backlog = spool_backlog(tmp_path / "nowhere")
     assert (backlog.waiting, backlog.oldest_finished_at, backlog.unreadable) == (0, None, 0)
     assert backlog.newest is None
-
-
-# --- capture_health against a stored database ----------------------------------------
 
 
 def spool_line(n: int, when: datetime, kind: str = "capture", **fields: Any) -> str:
@@ -602,9 +584,6 @@ def test_coverage_stops_at_stored_progress_while_the_spool_holds_records(
     result = health(conn, tmp_path)
     assert result.coverage is not None
     assert result.coverage.end == at(-40)
-
-
-# --- the status command ----------------------------------------------------------------
 
 
 @pytest.fixture

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+unset GIT_DIR GIT_WORK_TREE
+root="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -x "$root/.venv/bin/python" ]; then
+  echo "$root/.venv/bin/python"
+  exit 0
+fi
+main="$(git -C "$root" worktree list --porcelain | sed -n '1s/^worktree //p')"
+if [ -x "$main/.venv/bin/python" ]; then
+  echo "venv-python: no .venv here; using the main checkout's $main/.venv" >&2
+  echo "$main/.venv/bin/python"
+  exit 0
+fi
+echo "venv-python: no .venv in $root or $main; create it first (see Setup and checks in AGENTS.md)" >&2
+exit 1
