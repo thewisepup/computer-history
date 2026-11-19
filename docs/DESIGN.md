@@ -95,6 +95,7 @@ computer_history/
                 # (serve, classify-now, review-now arrive with later milestones)
 ui/             # React app, built into static files FastAPI serves
 capture-agent/  # Swift CLI (separate build)
+fixtures/       # files both programs read: spool/records.jsonl is the spool contract
 docs/
 ```
 

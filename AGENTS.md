@@ -14,7 +14,10 @@ summaries.
   `__init__.py` opens with its flow diagram; `computer_history/cli/README.md`
   shows every command with examples.
 - `capture-agent/` — the signed Swift capture agent macOS starts at login;
-  its README has the build, install, test and log commands.
+  its README has the build, install, test and log commands, and the spool
+  record format.
+- `fixtures/spool/records.jsonl` — example spool records, the contract the
+  Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
