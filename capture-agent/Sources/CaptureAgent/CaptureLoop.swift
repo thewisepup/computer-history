@@ -80,7 +80,7 @@ final class CaptureLoop<M: Mac> {
             fullTextBytes: window.fullLength,
             timedOut: window.timedOut
         )
-        if write(record) { counts.recordWritten(window) }
+        if write(record) { counts.recordWritten(record) }
     }
 
     private func write(_ record: SpoolRecord) -> Bool {

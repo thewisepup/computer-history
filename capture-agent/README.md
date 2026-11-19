@@ -128,8 +128,9 @@ writes `resumed` and captures once it is unlocked.
 
 `WindowTextReader` reads the focused window of a `FocusedApplication` and
 returns a `WindowText`: the window title, the content text, the full text
-length in UTF-8 bytes, whether the text was cut off or the read timed out, and
-the SHA-256 of the kept text. `focusedApplication()` asks the
+length in UTF-8 bytes and whether the read timed out. The `SpoolRecord` made
+from it derives the text's SHA-256 and whether it was cut off, for the spool
+line and the minute log line alike. `focusedApplication()` asks the
 system-wide accessibility element for the focused app and falls back to
 `NSWorkspace`.
 

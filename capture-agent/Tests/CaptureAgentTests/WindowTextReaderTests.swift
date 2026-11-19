@@ -47,7 +47,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let result = readOnce(mac, window)
     #expect(result.title == "Notes")
     #expect(result.text == "static\narea\nfield\nheading\nlink")
-    #expect(!result.cutOff)
+    #expect(result.fullLength == result.text.utf8.count)
     #expect(!result.timedOut)
     #expect(mac.reads(of: "button") == ["button.AXRole", "button.AXSubrole"])
 }
@@ -109,16 +109,8 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let window = mac.window("Long", children: [mac.text("abcdef"), mac.text("ghij"), mac.text("klmno")])
     let result = readOnce(mac, window, settings: WindowTextSettings(textCapBytes: 9))
     #expect(result.text == "abcdef\ngh")
-    #expect(result.cutOff)
     #expect(result.fullLength == "abcdef\nghij\nklmno".utf8.count)
-    #expect(result.sha256 == "b2e67bb70831a96b11c69ab98469b043f19df1b3bed8b014ac461872b0adcf3d")
     #expect(!result.timedOut)
-}
-
-@Test func hashesTheKeptText() {
-    let mac = ScriptedMac()
-    let result = readOnce(mac, mac.window("Hash", children: [mac.text("abc")]))
-    #expect(result.sha256 == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 }
 
 @Test func perCallTimeoutKeepsTheTextSoFarAndStops() {
@@ -162,7 +154,6 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     mac.callCost = 0.01
     let window = mac.window("Huge", children: (0..<1_000).map { _ in mac.text("0123456789") })
     let result = readOnce(mac, window, settings: WindowTextSettings(textCapBytes: 20))
-    #expect(result.cutOff)
     #expect(result.timedOut)
     #expect(result.text.utf8.count == 20)
     #expect(result.fullLength > 20)

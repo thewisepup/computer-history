@@ -25,7 +25,7 @@ import PackageDescription
 ///     FocusedApplication.swift   the focused app, asked of the system-wide accessibility element
 ///     WindowTextReader.swift     reads the focused window's title and text
 ///     WindowWalk.swift      the tree walk: content roles only, each element once, within timeouts
-///     CappedText.swift      joins text pieces up to the byte cap and hashes the kept text
+///     CappedText.swift      joins text pieces up to the byte cap, counting the full length past it
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
@@ -37,7 +37,7 @@ import PackageDescription
 ///     ScriptPlayer.swift    builds the script's apps on a ScriptedMac and applies each step as it comes due
 ///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
-///     SpoolRecord.swift     one record and its JSON line
+///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps
 ///
 /// Spool: `~/Library/Application Support/ComputerHistory/spool/` by default. Records are appended to

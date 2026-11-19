@@ -60,8 +60,8 @@ final class Recorder: @unchecked Sendable {
     let agent = recorder.agent(granted: true)
     recorder.counts.recordRead(seconds: 0.4)
     recorder.counts.recordExcluded()
-    recorder.counts.recordWritten(WindowText(title: nil, text: "", fullLength: 0, cutOff: false, timedOut: true, sha256: ""))
-    recorder.counts.recordWritten(WindowText(title: nil, text: "ab", fullLength: 9, cutOff: true, timedOut: false, sha256: ""))
+    recorder.counts.recordWritten(captureRecord(text: "", fullTextBytes: 0, timedOut: true))
+    recorder.counts.recordWritten(captureRecord(text: "ab", fullTextBytes: 9, timedOut: false))
     agent.logMinute()
     agent.logMinute()
     #expect(recorder.lines == [

@@ -41,6 +41,13 @@ let fixtureRecords: [SpoolRecord] = [
     .resumed(id: fixtureID(7), at: utc("2026-11-18T09:15:42.999Z")),
 ]
 
+func captureRecord(text: String, fullTextBytes: Int, timedOut: Bool = false) -> SpoolRecord {
+    .capture(
+        at: utc("2026-11-18T09:00:00.000Z"), trigger: .app, appName: "Notes", bundleID: nil,
+        windowTitle: nil, text: text, fullTextBytes: fullTextBytes, timedOut: timedOut
+    )
+}
+
 func fixtureLines() throws -> [String] {
     let url = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
