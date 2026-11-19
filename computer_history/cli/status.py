@@ -1,14 +1,25 @@
-"""The status command: freshness, coverage gaps and row counts."""
+"""The status command: freshness, coverage gaps, the capture agent and row counts."""
 
 from __future__ import annotations
 
 import argparse
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from computer_history.cli.db import outdated_note, store_unavailable
-from computer_history.cli.formatting import db_size, duration, lag, when
-from computer_history.sources import ActivityWatch, AWClient, SourceUnavailable
+from computer_history.cli.formatting import ago, db_size, duration, lag, when
+from computer_history.sources import (
+    AX_TEXT_SOURCE,
+    CAPTURE_TOLERANCE,
+    UNREADABLE_FOLDER,
+    ActivityWatch,
+    AWClient,
+    CaptureHealth,
+    SourceUnavailable,
+    capture_health,
+    resolve_spool_path,
+)
 from computer_history.store import (
     Purpose,
     SourceSummary,
@@ -28,8 +39,10 @@ STATUS_AW_TIMEOUT_SECONDS = 5
 
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
+    spool_path = resolve_spool_path(args.spool_path, db_path)
     now = datetime.now(UTC)
-    aw = ActivityWatch(AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS))
+    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    aw = ActivityWatch(client)
     try:
         streams = aw.streams()
         aw_error = None
@@ -62,10 +75,21 @@ def cmd_status(args: argparse.Namespace) -> int:
         return store_unavailable(store)
     with store:
         summaries = source_summary(store.conn)
+        health = capture_health(
+            store.conn,
+            summaries,
+            spool_path,
+            client if aw_error is None else None,
+            now=now,
+            window=STATUS_WINDOW,
+            min_gap_seconds=MIN_GAP_SECONDS,
+        )
         print()
         _print_sources(summaries, now)
         print()
-        _print_gaps(store.conn, summaries)
+        _print_gaps(store.conn, summaries, health)
+        print()
+        _print_agent(health, spool_path, now)
         print()
         _print_counts(table_counts(store.conn))
     return 0
@@ -97,7 +121,9 @@ def _freshness(summary: SourceSummary, now: datetime) -> str:
     return lag(now - summary.settled_until)
 
 
-def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> None:
+def _print_gaps(
+    conn: sqlite3.Connection, summaries: list[SourceSummary], health: CaptureHealth
+) -> None:
     print(
         f"Coverage gaps (unobserved: nothing recorded) of {duration(MIN_GAP_SECONDS)} or"
         f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's"
@@ -106,6 +132,9 @@ def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> Non
     if not summaries:
         print("  nothing to check yet")
     for s in summaries:
+        if s.source == AX_TEXT_SOURCE and health.reported:
+            _print_capture_gaps(health)
+            continue
         end = s.settled_until or s.latest_ended_at
         first = s.earliest_started_at
         if end is None or first is None:
@@ -125,6 +154,72 @@ def _print_gaps(conn: sqlite3.Connection, summaries: list[SourceSummary]) -> Non
             )
         if len(gaps) > MAX_GAPS_SHOWN:
             print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {s.source} gaps")
+
+
+def _print_capture_gaps(health: CaptureHealth) -> None:
+    coverage = health.coverage
+    if coverage is None:
+        print(f"  {AX_TEXT_SOURCE}: no settled span to check yet")
+        return
+    print(
+        f"  {AX_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
+        f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
+        " not paused):"
+    )
+    warnings = sorted(
+        [(gap, "while you were active") for gap in coverage.unobserved]
+        + [(gap, "cannot be judged: no aw-afk data") for gap in coverage.unjudged]
+    )
+    if not warnings:
+        print(f"  {AX_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
+    for gap, why in warnings[:MAX_GAPS_SHOWN]:
+        print(
+            f"  warning: no {AX_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
+            f" ({duration(gap.seconds)}), {why}"
+        )
+    if len(warnings) > MAX_GAPS_SHOWN:
+        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {AX_TEXT_SOURCE} gaps")
+
+
+def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None:
+    if not health.reported:
+        print(f"Capture agent: has not reported yet (no {AX_TEXT_SOURCE} records stored)")
+        print(f"  spool         {_spool(health, spool_path, now)}")
+        return
+    print("Capture agent:")
+    print(f"  last capture  {ago(health.last_capture, now)}")
+    print(f"  alive         {_alive(health, now)}")
+    print(f"  spool         {_spool(health, spool_path, now)}")
+    t = health.today
+    print(
+        f"  today         {t.captures:,} captures stored, {t.excluded:,} excluded,"
+        f" {t.cut_off:,} cut off, {t.timed_out:,} timed out"
+    )
+    paused = "no" if health.paused_since is None else f"yes, since {ago(health.paused_since, now)}"
+    print(f"  paused        {paused}")
+
+
+def _alive(health: CaptureHealth, now: datetime) -> str:
+    last = ago(health.last_record, now)
+    if health.alive == "yes":
+        return f"yes (last record {last})"
+    if health.alive == "no":
+        return f"NO: no record since {last}, although aw-afk shows you active since then"
+    if health.alive == "paused":
+        return f"paused, so no records are expected (last record {last})"
+    return f"cannot tell: no record since {last}, and aw-afk does not show you active since then"
+
+
+def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:
+    spool = health.spool
+    if spool is None:
+        return f"cannot be inspected: {health.spool_error}"
+    waiting = f"{spool.waiting:,} finished file{'' if spool.waiting == 1 else 's'} waiting"
+    if spool.oldest_finished_at is not None:
+        age = (now - spool.oldest_finished_at).total_seconds()
+        oldest = duration(age) if age >= 0 else f"{duration(-age)} ahead of now"
+        waiting += f" (oldest {oldest})"
+    return f"{waiting}, {spool.unreadable:,} in {UNREADABLE_FOLDER}/  ({spool_path})"
 
 
 def _print_counts(counts: dict[str, int]) -> None:

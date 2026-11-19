@@ -28,6 +28,16 @@ def lag(delta: timedelta) -> str:
     return f"{duration(seconds)} behind now"
 
 
+def ago(value: datetime | None, now: datetime) -> str:
+    """Local wall-clock time and how long before now it was, or never when missing."""
+    if value is None:
+        return "never"
+    seconds = (now - value).total_seconds()
+    if seconds < 0:
+        return f"{when(value)} ({duration(-seconds)} ahead of now)"
+    return f"{when(value)} ({duration(seconds)} ago)"
+
+
 def when(value: datetime | None) -> str:
     """Local wall-clock time, to the minute. A dash when missing."""
     return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")

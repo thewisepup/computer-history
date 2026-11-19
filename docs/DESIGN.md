@@ -81,15 +81,19 @@ computer_history/
                 # observation to its adapter's projector, for ingest and
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
-                # by poll and backfill), then one adapter per source:
-                # activitywatch/, ax_text/, screenshots
+                # by poll and backfill), agent_health (the capture agent's
+                # health for status, judged against aw-afk), then one adapter
+                # per source: activitywatch/, ax_text/, screenshots
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
-                # encoding), history (where a stream's history begins, for backfill)
+                # encoding), history (where a stream's history begins, for
+                # backfill), afk (stored and newest AFK spans, for status)
                 # ax_text/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
                 # against format v1), normalize (its projector), adapter
-                # (CaptureSpool: one file per pull)
+                # (CaptureSpool: one file per pull); for status, backlog (what
+                # waits in the spool), stored (the stored records' kinds, the
+                # day's counts) and coverage (unobserved stretches, liveness)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

@@ -13,12 +13,19 @@
                      history.py: where a stream's history begins, for backfill
                      normalize.py: its projectors, stored payload -> signal
                      (app, domain, url, title)
+      afk.py         attended time for status: stored aw-afk spans plus each AFK
+                     bucket's newest, still-growing event
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.
 """
 
 from computer_history.sources.activitywatch.adapter import ActivityWatch
+from computer_history.sources.activitywatch.afk import (
+    AfkSpan,
+    newest_afk_spans,
+    stored_afk_spans,
+)
 from computer_history.sources.activitywatch.client import (
     DEFAULT_AW_URL,
     AWApi,
@@ -68,15 +75,18 @@ __all__ = [
     "AWError",
     "AWSource",
     "ActivityWatch",
+    "AfkSpan",
     "BucketPull",
     "SourcePull",
     "clean_text",
     "clean_url",
     "discover_sources",
     "extract_domain",
+    "newest_afk_spans",
     "position_at",
     "project_signal",
     "pull_bucket",
     "pull_source",
     "resume_start",
+    "stored_afk_spans",
 ]

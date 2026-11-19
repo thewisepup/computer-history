@@ -19,10 +19,14 @@
           |          and which failures stop a run
       store/         insert_observations, rebuild_signals (each projects through
                      the projector it is given)
+
+    agent_health.py  for status: the capture agent's stored records and spool,
+                     judged against aw-afk, drawing on both adapters
 """
 
 from computer_history.sources import (
     activitywatch,
+    agent_health,
     ax_text,
     backfill,
     commit,
@@ -31,6 +35,7 @@ from computer_history.sources import (
     runner,
 )
 from computer_history.sources.activitywatch import *  # noqa: F403  (re-export; see __all__)
+from computer_history.sources.agent_health import *  # noqa: F403  (re-export; see __all__)
 from computer_history.sources.ax_text import *  # noqa: F403  (re-export; see __all__)
 from computer_history.sources.backfill import *  # noqa: F403  (re-export; see __all__)
 from computer_history.sources.commit import *  # noqa: F403  (re-export; see __all__)
@@ -46,4 +51,5 @@ __all__ = [
     *backfill.__all__,
     *activitywatch.__all__,
     *ax_text.__all__,
+    *agent_health.__all__,
 ]

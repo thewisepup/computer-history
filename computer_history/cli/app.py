@@ -82,12 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="discover sources and print the planned chunks; write nothing",
             )
-        if name == "ingest":
+        if name in ("ingest", "status"):
             sub.add_argument(
                 "--spool-path",
                 help="capture spool folder (default: $COMPUTER_HISTORY_SPOOL, else spool/ beside"
                 " the database)",
             )
+        if name == "ingest":
             sub.add_argument(
                 "--watch",
                 action="store_true",
