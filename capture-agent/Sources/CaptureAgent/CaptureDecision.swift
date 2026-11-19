@@ -1,6 +1,5 @@
 import Foundation
 
-/// What one tick of the capture thread does.
 enum TickOutcome: Equatable {
     case nothing
     case paused
@@ -9,7 +8,6 @@ enum TickOutcome: Equatable {
     case excluded(FocusedApplication, SpoolRecord.Trigger)
 }
 
-/// Decides each tick from pausing, presence, the focused app and its window, and touches a window only when its app may be captured.
 struct CaptureDecision<Element: AccessibilityElement> {
     private var schedule: CaptureSchedule
     private var apps: AppWatch
@@ -35,7 +33,6 @@ struct CaptureDecision<Element: AccessibilityElement> {
         recordedPaused = paused
     }
 
-    /// Returns what this tick should write, polling focus only while capture is neither paused nor silent.
     mutating func tick(
         paused: Bool, presence: Presence, accessibilityTrusted: () -> Bool, at time: TimeInterval
     ) -> TickOutcome {
@@ -56,7 +53,6 @@ struct CaptureDecision<Element: AccessibilityElement> {
         return excluded ? .excluded(application, trigger) : .capture(application, trigger)
     }
 
-    /// Notes that a paused or resumed record reached the spool, so it is not offered again.
     mutating func recordedPause(_ paused: Bool) {
         recordedPaused = paused
     }

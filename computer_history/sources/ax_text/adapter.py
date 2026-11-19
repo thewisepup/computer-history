@@ -79,14 +79,14 @@ class CaptureSpool:
             read.latest if moved else None,
             rejected=read.rejected,
             more=more,
-            after_commit=partial(self._done, path, finish),
+            after_commit=partial(self._drop_and_finish, path, finish),
         )
 
     def _empty(self, path: Path, finish: Finish, more: bool) -> Pull:
-        return Pull((), 0, None, None, more=more, after_commit=partial(self._done, path, finish))
+        after_commit = partial(self._drop_and_finish, path, finish)
+        return Pull((), 0, None, None, more=more, after_commit=after_commit)
 
-    def _done(self, path: Path, finish: Finish) -> None:
-        """Take the committed file off the listed files and remove it or set it aside."""
+    def _drop_and_finish(self, path: Path, finish: Finish) -> None:
         if path in self._listed:
             self._listed.remove(path)
         try:
@@ -105,7 +105,6 @@ class _Read:
 
 
 def _read_records(lines: list[bytes], now: datetime) -> _Read:
-    """Each usable line as an observation, counting the lines that are not."""
     observations = []
     rejected = 0
     latest: datetime | None = None

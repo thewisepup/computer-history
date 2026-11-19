@@ -20,6 +20,8 @@ summaries.
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
+- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
+  `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
 - `CODING_STANDARDS.md` — the review checklist the standards reviewer
   enforces.

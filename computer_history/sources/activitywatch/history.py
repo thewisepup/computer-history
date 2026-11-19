@@ -1,5 +1,3 @@
-"""What ActivityWatch can tell about a stream's existing history, for backfill planning."""
-
 from __future__ import annotations
 
 import logging
@@ -45,10 +43,6 @@ def history_before(
 
 
 def _event_before(client: AWApi, bucket_id: str, start: datetime) -> tuple[bool, datetime | None]:
-    """Whether the bucket has an event beginning before the start, and when it began.
-
-    An event whose timestamp cannot be read still counts as earlier history.
-    """
     for raw in client.get_events(bucket_id, end=start - _PROBE_GUARD, limit=1):
         try:
             began = to_utc(raw["timestamp"])

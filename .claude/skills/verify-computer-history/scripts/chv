@@ -1,0 +1,213 @@
+#!/bin/bash
+# chv: drive the computer-history CLI against an isolated, seeded verification run.
+# Every run has its own database, spool and fake ActivityWatch port; nothing here
+# reads or writes ~/Library/Application Support/ComputerHistory or 127.0.0.1:5600.
+set -euo pipefail
+
+SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$SCRIPTS/../../../.." && pwd)"
+PY="$REPO/.venv/bin/python"
+CLI="$REPO/.venv/bin/computer-history"
+STATE_ROOT="${CHV_STATE_ROOT:-${TMPDIR:-/tmp}}"; STATE_ROOT="${STATE_ROOT%/}/chv"
+EVIDENCE_ROOT="$REPO/output/verify"
+FIXTURE="$REPO/fixtures/spool/records.jsonl"
+LIVE_DB="$HOME/Library/Application Support/ComputerHistory/history.db"
+
+die() { echo "chv: $*" >&2; exit 2; }
+
+need_run() {
+  [ -n "${CHV_RUN:-}" ] || die "CHV_RUN is not set; run: eval \"\$($0 up)\""
+  STATE="$STATE_ROOT/$CHV_RUN"
+  EVIDENCE="$EVIDENCE_ROOT/$CHV_RUN"
+  [ -d "$STATE" ] || die "no state for run $CHV_RUN at $STATE (already torn down?)"
+  DB="$STATE/history.db"
+  SPOOL="$STATE/spool"
+  AW_URL="http://127.0.0.1:$(cat "$STATE/aw.port")/api/0"
+}
+
+# A pid is ours only if it is alive and its command line names this run.
+ours() {
+  local pid="$1"
+  [ -n "$pid" ] && ps -p "$pid" -o command= 2>/dev/null | grep -q -- "$CHV_RUN"
+}
+
+next_evidence() {
+  local label="$1" n
+  n=$(find "$EVIDENCE" -maxdepth 1 -name '[0-9][0-9]-*' | wc -l | tr -d ' ')
+  printf '%s/%02d-%s.txt' "$EVIDENCE" "$((n + 1))" "$label"
+}
+
+# Run a command with COMPUTER_HISTORY_* stripped, write a transcript, mirror it, keep its exit code.
+record() {
+  local label="$1"; shift
+  local out err code file
+  file="$(next_evidence "$label")"
+  out="$(mktemp)"; err="$(mktemp)"
+  set +e
+  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') "$@" >"$out" 2>"$err"
+  code=$?
+  set -e
+  {
+    echo "run:     $CHV_RUN"
+    echo "at:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'command:'; printf ' %q' "$@"; echo
+    echo "exit:    $code"
+    echo "--- stdout"; cat "$out"
+    echo "--- stderr"; cat "$err"
+  } >"$file"
+  cat "$out"; cat "$err" >&2
+  echo "[chv] exit $code -> $file" >&2
+  rm -f "$out" "$err"
+  return "$code"
+}
+
+cmd_up() {
+  [ -x "$CLI" ] || die "missing $CLI; run the setup in AGENTS.md first"
+  CHV_RUN="chv-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  STATE="$STATE_ROOT/$CHV_RUN"
+  EVIDENCE="$EVIDENCE_ROOT/$CHV_RUN"
+  mkdir -p "$STATE" "$EVIDENCE"
+  git -C "$REPO" rev-parse HEAD >"$STATE/revision"
+  nohup "$PY" -I "$SCRIPTS/fake_aw.py" --run-id "$CHV_RUN" \
+    --port-file "$STATE/aw.port" --log "$STATE/aw.log" >"$STATE/aw.out" 2>&1 &
+  echo $! >"$STATE/aw.pid"
+  for _ in $(seq 50); do
+    [ -s "$STATE/aw.port" ] && curl -sf "http://127.0.0.1:$(cat "$STATE/aw.port")/api/0/info" \
+      | grep -q "$CHV_RUN" && break
+    sleep 0.1
+  done
+  [ -s "$STATE/aw.port" ] || { cat "$STATE/aw.out" >&2; die "fake ActivityWatch did not start"; }
+  {
+    echo "run:       $CHV_RUN"
+    echo "revision:  $(cat "$STATE/revision")"
+    echo "state:     $STATE"
+    echo "aw:        http://127.0.0.1:$(cat "$STATE/aw.port")/api/0 (pid $(cat "$STATE/aw.pid"))"
+  } >"$EVIDENCE/run.txt"
+  echo "export CHV_RUN=$CHV_RUN"
+  echo "chv: run $CHV_RUN ready; evidence in $EVIDENCE" >&2
+}
+
+cmd_doctor() {
+  need_run
+  local ok=1 info
+  check() { if eval "$2"; then echo "ok    $1"; else echo "FAIL  $1"; ok=0; fi; }
+  check "fake ActivityWatch pid $(cat "$STATE/aw.pid") is ours" 'ours "$(cat "$STATE/aw.pid")"'
+  info="$(curl -sf -m 2 "$AW_URL/info" || true)"
+  check "$AW_URL/info answers for this run" 'printf %s "$info" | grep -q "\"run_id\": \"$CHV_RUN\""'
+  check "port is not ActivityWatch's 5600" '[ "$(cat "$STATE/aw.port")" != 5600 ]'
+  check "database is in the run folder ($DB)" '[ "$DB" != "$LIVE_DB" ] && case "$DB" in "$STATE"/*) true;; *) false;; esac'
+  check "CLI is this checkout's ($CLI)" '"$PY" -I -c "import computer_history,sys; sys.exit(0 if computer_history.__file__.startswith(\"$REPO/\") else 1)"'
+  check "checkout is at the run's revision $(cut -c1-12 "$STATE/revision")" '[ "$(git -C "$REPO" rev-parse HEAD)" = "$(cat "$STATE/revision")" ]'
+  if [ -f "$STATE/watch.pid" ]; then
+    check "ingest --watch pid $(cat "$STATE/watch.pid") is ours" 'ours "$(cat "$STATE/watch.pid")"'
+  fi
+  [ "$ok" = 1 ] || { echo "doctor: this run is not safe to drive; run chv down and chv up again"; exit 1; }
+  echo "doctor: run $CHV_RUN is healthy"
+}
+
+cmd_cli() {
+  need_run
+  [ $# -ge 1 ] || die "usage: chv cli <command> [flags]"
+  local sub="$1"; shift
+  local aw=()
+  case "$sub" in ingest|status|backfill) aw=(--aw-url "$AW_URL") ;; esac
+  # The run id in --db-path is what lets `ours` recognise a watch process.
+  record "$sub" "$CLI" --db-path "$DB" "$sub" ${aw[@]+"${aw[@]}"} "$@"
+}
+
+cmd_spool_seed() {
+  need_run
+  mkdir -p "$SPOOL"
+  chmod 700 "$SPOOL"
+  local name
+  name="$("$PY" -I -c 'from datetime import UTC, datetime; print(datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%f")[:-3])')Z.jsonl"
+  case "${1:-}" in
+    "") cp "$FIXTURE" "$SPOOL/$name" ;;
+    --bad) { head -n 2 "$FIXTURE"; echo '{"version":1,"id":"not-a-record"'; } >"$SPOOL/$name" ;;
+    --now) "$PY" -I -c '
+import json, sys, uuid
+from datetime import UTC, datetime
+for line in open(sys.argv[1], encoding="utf-8"):
+    r = json.loads(line)
+    if r["kind"] == "capture" and r["trigger"] == "app":
+        r["id"] = str(uuid.uuid4())
+        r["captured_at"] = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        print(json.dumps(r, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
+        break
+' "$FIXTURE" >"$SPOOL/$name" ;;
+    *) die "usage: chv spool-seed [--bad|--now]" ;;
+  esac
+  chmod 600 "$SPOOL/$name"
+  record spool-seed ls -la "$SPOOL"
+}
+
+cmd_spool_ls() { need_run; record spool-ls ls -laR "$SPOOL"; }
+
+cmd_sql() {
+  need_run
+  [ $# -eq 1 ] || die "usage: chv sql \"<SELECT ...>\""
+  [ -f "$DB" ] || die "no database at $DB yet"
+  record sql sqlite3 -cmd "PRAGMA query_only=1" -header -column "$DB" "$1"
+}
+
+cmd_aw_advance() { need_run; record aw-advance curl -sf -X POST "${AW_URL%/api/0}/__chv/advance"; }
+
+cmd_watch_start() {
+  need_run
+  [ ! -f "$STATE/watch.pid" ] || die "a watch is already recorded for this run"
+  local log; log="$(next_evidence watch)"
+  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') \
+    nohup "$CLI" --db-path "$DB" ingest --aw-url "$AW_URL" --watch >"$log" 2>&1 &
+  echo $! >"$STATE/watch.pid"
+  echo "chv: ingest --watch pid $(cat "$STATE/watch.pid") logging to $log" >&2
+}
+
+cmd_watch_stop() {
+  need_run
+  [ -f "$STATE/watch.pid" ] || die "no watch recorded for this run"
+  local pid; pid="$(cat "$STATE/watch.pid")"
+  if ours "$pid"; then
+    kill -INT "$pid"
+    for _ in $(seq 50); do ours "$pid" || break; sleep 0.1; done
+    ours "$pid" && kill -TERM "$pid"
+  fi
+  rm -f "$STATE/watch.pid"
+  echo "chv: watch $pid stopped" >&2
+}
+
+cmd_down() {
+  need_run
+  local pid
+  [ -f "$STATE/watch.pid" ] && cmd_watch_stop
+  pid="$(cat "$STATE/aw.pid")"
+  if ours "$pid"; then kill -TERM "$pid"; for _ in $(seq 50); do ours "$pid" || break; sleep 0.1; done; fi
+  ours "$pid" && die "fake ActivityWatch pid $pid did not exit; state kept at $STATE"
+  cp "$STATE/aw.log" "$EVIDENCE/aw-requests.log" 2>/dev/null || true
+  rm -rf "$STATE"
+  echo "chv: run $CHV_RUN torn down; evidence kept in $EVIDENCE" >&2
+  ls "$EVIDENCE" >&2
+}
+
+cmd_runs() {
+  local dir
+  for dir in "$STATE_ROOT"/chv-*; do
+    [ -d "$dir" ] || continue
+    local id pid; id="$(basename "$dir")"; pid="$(cat "$dir/aw.pid" 2>/dev/null || true)"
+    if CHV_RUN="$id" ours "$pid"; then echo "$id  live (aw pid $pid)"; else echo "$id  stale"; fi
+  done
+}
+
+case "${1:-}" in
+  up) shift; cmd_up "$@" ;;
+  doctor) shift; cmd_doctor ;;
+  cli) shift; cmd_cli "$@" ;;
+  spool-seed) shift; cmd_spool_seed "$@" ;;
+  spool-ls) shift; cmd_spool_ls ;;
+  sql) shift; cmd_sql "$@" ;;
+  aw-advance) shift; cmd_aw_advance ;;
+  watch-start) shift; cmd_watch_start ;;
+  watch-stop) shift; cmd_watch_stop ;;
+  down) shift; cmd_down ;;
+  runs) shift; cmd_runs ;;
+  *) sed -n '2,4p' "$0"; echo "commands: up doctor cli spool-seed spool-ls sql aw-advance watch-start watch-stop down runs"; exit 2 ;;
+esac

@@ -1,6 +1,5 @@
 import Foundation
 
-/// A UTC instant in whole milliseconds, as written in spool records and finished file names.
 struct SpoolTime: Comparable, Sendable {
     let milliseconds: Int64
 
@@ -18,7 +17,6 @@ struct SpoolTime: Comparable, Sendable {
         milliseconds = Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 
-    /// Reads a file name stamp such as `20261118T090000.123Z`, or returns nil for anything else.
     init?(fileStamp: some StringProtocol) {
         let pattern = /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})\.(\d{3})Z/.asciiOnlyDigits()
         guard let match = String(fileStamp).wholeMatch(of: pattern) else { return nil }
@@ -36,12 +34,10 @@ struct SpoolTime: Comparable, Sendable {
         lhs.milliseconds < rhs.milliseconds
     }
 
-    /// The instant as ISO-8601, such as `2026-11-18T09:00:00.123Z`.
     var iso8601: String {
         format("%04ld-%02ld-%02ldT%02ld:%02ld:%02ld.%03ldZ")
     }
 
-    /// The instant as a file name stamp, such as `20261118T090000.123Z`.
     var fileStamp: String {
         format("%04ld%02ld%02ldT%02ld%02ld%02ld.%03ldZ")
     }

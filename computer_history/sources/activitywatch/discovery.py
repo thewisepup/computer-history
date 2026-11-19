@@ -1,5 +1,3 @@
-"""Map ActivityWatch buckets to our sources."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping

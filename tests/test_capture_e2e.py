@@ -1,8 +1,3 @@
-"""The capture agent's scripted sessions, through the spool and ingest, into a scratch database.
-
-Skipped unless capture-agent/scripts/e2e.sh has built the agent and named it in the environment.
-"""
-
 from __future__ import annotations
 
 import json
@@ -73,7 +68,6 @@ class Session:
     status: subprocess.CompletedProcess[str]
 
     def records(self) -> list[dict]:
-        """Every stored ax-text observation's payload as a dict, oldest first."""
         with sqlite3.connect(self.db) as conn:
             rows = conn.execute(
                 "SELECT payload FROM observations WHERE source = 'ax-text' ORDER BY started_at"
@@ -85,7 +79,6 @@ class Session:
             return [p for (p,) in conn.execute("SELECT payload FROM observations")]
 
     def signals(self) -> dict[str, tuple]:
-        """Each signal's app, title, text and extras, by the observation's source id."""
         with sqlite3.connect(self.db) as conn:
             rows = conn.execute(
                 "SELECT o.source_id, s.app, s.title, s.text, s.extras"

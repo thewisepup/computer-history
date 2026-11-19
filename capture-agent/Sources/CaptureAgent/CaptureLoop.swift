@@ -1,6 +1,5 @@
 import Foundation
 
-/// Each tick asks the capture decision what to do, then reads the focused window or writes a gap record into the spool.
 final class CaptureLoop<M: Mac> {
     private var decision: CaptureDecision<M.Element>
     private let mac: M
@@ -38,7 +37,6 @@ final class CaptureLoop<M: Mac> {
         self.log = log
     }
 
-    /// Ticks once per poll interval by the Mac's clock for as long as the condition holds.
     func run(while keepGoing: () -> Bool) {
         while keepGoing() {
             let started = mac.uptime()

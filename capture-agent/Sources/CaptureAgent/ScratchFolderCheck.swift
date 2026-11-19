@@ -1,6 +1,5 @@
 import Foundation
 
-/// Why a scripted session may not use these folders, or nil when neither is inside the agent's default folder and the folder holds no database.
 func scriptedSessionRefusal(_ settings: AgentSettings, homes: [URL]) -> String? {
     for home in homes {
         let real = AgentSettings.defaultFolder(home: home)

@@ -1,5 +1,3 @@
-"""The HTTP client for the ActivityWatch API. Read-only."""
-
 from __future__ import annotations
 
 import json
@@ -25,8 +23,6 @@ class _NotFound(AWError):
 
 
 class AWApi(Protocol):
-    """The part of the ActivityWatch API this package uses."""
-
     def get_buckets(self) -> dict[str, dict[str, Any]]: ...
 
     def get_events(

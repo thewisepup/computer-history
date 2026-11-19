@@ -1,5 +1,3 @@
-"""The ingest command: one poll, or the --watch loop."""
-
 from __future__ import annotations
 
 import argparse
@@ -54,7 +52,6 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def log_cycle(summary: CycleSummary, delay: float) -> None:
-    """Log one watch cycle as a single line."""
     if summary.ok:
         log.info(cycle_line(summary))
     else:

@@ -1,5 +1,3 @@
-"""What a source adapter implements for the ingest runner to drive it."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence

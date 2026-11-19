@@ -53,9 +53,6 @@ def settled(conn: sqlite3.Connection, source: str) -> datetime | None:
     return None if progress is None else progress.settled_until
 
 
-# --- insert_observations -------------------------------------------------------
-
-
 def test_insert_writes_observation_and_signal(conn: sqlite3.Connection) -> None:
     result = insert_observations(conn, [window("1", title="hello")], project=payload_fields)
     assert result == InsertResult(inserted=1, skipped=0)
@@ -149,7 +146,7 @@ def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
     "bad",
     [
         Observation("aw-window", "", at(0), at(1), "{}"),
-        Observation("aw-window", None, at(0), at(1), "{}"),  # type: ignore[arg-type]
+        Observation("aw-window", None, at(0), at(1), "{}"),
         Observation("aw-window", "1", at(1), at(0), "{}"),
         Observation("aw-window", "1", "2026-11-17T10:00:00", at(1), "{}"),
     ],
@@ -161,9 +158,6 @@ def test_invalid_observation_rejects_whole_batch(
     with pytest.raises(ValueError):
         insert_observations(conn, [window("ok"), bad], project=payload_fields)
     assert count(conn, "observations") == 0
-
-
-# --- atomicity -----------------------------------------------------------------
 
 
 def fail_signal_titled(conn: sqlite3.Connection, title: str) -> None:
@@ -248,8 +242,6 @@ def test_progress_advances_even_when_batch_is_all_duplicates(conn: sqlite3.Conne
 
 
 def test_insert_inside_open_transaction_is_refused(conn: sqlite3.Connection) -> None:
-    # Refused up front with the caller's transaction intact: a prior write in the
-    # enclosing transaction must survive the refusal.
     with transaction(conn):
         conn.execute(
             "INSERT INTO work_types (name, status, created_at) VALUES ('kept', 'active', 'now')"
@@ -258,9 +250,6 @@ def test_insert_inside_open_transaction_is_refused(conn: sqlite3.Connection) -> 
             insert_observations(conn, [window("1")], project=payload_fields)
     assert count(conn, "observations") == 0
     assert count(conn, "work_types") == 1
-
-
-# --- reads ------------------------------------------------------------------------
 
 
 def test_source_summary(conn: sqlite3.Connection) -> None:
@@ -318,7 +307,6 @@ def test_no_gaps_when_continuous(conn: sqlite3.Connection) -> None:
 
 
 def test_gaps_merge_overlapping_observations(conn: sqlite3.Connection) -> None:
-    # 10-30 and 15-25 overlap (the second is inside the first); 20-35 extends it.
     insert_observations(
         conn,
         [window("a", 10, 30), window("b", 15, 25), window("c", 20, 35), window("d", 45, 50)],

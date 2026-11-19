@@ -1,7 +1,8 @@
 # Code standards
 
 Rules marked **[checked]** fail automatically in `tests/test_standards.py`
-(run by the pre-commit hook and CI). The rest are judgement calls the
+(run by the pre-commit hook and CI). The comment and docstring checks cover
+`computer_history/` and `tests/`; the rest cover `computer_history/` only. The rest are judgement calls the
 standards reviewer (`.claude/agents/standards-reviewer.md`) enforces on each
 diff.
 

@@ -1,5 +1,3 @@
-"""Where the spool folder is."""
-
 from __future__ import annotations
 
 import os

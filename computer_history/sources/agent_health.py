@@ -1,5 +1,3 @@
-"""The capture agent's health for status: its stored records and spool, judged against aw-afk."""
-
 from __future__ import annotations
 
 import sqlite3

@@ -37,7 +37,6 @@ public struct AgentSettings: Equatable, Sendable {
         return settings
     }
 
-    /// The folder the agent and the backend use when no environment variable says otherwise.
     static func defaultFolder(home: URL) -> URL {
         home.appendingPathComponent("Library/Application Support/ComputerHistory", isDirectory: true)
     }

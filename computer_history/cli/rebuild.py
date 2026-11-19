@@ -1,5 +1,3 @@
-"""The rebuild-signals command."""
-
 from __future__ import annotations
 
 import argparse
@@ -25,7 +23,7 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
             print(f"rebuild-signals aborted: {exc}", file=sys.stderr)
             if exc.failed:
                 print(
-                    f"  first failing observation ids: {_ids(exc.failed_ids, exc.failed)}",
+                    f"  first failing observation ids: {_id_sample(exc.failed_ids, exc.failed)}",
                     file=sys.stderr,
                 )
             if exc.shrink:
@@ -51,13 +49,12 @@ def cmd_rebuild_signals(args: argparse.Namespace) -> int:
     if result.skipped:
         print(
             f"  warning: {result.skipped:,} observations could not be projected and now have"
-            f" no signal; first ids: {_ids(result.failed_ids, result.skipped)}"
+            f" no signal; first ids: {_id_sample(result.failed_ids, result.skipped)}"
         )
     return 0
 
 
-def _ids(ids: Sequence[int], total: int) -> str:
-    """Format ids like "3, 7, 9", plus "(and N more)" when they are a sample."""
+def _id_sample(ids: Sequence[int], total: int) -> str:
     text = ", ".join(str(i) for i in ids) or "-"
     if total > len(ids):
         text += f" (and {total - len(ids):,} more)"

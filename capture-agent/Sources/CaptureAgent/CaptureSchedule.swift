@@ -25,7 +25,6 @@ public struct CaptureSettings: Equatable, Sendable {
 
 private let precedence: [FocusChange] = [.app, .window, .title]
 
-/// Decides when to capture from focus changes, presence samples, pausing and the passing time.
 struct CaptureSchedule {
     enum Event: Equatable {
         case presence(Presence)
@@ -78,7 +77,6 @@ struct CaptureSchedule {
         }
     }
 
-    /// Returns the trigger of the capture due now and counts it as taken, or nil if none is due.
     mutating func takeDue(at now: TimeInterval) -> SpoolRecord.Trigger? {
         guard silence.isEmpty else { return nil }
         if let lastCapture, now < lastCapture + settings.minimumGap { return nil }

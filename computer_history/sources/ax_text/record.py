@@ -1,5 +1,3 @@
-"""One spool record: parse a line and check it against record format v1."""
-
 from __future__ import annotations
 
 import json

@@ -32,7 +32,7 @@ public func runScriptedSession(
         startCapturing: {},
         log: log
     )
-    guard agent.start() else {
+    guard agent.start() == .started else {
         return CommandOutcome(exitCode: 1, message: "another agent is writing to \(spool.directory.path)")
     }
     let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log)

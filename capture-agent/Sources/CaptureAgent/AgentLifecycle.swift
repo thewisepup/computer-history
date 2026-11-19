@@ -33,7 +33,7 @@ public struct AgentLifecycle: Sendable {
 
     /// Returns exit status 1 at once if another agent holds the spool; otherwise starts capturing and runs the minute log line and the spool finish on the main run loop forever.
     public func run() -> Int32 {
-        guard start() else { return 1 }
+        guard start() == .started else { return 1 }
         startCapturing()
         Timer.scheduledTimer(withTimeInterval: Self.logInterval, repeats: true) { _ in
             logMinute()
@@ -45,13 +45,16 @@ public struct AgentLifecycle: Sendable {
         fatalError("the main run loop returned")
     }
 
-    /// Returns false, logging only that, if another agent holds the spool; otherwise logs the Accessibility state, prompting if it is missing, the settings report, the pause state and the spool's state.
+    enum Start: Equatable {
+        case started, spoolHeldByAnotherAgent
+    }
+
     @discardableResult
-    func start() -> Bool {
+    func start() -> Start {
         let spoolStart = Result { try spool.start() }
         if case .failure(let error as SpoolWriter.InUse) = spoolStart {
             log("spool failed to start at \(spool.directory.path): \(error), exiting")
-            return false
+            return .spoolHeldByAnotherAgent
         }
         if accessibilityTrusted(true) {
             log("started, accessibility granted")
@@ -69,10 +72,9 @@ public struct AgentLifecycle: Sendable {
         case .failure(let error):
             log("spool failed to start at \(spool.directory.path): \(error)")
         }
-        return true
+        return .started
     }
 
-    /// Finishes the open spool file if it holds any records, logging any failure.
     func finishSpoolFile() {
         do {
             try spool.finish()
@@ -81,7 +83,6 @@ public struct AgentLifecycle: Sendable {
         }
     }
 
-    /// Logs the minute's line with the Accessibility state, without prompting, and the capture counts since the last one.
     func logMinute() {
         log("heartbeat, accessibility \(accessibilityTrusted(false) ? "granted" : "missing"), last minute: \(counts.take())")
     }

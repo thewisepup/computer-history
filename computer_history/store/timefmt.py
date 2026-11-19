@@ -20,7 +20,6 @@ def utc_iso(value: datetime | str) -> str:
 
 
 def to_utc(value: datetime | str) -> datetime:
-    """Convert a timestamp into a UTC datetime."""
     if isinstance(value, str):
         value = datetime.fromisoformat(value)
     if value.tzinfo is None:

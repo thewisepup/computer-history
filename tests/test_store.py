@@ -46,11 +46,7 @@ def schema_sql(conn: sqlite3.Connection) -> list[tuple[str, str]]:
 
 
 def raw_connection(path: Path) -> sqlite3.Connection:
-    """An unmigrated connection configured like connect()'s, for driving migrate()."""
     return sqlite3.connect(path, isolation_level=None)
-
-
-# --- fresh database --------------------------------------------------------
 
 
 def test_fresh_db_has_full_schema(conn: sqlite3.Connection) -> None:
@@ -77,9 +73,6 @@ def test_observations_unique_on_source_and_source_id(conn: sqlite3.Connection) -
     insert_observation(conn, source_id="42")
     with pytest.raises(sqlite3.IntegrityError):
         insert_observation(conn, source_id="42")
-
-
-# --- re-opening / re-migrating ---------------------------------------------
 
 
 def test_reopen_is_noop(db_path: Path) -> None:
@@ -118,8 +111,6 @@ def test_newer_schema_version_is_refused(db_path: Path) -> None:
     with pytest.raises(RuntimeError, match="newer than this code supports"):
         connect(db_path)
 
-
-# --- migration atomicity ---------------------------------------------------
 
 FAILS_HALFWAY = """
 CREATE TABLE half_applied (id INTEGER PRIMARY KEY);
@@ -169,9 +160,6 @@ def test_migration_files_must_be_contiguous(tmp_path: Path) -> None:
         load_migrations(tmp_path)
 
 
-# --- foreign keys and transactions -----------------------------------------
-
-
 def test_signal_without_observation_is_rejected(conn: sqlite3.Connection) -> None:
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
         conn.execute(
@@ -187,9 +175,6 @@ def test_transaction_rolls_back_on_error(conn: sqlite3.Connection) -> None:
         raise ZeroDivisionError
     assert not conn.in_transaction
     assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 0
-
-
-# --- block_evidence_v ------------------------------------------------------
 
 
 def test_block_evidence_is_signals_overlapping_half_open_range(
@@ -219,9 +204,6 @@ def test_block_evidence_is_signals_overlapping_half_open_range(
     assert {row["title"] for row in rows} == {"overlaps-start", "inside", "instant-at-start"}
 
 
-# --- canonical timestamps ---------------------------------------------------
-
-
 def test_utc_iso_canonicalizes_mixed_spellings() -> None:
     same_instant = [
         "2026-11-17T10:00:00Z",
@@ -244,9 +226,6 @@ def test_migrate_rejects_unsorted_or_gapped_caller_lists(conn: sqlite3.Connectio
     gapped = [*load_migrations(), Migration(LATEST + 2, "003_gap.sql", "SELECT 1;")]
     with pytest.raises(RuntimeError, match="no gaps"):
         migrate(conn, gapped)
-
-
-# --- path resolution -------------------------------------------------------
 
 
 def test_path_flag_wins_over_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -280,9 +259,6 @@ def test_connect_uses_env_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     monkeypatch.setenv(DB_ENV_VAR, str(tmp_path / "env.db"))
     connect().close()
     assert (tmp_path / "env.db").is_file()
-
-
-# --- helpers ---------------------------------------------------------------
 
 
 def insert_observation(

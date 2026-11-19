@@ -1,11 +1,9 @@
 import Foundation
 
-/// A script that cannot be played: an unknown app or window, a bad app id, steps out of order, or no end.
 struct ScriptError: Error, Equatable, CustomStringConvertible {
     let description: String
 }
 
-/// Plays a capture script on a scripted Mac, changing what it shows as each step comes due.
 struct ScriptPlayer {
     enum Ending: Equatable {
         case end, crash
@@ -58,7 +56,6 @@ struct ScriptPlayer {
         for step in pending { try check(step.action) }
     }
 
-    /// Applies every step due by the given time, and returns false once the script has ended.
     mutating func play(upTo time: TimeInterval) throws -> Bool {
         while ending == nil, let step = pending.first, step.at <= time {
             pending.removeFirst()
@@ -67,7 +64,6 @@ struct ScriptPlayer {
         return ending == nil
     }
 
-    /// How many accessibility calls each app's elements received, by app id.
     var callCounts: [String: Int] {
         apps.keys.reduce(into: [:]) { counts, id in
             counts[id] = mac.calls.count { $0.hasPrefix(id + ".") || $0.hasPrefix(id + "/") }
