@@ -41,6 +41,13 @@ let fixtureRecords: [SpoolRecord] = [
     .resumed(id: fixtureID(7), at: utc("2026-11-18T09:15:42.999Z")),
 ]
 
+func captureRecord(text: String, fullTextBytes: Int, timedOut: Bool = false) -> SpoolRecord {
+    .capture(
+        at: utc("2026-11-18T09:00:00.000Z"), trigger: .app, appName: "Notes", bundleID: nil,
+        windowTitle: nil, text: text, fullTextBytes: fullTextBytes, timedOut: timedOut
+    )
+}
+
 func fixtureLines() throws -> [String] {
     let url = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -81,6 +88,12 @@ final class TempSpool {
     func lines(_ name: String) throws -> [String] {
         let contents = try String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8)
         return contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    func mode(_ name: String?) throws -> Int {
+        let path = name.map { directory.appendingPathComponent($0).path } ?? directory.path
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        return (attributes[.posixPermissions] as! NSNumber).intValue & 0o777
     }
 
     func writeOpenFile(_ contents: String) throws {

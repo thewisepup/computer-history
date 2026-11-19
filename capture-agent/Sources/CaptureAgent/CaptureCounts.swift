@@ -36,11 +36,11 @@ public final class CaptureCounts: @unchecked Sendable {
         lock.withLock { current.slowestRead = max(current.slowestRead, seconds) }
     }
 
-    func recordWritten(_ window: WindowText) {
+    func recordWritten(_ record: SpoolRecord) {
         lock.withLock {
             current.written += 1
-            if window.timedOut { current.timedOut += 1 }
-            if window.cutOff { current.cutOff += 1 }
+            if record.timedOut == true { current.timedOut += 1 }
+            if record.textCutOff == true { current.cutOff += 1 }
         }
     }
 

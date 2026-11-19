@@ -16,7 +16,9 @@ from computer_history.sources.activitywatch import (
 )
 from computer_history.sources.ax_text import (
     AX_TEXT_SOURCE,
+    CAPTURE_KIND,
     CAPTURE_TOLERANCE,
+    PAUSED_KIND,
     Coverage,
     DayCounts,
     SpoolBacklog,
@@ -85,7 +87,7 @@ def capture_health(
 
     records = stored_records(conn, read_from, now)
     before = newest_stored(conn, until=read_from)
-    paused = newest[1] == "paused"
+    paused = newest[1] == PAUSED_KIND
     afk = _afk_spans(conn, client, min(read_from, newest[0]), now)
     active = [(s.start, s.end) for s in afk if not s.afk]
     coverage = None
@@ -96,7 +98,7 @@ def capture_health(
             known=[(s.start, s.end) for s in afk],
             start=start,
             end=end,
-            paused_at_start=before is not None and before[1] == "paused",
+            paused_at_start=before is not None and before[1] == PAUSED_KIND,
             min_gap_seconds=min_gap_seconds,
         )
     return CaptureHealth(
@@ -115,9 +117,9 @@ def capture_health(
 def _last_capture(
     conn: sqlite3.Connection, now: datetime, unstored: tuple[datetime, str] | None
 ) -> datetime | None:
-    stored = newest_stored(conn, until=now, kind="capture")
+    stored = newest_stored(conn, until=now, kind=CAPTURE_KIND)
     times = [] if stored is None else [stored[0]]
-    if unstored is not None and unstored[1] == "capture":
+    if unstored is not None and unstored[1] == CAPTURE_KIND:
         times.append(unstored[0])
     return max(times, default=None)
 

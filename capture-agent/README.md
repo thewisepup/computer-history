@@ -30,9 +30,10 @@ scripts/uninstall.sh   # unregister the login item, stop the agent, delete the a
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
 alone it cannot find the `Testing` module, so use `scripts/test.sh`. Swift
-never runs in CI; the pre-commit hook runs `scripts/test.sh` and
-`scripts/e2e.sh` when a commit touches this folder, `fixtures/spool/`,
-`computer_history/sources/ax_text/` or `tests/test_capture_e2e.py`.
+never runs in CI. The pre-commit hook runs `scripts/test.sh` when a commit
+touches this folder, `fixtures/spool/` or `tests/test_capture_e2e.py`, and
+`scripts/e2e.sh` for those and for any change to `computer_history/` or
+`pyproject.toml`. Without `swift` on the path it skips both and says so.
 
 The installed binary takes the same commands directly:
 
@@ -69,7 +70,7 @@ shell that sets them act on that other folder.
 | `denylist` | `[]` | bundle ids added to the built-in denylist |
 | `accessibility_flag_off_list` | `[]` | bundle ids that never get the accessibility flags |
 | `idle_threshold_seconds` | `180` | 10 to 86400 |
-| `capture_heartbeat_seconds` | `30` | 5 to 3600 |
+| `capture_heartbeat_seconds` | `30` | 5 to 60, so `status` can count on a record at least every minute |
 | `text_cap_bytes` | `50000` | whole number, 1000 to 10000000 |
 | `call_timeout_seconds` | `0.25` | 0.05 to 5 |
 | `window_timeout_seconds` | `2` | 0.1 to 60 |
@@ -128,8 +129,9 @@ writes `resumed` and captures once it is unlocked.
 
 `WindowTextReader` reads the focused window of a `FocusedApplication` and
 returns a `WindowText`: the window title, the content text, the full text
-length in UTF-8 bytes, whether the text was cut off or the read timed out, and
-the SHA-256 of the kept text. `focusedApplication()` asks the
+length in UTF-8 bytes and whether the read timed out. The `SpoolRecord` made
+from it derives the text's SHA-256 and whether it was cut off, for the spool
+line and the minute log line alike. `focusedApplication()` asks the
 system-wide accessibility element for the focused app and falls back to
 `NSWorkspace`.
 
@@ -151,7 +153,8 @@ bytes on a character boundary; the walk keeps counting the full length past
 the cap. Each accessibility call times out after 0.25s and the whole read
 after 2s; either ends the read with the text collected so far. Electron apps
 and Chromium browsers get `AXManualAccessibility` and
-`AXEnhancedUserInterface` set once per process, unless their bundle id is on
+`AXEnhancedUserInterface` set once per launch (process id, app bundle and
+launch time, so a reused process id gets them again), unless their bundle id is on
 the config's `accessibility_flag_off_list` (ignoring case). A flag call that
 times out does not end the read; the flags are tried again on the next read.
 
@@ -189,7 +192,7 @@ written; `excluded` records still are, since they touch no window.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
-that finds the spool held by another agent does not capture.
+that finds the spool held by another agent exits without capturing.
 
 ## Scripted sessions and the end-to-end check
 
@@ -233,9 +236,12 @@ calls time out) and `children`.
 
 `scripts/e2e.sh` builds the agent and runs `tests/test_capture_e2e.py`. It
 plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
-`e2e/session.json`, then runs the real `computer-history ingest` twice and
-`status` against a temporary database, with a stand-in ActivityWatch that has
-no buckets, and checks the stored records and signals against the scripts.
+`e2e/session.json`, then runs the real `computer-history ingest` three times
+(twice, then once more with the finished files put back) and `status` against
+a temporary database, with a stand-in ActivityWatch that has no buckets, and
+checks the stored records and signals against the scripts. It also checks
+that the agent's `check-config` and the backend name the same default folder
+and spool for a scratch home folder.
 Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs
@@ -275,8 +281,16 @@ when it started, so two finishes in the same millisecond, a leftover file
 finished at start, or a clock that steps back never produce a name that sorts
 out of order or replaces a file. The rename refuses to overwrite.
 
+Only the owner can read the spool: the folder is `0700` and `open.part`,
+the finished files and `agent.lock` are `0600`. On start the agent tightens a
+folder, lock file or leftover `open.part` that is more open than that, and
+carries on as before when it is not allowed to.
+
 The agent holds `agent.lock` in the spool folder while it runs. A second
-agent started by hand cannot take the lock and writes nothing.
+agent cannot take the lock: it logs only `spool failed to start at <folder>:
+another agent is writing to <folder>, exiting`, asks for no Accessibility
+prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
+or so, until the lock is free.
 
 Every record has every key, sorted, with `null` where a key does not apply:
 

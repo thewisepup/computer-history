@@ -28,7 +28,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
         return app
     }
 
-    func fileExists(_ path: String) -> Bool { false }
+    func hasElectronFramework(_ bundle: URL) -> Bool { false }
 
     func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
         ScriptedElement(mac: self, name: name, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children)

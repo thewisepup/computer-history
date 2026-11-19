@@ -24,6 +24,17 @@ public struct SpoolRecord: Equatable, Sendable {
     public let fullTextBytes: Int?
     public let timedOut: Bool?
 
+    /// The lowercase hex SHA-256 of the text as UTF-8, for records that carry text.
+    public var textSHA256: String? {
+        text.map { SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined() }
+    }
+
+    /// Whether the text is shorter than the full text read, for records that carry text.
+    public var textCutOff: Bool? {
+        guard let text, let fullTextBytes else { return nil }
+        return fullTextBytes > text.utf8.count
+    }
+
     /// A reading of the focused window, whose text may be the cut-off or timed-out start of a longer full text.
     public static func capture(
         id: UUID = UUID(), at capturedAt: Date, trigger: Trigger, appName: String, bundleID: String?,
@@ -105,13 +116,9 @@ extension SpoolRecord: Encodable {
         try line.encode(bundleID, forKey: .bundleID)
         try line.encode(windowTitle, forKey: .windowTitle)
         try line.encode(text, forKey: .text)
-        try line.encode(text.map(sha256Hex), forKey: .textSHA256)
+        try line.encode(textSHA256, forKey: .textSHA256)
         try line.encode(fullTextBytes, forKey: .fullTextBytes)
-        try line.encode(text.flatMap { text in fullTextBytes.map { $0 > text.utf8.count } }, forKey: .textCutOff)
+        try line.encode(textCutOff, forKey: .textCutOff)
         try line.encode(timedOut, forKey: .timedOut)
     }
-}
-
-private func sha256Hex(_ text: String) -> String {
-    SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
 }

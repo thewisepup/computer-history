@@ -6,6 +6,7 @@ final class Recorder: @unchecked Sendable {
     private let lock = NSLock()
     private var _lines: [String] = []
     private var _prompts: [Bool] = []
+    private var _capturingStarted = 0
     let spool = TempSpool()
     let counts = CaptureCounts()
     lazy var settings = AgentSettings.load(environment: [
@@ -14,9 +15,10 @@ final class Recorder: @unchecked Sendable {
 
     var lines: [String] { lock.withLock { _lines } }
     var prompts: [Bool] { lock.withLock { _prompts } }
+    var capturingStarted: Int { lock.withLock { _capturingStarted } }
 
-    func agent(granted: Bool) -> AgentLoop {
-        AgentLoop(
+    func agent(granted: Bool) -> AgentLifecycle {
+        AgentLifecycle(
             report: settings.report,
             isPaused: { self.settings.pause.isPaused },
             accessibilityTrusted: { prompt in
@@ -25,7 +27,7 @@ final class Recorder: @unchecked Sendable {
             },
             spool: spool.writer(),
             counts: counts,
-            startCapturing: {},
+            startCapturing: { self.lock.withLock { self._capturingStarted += 1 } },
             log: { line in self.lock.withLock { self._lines.append(line) } }
         )
     }
@@ -60,8 +62,8 @@ final class Recorder: @unchecked Sendable {
     let agent = recorder.agent(granted: true)
     recorder.counts.recordRead(seconds: 0.4)
     recorder.counts.recordExcluded()
-    recorder.counts.recordWritten(WindowText(title: nil, text: "", fullLength: 0, cutOff: false, timedOut: true, sha256: ""))
-    recorder.counts.recordWritten(WindowText(title: nil, text: "ab", fullLength: 9, cutOff: true, timedOut: false, sha256: ""))
+    recorder.counts.recordWritten(captureRecord(text: "", fullTextBytes: 0, timedOut: true))
+    recorder.counts.recordWritten(captureRecord(text: "ab", fullTextBytes: 9, timedOut: false))
     agent.logMinute()
     agent.logMinute()
     #expect(recorder.lines == [
@@ -99,17 +101,16 @@ final class Recorder: @unchecked Sendable {
     #expect(recorder.lines == logged)
 }
 
-@Test func finishSpoolFileLogsASpoolHeldByAnotherAgent() throws {
+@Test(.timeLimit(.minutes(1))) func runExitsWithoutCapturingOrPromptingWhenAnotherAgentHoldsTheSpool() throws {
     let recorder = Recorder()
     let other = recorder.spool.writer()
     try other.start()
-    let agent = recorder.agent(granted: true)
-    agent.start()
-    agent.finishSpoolFile()
-    #expect(recorder.lines.suffix(2) == [
-        "spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), not capturing",
-        "spool failed to finish the open file: another agent is writing to \(recorder.spool.directory.path)",
-    ])
+    #expect(recorder.agent(granted: true).run() == 1)
+    #expect(recorder.capturingStarted == 0)
+    #expect(recorder.prompts.isEmpty)
+    #expect(recorder.lines == ["spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), exiting"])
+    try other.append(fixtureRecords[0])
+    #expect(try other.finish() != nil)
 }
 
 @Test func startSaysWhetherCapturingMayStart() throws {

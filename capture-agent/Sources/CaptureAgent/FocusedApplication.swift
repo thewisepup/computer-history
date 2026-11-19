@@ -6,12 +6,14 @@ public struct FocusedApplication: Equatable, Sendable {
     public let bundleIdentifier: String?
     public let bundleURL: URL?
     public let name: String?
+    public let launchDate: Date?
 
-    public init(processIdentifier: pid_t, bundleIdentifier: String?, bundleURL: URL?, name: String?) {
+    public init(processIdentifier: pid_t, bundleIdentifier: String?, bundleURL: URL?, name: String?, launchDate: Date? = nil) {
         self.processIdentifier = processIdentifier
         self.bundleIdentifier = bundleIdentifier
         self.bundleURL = bundleURL
         self.name = name
+        self.launchDate = launchDate
     }
 }
 
@@ -31,7 +33,8 @@ public func focusedApplication() -> FocusedApplication? {
                     processIdentifier: pid,
                     bundleIdentifier: $0.bundleIdentifier,
                     bundleURL: $0.bundleURL,
-                    name: $0.localizedName
+                    name: $0.localizedName,
+                    launchDate: $0.launchDate
                 )
             }
         }

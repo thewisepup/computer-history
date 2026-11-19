@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused app and its accessibility tree.
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused app, its accessibility tree and whether its bundle ships Electron.
 public protocol Mac {
     associatedtype Element: AccessibilityElement
 
@@ -11,7 +11,7 @@ public protocol Mac {
     func accessibilityTrusted() -> Bool
     func focusedApplication() -> FocusedApplication?
     func applicationElement(_ processIdentifier: pid_t) -> Element
-    func fileExists(_ path: String) -> Bool
+    func hasElectronFramework(_ bundle: URL) -> Bool
 }
 
 /// The real Mac: system uptime and time, presence from macOS, and the live accessibility API.
@@ -34,5 +34,5 @@ public struct LiveMac: Mac, Sendable {
         LiveAccessibilityElement.application(processIdentifier)
     }
 
-    public func fileExists(_ path: String) -> Bool { FileManager.default.fileExists(atPath: path) }
+    public func hasElectronFramework(_ bundle: URL) -> Bool { bundleHasElectronFramework(bundle) }
 }

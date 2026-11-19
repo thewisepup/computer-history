@@ -85,7 +85,7 @@ public struct AgentSettings: Equatable, Sendable {
             case .idleThresholdSeconds:
                 capture.idleThreshold = seconds(value, key: key, range: 10...86_400, default: capture.idleThreshold)
             case .captureHeartbeatSeconds:
-                capture.heartbeatInterval = seconds(value, key: key, range: 5...3_600, default: capture.heartbeatInterval)
+                capture.heartbeatInterval = seconds(value, key: key, range: 5...60, default: capture.heartbeatInterval)
             case .callTimeoutSeconds:
                 windowText.callTimeout = seconds(value, key: key, range: 0.05...5, default: windowText.callTimeout)
             case .windowTimeoutSeconds:

@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -18,7 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.sources.ax_text import MAX_AX_TEXT_LENGTH
+from computer_history.sources.ax_text import (
+    MAX_AX_TEXT_LENGTH,
+    SPOOL_ENV_VAR,
+    resolve_spool_path,
+)
+from computer_history.store import DB_ENV_VAR, resolve_db_path
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
 REPO = Path(__file__).resolve().parent.parent
@@ -61,6 +67,7 @@ class Session:
     crash_run: subprocess.CompletedProcess[str]
     run: subprocess.CompletedProcess[str]
     spool_lines: list[str]
+    modes: dict[str, int]
     ingests: list[subprocess.CompletedProcess[str]]
     row_counts: list[int]
     status: subprocess.CompletedProcess[str]
@@ -145,6 +152,10 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         run = _agent("session.json", folder)
         finished = sorted(spool.glob("*.jsonl"))
         spool_lines = [line for path in finished for line in path.read_text("utf-8").splitlines()]
+        modes = {
+            path.name: stat.S_IMODE(path.stat().st_mode)
+            for path in (spool, spool / "agent.lock", *finished)
+        }
         kept = folder / "finished-copy"
         kept.mkdir()
         for path in finished:
@@ -160,7 +171,9 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         status = _cli("status", db=db, aw_url=aw_url)
     finally:
         server.shutdown()
-    yield Session(folder, spool, db, crash_run, run, spool_lines, ingests, row_counts, status)
+    yield Session(
+        folder, spool, db, crash_run, run, spool_lines, modes, ingests, row_counts, status
+    )
 
 
 def test_the_agent_writes_every_kind_and_trigger_the_scripts_call_for(session: Session) -> None:
@@ -180,6 +193,13 @@ def test_every_record_has_exactly_the_contract_fixtures_keys_and_version(session
 def test_raw_payloads_are_the_spool_lines_verbatim(session: Session) -> None:
     assert len(session.spool_lines) == len(EXPECTED)
     assert sorted(session.payloads()) == sorted(session.spool_lines)
+
+
+def test_the_spool_and_its_files_are_readable_by_their_owner_only(session: Session) -> None:
+    files = dict(session.modes)
+    assert files.pop("spool") == 0o700
+    assert files
+    assert set(files.values()) == {0o600}
 
 
 def test_captures_become_signals_with_the_scripted_text(session: Session) -> None:
@@ -265,3 +285,28 @@ def test_status_reports_the_capture_agent(session: Session) -> None:
     assert session.status.returncode == 0, session.status.stderr
     assert "Capture agent:" in session.status.stdout
     assert "last capture" in session.status.stdout
+
+
+def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["HOME"] = str(home)
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "check-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    agent = dict(line.split(": ", 1) for line in run.stdout.splitlines() if ": " in line)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv(DB_ENV_VAR, raising=False)
+    monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
+    db = resolve_db_path()
+    assert Path(agent["folder"]) == db.parent
+    assert Path(agent["spool"]) == resolve_spool_path(None, db)
+    assert not (home / "Library").exists()

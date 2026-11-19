@@ -12,7 +12,11 @@ from typing import Any
 from computer_history.store import to_utc
 
 SPOOL_VERSION = 1
-KINDS = ("capture", "excluded", "paused", "resumed")
+CAPTURE_KIND = "capture"
+EXCLUDED_KIND = "excluded"
+PAUSED_KIND = "paused"
+RESUMED_KIND = "resumed"
+KINDS = (CAPTURE_KIND, EXCLUDED_KIND, PAUSED_KIND, RESUMED_KIND)
 
 _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _TYPED_FIELDS: Mapping[str, type] = {
@@ -33,7 +37,7 @@ class InvalidRecord(ValueError):
 
 
 @dataclass(frozen=True)
-class SpoolRecord:
+class ParsedRecord:
     """A checked spool record: its id, capture time and kind, plus every field as written."""
 
     id: str
@@ -42,7 +46,7 @@ class SpoolRecord:
     fields: Mapping[str, Any]
 
 
-def parse_record(line: str) -> SpoolRecord:
+def parse_record(line: str) -> ParsedRecord:
     """The record on one spool line, or InvalidRecord if it is malformed or of another version."""
     try:
         data = json.loads(line)
@@ -63,7 +67,7 @@ def parse_record(line: str) -> SpoolRecord:
         value = data.get(key)
         if value is not None and type(value) is not expected:
             raise InvalidRecord(f"{key} is not a {expected.__name__}: {value!r}")
-    return SpoolRecord(record_id, _captured_at(data.get("captured_at")), kind, data)
+    return ParsedRecord(record_id, _captured_at(data.get("captured_at")), kind, data)
 
 
 def _captured_at(value: Any) -> datetime:

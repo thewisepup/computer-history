@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import NamedTuple
 
 from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE
+from computer_history.sources.ax_text.record import CAPTURE_KIND, EXCLUDED_KIND
 from computer_history.store import latest_payload_value, payload_values
 
 KIND_PATH = "$.kind"
@@ -57,9 +58,9 @@ def day_counts(records: Iterable[StoredRecord], since: datetime) -> DayCounts:
     for record in records:
         if record.at < since:
             continue
-        if record.kind == "excluded":
+        if record.kind == EXCLUDED_KIND:
             excluded += 1
-        elif record.kind == "capture":
+        elif record.kind == CAPTURE_KIND:
             captures += 1
             cut_off += record.cut_off
             timed_out += record.timed_out

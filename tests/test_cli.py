@@ -387,6 +387,7 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     gap = re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out)
     assert gap == ["30m"]
     assert "aw-afk: no gaps since" in out
+    assert "an ActivityWatch source is settled only up to" in out
     assert "unobserved" in out
     assert "idle" not in out.lower()
     assert re.search(r"observations\s+2\n", out)

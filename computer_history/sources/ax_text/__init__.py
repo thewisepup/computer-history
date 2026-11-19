@@ -30,16 +30,13 @@ from computer_history.sources.ax_text.coverage import (
     capture_coverage,
     liveness,
 )
-from computer_history.sources.ax_text.normalize import (
-    AX_TEXT_SOURCE,
-    MAX_AX_TEXT_LENGTH,
-    project_capture,
-)
+from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE, MAX_AX_TEXT_LENGTH
 from computer_history.sources.ax_text.paths import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.sources.ax_text.record import (
+    CAPTURE_KIND,
+    PAUSED_KIND,
     SPOOL_VERSION,
     InvalidRecord,
-    SpoolRecord,
     parse_record,
 )
 from computer_history.sources.ax_text.spool import UNREADABLE_FOLDER, SpoolError, finished_files
@@ -54,9 +51,11 @@ from computer_history.sources.ax_text.stored import (
 __all__ = [
     "AGENT_ALIVE_WITHIN",
     "AX_TEXT_SOURCE",
+    "CAPTURE_KIND",
     "CAPTURE_TOLERANCE",
     "HEARTBEAT_SECONDS",
     "MAX_AX_TEXT_LENGTH",
+    "PAUSED_KIND",
     "SPOOL_ENV_VAR",
     "SPOOL_VERSION",
     "UNREADABLE_FOLDER",
@@ -66,7 +65,6 @@ __all__ = [
     "InvalidRecord",
     "SpoolBacklog",
     "SpoolError",
-    "SpoolRecord",
     "StoredRecord",
     "capture_coverage",
     "day_counts",
@@ -74,7 +72,6 @@ __all__ = [
     "liveness",
     "newest_stored",
     "parse_record",
-    "project_capture",
     "resolve_spool_path",
     "spool_backlog",
     "stored_records",

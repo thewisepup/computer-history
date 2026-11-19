@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Joins text pieces with newlines up to a byte cap, and keeps counting the full length past it.
@@ -37,9 +36,5 @@ struct CappedText {
         guard !prefix.isEmpty else { return }
         text += separator + prefix
         keptBytes += separator.utf8.count + prefix.utf8.count
-    }
-
-    var sha256: String {
-        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

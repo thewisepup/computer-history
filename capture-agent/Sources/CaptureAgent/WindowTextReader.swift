@@ -20,33 +20,31 @@ public struct WindowTextSettings: Equatable, Sendable {
     }
 }
 
-/// What one read of the focused window found, with the full length in UTF-8 bytes.
+/// What one read of the focused window found: the title, the kept text, the full length in UTF-8 bytes, and whether the read timed out.
 public struct WindowText: Equatable, Sendable {
     public let title: String?
     public let text: String
     public let fullLength: Int
-    public let cutOff: Bool
     public let timedOut: Bool
-    public let sha256: String
 }
 
 /// Reads the focused window's title and content text from an application's accessibility tree.
 public final class WindowTextReader<Element: AccessibilityElement> {
     let settings: WindowTextSettings
     let applicationElement: (pid_t) -> Element
-    let fileExists: (String) -> Bool
+    let hasElectronFramework: (URL) -> Bool
     let now: () -> TimeInterval
-    private var flagChecked: Set<pid_t> = []
+    private var flagChecked: Set<ProcessLaunch> = []
 
     public init(
         settings: WindowTextSettings,
         applicationElement: @escaping (pid_t) -> Element,
-        fileExists: @escaping (String) -> Bool,
+        hasElectronFramework: @escaping (URL) -> Bool,
         now: @escaping () -> TimeInterval
     ) {
         self.settings = settings
         self.applicationElement = applicationElement
-        self.fileExists = fileExists
+        self.hasElectronFramework = hasElectronFramework
         self.now = now
     }
 
@@ -58,10 +56,11 @@ public final class WindowTextReader<Element: AccessibilityElement> {
             now: now
         )
         let app = applicationElement(application.processIdentifier)
-        if !flagChecked.contains(application.processIdentifier) {
-            let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, fileExists: fileExists)
+        let launch = ProcessLaunch(application)
+        if !flagChecked.contains(launch) {
+            let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, hasElectronFramework: hasElectronFramework)
             if !needsFlag || setAccessibilityFlags(on: app) {
-                flagChecked.insert(application.processIdentifier)
+                flagChecked.insert(launch)
             }
         }
         var title: String?
@@ -73,9 +72,7 @@ public final class WindowTextReader<Element: AccessibilityElement> {
             title: title,
             text: walk.text.text,
             fullLength: walk.text.fullLength,
-            cutOff: walk.text.cutOff,
-            timedOut: walk.timedOut,
-            sha256: walk.text.sha256
+            timedOut: walk.timedOut
         )
     }
 
@@ -84,5 +81,18 @@ public final class WindowTextReader<Element: AccessibilityElement> {
             if case .timedOut = app.setTrue(flag) { return false }
         }
         return true
+    }
+}
+
+/// One launch of an app: its process id, bundle and launch time.
+private struct ProcessLaunch: Hashable {
+    let processIdentifier: pid_t
+    let bundleURL: URL?
+    let launchDate: Date?
+
+    init(_ application: FocusedApplication) {
+        processIdentifier = application.processIdentifier
+        bundleURL = application.bundleURL
+        launchDate = application.launchDate
     }
 }

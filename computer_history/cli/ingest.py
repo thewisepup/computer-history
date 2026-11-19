@@ -67,7 +67,7 @@ def cycle_line(summary: CycleSummary) -> str:
         for name, o in summary.outcomes.items()
     )
     if summary.ok:
-        return done or "no ActivityWatch sources found"
+        return done
     failed = "; ".join(
         f"ingest failed{_on(failure)}: {_reason(failure)}" for failure in summary.failures
     )

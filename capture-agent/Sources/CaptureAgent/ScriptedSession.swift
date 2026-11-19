@@ -23,7 +23,7 @@ public func runScriptedSession(
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: { mac.now() })
     let counts = CaptureCounts()
     let pause = settings.pause
-    let agent = AgentLoop(
+    let agent = AgentLifecycle(
         report: settings.report,
         isPaused: { pause.isPaused },
         accessibilityTrusted: { _ in mac.accessibilityTrusted() },
@@ -36,12 +36,12 @@ public func runScriptedSession(
         return CommandOutcome(exitCode: 1, message: "another agent is writing to \(spool.directory.path)")
     }
     let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log)
-    var nextFinish = AgentLoop.spoolFinishInterval
+    var nextFinish = AgentLifecycle.spoolFinishInterval
     var failure: (any Error)?
     loop.run {
         if mac.clock >= nextFinish {
             agent.finishSpoolFile()
-            nextFinish += AgentLoop.spoolFinishInterval
+            nextFinish += AgentLifecycle.spoolFinishInterval
         }
         do {
             return try player.play(upTo: mac.clock)

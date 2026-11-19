@@ -6,6 +6,8 @@ public final class SpoolWriter: @unchecked Sendable {
     public static let openFileName = "open.part"
     public static let lockFileName = "agent.lock"
     public static let finishedSuffix = ".jsonl"
+    static let folderMode: mode_t = 0o700
+    static let fileMode: mode_t = 0o600
 
     /// Another agent holds the spool's lock.
     public struct InUse: Error, CustomStringConvertible {
@@ -36,10 +38,7 @@ public final class SpoolWriter: @unchecked Sendable {
     /// Takes the spool for this process and finishes any open file a previous run left behind.
     @discardableResult
     public func start() throws -> URL? {
-        try lock.withLock {
-            try startIfNeeded()
-            return try finishLocked()
-        }
+        try finish()
     }
 
     /// Appends the record to the open file as one line, opening a new file if none is open.
@@ -75,14 +74,17 @@ public final class SpoolWriter: @unchecked Sendable {
     private func startIfNeeded() throws {
         guard lockFile < 0 else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        chmod(directory.path, Self.folderMode)
         let lockPath = directory.appendingPathComponent(Self.lockFileName).path
-        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, Self.fileMode)
         guard descriptor >= 0 else { throw posixError() }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
             let error: any Error = errno == EWOULDBLOCK ? InUse(directory: directory) : posixError()
             close(descriptor)
             throw error
         }
+        fchmod(descriptor, Self.fileMode)
+        chmod(openFile.path, Self.fileMode)
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         let stamps = names.compactMap { name in
             name.hasSuffix(Self.finishedSuffix) ? SpoolTime(fileStamp: name.dropLast(Self.finishedSuffix.count)) : nil
@@ -94,7 +96,7 @@ public final class SpoolWriter: @unchecked Sendable {
     private func openHandle() throws -> FileHandle {
         if let handle { return handle }
         if !FileManager.default.fileExists(atPath: openFile.path) {
-            FileManager.default.createFile(atPath: openFile.path, contents: nil)
+            FileManager.default.createFile(atPath: openFile.path, contents: nil, attributes: [.posixPermissions: Self.fileMode])
         }
         let file = try FileHandle(forUpdating: openFile)
         handle = file

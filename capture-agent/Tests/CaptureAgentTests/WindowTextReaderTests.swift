@@ -2,27 +2,6 @@ import Foundation
 import Testing
 @testable import CaptureAgent
 
-let plainApp = FocusedApplication(
-    processIdentifier: 100,
-    bundleIdentifier: "com.apple.TextEdit",
-    bundleURL: URL(filePath: "/System/Applications/TextEdit.app"),
-    name: "TextEdit"
-)
-
-let chrome = FocusedApplication(
-    processIdentifier: 200,
-    bundleIdentifier: "com.google.Chrome",
-    bundleURL: URL(filePath: "/Applications/Google Chrome.app"),
-    name: "Google Chrome"
-)
-
-let cursor = FocusedApplication(
-    processIdentifier: 300,
-    bundleIdentifier: "com.todesktop.230313mzl4w4u92",
-    bundleURL: URL(filePath: "/Applications/Cursor.app"),
-    name: "Cursor"
-)
-
 func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTextSettings = WindowTextSettings()) -> WindowText {
     mac.reader([plainApp.processIdentifier: mac.app(window: window)], settings: settings).read(plainApp)
 }
@@ -47,7 +26,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let result = readOnce(mac, window)
     #expect(result.title == "Notes")
     #expect(result.text == "static\narea\nfield\nheading\nlink")
-    #expect(!result.cutOff)
+    #expect(result.fullLength == result.text.utf8.count)
     #expect(!result.timedOut)
     #expect(mac.reads(of: "button") == ["button.AXRole", "button.AXSubrole"])
 }
@@ -109,16 +88,8 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let window = mac.window("Long", children: [mac.text("abcdef"), mac.text("ghij"), mac.text("klmno")])
     let result = readOnce(mac, window, settings: WindowTextSettings(textCapBytes: 9))
     #expect(result.text == "abcdef\ngh")
-    #expect(result.cutOff)
     #expect(result.fullLength == "abcdef\nghij\nklmno".utf8.count)
-    #expect(result.sha256 == "b2e67bb70831a96b11c69ab98469b043f19df1b3bed8b014ac461872b0adcf3d")
     #expect(!result.timedOut)
-}
-
-@Test func hashesTheKeptText() {
-    let mac = ScriptedMac()
-    let result = readOnce(mac, mac.window("Hash", children: [mac.text("abc")]))
-    #expect(result.sha256 == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
 }
 
 @Test func perCallTimeoutKeepsTheTextSoFarAndStops() {
@@ -162,7 +133,6 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     mac.callCost = 0.01
     let window = mac.window("Huge", children: (0..<1_000).map { _ in mac.text("0123456789") })
     let result = readOnce(mac, window, settings: WindowTextSettings(textCapBytes: 20))
-    #expect(result.cutOff)
     #expect(result.timedOut)
     #expect(result.text.utf8.count == 20)
     #expect(result.fullLength > 20)
@@ -182,10 +152,38 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     #expect(relaunched.flagsSet == ["AXManualAccessibility", "AXEnhancedUserInterface"])
 }
 
+@Test func setsTheFlagAgainWhenAProcessIDIsReusedByAnotherLaunch() {
+    let mac = ScriptedMac()
+    let elements = (0..<3).map { _ in mac.app(window: mac.window("Tab", children: [])) }
+    var current = elements[0]
+    let reader = WindowTextReader(
+        settings: WindowTextSettings(), applicationElement: { _ in current }, hasElectronFramework: { _ in true }, now: { mac.clock }
+    )
+    let launched = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
+        launchDate: Date(timeIntervalSince1970: 1)
+    )
+    let relaunched = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
+        launchDate: Date(timeIntervalSince1970: 2)
+    )
+    let otherApp = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: cursor.bundleIdentifier, bundleURL: cursor.bundleURL, name: cursor.name,
+        launchDate: Date(timeIntervalSince1970: 2)
+    )
+    _ = reader.read(launched)
+    _ = reader.read(launched)
+    current = elements[1]
+    _ = reader.read(relaunched)
+    current = elements[2]
+    _ = reader.read(otherApp)
+    #expect(elements.map(\.flagsSet) == Array(repeating: accessibilityFlags, count: elements.count))
+}
+
 @Test func setsTheFlagOnElectronApps() {
     let mac = ScriptedMac()
     let app = mac.app(window: nil)
-    let reader = mac.reader([cursor.processIdentifier: app], electronBundles: ["/Applications/Cursor.app/Contents/Frameworks/Electron Framework.framework"])
+    let reader = mac.reader([cursor.processIdentifier: app], electronBundles: ["/Applications/Cursor.app"])
     _ = reader.read(cursor)
     #expect(app.flagsSet == ["AXManualAccessibility", "AXEnhancedUserInterface"])
 }
@@ -268,6 +266,16 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
 }
 
 @Test func theFlagOffListMatchesBundleIDsIgnoringCase() {
-    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], fileExists: { _ in false }))
-    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], fileExists: { _ in false }))
+    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], hasElectronFramework: { _ in false }))
+    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], hasElectronFramework: { _ in false }))
+}
+
+@Test func anAppIsElectronWhenItsBundleShipsTheElectronFramework() throws {
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent("electron-\(UUID().uuidString).app")
+    defer { try? FileManager.default.removeItem(at: bundle) }
+    #expect(!bundleHasElectronFramework(bundle))
+    try FileManager.default.createDirectory(
+        at: bundle.appending(path: "Contents/Frameworks/Electron Framework.framework"), withIntermediateDirectories: true
+    )
+    #expect(bundleHasElectronFramework(bundle))
 }

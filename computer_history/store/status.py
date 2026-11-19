@@ -125,15 +125,6 @@ def payload_values(
     return [PayloadValues(to_utc(a), to_utc(b), tuple(values)) for a, b, *values in rows]
 
 
-def latest_signal_time(conn: sqlite3.Connection, source: str) -> datetime | None:
-    """When the source's newest signal starts, or None if it has none."""
-    row = conn.execute(
-        "SELECT started_at FROM signals WHERE source = ? ORDER BY started_at DESC LIMIT 1",
-        (source,),
-    ).fetchone()
-    return None if row is None else to_utc(row[0])
-
-
 def latest_payload_value(
     conn: sqlite3.Connection,
     source: str,
