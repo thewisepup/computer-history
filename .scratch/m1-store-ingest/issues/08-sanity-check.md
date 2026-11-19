@@ -49,7 +49,7 @@ passed; zero discrepancies.
   day), computed from our `signals` with clip+merge, vs the POC Bridge's
   breakdown over the same range: all top 8 apps match to 0.1s exactly
   (loginwindow 63,479.7s, Chrome 11,265.2s, Claude 6,191.3s, …).
-- docs/milestones.md M1 checklist: all 8 boxes ticked. AGENTS.md updated to "M1
+- DESIGN.md M1 checklist: all 8 boxes ticked. AGENTS.md updated to "M1
   complete" with the new commands and test matrix.
 
 This closes the map: M1 is implemented, reviewed, tested, and verified live.
