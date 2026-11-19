@@ -9,6 +9,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var presence = Presence(idleSeconds: 0, locked: false, asleep: false)
     var trusted = true
     var focused: FocusedApplication?
+    var frontmost: FocusedApplication?
     var apps: [pid_t: ScriptedElement] = [:]
     var calls: [String] = []
 
@@ -22,6 +23,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     func samplePresence() -> Presence { presence }
     func accessibilityTrusted() -> Bool { trusted }
     func focusedApplication() -> FocusedApplication? { focused }
+    func frontmostApplication() -> FocusedApplication? { frontmost ?? focused }
 
     func applicationElement(_ processIdentifier: pid_t) -> ScriptedElement {
         guard let app = apps[processIdentifier] else { preconditionFailure("no scripted app has pid \(processIdentifier)") }

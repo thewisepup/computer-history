@@ -97,7 +97,9 @@ launchctl kickstart -k "gui/$(id -u)/io.github.thewisepup.computer-history.agent
 ## Denylist
 
 The agent never touches the windows of a denylisted app: no title polling and
-no reads, not even the accessibility flags. While one is focused it writes an
+no reads, not even the accessibility flags. A denylisted app counts as soon as
+it is in front, even when it has not taken keyboard focus (a locked Passwords
+window leaves focus with the previous app). While one is in front it writes an
 `excluded` record, with the app name and bundle id and no title or text, on
 the `app` trigger when it comes to the front and on every heartbeat while it
 stays there. Window and title changes inside it go unnoticed.
