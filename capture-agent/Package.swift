@@ -8,8 +8,20 @@ import PackageDescription
 ///     AgentCommand.swift    the commands the binary accepts and what each prints
 ///     LoginItem.swift       install, uninstall and status through SMAppService
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
-///     AgentLoop.swift       on start: Accessibility check, spool recovery; then the
-///           |               heartbeat and the one-minute spool finish on the run loop
+///     AgentLoop.swift       on start: Accessibility check, spool recovery, capture thread; then
+///           |               the log heartbeat and the one-minute spool finish on the main run loop
+///     CaptureLoop.swift     the capture thread: each tick samples presence, polls focus, and
+///           |               writes a capture when the schedule says one is due
+///     CaptureSchedule.swift capture timing: settle delay, minimum gap, heartbeat, silence gating
+///     CaptureCounts.swift   captures written, timed out and cut off, for the log heartbeat
+///     FocusWatch.swift      app, window and title changes, by polling accessibility
+///     Presence.swift        idle seconds, screen lock, sleep and wake, and the silence they cause
+///     FocusedApplication.swift   the focused app, asked of the system-wide accessibility element
+///     WindowTextReader.swift     reads the focused window's title and text
+///     WindowWalk.swift      the tree walk: content roles only, each element once, within timeouts
+///     CappedText.swift      joins text pieces up to the byte cap and hashes the kept text
+///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
+///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record and its JSON line

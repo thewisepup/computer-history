@@ -7,6 +7,7 @@ final class Recorder: @unchecked Sendable {
     private var _lines: [String] = []
     private var _prompts: [Bool] = []
     let spool = TempSpool()
+    let counts = CaptureCounts()
 
     var lines: [String] { lock.withLock { _lines } }
     var prompts: [Bool] { lock.withLock { _prompts } }
@@ -18,6 +19,8 @@ final class Recorder: @unchecked Sendable {
                 return granted
             },
             spool: spool.writer(),
+            counts: counts,
+            startCapturing: {},
             log: { line in self.lock.withLock { self._lines.append(line) } }
         )
     }
@@ -43,7 +46,22 @@ final class Recorder: @unchecked Sendable {
     agent.heartbeat()
     agent.heartbeat()
     #expect(recorder.prompts == [true, false, false])
-    #expect(recorder.lines.suffix(2) == ["heartbeat, accessibility missing", "heartbeat, accessibility missing"])
+    let quiet = "heartbeat, accessibility missing, last minute: 0 captures written, 0 timed out, 0 cut off, slowest read 0.00s"
+    #expect(recorder.lines.suffix(2) == [quiet, quiet])
+}
+
+@Test func heartbeatLogsTheCaptureCountsSinceTheLastHeartbeat() throws {
+    let recorder = Recorder()
+    let agent = recorder.agent(granted: true)
+    recorder.counts.recordRead(seconds: 0.4)
+    recorder.counts.recordWritten(WindowText(title: nil, text: "", fullLength: 0, cutOff: false, timedOut: true, sha256: ""))
+    recorder.counts.recordWritten(WindowText(title: nil, text: "ab", fullLength: 9, cutOff: true, timedOut: false, sha256: ""))
+    agent.heartbeat()
+    agent.heartbeat()
+    #expect(recorder.lines == [
+        "heartbeat, accessibility granted, last minute: 2 captures written, 1 timed out, 1 cut off, slowest read 0.40s",
+        "heartbeat, accessibility granted, last minute: 0 captures written, 0 timed out, 0 cut off, slowest read 0.00s",
+    ])
 }
 
 @Test func startReadiesTheSpoolAndFinishesALeftoverFile() throws {
@@ -83,7 +101,16 @@ final class Recorder: @unchecked Sendable {
     agent.start()
     agent.finishSpoolFile()
     #expect(recorder.lines.suffix(2) == [
-        "spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path)",
+        "spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), not capturing",
         "spool failed to finish the open file: another agent is writing to \(recorder.spool.directory.path)",
     ])
+}
+
+@Test func startSaysWhetherCapturingMayStart() throws {
+    let recorder = Recorder()
+    #expect(recorder.agent(granted: true).start())
+    let blocked = Recorder()
+    let other = blocked.spool.writer()
+    try other.start()
+    #expect(!blocked.agent(granted: true).start())
 }

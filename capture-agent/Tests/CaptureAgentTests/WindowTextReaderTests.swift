@@ -244,3 +244,25 @@ func readOnce(_ tree: FakeAccessibilityTree, _ window: FakeElement?, settings: W
     #expect(!result.timedOut)
     #expect(result.fullLength == 0)
 }
+
+@Test func readsEachElementOnceWhenTheTreeLoopsBack() {
+    let tree = FakeAccessibilityTree()
+    let inner = tree.node("inner", role: "AXGroup", children: [tree.text("inside")])
+    let outer = tree.node("outer", role: "AXGroup", children: [inner])
+    let window = tree.window("Loop", children: [outer])
+    inner.children.append(outer)
+    inner.children.append(window)
+    let result = readOnce(tree, window)
+    #expect(result.text == "inside")
+    #expect(!result.timedOut)
+    #expect(tree.reads(of: "outer") == ["outer.AXRole", "outer.AXSubrole", "outer.AXChildren"])
+}
+
+@Test func doesNotWalkIntoTheApplicationFromInsideAWindow() {
+    let tree = FakeAccessibilityTree()
+    let otherWindow = tree.window("Other", children: [tree.text("other window")])
+    let application = tree.node("application", role: "AXApplication", children: [otherWindow])
+    let window = tree.window("Calculator", children: [tree.text("42"), application])
+    #expect(readOnce(tree, window).text == "42")
+    #expect(tree.reads(of: "application") == ["application.AXRole"])
+}

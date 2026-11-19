@@ -93,3 +93,8 @@ final class FakeElement: AccessibilityElement {
         return body()
     }
 }
+
+extension FakeElement: Hashable {
+    static func == (lhs: FakeElement, rhs: FakeElement) -> Bool { lhs === rhs }
+    func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
+}

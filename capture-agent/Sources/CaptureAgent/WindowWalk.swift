@@ -4,10 +4,12 @@ private let valueRoles: Set<String> = ["AXStaticText", "AXTextArea", "AXTextFiel
 private let nameRoles: Set<String> = ["AXHeading", "AXLink"]
 private let controlRoles: Set<String> = ["AXButton", "AXPopUpButton", "AXCheckBox", "AXRadioButton"]
 private let secureRole = "AXSecureTextField"
+private let applicationRole = "AXApplication"
 
 struct WindowWalk<Element: AccessibilityElement> {
     private(set) var text: CappedText
     private(set) var timedOut = false
+    private var visited: Set<Element> = []
     let deadline: TimeInterval
     let now: () -> TimeInterval
 
@@ -33,8 +35,9 @@ struct WindowWalk<Element: AccessibilityElement> {
     }
 
     mutating func visit(_ element: Element) {
+        guard visited.insert(element).inserted else { return }
         let role = call { element.string("AXRole") }
-        guard !timedOut, role != secureRole else { return }
+        guard !timedOut, role != secureRole, role != applicationRole else { return }
         let subrole = call { element.string("AXSubrole") }
         guard !timedOut, subrole != secureRole, !controlRoles.contains(role ?? "") else { return }
         if valueRoles.contains(role ?? "") {

@@ -8,7 +8,7 @@ public enum AccessibilityResult<Value> {
 }
 
 /// One element of an application's accessibility tree, read one attribute at a time.
-public protocol AccessibilityElement {
+public protocol AccessibilityElement: Hashable {
     func string(_ attribute: String) -> AccessibilityResult<String>
     func element(_ attribute: String) -> AccessibilityResult<Self>
     func elements(_ attribute: String) -> AccessibilityResult<[Self]>
@@ -18,6 +18,14 @@ public protocol AccessibilityElement {
 /// An accessibility element of a running application, read through the macOS Accessibility API.
 public struct LiveAccessibilityElement: AccessibilityElement {
     let raw: AXUIElement
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        CFEqual(lhs.raw, rhs.raw)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(CFHash(raw))
+    }
 
     /// Sets how long every accessibility call this process makes waits for an answer.
     public static func setProcessCallTimeout(_ timeout: TimeInterval) {
