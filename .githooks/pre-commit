@@ -12,7 +12,7 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
 fi
 "$PY" -m pytest -q
 swift_paths='^(capture-agent/|fixtures/spool/|tests/test_capture_e2e\.py$)'
-e2e_paths="$swift_paths"'|^computer_history/(store/|cli/|text\.py$|sources/(ax_text/|(runner|commit|projection|contract|agent_health)\.py$))'
+e2e_paths="$swift_paths"'|^(computer_history/|pyproject\.toml$)'
 changed="$(git diff --cached --name-only --no-renames)"
 if printf '%s\n' "$changed" | grep -qE "$e2e_paths"; then
   if ! command -v swift >/dev/null 2>&1; then

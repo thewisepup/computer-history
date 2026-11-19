@@ -2,7 +2,6 @@ import Foundation
 
 let accessibilityFlags = ["AXManualAccessibility", "AXEnhancedUserInterface"]
 
-
 let chromiumBrowsers: Set<String> = [
     "com.google.Chrome",
     "com.google.Chrome.beta",

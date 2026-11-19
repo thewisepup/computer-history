@@ -177,7 +177,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     _ = reader.read(relaunched)
     current = elements[2]
     _ = reader.read(otherApp)
-    #expect(elements.map(\.flagsSet) == Array(repeating: ["AXManualAccessibility", "AXEnhancedUserInterface"], count: 3))
+    #expect(elements.map(\.flagsSet) == Array(repeating: accessibilityFlags, count: elements.count))
 }
 
 @Test func setsTheFlagOnElectronApps() {

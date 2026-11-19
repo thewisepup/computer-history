@@ -10,8 +10,8 @@ import PackageDescription
 ///     LoginItem.swift       install, uninstall and status through SMAppService, with the pause state
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
-///     AgentLifecycle.swift  on start: Accessibility check, spool recovery, capture thread, or exit if
-///           |               another agent holds the spool; then the minute log line and spool finish
+///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
+///           |               spool recovery, capture thread; then the minute log line and spool finish
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,

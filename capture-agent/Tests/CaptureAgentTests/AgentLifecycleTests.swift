@@ -101,13 +101,14 @@ final class Recorder: @unchecked Sendable {
     #expect(recorder.lines == logged)
 }
 
-@Test func runExitsWithoutCapturingWhenAnotherAgentHoldsTheSpool() throws {
+@Test(.timeLimit(.minutes(1))) func runExitsWithoutCapturingOrPromptingWhenAnotherAgentHoldsTheSpool() throws {
     let recorder = Recorder()
     let other = recorder.spool.writer()
     try other.start()
     #expect(recorder.agent(granted: true).run() == 1)
     #expect(recorder.capturingStarted == 0)
-    #expect(recorder.lines.last == "spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), exiting")
+    #expect(recorder.prompts.isEmpty)
+    #expect(recorder.lines == ["spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), exiting"])
     try other.append(fixtureRecords[0])
     #expect(try other.finish() != nil)
 }

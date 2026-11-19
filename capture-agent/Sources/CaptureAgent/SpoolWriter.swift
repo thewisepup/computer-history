@@ -74,7 +74,7 @@ public final class SpoolWriter: @unchecked Sendable {
     private func startIfNeeded() throws {
         guard lockFile < 0 else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        guard chmod(directory.path, Self.folderMode) == 0 else { throw posixError() }
+        chmod(directory.path, Self.folderMode)
         let lockPath = directory.appendingPathComponent(Self.lockFileName).path
         let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, Self.fileMode)
         guard descriptor >= 0 else { throw posixError() }
@@ -83,12 +83,8 @@ public final class SpoolWriter: @unchecked Sendable {
             close(descriptor)
             throw error
         }
-        guard fchmod(descriptor, Self.fileMode) == 0,
-              chmod(openFile.path, Self.fileMode) == 0 || errno == ENOENT else {
-            let error = posixError()
-            close(descriptor)
-            throw error
-        }
+        fchmod(descriptor, Self.fileMode)
+        chmod(openFile.path, Self.fileMode)
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         let stamps = names.compactMap { name in
             name.hasSuffix(Self.finishedSuffix) ? SpoolTime(fileStamp: name.dropLast(Self.finishedSuffix.count)) : nil

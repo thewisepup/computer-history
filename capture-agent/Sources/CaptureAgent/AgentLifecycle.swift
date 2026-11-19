@@ -45,9 +45,14 @@ public struct AgentLifecycle: Sendable {
         fatalError("the main run loop returned")
     }
 
-    /// Logs the Accessibility state, prompting if it is missing, then the settings report and pause state, readies the spool, and returns false if another agent holds it.
+    /// Returns false, logging only that, if another agent holds the spool; otherwise logs the Accessibility state, prompting if it is missing, the settings report, the pause state and the spool's state.
     @discardableResult
     func start() -> Bool {
+        let spoolStart = Result { try spool.start() }
+        if case .failure(let error as SpoolWriter.InUse) = spoolStart {
+            log("spool failed to start at \(spool.directory.path): \(error), exiting")
+            return false
+        }
         if accessibilityTrusted(true) {
             log("started, accessibility granted")
         } else {
@@ -57,14 +62,11 @@ public struct AgentLifecycle: Sendable {
         if isPaused() {
             log("capture is paused, run `\(AgentIdentity.executableName) resume` to capture again")
         }
-        do {
-            let leftover = try spool.start()
+        switch spoolStart {
+        case .success(let leftover):
             log("spool ready at \(spool.directory.path)")
             if let leftover { log("spool finished leftover file \(leftover.lastPathComponent)") }
-        } catch let error as SpoolWriter.InUse {
-            log("spool failed to start at \(spool.directory.path): \(error), exiting")
-            return false
-        } catch {
+        case .failure(let error):
             log("spool failed to start at \(spool.directory.path): \(error)")
         }
         return true

@@ -39,7 +39,7 @@ them plus the POC suite (`python -m unittest`) on pushes to `main`.
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool
 contract or the end-to-end test, and the end-to-end check also when it touches
-the Python code that check runs through; without `swift` it skips both and says
+`computer_history/` or `pyproject.toml`; without `swift` it skips both and says
 so (see the agent's README):
 
 ```bash

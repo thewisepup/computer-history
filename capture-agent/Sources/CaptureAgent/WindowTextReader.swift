@@ -84,7 +84,7 @@ public final class WindowTextReader<Element: AccessibilityElement> {
     }
 }
 
-/// One launch of an app, so a process id reused by another app or a relaunch is not taken for the old process.
+/// One launch of an app: its process id, bundle and launch time.
 private struct ProcessLaunch: Hashable {
     let processIdentifier: pid_t
     let bundleURL: URL?

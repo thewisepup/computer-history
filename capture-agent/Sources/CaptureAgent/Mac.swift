@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused app and its accessibility tree.
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused app, its accessibility tree and whether its bundle ships Electron.
 public protocol Mac {
     associatedtype Element: AccessibilityElement
 

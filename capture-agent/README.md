@@ -32,10 +32,8 @@ With Xcode installed, plain `swift test` works too. Under Command Line Tools
 alone it cannot find the `Testing` module, so use `scripts/test.sh`. Swift
 never runs in CI. The pre-commit hook runs `scripts/test.sh` when a commit
 touches this folder, `fixtures/spool/` or `tests/test_capture_e2e.py`, and
-`scripts/e2e.sh` for those and for the Python the check runs through:
-`computer_history/store/`, `cli/`, `text.py`, `sources/ax_text/` and
-`sources/` `runner.py`, `commit.py`, `projection.py`, `contract.py` and
-`agent_health.py`. Without `swift` on the path it skips both and says so.
+`scripts/e2e.sh` for those and for any change to `computer_history/` or
+`pyproject.toml`. Without `swift` on the path it skips both and says so.
 
 The installed binary takes the same commands directly:
 
@@ -285,12 +283,13 @@ out of order or replaces a file. The rename refuses to overwrite.
 
 Only the owner can read the spool: the folder is `0700` and `open.part`,
 the finished files and `agent.lock` are `0600`. On start the agent tightens a
-folder, lock file or leftover `open.part` that is more open than that.
+folder, lock file or leftover `open.part` that is more open than that, and
+carries on as before when it is not allowed to.
 
 The agent holds `agent.lock` in the spool folder while it runs. A second
-agent cannot take the lock: it logs `spool failed to start at <folder>:
-another agent is writing to <folder>, exiting` and exits with status 1,
-having written nothing. launchd starts its own agent again, every 10 seconds
+agent cannot take the lock: it logs only `spool failed to start at <folder>:
+another agent is writing to <folder>, exiting`, asks for no Accessibility
+prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
 or so, until the lock is free.
 
 Every record has every key, sorted, with `null` where a key does not apply:
