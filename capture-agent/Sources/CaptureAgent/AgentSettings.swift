@@ -28,14 +28,18 @@ public struct AgentSettings: Equatable, Sendable {
         home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> AgentSettings {
         let home = environment["HOME"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) } ?? home
-        let database = nonEmpty(environment[databaseEnvironmentVariable]).map { expandingTilde($0, home: home) }
-            ?? home.appendingPathComponent("Library/Application Support/ComputerHistory/history.db")
-        let folder = database.deletingLastPathComponent()
+        let folder = nonEmpty(environment[databaseEnvironmentVariable])
+            .map { expandingTilde($0, home: home).deletingLastPathComponent() } ?? defaultFolder(home: home)
         let spool = nonEmpty(environment[spoolEnvironmentVariable]).map { expandingTilde($0, home: home) }
             ?? folder.appendingPathComponent("spool", isDirectory: true)
         var settings = AgentSettings(folder: folder, spoolDirectory: spool)
         settings.readConfigFile()
         return settings
+    }
+
+    /// The folder the agent and the backend use when no environment variable says otherwise.
+    static func defaultFolder(home: URL) -> URL {
+        home.appendingPathComponent("Library/Application Support/ComputerHistory", isDirectory: true)
     }
 
     /// The lines the agent logs at start about where its settings came from.

@@ -1,0 +1,19 @@
+{
+  "start": "2026-11-18T09:00:00.000Z",
+  "apps": {
+    "textedit": {
+      "name": "TextEdit",
+      "bundle_id": "com.apple.TextEdit",
+      "focused_window": "notes",
+      "windows": {
+        "notes": {"role": "AXWindow", "title": "Crash notes", "children": [
+          {"role": "AXStaticText", "value": "written before the crash"}
+        ]}
+      }
+    }
+  },
+  "steps": [
+    {"at": 0, "focus": "textedit"},
+    {"at": 75, "crash": true}
+  ]
+}

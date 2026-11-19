@@ -14,7 +14,7 @@ import Testing
     let fixture = FocusFixture()
     var apps = fixture.appWatch
     _ = apps.poll()
-    fixture.focused = chrome
+    fixture.mac.focused = chrome
     #expect(apps.poll() == .app)
     #expect(apps.application == chrome)
     #expect(apps.poll() == nil)
@@ -24,12 +24,12 @@ import Testing
     let fixture = FocusFixture()
     var apps = fixture.appWatch
     _ = apps.poll()
-    fixture.focused = nil
+    fixture.mac.focused = nil
     #expect(apps.poll() == nil)
     #expect(apps.application == nil)
-    fixture.focused = plainApp
+    fixture.mac.focused = plainApp
     #expect(apps.poll() == nil)
-    fixture.focused = chrome
+    fixture.mac.focused = chrome
     #expect(apps.poll() == .app)
 }
 
@@ -37,9 +37,9 @@ import Testing
     let fixture = FocusFixture()
     var apps = fixture.appWatch
     _ = apps.poll()
-    fixture.focused = chrome
+    fixture.mac.focused = chrome
     _ = apps.poll()
-    #expect(fixture.tree.calls.isEmpty)
+    #expect(fixture.mac.calls.isEmpty)
 }
 
 @Test func firstWindowPollAndAnUnchangedWindowReportNothing() {
@@ -61,9 +61,9 @@ import Testing
     let fixture = FocusFixture()
     var windows = fixture.windowWatch
     _ = windows.poll(plainApp)
-    fixture.apps[plainApp.processIdentifier]!.focusedWindow = fixture.tree.window("Notes", children: [])
+    fixture.mac.apps[plainApp.processIdentifier]!.focusedWindow = fixture.mac.window("Notes", children: [])
     #expect(windows.poll(plainApp) == .window)
-    fixture.apps[plainApp.processIdentifier]!.focusedWindow = nil
+    fixture.mac.apps[plainApp.processIdentifier]!.focusedWindow = nil
     #expect(windows.poll(plainApp) == .window)
 }
 
@@ -84,7 +84,7 @@ import Testing
     #expect(windows.poll(plainApp) == nil)
     fixture.notes.hangs = []
     #expect(windows.poll(plainApp) == nil)
-    let app = fixture.apps[plainApp.processIdentifier]!
+    let app = fixture.mac.apps[plainApp.processIdentifier]!
     app.hangs = ["AXFocusedWindow"]
     #expect(windows.poll(plainApp) == nil)
     app.hangs = []
@@ -95,7 +95,7 @@ import Testing
     let fixture = FocusFixture()
     var windows = fixture.windowWatch
     _ = windows.poll(plainApp)
-    let browser = fixture.apps[chrome.processIdentifier]!
+    let browser = fixture.mac.apps[chrome.processIdentifier]!
     browser.hangs = ["AXFocusedWindow"]
     #expect(windows.poll(chrome) == nil)
     browser.hangs = []

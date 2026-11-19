@@ -36,6 +36,15 @@ git config core.hooksPath .githooks
 computer_history tests` must pass; the pre-commit hook runs both, and CI runs
 them plus the POC suite (`python -m unittest`) on pushes to `main`.
 
+Swift never runs in CI. Two local commands cover the capture agent, and the
+pre-commit hook runs both when a commit touches the agent, the spool contract,
+the Python spool adapter or the end-to-end test (see its README):
+
+```bash
+capture-agent/scripts/test.sh   # build the agent and run its Swift tests
+capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> status, in a temp folder
+```
+
 ## Rules every change keeps
 
 - Raw observations are immutable; signals are derived and rebuildable.

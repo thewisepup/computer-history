@@ -86,15 +86,3 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         return true
     }
 }
-
-extension WindowTextReader where Element == LiveAccessibilityElement {
-    /// Creates a reader over the live accessibility API.
-    public convenience init(settings: WindowTextSettings) {
-        self.init(
-            settings: settings,
-            applicationElement: LiveAccessibilityElement.application,
-            fileExists: { FileManager.default.fileExists(atPath: $0) },
-            now: { ProcessInfo.processInfo.systemUptime }
-        )
-    }
-}

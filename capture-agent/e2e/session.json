@@ -1,0 +1,79 @@
+{
+  "start": "2026-11-18T09:05:00.000Z",
+  "apps": {
+    "textedit": {
+      "name": "TextEdit",
+      "bundle_id": "com.apple.TextEdit",
+      "focused_window": "notes",
+      "windows": {
+        "notes": {"role": "AXWindow", "title": "Notes", "children": [
+          {"role": "AXStaticText", "value": "hello from the scripted session"},
+          {"role": "AXButton", "title": "OK", "children": [{"role": "AXStaticText", "value": "button label"}]},
+          {"role": "AXSecureTextField", "value": "hunter2"}
+        ]}
+      }
+    },
+    "chrome": {
+      "name": "Google Chrome",
+      "bundle_id": "com.google.Chrome",
+      "focused_window": "inbox",
+      "windows": {
+        "inbox": {"role": "AXWindow", "title": "Inbox", "children": [
+          {"role": "AXHeading", "title": "Inbox"},
+          {"role": "AXLink", "children": [{"role": "AXStaticText", "value": "https://github.com/thewisepup/computer-history/pulls"}]}
+        ]},
+        "docs": {"role": "AXWindow", "title": "Docs", "children": [
+          {"role": "AXTextArea", "value": "the design doc"}
+        ]}
+      }
+    },
+    "cursor": {
+      "name": "Cursor",
+      "bundle_id": "com.todesktop.230313mzl4w4u92",
+      "focused_window": "long",
+      "windows": {
+        "long": {"role": "AXWindow", "title": "long.txt — computer-history", "children": [
+          {"role": "AXStaticText", "value": "0123456789", "repeat": 6000}
+        ]}
+      }
+    },
+    "calculator": {
+      "name": "Calculator",
+      "bundle_id": "com.apple.calculator",
+      "focused_window": "main",
+      "windows": {
+        "main": {"role": "AXWindow", "title": "Calculator", "children": [
+          {"role": "AXStaticText", "value": "42"},
+          {"role": "AXStaticText", "value": "never read", "hangs": ["AXValue"]}
+        ]}
+      }
+    },
+    "onepassword": {
+      "name": "1Password",
+      "bundle_id": "com.1password.1password",
+      "focused_window": "vault",
+      "windows": {
+        "vault": {"role": "AXWindow", "title": "Vault", "children": [
+          {"role": "AXStaticText", "value": "a secret"}
+        ]}
+      }
+    }
+  },
+  "steps": [
+    {"at": 0, "focus": "textedit"},
+    {"at": 10, "focus": "chrome"},
+    {"at": 20, "set_title": {"app": "chrome", "window": "inbox", "title": "Pull requests"}},
+    {"at": 30, "focus_window": {"app": "chrome", "window": "docs"}},
+    {"at": 40, "focus": "cursor"},
+    {"at": 50, "focus": "calculator"},
+    {"at": 60, "focus": "onepassword"},
+    {"at": 70, "set_title": {"app": "onepassword", "window": "vault", "title": "Another item"}},
+    {"at": 100, "focus": "textedit"},
+    {"at": 110, "pause": true},
+    {"at": 115, "focus": "chrome"},
+    {"at": 170, "resume": true},
+    {"at": 180, "presence": {"locked": true}},
+    {"at": 240, "presence": {"locked": false}},
+    {"at": 250, "end": true}
+  ]
+}

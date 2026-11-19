@@ -22,13 +22,17 @@ Run these from `capture-agent/`.
 
 ```bash
 scripts/test.sh        # swift test, with the Swift Testing paths Command Line Tools need
+scripts/e2e.sh         # the end-to-end check: a scripted session through the spool into a temp database
 scripts/build.sh       # build, wrap in .build/ComputerHistoryAgent.app, sign, verify
 scripts/install.sh     # build, replace the installed app, register the login item, check it runs
 scripts/uninstall.sh   # unregister the login item, stop the agent, delete the app
 ```
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
-alone it cannot find the `Testing` module, so use `scripts/test.sh`.
+alone it cannot find the `Testing` module, so use `scripts/test.sh`. Swift
+never runs in CI; the pre-commit hook runs `scripts/test.sh` and
+`scripts/e2e.sh` when a commit touches this folder, `fixtures/spool/`,
+`computer_history/sources/ax_text/` or `tests/test_capture_e2e.py`.
 
 The installed binary takes the same commands directly:
 
@@ -186,6 +190,53 @@ written; `excluded` records still are, since they touch no window.
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
 that finds the spool held by another agent does not capture.
+
+## Scripted sessions and the end-to-end check
+
+Everything the capture loop asks of the Mac is one protocol, `Mac`: the
+clocks, presence, the Accessibility grant, the focused app and its
+accessibility tree. `LiveMac` answers from macOS; `ScriptedMac` answers from a
+script on a virtual clock, with scripted accessibility elements, so the real
+`CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
+`SpoolWriter` run unchanged on top of it. The unit tests use `ScriptedMac`
+too. `main.swift` is the only place that picks `LiveMac`.
+
+```bash
+COMPUTER_HISTORY_DB=/tmp/scratch/history.db .build/debug/computer-history-agent scripted-session e2e/session.json
+```
+
+`scripted-session <script.json>` plays a script against the folder and spool
+the environment names, then exits: no Accessibility grant, no login item, no
+real time. It refuses to run when the folder or the spool is in, or links
+into, `~/Library/Application Support/ComputerHistory/`, or when the folder
+already holds a `*.db` file, so it needs `COMPUTER_HISTORY_DB` (and
+`COMPUTER_HISTORY_SPOOL`, if set) to point into an empty scratch folder. It finishes the open spool file every virtual minute and at the
+end, and prints the capture counts and the accessibility calls each app got.
+
+A script is JSON: `start` (UTC ISO-8601 with milliseconds), `apps` by id (each
+with `name`, `bundle_id`, `focused_window` and `windows` by id), and `steps`
+in time order, each `at` seconds after the start with exactly one action:
+
+| Action | Effect |
+|---|---|
+| `"focus": "<app>"` | that app comes to the front |
+| `"focus_window": {"app": ..., "window": ...}` | the app's focused window changes |
+| `"set_title": {"app": ..., "window": ..., "title": ...}` | the window's title changes |
+| `"presence": {"idle_seconds": ..., "locked": ..., "asleep": ...}` | presence; missing keys are 0 or false |
+| `"pause": true`, `"resume": true` | creates or deletes `capture-paused`, as the commands do |
+| `"end": true` | finishes the open spool file and exits |
+| `"crash": true` | exits leaving `open.part` unfinished, as a crash would |
+
+A window is an element: `role`, and optionally `title`, `subrole`,
+`description`, `value` (repeated `repeat` times), `hangs` (attributes whose
+calls time out) and `children`.
+
+`scripts/e2e.sh` builds the agent and runs `tests/test_capture_e2e.py`. It
+plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
+`e2e/session.json`, then runs the real `computer-history ingest` twice and
+`status` against a temporary database, with a stand-in ActivityWatch that has
+no buckets, and checks the stored records and signals against the scripts.
+Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs
 
