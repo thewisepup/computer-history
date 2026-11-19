@@ -34,7 +34,7 @@ public final class WindowTextReader<Element: AccessibilityElement> {
     let applicationElement: (pid_t) -> Element
     let fileExists: (String) -> Bool
     let now: () -> TimeInterval
-    private var flagChecked: Set<pid_t> = []
+    private var flagChecked: Set<ProcessLaunch> = []
 
     public init(
         settings: WindowTextSettings,
@@ -56,10 +56,11 @@ public final class WindowTextReader<Element: AccessibilityElement> {
             now: now
         )
         let app = applicationElement(application.processIdentifier)
-        if !flagChecked.contains(application.processIdentifier) {
+        let launch = ProcessLaunch(application)
+        if !flagChecked.contains(launch) {
             let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, fileExists: fileExists)
             if !needsFlag || setAccessibilityFlags(on: app) {
-                flagChecked.insert(application.processIdentifier)
+                flagChecked.insert(launch)
             }
         }
         var title: String?
@@ -80,5 +81,18 @@ public final class WindowTextReader<Element: AccessibilityElement> {
             if case .timedOut = app.setTrue(flag) { return false }
         }
         return true
+    }
+}
+
+/// One launch of an app, so a process id reused by another app or a relaunch is not taken for the old process.
+private struct ProcessLaunch: Hashable {
+    let processIdentifier: pid_t
+    let bundleURL: URL?
+    let launchDate: Date?
+
+    init(_ application: FocusedApplication) {
+        processIdentifier = application.processIdentifier
+        bundleURL = application.bundleURL
+        launchDate = application.launchDate
     }
 }

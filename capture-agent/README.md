@@ -69,7 +69,7 @@ shell that sets them act on that other folder.
 | `denylist` | `[]` | bundle ids added to the built-in denylist |
 | `accessibility_flag_off_list` | `[]` | bundle ids that never get the accessibility flags |
 | `idle_threshold_seconds` | `180` | 10 to 86400 |
-| `capture_heartbeat_seconds` | `30` | 5 to 3600 |
+| `capture_heartbeat_seconds` | `30` | 5 to 60, so `status` can count on a record at least every minute |
 | `text_cap_bytes` | `50000` | whole number, 1000 to 10000000 |
 | `call_timeout_seconds` | `0.25` | 0.05 to 5 |
 | `window_timeout_seconds` | `2` | 0.1 to 60 |
@@ -152,7 +152,8 @@ bytes on a character boundary; the walk keeps counting the full length past
 the cap. Each accessibility call times out after 0.25s and the whole read
 after 2s; either ends the read with the text collected so far. Electron apps
 and Chromium browsers get `AXManualAccessibility` and
-`AXEnhancedUserInterface` set once per process, unless their bundle id is on
+`AXEnhancedUserInterface` set once per launch (process id, app bundle and
+launch time, so a reused process id gets them again), unless their bundle id is on
 the config's `accessibility_flag_off_list` (ignoring case). A flag call that
 times out does not end the read; the flags are tried again on the next read.
 
@@ -190,7 +191,7 @@ written; `excluded` records still are, since they touch no window.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
-that finds the spool held by another agent does not capture.
+that finds the spool held by another agent exits without capturing.
 
 ## Scripted sessions and the end-to-end check
 
@@ -276,8 +277,15 @@ when it started, so two finishes in the same millisecond, a leftover file
 finished at start, or a clock that steps back never produce a name that sorts
 out of order or replaces a file. The rename refuses to overwrite.
 
+Only the owner can read the spool: the folder is `0700` and `open.part`,
+the finished files and `agent.lock` are `0600`. On start the agent tightens a
+folder, lock file or leftover `open.part` that is more open than that.
+
 The agent holds `agent.lock` in the spool folder while it runs. A second
-agent started by hand cannot take the lock and writes nothing.
+agent cannot take the lock: it logs `spool failed to start at <folder>:
+another agent is writing to <folder>, exiting` and exits with status 1,
+having written nothing. launchd starts its own agent again, every 10 seconds
+or so, until the lock is free.
 
 Every record has every key, sorted, with `null` where a key does not apply:
 

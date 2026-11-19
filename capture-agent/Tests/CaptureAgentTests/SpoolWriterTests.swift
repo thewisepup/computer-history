@@ -121,3 +121,28 @@ import Testing
     #expect(throws: SpoolWriter.InUse.self) { try spool.writer().start() }
     #expect(try writer.finish()?.lastPathComponent == "20261118T090000.000Z.jsonl")
 }
+
+@Test func theSpoolIsReadableByItsOwnerOnly() throws {
+    let spool = TempSpool()
+    let writer = spool.writer()
+    try writer.append(fixtureRecords[0])
+    #expect(try spool.mode(nil) == 0o700)
+    #expect(try spool.mode(SpoolWriter.lockFileName) == 0o600)
+    #expect(try spool.mode(SpoolWriter.openFileName) == 0o600)
+    let finished = try #require(try writer.finish())
+    #expect(try spool.mode(finished.lastPathComponent) == 0o600)
+}
+
+@Test func startTightensAnExistingFolderAndOpenFile() throws {
+    let spool = TempSpool()
+    try spool.writeOpenFile(try line(fixtureRecords[0]) + "\n")
+    let manager = FileManager.default
+    try manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: spool.directory.path)
+    try manager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: spool.directory.appendingPathComponent(SpoolWriter.openFileName).path)
+    let lock = spool.directory.appendingPathComponent(SpoolWriter.lockFileName).path
+    manager.createFile(atPath: lock, contents: nil, attributes: [.posixPermissions: 0o644])
+    let leftover = try #require(try spool.writer().start())
+    #expect(try spool.mode(nil) == 0o700)
+    #expect(try spool.mode(SpoolWriter.lockFileName) == 0o600)
+    #expect(try spool.mode(leftover.lastPathComponent) == 0o600)
+}

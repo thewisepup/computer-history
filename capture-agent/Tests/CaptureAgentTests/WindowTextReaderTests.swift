@@ -173,6 +173,34 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     #expect(relaunched.flagsSet == ["AXManualAccessibility", "AXEnhancedUserInterface"])
 }
 
+@Test func setsTheFlagAgainWhenAProcessIDIsReusedByAnotherLaunch() {
+    let mac = ScriptedMac()
+    let elements = (0..<3).map { _ in mac.app(window: mac.window("Tab", children: [])) }
+    var current = elements[0]
+    let reader = WindowTextReader(
+        settings: WindowTextSettings(), applicationElement: { _ in current }, fileExists: { _ in true }, now: { mac.clock }
+    )
+    let launched = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
+        launchDate: Date(timeIntervalSince1970: 1)
+    )
+    let relaunched = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
+        launchDate: Date(timeIntervalSince1970: 2)
+    )
+    let otherApp = FocusedApplication(
+        processIdentifier: 200, bundleIdentifier: cursor.bundleIdentifier, bundleURL: cursor.bundleURL, name: cursor.name,
+        launchDate: Date(timeIntervalSince1970: 2)
+    )
+    _ = reader.read(launched)
+    _ = reader.read(launched)
+    current = elements[1]
+    _ = reader.read(relaunched)
+    current = elements[2]
+    _ = reader.read(otherApp)
+    #expect(elements.map(\.flagsSet) == Array(repeating: ["AXManualAccessibility", "AXEnhancedUserInterface"], count: 3))
+}
+
 @Test func setsTheFlagOnElectronApps() {
     let mac = ScriptedMac()
     let app = mac.app(window: nil)

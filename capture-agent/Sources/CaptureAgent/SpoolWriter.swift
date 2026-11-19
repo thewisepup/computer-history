@@ -6,6 +6,8 @@ public final class SpoolWriter: @unchecked Sendable {
     public static let openFileName = "open.part"
     public static let lockFileName = "agent.lock"
     public static let finishedSuffix = ".jsonl"
+    static let folderMode: mode_t = 0o700
+    static let fileMode: mode_t = 0o600
 
     /// Another agent holds the spool's lock.
     public struct InUse: Error, CustomStringConvertible {
@@ -75,11 +77,18 @@ public final class SpoolWriter: @unchecked Sendable {
     private func startIfNeeded() throws {
         guard lockFile < 0 else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard chmod(directory.path, Self.folderMode) == 0 else { throw posixError() }
         let lockPath = directory.appendingPathComponent(Self.lockFileName).path
-        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, Self.fileMode)
         guard descriptor >= 0 else { throw posixError() }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
             let error: any Error = errno == EWOULDBLOCK ? InUse(directory: directory) : posixError()
+            close(descriptor)
+            throw error
+        }
+        guard fchmod(descriptor, Self.fileMode) == 0,
+              chmod(openFile.path, Self.fileMode) == 0 || errno == ENOENT else {
+            let error = posixError()
             close(descriptor)
             throw error
         }
@@ -94,7 +103,7 @@ public final class SpoolWriter: @unchecked Sendable {
     private func openHandle() throws -> FileHandle {
         if let handle { return handle }
         if !FileManager.default.fileExists(atPath: openFile.path) {
-            FileManager.default.createFile(atPath: openFile.path, contents: nil)
+            FileManager.default.createFile(atPath: openFile.path, contents: nil, attributes: [.posixPermissions: Self.fileMode])
         }
         let file = try FileHandle(forUpdating: openFile)
         handle = file

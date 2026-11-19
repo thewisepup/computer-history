@@ -90,6 +90,12 @@ final class TempSpool {
         return contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 
+    func mode(_ name: String?) throws -> Int {
+        let path = name.map { directory.appendingPathComponent($0).path } ?? directory.path
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        return (attributes[.posixPermissions] as! NSNumber).intValue & 0o777
+    }
+
     func writeOpenFile(_ contents: String) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data(contents.utf8).write(to: directory.appendingPathComponent(SpoolWriter.openFileName))

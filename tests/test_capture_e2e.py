@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -61,6 +62,7 @@ class Session:
     crash_run: subprocess.CompletedProcess[str]
     run: subprocess.CompletedProcess[str]
     spool_lines: list[str]
+    modes: dict[str, int]
     ingests: list[subprocess.CompletedProcess[str]]
     row_counts: list[int]
     status: subprocess.CompletedProcess[str]
@@ -145,6 +147,10 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         run = _agent("session.json", folder)
         finished = sorted(spool.glob("*.jsonl"))
         spool_lines = [line for path in finished for line in path.read_text("utf-8").splitlines()]
+        modes = {
+            path.name: stat.S_IMODE(path.stat().st_mode)
+            for path in (spool, spool / "agent.lock", *finished)
+        }
         kept = folder / "finished-copy"
         kept.mkdir()
         for path in finished:
@@ -160,7 +166,9 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         status = _cli("status", db=db, aw_url=aw_url)
     finally:
         server.shutdown()
-    yield Session(folder, spool, db, crash_run, run, spool_lines, ingests, row_counts, status)
+    yield Session(
+        folder, spool, db, crash_run, run, spool_lines, modes, ingests, row_counts, status
+    )
 
 
 def test_the_agent_writes_every_kind_and_trigger_the_scripts_call_for(session: Session) -> None:
@@ -180,6 +188,13 @@ def test_every_record_has_exactly_the_contract_fixtures_keys_and_version(session
 def test_raw_payloads_are_the_spool_lines_verbatim(session: Session) -> None:
     assert len(session.spool_lines) == len(EXPECTED)
     assert sorted(session.payloads()) == sorted(session.spool_lines)
+
+
+def test_the_spool_and_its_files_are_readable_by_their_owner_only(session: Session) -> None:
+    files = dict(session.modes)
+    assert files.pop("spool") == 0o700
+    assert files
+    assert set(files.values()) == {0o600}
 
 
 def test_captures_become_signals_with_the_scripted_text(session: Session) -> None:

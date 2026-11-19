@@ -22,7 +22,7 @@ case .run:
     let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
-    AgentLoop(
+    exit(AgentLoop(
         report: settings.report,
         isPaused: { pause.isPaused },
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
@@ -34,7 +34,7 @@ case .run:
             )
         },
         log: log
-    ).run()
+    ).run())
 case .install:
     finish(installLoginItem(loginItem))
 case .uninstall:
