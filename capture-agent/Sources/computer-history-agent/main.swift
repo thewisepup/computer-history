@@ -17,10 +17,19 @@ let loginItem = SMAppService.agent(plistName: AgentIdentity.launchAgentPlistName
 switch AgentCommand(arguments: Array(CommandLine.arguments.dropFirst())) {
 case .run:
     let logger = Logger(subsystem: AgentIdentity.bundleIdentifier, category: "agent")
+    let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
+    let spool = SpoolWriter(directory: SpoolWriter.defaultDirectory, now: Date.init)
+    let counts = CaptureCounts()
     AgentLoop(
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
-        spool: SpoolWriter(directory: SpoolWriter.defaultDirectory, now: Date.init),
-        log: { logger.notice("\($0, privacy: .public)") }
+        spool: spool,
+        counts: counts,
+        startCapturing: {
+            startCaptureThread(
+                settings: CaptureSettings(), windowText: WindowTextSettings(), spool: spool, counts: counts, log: log
+            )
+        },
+        log: log
     ).run()
 case .install:
     finish(installLoginItem(loginItem))

@@ -7,21 +7,27 @@ public struct AgentLoop: Sendable {
 
     let accessibilityTrusted: @Sendable (_ prompt: Bool) -> Bool
     let spool: SpoolWriter
+    let counts: CaptureCounts
+    let startCapturing: @Sendable () -> Void
     let log: @Sendable (String) -> Void
 
     public init(
         accessibilityTrusted: @escaping @Sendable (_ prompt: Bool) -> Bool,
         spool: SpoolWriter,
+        counts: CaptureCounts,
+        startCapturing: @escaping @Sendable () -> Void,
         log: @escaping @Sendable (String) -> Void
     ) {
         self.accessibilityTrusted = accessibilityTrusted
         self.spool = spool
+        self.counts = counts
+        self.startCapturing = startCapturing
         self.log = log
     }
 
-    /// Starts once, then runs the heartbeat and the spool finish on the main run loop forever.
+    /// Starts once and, unless another agent holds the spool, starts capturing; then runs the heartbeat and the spool finish on the main run loop forever.
     public func run() -> Never {
-        start()
+        if start() { startCapturing() }
         Timer.scheduledTimer(withTimeInterval: Self.heartbeatInterval, repeats: true) { _ in
             heartbeat()
         }
@@ -32,8 +38,9 @@ public struct AgentLoop: Sendable {
         fatalError("the main run loop returned")
     }
 
-    /// Logs whether Accessibility is granted and asks macOS to prompt for it if not, then readies the spool.
-    func start() {
+    /// Logs the Accessibility state, prompting if it is missing, readies the spool, and returns false if another agent holds it.
+    @discardableResult
+    func start() -> Bool {
         if accessibilityTrusted(true) {
             log("started, accessibility granted")
         } else {
@@ -43,9 +50,13 @@ public struct AgentLoop: Sendable {
             let leftover = try spool.start()
             log("spool ready at \(spool.directory.path)")
             if let leftover { log("spool finished leftover file \(leftover.lastPathComponent)") }
+        } catch let error as SpoolWriter.InUse {
+            log("spool failed to start at \(spool.directory.path): \(error), not capturing")
+            return false
         } catch {
             log("spool failed to start at \(spool.directory.path): \(error)")
         }
+        return true
     }
 
     /// Finishes the open spool file if it holds any records, logging any failure.
@@ -57,8 +68,8 @@ public struct AgentLoop: Sendable {
         }
     }
 
-    /// Logs one heartbeat line with the current Accessibility state, without prompting.
+    /// Logs one heartbeat line with the Accessibility state, without prompting, and the capture counts since the last one.
     func heartbeat() {
-        log("heartbeat, accessibility \(accessibilityTrusted(false) ? "granted" : "missing")")
+        log("heartbeat, accessibility \(accessibilityTrusted(false) ? "granted" : "missing"), last minute: \(counts.take())")
     }
 }

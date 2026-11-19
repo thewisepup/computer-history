@@ -1,8 +1,8 @@
 # Capture agent
 
-The Swift agent that macOS starts at login. For now it checks its
-Accessibility grant on start, readies the spool, and logs a heartbeat every
-minute. Nothing writes captures yet.
+The Swift agent that macOS starts at login. It checks its Accessibility grant
+on start, readies the spool, then captures the focused window's text into the
+spool whenever focus changes and every 30 seconds while the user is at the Mac.
 
 | | |
 |---|---|
@@ -47,7 +47,7 @@ returns a `WindowText`: the window title, the content text, the full text
 length in UTF-8 bytes, whether the text was cut off or the read timed out, and
 the SHA-256 of the kept text. `focusedApplication(callTimeout:)` asks the
 system-wide accessibility element for the focused app and falls back to
-`NSWorkspace`. Nothing calls the reader yet.
+`NSWorkspace`.
 
 | Role | Text taken |
 |---|---|
@@ -57,6 +57,11 @@ system-wide accessibility element for the focused app and falls back to
 | `AXSecureTextField` (role or subrole) | nothing, never read past its role |
 | anything else (`AXWindow`, `AXGroup`, `AXRow`, ...) | nothing, children read |
 
+The walk reads each element once, so a tree that links back to an ancestor
+ends, and never descends into an `AXApplication` element, which some apps
+return as their focused window while in the background or behind the lock
+screen.
+
 Pieces are joined with newlines and cut at 50,000 bytes on a character
 boundary; the walk keeps counting the full length past the cap. Each
 accessibility call times out after 0.25s and the whole read after 2s; either
@@ -65,6 +70,40 @@ browsers get `AXManualAccessibility` and `AXEnhancedUserInterface` set once
 per process, unless their bundle id is on the off-list in
 `WindowTextSettings`. A flag call that times out does not end the read; the
 flags are tried again on the next read.
+
+## Capturing
+
+A capture thread with an 8 MB stack ticks every half second. Each tick checks
+presence, polls the focused app, its focused window and that window's title
+through accessibility, and writes a `capture` record when one is due. The main
+thread keeps the log heartbeat, the spool finish and the sleep and wake
+notifications, so a slow read never delays them. The spool writer is shared by
+both threads behind its lock.
+
+| Trigger | When |
+|---|---|
+| `app` | the focused app changed |
+| `window` | the focused window within the app changed |
+| `title` | the focused window's title changed: a browser tab or editor file switch |
+| `heartbeat` | 30 seconds passed with no capture, and once on start and on resuming |
+
+A change waits one second to settle; further changes restart the wait, so a
+burst of switches yields one capture of the final state, labelled with the
+strongest trigger in the burst (`app`, then `window`, then `title`). A title
+that never settles is still captured 30 seconds after it first changed. Captures
+are at least one second apart, and every capture restarts the 30-second
+heartbeat.
+
+Nothing is captured while the user is idle (more than 180 seconds since the
+last keyboard or mouse input, from `CGEventSource`), while the screen is locked
+or the session is switched away (`CGSessionCopyCurrentDictionary`), or between
+`willSleep` and `didWake` (or the first input after `willSleep`, should
+`didWake` never arrive). Capture resumes on its own, one second after the
+last reason clears. Without the Accessibility grant nothing is written.
+
+`CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
+minimum gap and poll interval. An agent that finds the spool held by another
+agent does not capture.
 
 ## Logs
 
@@ -77,9 +116,13 @@ launchctl print "gui/$(id -u)/io.github.thewisepup.computer-history.agent"
 ```
 
 Expected lines: `started, accessibility granted` (or `missing, asked macOS to
-prompt for it`), `spool ready at <folder>`, then `heartbeat, accessibility
-granted` every minute. After a crash, start also logs `spool finished leftover
-file <name>`.
+prompt for it`), `spool ready at <folder>`, then every minute
+`heartbeat, accessibility granted, last minute: 12 captures written, 1 timed
+out, 0 cut off, slowest read 0.42s`, with `, 2 failed to write (last: <error>)`
+appended when writes fail. `silent: idle`, `silent: locked, asleep` and
+`capturing again` mark silence starting, changing and ending. The log never
+holds window titles or text. After a crash, start also logs `spool finished
+leftover file <name>`.
 
 ## Spool
 
