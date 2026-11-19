@@ -23,19 +23,26 @@ M6 replaces it.
 
 ### M2 — Capture agent: AX text
 
+Remaining before ✅: a full restart of the Mac and real sizes after a day of
+use ([#12](https://github.com/thewisepup/computer-history/issues/12)).
+
 - [ ] Swift CLI builds to a stable path, signed and started by its own
       LaunchAgent; Accessibility permission granted and surviving a rebuild
-      and a restart.
-- [ ] Captures on app/window/title switch + 30s heartbeat; silent when
+      and a restart. *(Rebuilds and a logout/login verified 2026-11-18; a
+      full restart is not.)*
+- [x] Captures on app/window/title switch + 30s heartbeat; silent when
       locked or idle (native idle detection).
-- [ ] Content-role text only, 50 KB cap with cut-offs recorded, full text +
+- [x] Content-role text only, 50 KB cap with cut-offs recorded, full text +
       hash on every capture, `kAXSecureTextField` always skipped.
-- [ ] Denylisted apps and pause/resume leave labelled records, no text.
-- [ ] Per-call timeout verified: a hung app costs one capture, not the agent.
-- [ ] Finished-file JSONL spool (one-minute files); backend adapter ingests
+- [x] Denylisted apps and pause/resume leave labelled records, no text.
+- [x] Per-call timeout verified: a hung app costs one capture, not the agent.
+- [x] Finished-file JSONL spool (one-minute files); backend adapter ingests
       finished files into observations + signals, then deletes them.
-- [ ] `status` reports the agent: last capture, liveness, spool backlog.
-- [ ] Kill the backend for a day → spool accumulates, catch-up ingests all.
+- [x] `status` reports the agent: last capture, liveness, spool backlog.
+- [x] Kill the backend for a day → spool accumulates, catch-up ingests all.
+      *(17 hours on 2026-11-18/19, a small backlog since the Mac was mostly
+      locked; a full day's backlog is covered by the automated test and the
+      TLA+ model in `formal/`.)*
 
 ### M3 — Capture agent: screenshots + OCR
 
