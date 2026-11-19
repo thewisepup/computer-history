@@ -10,9 +10,9 @@ summaries.
 
 - `docs/DESIGN.md` — the v1 spec: data model, ingestion, milestones (§9).
   `docs/PRD.md` — product requirements.
-- `computer_history/` — the rewrite (M1 done; next is M2). Each package's
-  `__init__.py` opens with its flow diagram; `computer_history/cli/README.md`
-  shows every command with examples.
+- `computer_history/` — the rewrite. Each package's `__init__.py` opens with
+  its flow diagram; `computer_history/cli/README.md` shows every command with
+  examples.
 - `capture-agent/` — the signed Swift capture agent macOS starts at login;
   its README has the build, install, test and log commands, and the spool
   record format.
