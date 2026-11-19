@@ -1,26 +1,33 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from computer_history.sources.activitywatch import (
     AfkSpan,
+    AppSpan,
     AWApi,
     newest_afk_spans,
+    newest_app_spans,
     stored_afk_spans,
+    stored_app_spans,
 )
 from computer_history.sources.ax_text import (
+    APP_TOLERANCE,
     AX_TEXT_SOURCE,
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    AppAgreement,
     Coverage,
     DayCounts,
     SpoolBacklog,
     SpoolError,
+    app_agreement,
     capture_coverage,
     day_counts,
     liveness,
@@ -47,6 +54,7 @@ class CaptureHealth:
     paused_since: datetime | None = None
     today: DayCounts = DayCounts()
     coverage: Coverage | None = None
+    agreement: AppAgreement | None = None
 
 
 def capture_health(
@@ -57,12 +65,13 @@ def capture_health(
     *,
     now: datetime,
     window: timedelta,
+    hostname: str,
     min_gap_seconds: float = 0,
     day_start: datetime | None = None,
 ) -> CaptureHealth:
-    """Report on the agent from its stored records, its spool folder and aw-afk, as of now.
+    """Report on the agent from its stored records, its spool, aw-afk and aw-window, as of now.
 
-    With a client, the newest AFK events in ActivityWatch count too, even those not stored yet.
+    Only this host's window buckets count, and with a client their newest events and AFK's do too.
     """
     now = to_utc(now)
     try:
@@ -86,10 +95,19 @@ def capture_health(
     records = stored_records(conn, read_from, now)
     before = newest_stored(conn, until=read_from)
     paused = newest[1] == PAUSED_KIND
-    afk = _afk_spans(conn, client, min(read_from, newest[0]), now)
+    buckets = _buckets(client)
+    afk = _afk_spans(conn, client, buckets, min(read_from, newest[0]), now)
     active = [(s.start, s.end) for s in afk if not s.afk]
-    coverage = None
+    coverage = agreement = None
     if start < end:
+        agreement = app_agreement(
+            records,
+            _app_spans(
+                conn, client, buckets, start - APP_TOLERANCE, end + APP_TOLERANCE, hostname
+            ),
+            start=start,
+            end=end,
+        )
         coverage = capture_coverage(
             records,
             active=active,
@@ -109,6 +127,7 @@ def capture_health(
         paused_since=newest[0] if paused else None,
         today=day_counts(records, day_start),
         coverage=coverage,
+        agreement=agreement,
     )
 
 
@@ -122,13 +141,43 @@ def _last_capture(
     return max(times, default=None)
 
 
+def _buckets(client: AWApi | None) -> Mapping[str, Any] | None:
+    if client is None:
+        return None
+    try:
+        return client.get_buckets()
+    except SourceUnavailable:
+        return None
+
+
 def _afk_spans(
-    conn: sqlite3.Connection, client: AWApi | None, start: datetime, end: datetime
+    conn: sqlite3.Connection,
+    client: AWApi | None,
+    buckets: Mapping[str, Any] | None,
+    start: datetime,
+    end: datetime,
 ) -> list[AfkSpan]:
     spans = stored_afk_spans(conn, start, end)
-    if client is not None:
+    if client is not None and buckets is not None:
         try:
-            spans.extend(newest_afk_spans(client))
+            spans.extend(newest_afk_spans(client, buckets))
+        except SourceUnavailable:
+            pass
+    return spans
+
+
+def _app_spans(
+    conn: sqlite3.Connection,
+    client: AWApi | None,
+    buckets: Mapping[str, Any] | None,
+    start: datetime,
+    end: datetime,
+    hostname: str,
+) -> list[AppSpan]:
+    spans = stored_app_spans(conn, start, end, hostname=hostname)
+    if client is not None and buckets is not None:
+        try:
+            spans.extend(newest_app_spans(client, buckets, hostname=hostname))
         except SourceUnavailable:
             pass
     return spans

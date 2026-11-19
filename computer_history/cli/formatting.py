@@ -41,6 +41,11 @@ def when(value: datetime | None) -> str:
     return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
+def app_name(value: str | None) -> str:
+    """An app name with unprintable characters dropped, or a placeholder when missing."""
+    return "(no name)" if value is None else "".join(c for c in value if c.isprintable())
+
+
 def db_size(path: Path) -> str:
     size = human_size(path.stat().st_size)
     wal = path.with_name(path.name + "-wal")

@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
-from computer_history.sources.activitywatch.discovery import AWSource
+from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
 from computer_history.store import Observation, to_utc
 
 log = logging.getLogger(__name__)
@@ -154,6 +155,22 @@ def pull_source(
         held_back=sum(pull.held_back for pull in pulls),
         frontier=min((pull.frontier for pull in pulls), default=None),
     )
+
+
+def newest_events(
+    client: AWApi, source_name: str, buckets: Mapping[str, Any]
+) -> list[tuple[str, Any]]:
+    """The newest raw event of every listed bucket feeding the source, with its bucket id.
+
+    It includes an event still growing.
+    """
+    return [
+        (bucket_id, raw)
+        for source in discover_sources(client, buckets=buckets)
+        if source.name == source_name
+        for bucket_id in source.bucket_ids
+        for raw in client.get_events(bucket_id, limit=1)
+    ]
 
 
 def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:

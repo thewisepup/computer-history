@@ -85,6 +85,10 @@ Capture agent:
   spool         2 finished files waiting (oldest 1m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
   today         812 captures stored, 14 excluded, 3 cut off, 1 timed out
   paused        no
+  app agreement 1,602 of 1,615 captures match aw-window (13 differ, 41 without aw-window data)
+                5 x Discord -> Google Chrome
+                3 x Google Chrome -> Discord
+                2 x Zoom -> Discord
 
 Rows:
   ...
@@ -123,6 +127,20 @@ The capture agent section:
 - **paused**: `yes, since ...` when the newest record, stored or still in the
   spool, is `paused`: a `resumed`, a capture or an excluded record ends a
   pause.
+- **app agreement**: each stored capture in the `ax-text` coverage range,
+  checked against the app `aw-window` shows in front at its capture time. A
+  capture matches when an `aw-window` span within 2s of it (the window
+  watcher polls once a second) names the same app, ignoring case; otherwise
+  it differs from the nearest such span. A capture with no `aw-window` span
+  within 2s is counted apart, never as a match. When no capture can be
+  judged, the line reads `cannot be judged: no aw-window data from this
+  machine`, or `... near any capture` when there are spans but none within
+  2s of a capture. The three most common differing `captured -> aw-window`
+  pairs follow. Only app names are shown, never titles or text. Only this
+  machine's window buckets count, the ones ActivityWatch names
+  `<watcher>_<this hostname>`, so a bucket synced from another machine is
+  ignored. `aw-window` includes the newest window event from ActivityWatch,
+  when it is reachable, even before it is stored.
 
 Before the agent has stored anything, the section is one line plus the spool:
 

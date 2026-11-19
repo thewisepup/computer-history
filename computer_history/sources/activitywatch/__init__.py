@@ -7,7 +7,8 @@
       discovery.py   buckets -> streams (aw-window, aw-afk, aw-web)
           |
       pull.py        fetch each bucket's events, keep the settled ones as raw observations
-          |          (a source's frontier is the earliest bucket frontier)
+          |          (a source's frontier is the earliest bucket frontier), or fetch
+          |          each bucket's newest event, for status
       adapter.py     ActivityWatch: the adapter the ingest runner drives
                      position.py: the frontier is the position, rewound on resume
                      history.py: where a stream's history begins, for backfill
@@ -15,6 +16,8 @@
                      (app, domain, url, title)
       afk.py         attended time for status: stored aw-afk spans plus each AFK
                      bucket's newest, still-growing event
+      frontmost.py   the app in front on this host, for status: its stored aw-window
+                     spans plus each of its window buckets' newest, still-growing event
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.
@@ -38,6 +41,11 @@ from computer_history.sources.activitywatch.discovery import (
     WINDOW_SOURCE,
     AWSource,
     discover_sources,
+)
+from computer_history.sources.activitywatch.frontmost import (
+    AppSpan,
+    newest_app_spans,
+    stored_app_spans,
 )
 from computer_history.sources.activitywatch.normalize import PROJECTORS, project_signal
 from computer_history.sources.activitywatch.position import (
@@ -76,6 +84,7 @@ __all__ = [
     "AWSource",
     "ActivityWatch",
     "AfkSpan",
+    "AppSpan",
     "BucketPull",
     "SourcePull",
     "clean_text",
@@ -83,10 +92,12 @@ __all__ = [
     "discover_sources",
     "extract_domain",
     "newest_afk_spans",
+    "newest_app_spans",
     "position_at",
     "project_signal",
     "pull_bucket",
     "pull_source",
     "resume_start",
     "stored_afk_spans",
+    "stored_app_spans",
 ]

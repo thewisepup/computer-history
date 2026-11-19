@@ -4,9 +4,10 @@ import argparse
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from socket import gethostname
 
 from computer_history.cli.db import outdated_note, store_unavailable
-from computer_history.cli.formatting import ago, db_size, duration, lag, when
+from computer_history.cli.formatting import ago, app_name, db_size, duration, lag, when
 from computer_history.sources import (
     AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
@@ -32,6 +33,7 @@ from computer_history.store import (
 STATUS_WINDOW = timedelta(hours=24)
 MIN_GAP_SECONDS = 300
 MAX_GAPS_SHOWN = 10
+MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
@@ -80,6 +82,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             client if aw_error is None else None,
             now=now,
             window=STATUS_WINDOW,
+            hostname=gethostname(),
             min_gap_seconds=MIN_GAP_SECONDS,
         )
         print()
@@ -196,6 +199,29 @@ def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None
     )
     paused = "no" if health.paused_since is None else f"yes, since {ago(health.paused_since, now)}"
     print(f"  paused        {paused}")
+    _print_agreement(health)
+
+
+def _print_agreement(health: CaptureHealth) -> None:
+    agreement = health.agreement
+    if agreement is None:
+        print("  app agreement no captures to check yet")
+        return
+    judged = agreement.matched + agreement.differ
+    if judged == 0:
+        if not agreement.unjudged:
+            print("  app agreement no captures to check")
+        elif agreement.spans:
+            print("  app agreement cannot be judged: no aw-window data near any capture")
+        else:
+            print("  app agreement cannot be judged: no aw-window data from this machine")
+        return
+    print(
+        f"  app agreement {agreement.matched:,} of {judged:,} captures match aw-window"
+        f" ({agreement.differ:,} differ, {agreement.unjudged:,} without aw-window data)"
+    )
+    for captured, seen, n in agreement.pairs[:MAX_APP_PAIRS_SHOWN]:
+        print(f"                {n:,} x {app_name(captured)} -> {app_name(seen)}")
 
 
 def _alive(health: CaptureHealth, now: datetime) -> str:
