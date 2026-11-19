@@ -47,7 +47,11 @@ final class FocusFixture {
     }
 
     var appWatch: AppWatch {
-        AppWatch(focusedApplication: mac.focusedApplication)
+        AppWatch(
+            focusedApplication: mac.focusedApplication,
+            frontmostApplication: mac.frontmostApplication,
+            denylist: Denylist()
+        )
     }
 
     var windowWatch: WindowWatch<ScriptedElement> {

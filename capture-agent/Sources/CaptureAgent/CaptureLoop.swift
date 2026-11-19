@@ -16,7 +16,11 @@ final class CaptureLoop<M: Mac> {
             settings: settings.capture,
             denylist: settings.denylist,
             paused: settings.pause.isPaused,
-            apps: AppWatch(focusedApplication: mac.focusedApplication),
+            apps: AppWatch(
+                focusedApplication: mac.focusedApplication,
+                frontmostApplication: mac.frontmostApplication,
+                denylist: settings.denylist
+            ),
             windows: WindowWatch(applicationElement: mac.applicationElement),
             start: mac.uptime()
         )

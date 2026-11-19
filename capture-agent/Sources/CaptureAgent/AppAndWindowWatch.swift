@@ -13,19 +13,27 @@ enum FocusChange: Equatable {
     }
 }
 
-/// Notices when the focused app changes, asking only which app is focused and never touching its windows.
+/// Notices when the app to judge changes, asking only which apps are focused and frontmost and never touching their windows.
 struct AppWatch {
     let focusedApplication: () -> FocusedApplication?
+    let frontmostApplication: () -> FocusedApplication?
+    let denylist: Denylist
     private(set) var application: FocusedApplication?
     private var lastApplication: FocusedApplication?
 
-    init(focusedApplication: @escaping () -> FocusedApplication?) {
+    init(
+        focusedApplication: @escaping () -> FocusedApplication?,
+        frontmostApplication: @escaping () -> FocusedApplication?,
+        denylist: Denylist
+    ) {
         self.focusedApplication = focusedApplication
+        self.frontmostApplication = frontmostApplication
+        self.denylist = denylist
     }
 
-    /// Reads the focused app and returns `app` if it differs from the last known one, or nil on the first poll, no change or no app.
+    /// Reads the focused app, or the frontmost one when that is denylisted, and returns `app` if it differs from the last known one, or nil on the first poll, no change or no app.
     mutating func poll() -> FocusChange? {
-        application = focusedApplication()
+        application = frontmostApplication().flatMap { denylist.contains($0) ? $0 : nil } ?? focusedApplication()
         guard let current = application else { return nil }
         defer { lastApplication = current }
         guard let previous = lastApplication else { return nil }
