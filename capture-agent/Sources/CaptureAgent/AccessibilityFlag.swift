@@ -1,0 +1,26 @@
+import Foundation
+
+let accessibilityFlags = ["AXManualAccessibility", "AXEnhancedUserInterface"]
+
+let chromiumBrowsers: Set<String> = [
+    "com.google.Chrome",
+    "com.google.Chrome.beta",
+    "com.google.Chrome.dev",
+    "com.google.Chrome.canary",
+    "org.chromium.Chromium",
+    "com.brave.Browser",
+    "com.microsoft.edgemac",
+    "company.thebrowser.Browser",
+    "com.vivaldi.Vivaldi",
+    "com.operasoftware.Opera",
+]
+
+/// Whether an app should get the accessibility flags: Chromium browsers and Electron apps, unless off-listed.
+func needsAccessibilityFlag(_ application: FocusedApplication, offList: Set<String>, fileExists: (String) -> Bool) -> Bool {
+    if let id = application.bundleIdentifier {
+        if offList.contains(id) { return false }
+        if chromiumBrowsers.contains(id) { return true }
+    }
+    guard let bundle = application.bundleURL else { return false }
+    return fileExists(bundle.appending(path: "Contents/Frameworks/Electron Framework.framework").path)
+}
