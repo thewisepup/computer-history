@@ -82,10 +82,14 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), then one adapter per source:
-                # activitywatch/, ax_text, screenshots
+                # activitywatch/, ax_text/, screenshots
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for backfill)
+                # ax_text/: paths (where the spool is), spool (finished files:
+                # list, read, remove, set aside), record (one line checked
+                # against format v1), normalize (its projector), adapter
+                # (CaptureSpool: one file per pull)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -288,11 +292,13 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 
 - **Progress is opaque and moves only with a batch.** `position` is whatever
   the source needs to resume (ActivityWatch: a UTC timestamp; the AX-text
-  spool: file + offset). Only `insert_observations` writes it, in the same
-  transaction as the batch, either advancing it (incremental ingest) or
-  setting it only if the source has none (backfill's last chunk). Status's
-  freshness and gap window and backfill planning read `settled_until`;
-  nothing outside the source's adapter decodes `position`.
+  spool: the time of the latest stored capture, also its `settled_until`,
+  since finished files are read oldest first and removed once stored). Only
+  `insert_observations` writes it, in the same transaction as the batch,
+  either advancing it (incremental ingest) or setting it only if the source
+  has none (backfill's last chunk). Status's freshness and gap window and
+  backfill planning read `settled_until`; nothing outside the source's
+  adapter decodes `position`.
 
 - Two separate frontiers on purpose: ingestion and classified time move
   independently; a blocks-derived watermark would re-classify fully-AFK
@@ -311,9 +317,12 @@ Only adapters know payload dialects; everything downstream reads `signals`.
   streams it feeds (ActivityWatch: `aw-window`, `aw-afk`, `aw-web`; the
   AX-text spool: `ax-text`), and `pull_after(stream, position, now=)` returns
   a `Pull`: settled observations, a held-back count, the new `position`
-  (`None` leaves progress as it is) and `settled_until`. A *stream* is what
-  the store calls a source. Failures raise `SourceUnavailable` (`AWError` is
-  one).
+  (`None` leaves progress as it is) and `settled_until`, plus three fields a
+  file-based source needs: `rejected` (records it could not use and skipped),
+  `more` (pull again in this poll) and `after_commit` (a step `commit_pull`
+  runs once the batch is committed; the spool removes the file there). A
+  *stream* is what the store calls a source. Failures raise
+  `SourceUnavailable` (`AWError` and the spool's `SpoolError` are ones).
 - Every adapter names `projectors`: for each stream it can ever feed (not only
   the ones it feeds now), a function from a stored payload to its `Signal`, or
   `None` for no signal (AFK). An adapter keeps it on the class, so
@@ -336,10 +345,11 @@ Only adapters know payload dialects; everything downstream reads `signals`.
   `history_before` (planning facts) and `pull_range(stream, start, end, now=)`.
   Sources with nothing to backfill (the spool) implement only `Source`.
 - The runner is source-agnostic. `poll(conn, sources)` (`sources/runner.py`)
-  reads every stream of every source, one commit each; an unavailable source
-  skips the rest of its streams and others continue; a busy database ends
-  the cycle; other database errors propagate; two sources feeding one stream
-  are refused. `watch` repeats it every 60s (injected clock for `now`,
+  reads every stream of every source, one commit per pull, pulling again
+  while a pull says there is `more`; an unavailable source skips the rest of
+  its streams and others continue; a busy database ends the cycle; other
+  database errors propagate; two sources feeding one stream are refused.
+  `watch` repeats it every 60s (injected clock for `now`,
   monotonic timer and sleep for pacing). `run_backfill(conn, source, plans)`
   (`sources/backfill.py`, beside the planning)
   commits chunks oldest first, reports incomplete chunks, and sets a stream's
@@ -386,8 +396,10 @@ Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
 - Spool handoff: the agent appends JSONL (one record per line, UUID =
   `source_id`) to one open file and renames it to a finished name every
   minute. The backend reads only finished files, stores them, then deletes
-  them; no offset cursor, since re-reading is idempotent. The filesystem is
-  the queue; backend downtime just accumulates files.
+  them; no offset cursor, since re-reading is idempotent. Unusable lines are
+  skipped and counted; a file with any unusable line, or that cannot be read,
+  is moved into `spool/unreadable/`, never deleted. The filesystem is the
+  queue; backend downtime just accumulates files.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
   whether to set the apps' accessibility flag is measured in M2); periodic
   macOS Screen Recording re-confirmation (surface as coverage warning); TCC

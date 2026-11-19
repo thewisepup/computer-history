@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Iterable
 
 from computer_history.sources.activitywatch.adapter import ActivityWatch
+from computer_history.sources.ax_text.adapter import CaptureSpool
 from computer_history.sources.contract import Projecting, StreamProjector
 from computer_history.store import (
     Projector,
@@ -17,7 +18,7 @@ from computer_history.store import (
 
 __all__ = ["KNOWN_SOURCES", "projector_for", "reproject_signals"]
 
-KNOWN_SOURCES: tuple[Projecting, ...] = (ActivityWatch,)
+KNOWN_SOURCES: tuple[Projecting, ...] = (ActivityWatch, CaptureSpool)
 
 
 def projector_for(sources: Iterable[Projecting]) -> Projector:

@@ -33,12 +33,16 @@ POLL_INTERVAL_SECONDS = 60
 
 @dataclass(frozen=True)
 class IngestOutcome:
-    """What one poll wrote for a stream: every event before settled_until is now stored."""
+    """What one poll wrote for a stream: every observation before settled_until is now stored.
+
+    rejected counts the records the source could not use and skipped.
+    """
 
     inserted: int
     skipped: int
     held_back: int
     settled_until: datetime | None
+    rejected: int = 0
 
 
 @dataclass(frozen=True)
@@ -57,7 +61,7 @@ class CycleSummary:
 def poll(
     conn: sqlite3.Connection, sources: Sequence[Source], *, now: datetime | None = None
 ) -> CycleSummary:
-    """Poll every stream of every source once, each stream in its own commit.
+    """Poll every stream of every source once, pulling again while a pull has more, one commit each.
 
     An unavailable source skips the rest of its streams, a busy database ends the cycle, and a
     stream whose observations cannot be projected is skipped.
@@ -74,7 +78,7 @@ def poll(
             _claim(seen, streams)
             for stream in streams:
                 try:
-                    outcomes[stream] = _poll_stream(conn, source, stream, project, now=at)
+                    _poll_stream(conn, source, stream, project, outcomes, now=at)
                 except (UnclaimedSource, StrayObservation) as exc:
                     failures.append(failure_of(stream, exc))
         except (SourceUnavailable, sqlite3.Error) as exc:
@@ -96,12 +100,30 @@ def _claim(seen: set[str], streams: list[str]) -> None:
 
 
 def _poll_stream(
-    conn: sqlite3.Connection, source: Source, stream: str, project: Projector, *, now: datetime
-) -> IngestOutcome:
-    progress = get_progress(conn, stream)
-    pulled = source.pull_after(stream, None if progress is None else progress.position, now=now)
-    written = commit_pull(conn, stream, pulled, project=project, now=now, progress_from=pulled)
-    return IngestOutcome(written.inserted, written.skipped, pulled.held_back, pulled.settled_until)
+    conn: sqlite3.Connection,
+    source: Source,
+    stream: str,
+    project: Projector,
+    outcomes: dict[str, IngestOutcome],
+    *,
+    now: datetime,
+) -> None:
+    """Pull and commit the stream while the source has more, adding each commit to its outcome."""
+    so_far = IngestOutcome(0, 0, 0, None)
+    more = True
+    while more:
+        progress = get_progress(conn, stream)
+        position = None if progress is None else progress.position
+        pulled = source.pull_after(stream, position, now=now)
+        written = commit_pull(conn, stream, pulled, project=project, now=now, progress_from=pulled)
+        so_far = outcomes[stream] = IngestOutcome(
+            so_far.inserted + written.inserted,
+            so_far.skipped + written.skipped,
+            so_far.held_back + pulled.held_back,
+            pulled.settled_until or so_far.settled_until,
+            so_far.rejected + pulled.rejected,
+        )
+        more = pulled.more
 
 
 def watch(

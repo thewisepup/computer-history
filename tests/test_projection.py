@@ -76,7 +76,7 @@ def stored_sources(conn: sqlite3.Connection) -> list[str]:
 
 def unclaimed_capture(conn: sqlite3.Connection) -> None:
     """An observation from a source no adapter of this version projects, e.g. a newer one's."""
-    capture = Observation("ax-text", "spool/1", at(0), at(1), '{"text": "hello"}')
+    capture = Observation("screenshot", "spool/1", at(0), at(1), '{"text": "hello"}')
     insert_observations(conn, [capture], project=no_signal)
 
 
@@ -92,9 +92,9 @@ def test_known_sources_project_every_activitywatch_stream() -> None:
 
 
 def test_an_unclaimed_source_raises_its_own_error() -> None:
-    with pytest.raises(UnclaimedSource, match="'ax-text'") as exc:
-        projector_for(KNOWN_SOURCES)("ax-text", "{}")
-    assert exc.value.source == "ax-text"
+    with pytest.raises(UnclaimedSource, match="'screenshot'") as exc:
+        projector_for(KNOWN_SOURCES)("screenshot", "{}")
+    assert exc.value.source == "screenshot"
 
 
 def test_two_sources_projecting_one_stream_differently_are_refused() -> None:
@@ -111,9 +111,9 @@ def test_the_same_adapter_listed_twice_is_one_claim() -> None:
 
 def test_rebuild_reproduces_what_the_runner_ingested_row_for_row(conn: sqlite3.Connection) -> None:
     now = datetime.now(UTC)
-    spool = FakeSource("ax-text")
-    spool.add("ax-text", "c1", 0)
-    spool.add("ax-text", "c2", 1)
+    spool = FakeSource("screenshot")
+    spool.add("screenshot", "c1", 0)
+    spool.add("screenshot", "c2", 1)
     poll(conn, [full_aw(now), spool], now=now)
     history = FakeSource("ocr")
     history.add("ocr", "o1", 0)
@@ -123,7 +123,7 @@ def test_rebuild_reproduces_what_the_runner_ingested_row_for_row(conn: sqlite3.C
     )
     assert run_backfill(conn, history, [plan], clock=lambda: at(180)).ok
     ingested = signal_rows(conn)
-    assert {row[1] for row in ingested} == {WINDOW_SOURCE, WEB_SOURCE, "ax-text", "ocr"}
+    assert {row[1] for row in ingested} == {WINDOW_SOURCE, WEB_SOURCE, "screenshot", "ocr"}
 
     wipe_signals(conn)
     result = reproject_signals(conn, sources=[*KNOWN_SOURCES, spool, history])
@@ -135,9 +135,9 @@ def test_rebuild_reproduces_what_the_runner_ingested_row_for_row(conn: sqlite3.C
 def test_a_fake_adapters_projector_serves_both_ingest_and_rebuild(
     conn: sqlite3.Connection,
 ) -> None:
-    spool = FakeSource("ax-text")
-    spool.add("ax-text", "c1", 0)
-    spool.add("ax-text", "c2", 1)
+    spool = FakeSource("screenshot")
+    spool.add("screenshot", "c1", 0)
+    spool.add("screenshot", "c2", 1)
     poll(conn, [spool], now=at(10))
     payloads = [row[0] for row in conn.execute("SELECT payload FROM observations ORDER BY id")]
     assert spool.projected == payloads
@@ -153,11 +153,11 @@ def test_a_fake_adapters_projector_serves_both_ingest_and_rebuild(
 
 
 def test_ingest_projects_only_new_observations(conn: sqlite3.Connection) -> None:
-    spool = FakeSource("ax-text")
-    spool.add("ax-text", "c1", 0)
+    spool = FakeSource("screenshot")
+    spool.add("screenshot", "c1", 0)
     poll(conn, [spool], now=at(10))
     spool.projected.clear()
-    plan = plan_backfill(spool, "ax-text", progress=None, now=at(10))
+    plan = plan_backfill(spool, "screenshot", progress=None, now=at(10))
     assert run_backfill(conn, spool, [plan], clock=lambda: at(10)).results[0].skipped == 1
     assert spool.projected == []
 
@@ -165,9 +165,9 @@ def test_ingest_projects_only_new_observations(conn: sqlite3.Connection) -> None
 def test_poll_reports_a_stream_its_adapter_does_not_project_and_goes_on(
     conn: sqlite3.Connection,
 ) -> None:
-    spool = FakeSource("ax-text", "ocr", "late")
+    spool = FakeSource("screenshot", "ocr", "late")
     del spool.projectors["ocr"]
-    for stream in ("ax-text", "ocr", "late"):
+    for stream in ("screenshot", "ocr", "late"):
         spool.add(stream, f"{stream}1", 0)
     other = FakeSource("b")
     other.add("b", "b1", 0)
@@ -179,30 +179,30 @@ def test_poll_reports_a_stream_its_adapter_does_not_project_and_goes_on(
             "ocr", "no source adapter projects observations from 'ocr'", FailureKind.ADAPTER
         ),
     )
-    assert list(summary.outcomes) == ["ax-text", "late", "b"]
-    assert stored_sources(conn) == ["ax-text", "b", "late"]
+    assert list(summary.outcomes) == ["screenshot", "late", "b"]
+    assert stored_sources(conn) == ["b", "late", "screenshot"]
     assert get_progress(conn, "ocr") is None
 
 
 def test_poll_reports_an_observation_from_another_stream_and_stores_none_of_its_batch(
     conn: sqlite3.Connection,
 ) -> None:
-    spool = FakeSource("ax-text", "ocr")
-    spool.add("ax-text", "c1", 0)
+    spool = FakeSource("screenshot", "ocr")
+    spool.add("screenshot", "c1", 0)
     spool.add("ocr", "o1", 0)
-    spool.strays["ax-text"] = "ocr"
+    spool.strays["screenshot"] = "ocr"
 
     summary = poll(conn, [spool], now=at(10))
 
     assert summary.failures == (
         StreamFailure(
-            "ax-text",
-            "a pull of 'ax-text' returned an observation from 'ocr'",
+            "screenshot",
+            "a pull of 'screenshot' returned an observation from 'ocr'",
             FailureKind.ADAPTER,
         ),
     )
     assert stored_sources(conn) == ["ocr"]
-    assert get_progress(conn, "ax-text") is None
+    assert get_progress(conn, "screenshot") is None
 
 
 def test_backfill_stops_at_an_observation_from_another_stream(conn: sqlite3.Connection) -> None:
@@ -220,15 +220,15 @@ def test_backfill_stops_at_an_observation_from_another_stream(conn: sqlite3.Conn
 def test_watch_logs_an_unprojected_stream_and_keeps_polling(
     conn: sqlite3.Connection, caplog: pytest.LogCaptureFixture
 ) -> None:
-    spool = FakeSource("ax-text", "ocr")
+    spool = FakeSource("screenshot", "ocr")
     del spool.projectors["ocr"]
-    spool.add("ax-text", "c1", 0)
+    spool.add("screenshot", "c1", 0)
     spool.add("ocr", "o1", 0)
     sleeps: list[float] = []
 
     def sleep(seconds: float) -> None:
         sleeps.append(seconds)
-        spool.add("ax-text", f"c{len(sleeps) + 1}", len(sleeps))
+        spool.add("screenshot", f"c{len(sleeps) + 1}", len(sleeps))
         if len(sleeps) == 2:
             raise KeyboardInterrupt
 
@@ -280,10 +280,10 @@ def test_rebuild_with_an_unclaimed_source_aborts_without_calling_it_malformed(
     with pytest.raises(RebuildAborted) as exc:
         reproject_signals(conn, allow_shrink=True)
 
-    assert exc.value.unclaimed == "ax-text"
+    assert exc.value.unclaimed == "screenshot"
     assert exc.value.failed == 0 and exc.value.failed_ids == () and not exc.value.shrink
     message = str(exc.value)
-    assert "no source adapter projects 'ax-text', the source of 1 stored observation " in message
+    assert "no source adapter projects 'screenshot', the source of 1 stored observation " in message
     assert "signals unchanged" in message and "malformed" not in message
     assert isinstance(exc.value.__cause__, UnclaimedSource)
     assert signal_rows(conn) == before
@@ -301,7 +301,7 @@ def test_unclaimed_rows_win_over_earlier_malformed_ones(conn: sqlite3.Connection
     with pytest.raises(RebuildAborted) as exc:
         reproject_signals(conn)
 
-    assert exc.value.unclaimed == "ax-text" and exc.value.failed == 0
+    assert exc.value.unclaimed == "screenshot" and exc.value.failed == 0
     assert "malformed" not in str(exc.value)
     assert signal_rows(conn) == before
 
@@ -321,7 +321,7 @@ def test_cli_rebuild_with_an_unclaimed_source_fails_loudly(
     out, err = capsys.readouterr()
 
     assert code == 1 and out == ""
-    assert "rebuild-signals aborted: no source adapter projects 'ax-text'" in err
+    assert "rebuild-signals aborted: no source adapter projects 'screenshot'" in err
     assert "no adapter for that source" in err
     assert "malformed" not in err and "first failing" not in err
     conn = connect(db_path)
