@@ -184,5 +184,5 @@ now assert settled_until datetimes and outcomes instead of raw cursor strings.
 - Advance can move progress backwards when two ingests race. That predates
   this ticket (set_cursor overwrote too).
 - `ingest_source`'s explicit-range path stays; ticket 03's runner removes it.
-- DESIGN.md's "per-source cursor freshness" is a ticked M1 checklist item, so
+- docs/milestones.md's "per-source cursor freshness" is a ticked M1 checklist item, so
   it stays as the historical record.

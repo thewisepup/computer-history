@@ -115,6 +115,7 @@ def _agent(script: str, folder: Path) -> subprocess.CompletedProcess[str]:
 
 def _cli(*args: str, db: Path, aw_url: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(REPO), env.get("PYTHONPATH")]))
     return subprocess.run(
         [str(CLI), *args, "--db-path", str(db), "--aw-url", aw_url],
         env=env,

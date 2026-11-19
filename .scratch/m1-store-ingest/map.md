@@ -34,7 +34,7 @@ cross-checked with the POC's `/usage` numbers.
   - Settled-events stability margin: 120s (2× the 60s poll interval) —
     default chosen where the design doc is silent.
   - M1 runner is `ingest --watch` (long-lived loop); no FastAPI server in M1.
-- Source of truth for scope and schema: `docs/DESIGN.md` §2–§4, §9 (M1).
+- Source of truth for scope and schema: `docs/DESIGN.md` §2–§4, `docs/milestones.md` (M1).
 
 ## Decisions so far
 
