@@ -40,6 +40,32 @@ Running the binary with no arguments starts the agent in the foreground. From
 a terminal, macOS checks the terminal's Accessibility grant, not the agent's,
 so judge the grant only from the logs of the launchd-started agent.
 
+## Window text
+
+`WindowTextReader` reads the focused window of a `FocusedApplication` and
+returns a `WindowText`: the window title, the content text, the full text
+length in UTF-8 bytes, whether the text was cut off or the read timed out, and
+the SHA-256 of the kept text. `focusedApplication(callTimeout:)` asks the
+system-wide accessibility element for the focused app and falls back to
+`NSWorkspace`. Nothing calls the reader yet.
+
+| Role | Text taken |
+|---|---|
+| `AXStaticText`, `AXTextArea`, `AXTextField` | `AXValue`; children are read only when it is empty |
+| `AXHeading`, `AXLink` | text of their children, else `AXTitle`, else `AXDescription` |
+| `AXButton`, `AXPopUpButton`, `AXCheckBox`, `AXRadioButton` | nothing, children skipped |
+| `AXSecureTextField` (role or subrole) | nothing, never read past its role |
+| anything else (`AXWindow`, `AXGroup`, `AXRow`, ...) | nothing, children read |
+
+Pieces are joined with newlines and cut at 50,000 bytes on a character
+boundary; the walk keeps counting the full length past the cap. Each
+accessibility call times out after 0.25s and the whole read after 2s; either
+ends the read with the text collected so far. Electron apps and Chromium
+browsers get `AXManualAccessibility` and `AXEnhancedUserInterface` set once
+per process, unless their bundle id is on the off-list in
+`WindowTextSettings`. A flag call that times out does not end the read; the
+flags are tried again on the next read.
+
 ## Logs
 
 `log` is a zsh builtin, so call `/usr/bin/log`:
