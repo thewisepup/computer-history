@@ -92,10 +92,10 @@ Rows:
 
 Read-only: never creates, migrates or writes, and never changes the spool.
 Gaps are reported as unobserved time, never assumed idle, and are checked up
-to each source's settled-until time. Small lag is normal — a source is settled
-only up to the start of its current, still-growing event. A source whose
-progress has no settled time shows `settled until - (progress moved 30s ago)`
-instead.
+to each source's settled-until time. Small lag is normal — an ActivityWatch
+source is settled only up to the start of its current, still-growing event. A
+source whose progress has no settled time shows `settled until - (progress
+moved 30s ago)` instead.
 
 `ax-text` captures are instants, so its gaps follow their own rule. A record
 of any kind explains the minute on either side of it (twice the agent's 30s

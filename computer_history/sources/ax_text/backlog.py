@@ -9,14 +9,13 @@ from pathlib import Path
 
 from computer_history.sources.ax_text.record import InvalidRecord, parse_record
 from computer_history.sources.ax_text.spool import (
+    FINISHED_NAME_FORMAT,
+    OPEN_FILE,
     UNREADABLE_FOLDER,
     SpoolError,
     finished_files,
     read_lines,
 )
-
-OPEN_FILE = "open.part"
-FINISHED_NAME_FORMAT = "%Y%m%dT%H%M%S.%fZ"
 
 
 @dataclass(frozen=True)

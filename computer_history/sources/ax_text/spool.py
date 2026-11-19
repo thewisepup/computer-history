@@ -7,7 +7,9 @@ from pathlib import Path
 
 from computer_history.sources.contract import SourceUnavailable
 
+OPEN_FILE = "open.part"
 FINISHED_SUFFIX = ".jsonl"
+FINISHED_NAME_FORMAT = "%Y%m%dT%H%M%S.%fZ"
 UNREADABLE_FOLDER = "unreadable"
 
 

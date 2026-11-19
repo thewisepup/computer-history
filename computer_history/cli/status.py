@@ -107,10 +107,11 @@ def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
             f"  latest end {when(s.latest_ended_at)}"
             f"  settled until {when(s.settled_until)} ({_freshness(s, now)})"
         )
-    print(
-        "  (a source is settled only up to the start of its current, still-growing"
-        " window/tab/AFK event, so lag includes that event's length)"
-    )
+    if any(s.source in ActivityWatch.projectors for s in summaries):
+        print(
+            "  (an ActivityWatch source is settled only up to the start of its current,"
+            " still-growing window/tab/AFK event, so lag includes that event's length)"
+        )
 
 
 def _freshness(summary: SourceSummary, now: datetime) -> str:

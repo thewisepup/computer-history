@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from computer_history.sources.ax_text.record import PAUSED_KIND
 from computer_history.sources.ax_text.stored import StoredRecord
 from computer_history.store import Gap
 
@@ -73,7 +74,7 @@ def _paused_spans(
     spans = []
     paused_from = start if paused_at_start else None
     for record in sorted(records, key=lambda r: r.at):
-        if record.kind == "paused":
+        if record.kind == PAUSED_KIND:
             paused_from = record.at if paused_from is None else paused_from
         elif paused_from is not None:
             spans.append((paused_from, record.at))

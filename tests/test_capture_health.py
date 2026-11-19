@@ -491,6 +491,7 @@ def test_status_reports_every_capture_agent_line(capsys, status_aw, db_path: Pat
     )
     assert re.search(r"today\s+3 captures stored, 1 excluded, 1 cut off, 1 timed out", out)
     assert re.search(r"paused\s+no\n", out)
+    assert "still-growing" not in out
 
 
 def test_status_shows_a_file_named_after_now_as_ahead(capsys, status_aw, db_path: Path) -> None:

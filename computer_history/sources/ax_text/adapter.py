@@ -87,7 +87,8 @@ class CaptureSpool:
 
     def _done(self, path: Path, finish: Finish) -> None:
         """Take the committed file off the listed files and remove it or set it aside."""
-        self._listed.popleft()
+        if path in self._listed:
+            self._listed.remove(path)
         try:
             finish(path)
         except SpoolError:

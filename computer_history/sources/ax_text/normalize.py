@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from computer_history.sources.ax_text.record import parse_record
+from computer_history.sources.ax_text.record import CAPTURE_KIND, parse_record
 from computer_history.sources.contract import StreamProjector
 from computer_history.store import Signal
 from computer_history.text import clean_text
@@ -19,7 +19,7 @@ EXTRA_KEYS = ("bundle_id", "trigger", "text_sha256", "full_text_bytes", "text_cu
 def project_capture(payload: str) -> Signal | None:
     """The signal for a capture record, or None for excluded, paused and resumed records."""
     record = parse_record(payload)
-    if record.kind != "capture":
+    if record.kind != CAPTURE_KIND:
         return None
     data = record.fields
     extras = {key: data[key] for key in EXTRA_KEYS if data.get(key) is not None}
