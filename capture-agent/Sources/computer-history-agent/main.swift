@@ -22,7 +22,7 @@ case .run:
     let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
-    exit(AgentLoop(
+    exit(AgentLifecycle(
         report: settings.report,
         isPaused: { pause.isPaused },
         accessibilityTrusted: isAccessibilityTrusted(prompt:),

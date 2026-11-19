@@ -10,7 +10,7 @@ import PackageDescription
 ///     LoginItem.swift       install, uninstall and status through SMAppService, with the pause state
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
-///     AgentLoop.swift       on start: Accessibility check, spool recovery, capture thread; then
+///     AgentLifecycle.swift       on start: Accessibility check, spool recovery, capture thread; then
 ///           |               the minute log line and the one-minute spool finish on the main run loop
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record
@@ -19,7 +19,7 @@ import PackageDescription
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
 ///     CaptureSchedule.swift capture timing: settle delay, minimum gap, heartbeat, silence gating
 ///     CaptureCounts.swift   captures written, excluded, timed out and cut off, for the minute log line
-///     FocusWatch.swift      app changes from the focused app alone; window and title changes by
+///     AppAndWindowWatch.swift app changes from the focused app alone; window and title changes by
 ///                           polling that app's accessibility tree
 ///     Presence.swift        idle seconds, screen lock, sleep and wake; the reasons for silence
 ///     FocusedApplication.swift   the focused app, asked of the system-wide accessibility element

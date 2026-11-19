@@ -17,8 +17,8 @@ final class Recorder: @unchecked Sendable {
     var prompts: [Bool] { lock.withLock { _prompts } }
     var capturingStarted: Int { lock.withLock { _capturingStarted } }
 
-    func agent(granted: Bool) -> AgentLoop {
-        AgentLoop(
+    func agent(granted: Bool) -> AgentLifecycle {
+        AgentLifecycle(
             report: settings.report,
             isPaused: { self.settings.pause.isPaused },
             accessibilityTrusted: { prompt in

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The long-running agent that macOS starts at login.
-public struct AgentLoop: Sendable {
+public struct AgentLifecycle: Sendable {
     public static let logInterval: TimeInterval = 60
     public static let spoolFinishInterval: TimeInterval = 60
 
