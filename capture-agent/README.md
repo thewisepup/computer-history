@@ -1,7 +1,8 @@
 # Capture agent
 
 The Swift agent that macOS starts at login. For now it checks its
-Accessibility grant on start and logs a heartbeat every minute.
+Accessibility grant on start, readies the spool, and logs a heartbeat every
+minute. Nothing writes captures yet.
 
 | | |
 |---|---|
@@ -10,6 +11,7 @@ Accessibility grant on start and logs a heartbeat every minute.
 | Started by | `SMAppService`, from `Contents/Library/LaunchAgents/` inside the bundle (KeepAlive) |
 | Signed with | `Computer History Code Signing` from the login keychain, hardened runtime |
 | Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent` |
+| Spool | `~/Library/Application Support/ComputerHistory/spool/` |
 
 ## Commands
 
@@ -49,7 +51,51 @@ launchctl print "gui/$(id -u)/io.github.thewisepup.computer-history.agent"
 ```
 
 Expected lines: `started, accessibility granted` (or `missing, asked macOS to
-prompt for it`), then `heartbeat, accessibility granted` every minute.
+prompt for it`), `spool ready at <folder>`, then `heartbeat, accessibility
+granted` every minute. After a crash, start also logs `spool finished leftover
+file <name>`.
+
+## Spool
+
+The agent appends one JSON record per line to `open.part` in the spool
+folder. Every minute, if `open.part` is non-empty, it is renamed to a
+finished file and the next record starts a new `open.part`. A leftover
+`open.part` from a crash is finished the same way on start. A torn last line
+is dropped before the rename, and the rename is atomic, so the backend, which
+reads only `*.jsonl`, never sees a partial file.
+
+Finished files are named `<yyyyMMdd'T'HHmmss.SSS'Z'>.jsonl` in UTC, for
+example `20261118T090100.000Z.jsonl`. Each name is at least one millisecond
+after every name the running agent has used and the newest name in the folder
+when it started, so two finishes in the same millisecond, a leftover file
+finished at start, or a clock that steps back never produce a name that sorts
+out of order or replaces a file. The rename refuses to overwrite.
+
+The agent holds `agent.lock` in the spool folder while it runs. A second
+agent started by hand cannot take the lock and writes nothing.
+
+Every record has every key, sorted, with `null` where a key does not apply:
+
+| Key | Value |
+|---|---|
+| `version` | format version, `1` |
+| `id` | lowercase UUID; becomes the observation's `source_id` |
+| `captured_at` | UTC ISO-8601 with milliseconds, `2026-11-18T09:00:05.250Z` |
+| `kind` | `capture`, `excluded`, `paused` or `resumed` |
+| `trigger` | `app`, `window`, `title` or `heartbeat`; `null` for `paused` and `resumed` |
+| `app_name` | the focused app; `null` for `paused` and `resumed` |
+| `bundle_id` | the focused app's bundle id, or `null` |
+| `window_title` | `capture` only |
+| `text` | `capture` only: the window's text, possibly cut off or partial |
+| `text_sha256` | `capture` only: lowercase hex SHA-256 of `text` as UTF-8 |
+| `full_text_bytes` | `capture` only: UTF-8 length of all text read, before any cut |
+| `text_cut_off` | `capture` only: `true` when `text` is shorter than the full text |
+| `timed_out` | `capture` only: `true` when reading stopped at a timeout and the text is partial |
+
+[`fixtures/spool/records.jsonl`](../fixtures/spool/records.jsonl) holds one
+example of every kind and trigger. It is the contract with the backend: the
+Swift tests check the encoder writes exactly those lines, and the Python tests
+read the same file.
 
 ## Accessibility
 

@@ -19,6 +19,7 @@ case .run:
     let logger = Logger(subsystem: AgentIdentity.bundleIdentifier, category: "agent")
     AgentLoop(
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
+        spool: SpoolWriter(directory: SpoolWriter.defaultDirectory, now: Date.init),
         log: { logger.notice("\($0, privacy: .public)") }
     ).run()
 case .install:
