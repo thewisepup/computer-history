@@ -8,7 +8,9 @@ summaries.
 
 ## Where things are
 
-- `docs/DESIGN.md` — the v1 spec: data model, ingestion, milestones (§9).
+- `docs/milestones.md` — read first for milestone work: each milestone's
+  scope and checklist, the one record of progress.
+- `docs/DESIGN.md` — the v1 spec: data model, ingestion, interfaces.
   `docs/PRD.md` — product requirements.
 - `computer_history/` — the rewrite. Each package's `__init__.py` opens with
   its flow diagram; `computer_history/cli/README.md` shows every command with

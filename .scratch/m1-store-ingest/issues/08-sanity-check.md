@@ -18,11 +18,11 @@ End-to-end verification that M1 is actually done, against real data.
   (clipped + merged the same way) vs the POC's `/usage` for the same range —
   the correctness oracle for clipping/merge bugs. Investigate any
   discrepancy beyond AFK/settled-margin explanations.
-- Walk the M1 checklist in `docs/DESIGN.md` §9 and tick every box.
+- Walk the M1 checklist in `docs/milestones.md` and tick every box.
 
 ## Acceptance
 
-Every M1 checkbox ticked in DESIGN.md; discrepancies explained or fixed.
+Every M1 checkbox ticked in docs/milestones.md; discrepancies explained or fixed.
 Resolving this ticket closes the map.
 
 ## Answer
@@ -49,7 +49,7 @@ passed; zero discrepancies.
   day), computed from our `signals` with clip+merge, vs the POC Bridge's
   breakdown over the same range: all top 8 apps match to 0.1s exactly
   (loginwindow 63,479.7s, Chrome 11,265.2s, Claude 6,191.3s, …).
-- DESIGN.md M1 checklist: all 8 boxes ticked. AGENTS.md updated to "M1
+- docs/milestones.md M1 checklist: all 8 boxes ticked. AGENTS.md updated to "M1
   complete" with the new commands and test matrix.
 
 This closes the map: M1 is implemented, reviewed, tested, and verified live.
