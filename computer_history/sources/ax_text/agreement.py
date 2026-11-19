@@ -19,13 +19,14 @@ WindowSpan = tuple[datetime, datetime, str]
 class AppAgreement:
     """Captures whose app matches aw-window, differs from it, or has no aw-window span near it.
 
-    The differing pairs of captured and aw-window app names come most common first.
+    It counts the aw-window spans in the range too, and lists differing app pairs most common first.
     """
 
     matched: int
     differ: int
     unjudged: int
     pairs: tuple[tuple[str | None, str, int], ...]
+    spans: int = 0
 
 
 def app_agreement(
@@ -44,7 +45,10 @@ def app_agreement(
         (r for r in records if r.kind == CAPTURE_KIND and start <= r.at <= end),
         key=lambda r: r.at,
     )
-    pending = deque(sorted(spans))
+    pending = deque(
+        sorted(s for s in spans if s[0] <= end + tolerance and s[1] >= start - tolerance)
+    )
+    in_range = len(pending)
     near: list[WindowSpan] = []
     matched = unjudged = 0
     pairs: Counter[tuple[str | None, str]] = Counter()
@@ -65,6 +69,7 @@ def app_agreement(
         sum(pairs.values()),
         unjudged,
         tuple((captured, seen, n) for (captured, seen), n in ranked),
+        in_range,
     )
 
 

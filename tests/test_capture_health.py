@@ -45,10 +45,12 @@ from computer_history.store import (
 
 NOW = datetime(2026, 11, 18, 18, 0, tzinfo=UTC)
 DAY_START = datetime(2026, 11, 18, 8, 0, tzinfo=UTC)
-AFK_BUCKET = "aw-watcher-afk_test-host.local"
+HOST = "test-host.local"
+AFK_BUCKET = f"aw-watcher-afk_{HOST}"
 SECRET_TITLE = "SECRET-TITLE"
 SECRET_TEXT = "SECRET-TEXT"
-WINDOW_BUCKET = "aw-watcher-window_test-host.local"
+WINDOW_BUCKET = f"aw-watcher-window_{HOST}"
+OTHER_WINDOW_BUCKET = "aw-watcher-window_other-host.local"
 
 
 def at(minutes: float, base: datetime = NOW) -> datetime:
@@ -235,6 +237,11 @@ def test_the_pairs_come_most_common_first() -> None:
     assert result.pairs == (("B", "Cursor", 2), ("A", "Cursor", 1), (None, "Cursor", 1))
 
 
+def test_the_spans_in_range_are_counted() -> None:
+    result = agreement([capture(-30, "Cursor")], [(-90, -70, "Cursor"), (-50, -40, "Cursor")])
+    assert (result.unjudged, result.spans) == (1, 1)
+
+
 def test_overlapping_spans_from_two_buckets_match_either_app() -> None:
     records = [capture(-30, "Cursor"), capture(-25, "Notes")]
     result = agreement(records, [(-40, -20, "Cursor"), (-35, -20, "Notes")])
@@ -384,11 +391,15 @@ def store_afk(conn: sqlite3.Connection, spans: list[tuple[datetime, datetime, st
     insert_observations(conn, observations, project=AW)
 
 
-def store_window(conn: sqlite3.Connection, spans: list[tuple[datetime, datetime, str]]) -> None:
+def store_window(
+    conn: sqlite3.Connection,
+    spans: list[tuple[datetime, datetime, str]],
+    bucket: str = WINDOW_BUCKET,
+) -> None:
     observations = [
         Observation(
             WINDOW_SOURCE,
-            f"{WINDOW_BUCKET}/{i}",
+            f"{bucket}/{i}",
             start,
             end,
             json.dumps(
@@ -413,6 +424,7 @@ def health(conn: sqlite3.Connection, spool: Path, client: FakeAW | None = None):
         client,
         now=NOW,
         window=timedelta(hours=24),
+        hostname=HOST,
         min_gap_seconds=300,
         day_start=DAY_START,
     )
@@ -549,6 +561,37 @@ def test_app_agreement_reads_stored_and_newest_window_spans(conn, tmp_path: Path
     assert (result.matched, result.differ, result.unjudged) == (3, 1, 0)
 
 
+def test_app_agreement_counts_only_this_hosts_window_buckets(conn, tmp_path: Path) -> None:
+    store_records(
+        conn,
+        [spool_line(1, at(-50), app_name="Notes"), spool_line(2, at(-5), app_name="Notes")],
+    )
+    store_window(conn, [(at(-55), at(-45), "Cursor")])
+    store_window(conn, [(at(-55), at(-45), "Notes")], bucket=OTHER_WINDOW_BUCKET)
+    buckets = {WINDOW_BUCKET: "currentwindow", OTHER_WINDOW_BUCKET: "currentwindow"}
+    fake = FakeAW(buckets, t0=at(-10))
+    fake.add(OTHER_WINDOW_BUCKET, 0, 10 * 60, {"app": "Notes"})
+    result = health(conn, tmp_path, fake).agreement
+    assert result is not None
+    assert (result.matched, result.differ, result.unjudged) == (0, 1, 1)
+    assert result.pairs == (("Notes", "Cursor", 1),)
+
+
+def test_one_health_check_lists_the_buckets_once(conn, tmp_path: Path) -> None:
+    store_records(conn, [spool_line(1, at(-5))])
+    fake = FakeAW({WINDOW_BUCKET: "currentwindow", AFK_BUCKET: "afkstatus"}, t0=at(-10))
+    listings = []
+    listing = fake.get_buckets
+
+    def counted() -> dict[str, dict[str, Any]]:
+        listings.append(1)
+        return listing()
+
+    fake.get_buckets = counted
+    health(conn, tmp_path, fake)
+    assert len(listings) == 1
+
+
 @pytest.mark.parametrize("unstored", [finished_name(at(-30)), "open.part"])
 def test_coverage_stops_at_stored_progress_while_the_spool_holds_records(
     conn, tmp_path: Path, unstored: str
@@ -570,6 +613,7 @@ def status_aw(monkeypatch: pytest.MonkeyPatch):
 
     def install(fake: FakeAW) -> None:
         monkeypatch.setattr(cli_status, "AWClient", lambda *args, **kwargs: fake)
+        monkeypatch.setattr(cli_status, "gethostname", lambda: HOST)
 
     return install
 
@@ -707,4 +751,18 @@ def test_status_without_window_data_cannot_judge_app_agreement(
     conn.close()
     status_aw(FakeAW({}))
     out = run_status(capsys, "--db-path", str(db_path))
-    assert "app agreement cannot be judged: no aw-window data\n" in out
+    assert "app agreement cannot be judged: no aw-window data from this machine\n" in out
+
+
+def test_status_tells_window_data_far_from_every_capture_apart(
+    capsys, status_aw, db_path: Path
+) -> None:
+    now = datetime.now(UTC)
+    conn = connect(db_path)
+    store_records(conn, [spool_line(1, now - timedelta(minutes=50))])
+    store_records(conn, [spool_line(2, now - timedelta(minutes=5))])
+    store_window(conn, [(now - timedelta(minutes=40), now - timedelta(minutes=30), "Cursor")])
+    conn.close()
+    status_aw(FakeAW({}))
+    out = run_status(capsys, "--db-path", str(db_path))
+    assert "app agreement cannot be judged: no aw-window data near any capture\n" in out

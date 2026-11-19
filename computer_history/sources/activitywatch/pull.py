@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -159,11 +160,16 @@ def pull_source(
     )
 
 
-def newest_events(client: AWApi, source_name: str) -> list[Any]:
-    """The newest raw event of every bucket feeding the source, including one still growing."""
+def newest_events(
+    client: AWApi, source_name: str, buckets: Mapping[str, Any]
+) -> list[tuple[str, Any]]:
+    """The newest raw event of every listed bucket feeding the source, with its bucket id.
+
+    It includes an event still growing.
+    """
     return [
-        raw
-        for source in discover_sources(client)
+        (bucket_id, raw)
+        for source in discover_sources(client, buckets=buckets)
         if source.name == source_name
         for bucket_id in source.bucket_ids
         for raw in client.get_events(bucket_id, limit=1)

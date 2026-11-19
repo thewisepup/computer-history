@@ -1,8 +1,9 @@
-"""The app in front, from aw-window: its stored spans and each window bucket's newest event."""
+"""The app in front on a host, from aw-window: its stored spans and each bucket's newest event."""
 
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, NamedTuple
 
@@ -22,20 +23,33 @@ class AppSpan(NamedTuple):
 
 
 def stored_app_spans(
-    conn: sqlite3.Connection, start: datetime | str, end: datetime | str
+    conn: sqlite3.Connection, start: datetime | str, end: datetime | str, *, hostname: str
 ) -> list[AppSpan]:
-    """The stored aw-window spans touching the range, oldest first, skipping those with no app."""
+    """The stored spans of the host's window buckets touching the range, oldest first.
+
+    Spans with no app are skipped.
+    """
     return [
         AppSpan(row.started_at, row.ended_at, app)
         for row in payload_values(conn, WINDOW_SOURCE, start, end, (WINDOW_APP_PATH,))
-        if (app := _app(row.values[0])) is not None
+        if on_host(row.source_id.rpartition("/")[0], hostname)
+        and (app := _app(row.values[0])) is not None
     ]
 
 
-def newest_app_spans(client: AWApi) -> list[AppSpan]:
-    """The newest event of every window bucket, including one still growing and not yet stored."""
-    spans = (_span(raw) for raw in newest_events(client, WINDOW_SOURCE))
+def newest_app_spans(client: AWApi, buckets: Mapping[str, Any], *, hostname: str) -> list[AppSpan]:
+    """The newest event of each of the host's listed window buckets, even one still growing."""
+    spans = (
+        _span(raw)
+        for bucket_id, raw in newest_events(client, WINDOW_SOURCE, buckets)
+        if on_host(bucket_id, hostname)
+    )
     return [span for span in spans if span is not None]
+
+
+def on_host(bucket_id: str, hostname: str) -> bool:
+    """Whether a watcher on the host made the bucket, which ActivityWatch names watcher_host."""
+    return bool(hostname) and bucket_id.endswith(f"_{hostname}")
 
 
 def _span(raw: Any) -> AppSpan | None:

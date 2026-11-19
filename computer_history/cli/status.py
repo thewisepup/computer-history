@@ -6,6 +6,7 @@ import argparse
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from socket import gethostname
 
 from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import ago, app_name, db_size, duration, lag, when
@@ -83,6 +84,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             client if aw_error is None else None,
             now=now,
             window=STATUS_WINDOW,
+            hostname=gethostname(),
             min_gap_seconds=MIN_GAP_SECONDS,
         )
         print()
@@ -209,10 +211,12 @@ def _print_agreement(health: CaptureHealth) -> None:
         return
     judged = agreement.matched + agreement.differ
     if judged == 0:
-        if agreement.unjudged:
-            print("  app agreement cannot be judged: no aw-window data")
-        else:
+        if not agreement.unjudged:
             print("  app agreement no captures to check")
+        elif agreement.spans:
+            print("  app agreement cannot be judged: no aw-window data near any capture")
+        else:
+            print("  app agreement cannot be judged: no aw-window data from this machine")
         return
     print(
         f"  app agreement {agreement.matched:,} of {judged:,} captures match aw-window"

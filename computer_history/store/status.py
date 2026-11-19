@@ -101,6 +101,7 @@ class PayloadValues(NamedTuple):
     started_at: datetime
     ended_at: datetime
     values: tuple[Any, ...]
+    source_id: str = ""
 
 
 def payload_values(
@@ -110,19 +111,22 @@ def payload_values(
     end: datetime | str,
     paths: Sequence[str],
 ) -> list[PayloadValues]:
-    """The source's observations that touch the range, oldest first, with their payload values.
+    """The source's observations that touch the range, oldest first, with their source ids.
 
-    The values are those at the given JSON paths, in order.
+    The values are those at the given JSON paths of each payload, in order.
     """
     if not paths:
         raise ValueError("payload_values needs at least one JSON path")
     columns = ", ".join(_VALUE for _ in paths)
     rows = conn.execute(
-        f"SELECT started_at, ended_at, {columns} FROM observations "
+        f"SELECT started_at, ended_at, source_id, {columns} FROM observations "
         "WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id",
         (*paths, source, utc_iso(end), utc_iso(start)),
     )
-    return [PayloadValues(to_utc(a), to_utc(b), tuple(values)) for a, b, *values in rows]
+    return [
+        PayloadValues(to_utc(a), to_utc(b), tuple(values), source_id)
+        for a, b, source_id, *values in rows
+    ]
 
 
 def latest_payload_value(

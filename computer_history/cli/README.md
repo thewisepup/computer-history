@@ -132,11 +132,15 @@ The capture agent section:
   capture matches when an `aw-window` span within 2s of it (the window
   watcher polls once a second) names the same app, ignoring case; otherwise
   it differs from the nearest such span. A capture with no `aw-window` span
-  within 2s is counted apart, never as a match, and with no `aw-window` data at
-  all the line reads `cannot be judged: no aw-window data`. The three most
-  common differing `captured -> aw-window` pairs follow. Only app names are
-  shown, never titles or text. `aw-window` includes the newest window event
-  from ActivityWatch, when it is reachable, even before it is stored.
+  within 2s is counted apart, never as a match. When no capture can be
+  judged, the line reads `cannot be judged: no aw-window data from this
+  machine`, or `... near any capture` when there are spans but none within
+  2s of a capture. The three most common differing `captured -> aw-window`
+  pairs follow. Only app names are shown, never titles or text. Only this
+  machine's window buckets count, the ones ActivityWatch names
+  `<watcher>_<this hostname>`, so a bucket synced from another machine is
+  ignored. `aw-window` includes the newest window event from ActivityWatch,
+  when it is reachable, even before it is stored.
 
 Before the agent has stored anything, the section is one line plus the spool:
 

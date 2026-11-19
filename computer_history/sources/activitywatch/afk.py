@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, NamedTuple
 
@@ -32,9 +33,10 @@ def stored_afk_spans(
     ]
 
 
-def newest_afk_spans(client: AWApi) -> list[AfkSpan]:
-    """The newest event of every AFK bucket, including one still growing and not yet stored."""
-    return [span for raw in newest_events(client, AFK_SOURCE) if (span := _span(raw)) is not None]
+def newest_afk_spans(client: AWApi, buckets: Mapping[str, Any]) -> list[AfkSpan]:
+    """The newest event of every listed AFK bucket, including one still growing and not stored."""
+    spans = (_span(raw) for _, raw in newest_events(client, AFK_SOURCE, buckets))
+    return [span for span in spans if span is not None]
 
 
 def _span(raw: Any) -> AfkSpan | None:
