@@ -104,6 +104,7 @@ computer_history/
 ui/             # React app, built into static files FastAPI serves
 capture-agent/  # Swift CLI (separate build)
 fixtures/       # files both programs read: spool/records.jsonl is the spool contract
+scripts/        # venv-python: picks the interpreter the pre-commit hook and e2e.sh run
 docs/
 ```
 
