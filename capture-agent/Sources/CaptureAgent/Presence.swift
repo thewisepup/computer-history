@@ -1,9 +1,9 @@
 import AppKit
 import CoreGraphics
 
-/// A reason the agent captures nothing.
+/// A reason the agent captures nothing: a pause, or the user away.
 public enum Silence: String, CaseIterable, Sendable {
-    case idle, locked, asleep
+    case paused, idle, locked, asleep
 }
 
 /// Whether the user is at the Mac: seconds since the last input, and whether the screen is locked or the Mac asleep.

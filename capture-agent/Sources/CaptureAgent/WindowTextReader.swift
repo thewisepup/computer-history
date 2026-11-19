@@ -90,7 +90,6 @@ public final class WindowTextReader<Element: AccessibilityElement> {
 extension WindowTextReader where Element == LiveAccessibilityElement {
     /// Creates a reader over the live accessibility API.
     public convenience init(settings: WindowTextSettings) {
-        LiveAccessibilityElement.setProcessCallTimeout(settings.callTimeout)
         self.init(
             settings: settings,
             applicationElement: LiveAccessibilityElement.application,

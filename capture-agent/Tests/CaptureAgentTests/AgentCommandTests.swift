@@ -7,6 +7,10 @@ import Testing
     (["install"], .install),
     (["uninstall"], .uninstall),
     (["status"], .status),
+    (["pause"], .pause),
+    (["resume"], .resume),
+    (["check-config"], .checkConfig),
+    (["pause", "now"], .usage),
     (["install", "now"], .usage),
     (["--help"], .usage),
 ])

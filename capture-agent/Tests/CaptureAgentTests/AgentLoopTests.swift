@@ -8,12 +8,17 @@ final class Recorder: @unchecked Sendable {
     private var _prompts: [Bool] = []
     let spool = TempSpool()
     let counts = CaptureCounts()
+    lazy var settings = AgentSettings.load(environment: [
+        "COMPUTER_HISTORY_DB": spool.directory.appendingPathComponent("folder/history.db").path,
+    ])
 
     var lines: [String] { lock.withLock { _lines } }
     var prompts: [Bool] { lock.withLock { _prompts } }
 
     func agent(granted: Bool) -> AgentLoop {
         AgentLoop(
+            report: settings.report,
+            isPaused: { self.settings.pause.isPaused },
             accessibilityTrusted: { prompt in
                 self.lock.withLock { self._prompts.append(prompt) }
                 return granted
@@ -39,28 +44,29 @@ final class Recorder: @unchecked Sendable {
     #expect(recorder.lines.first == "started, accessibility missing, asked macOS to prompt for it")
 }
 
-@Test func heartbeatChecksAccessibilityWithoutPrompting() {
+@Test func theMinuteLineChecksAccessibilityWithoutPrompting() {
     let recorder = Recorder()
     let agent = recorder.agent(granted: false)
     agent.start()
-    agent.heartbeat()
-    agent.heartbeat()
+    agent.logMinute()
+    agent.logMinute()
     #expect(recorder.prompts == [true, false, false])
-    let quiet = "heartbeat, accessibility missing, last minute: 0 captures written, 0 timed out, 0 cut off, slowest read 0.00s"
+    let quiet = "heartbeat, accessibility missing, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s"
     #expect(recorder.lines.suffix(2) == [quiet, quiet])
 }
 
-@Test func heartbeatLogsTheCaptureCountsSinceTheLastHeartbeat() throws {
+@Test func theMinuteLineLogsTheCaptureCountsSinceTheLastOne() throws {
     let recorder = Recorder()
     let agent = recorder.agent(granted: true)
     recorder.counts.recordRead(seconds: 0.4)
+    recorder.counts.recordExcluded()
     recorder.counts.recordWritten(WindowText(title: nil, text: "", fullLength: 0, cutOff: false, timedOut: true, sha256: ""))
     recorder.counts.recordWritten(WindowText(title: nil, text: "ab", fullLength: 9, cutOff: true, timedOut: false, sha256: ""))
-    agent.heartbeat()
-    agent.heartbeat()
+    agent.logMinute()
+    agent.logMinute()
     #expect(recorder.lines == [
-        "heartbeat, accessibility granted, last minute: 2 captures written, 1 timed out, 1 cut off, slowest read 0.40s",
-        "heartbeat, accessibility granted, last minute: 0 captures written, 0 timed out, 0 cut off, slowest read 0.00s",
+        "heartbeat, accessibility granted, last minute: 2 captures written, 1 excluded, 1 timed out, 1 cut off, slowest read 0.40s",
+        "heartbeat, accessibility granted, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s",
     ])
 }
 
@@ -68,7 +74,7 @@ final class Recorder: @unchecked Sendable {
     let recorder = Recorder()
     try recorder.spool.writeOpenFile(try line(fixtureRecords[0]) + "\n")
     recorder.agent(granted: true).start()
-    #expect(recorder.lines.dropFirst() == [
+    #expect(recorder.lines.dropFirst(2) == [
         "spool ready at \(recorder.spool.directory.path)",
         "spool finished leftover file 20261118T090000.000Z.jsonl",
     ])
@@ -113,4 +119,25 @@ final class Recorder: @unchecked Sendable {
     let other = blocked.spool.writer()
     try other.start()
     #expect(!blocked.agent(granted: true).start())
+}
+
+@Test func startLogsWhereTheSettingsCameFromAndEveryProblem() throws {
+    let recorder = Recorder()
+    let folder = recorder.settings.folder
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data(#"{"idle_threshold_seconds": 1, "colour": "blue"}"#.utf8).write(to: recorder.settings.configPath)
+    recorder.settings = AgentSettings.load(environment: ["COMPUTER_HISTORY_DB": folder.appendingPathComponent("history.db").path])
+    recorder.agent(granted: true).start()
+    #expect(Array(recorder.lines.dropFirst().prefix(3)) == [
+        "config read from \(folder.path)/agent-config.json, \(Denylist.builtIn.count) apps denylisted",
+        "config problem: unknown key \"colour\" ignored",
+        "config problem: idle_threshold_seconds 1 is outside 10–86400, using 180",
+    ])
+}
+
+@Test func startLogsThatCaptureIsPaused() throws {
+    let recorder = Recorder()
+    try recorder.settings.pause.pause()
+    recorder.agent(granted: true).start()
+    #expect(recorder.lines.dropFirst(2).first == "capture is paused, run `\(AgentIdentity.executableName) resume` to capture again")
 }

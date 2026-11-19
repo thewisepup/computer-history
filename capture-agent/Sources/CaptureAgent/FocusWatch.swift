@@ -1,28 +1,43 @@
 import Foundation
 
-/// Notices when the focused app, its focused window or that window's title changes, by polling accessibility.
-struct FocusWatch<Element: AccessibilityElement> {
+/// Notices when the focused app changes, asking only which app is focused and never touching its windows.
+struct AppWatch {
     let focusedApplication: () -> FocusedApplication?
-    let applicationElement: (pid_t) -> Element
     private(set) var application: FocusedApplication?
     private var lastApplication: FocusedApplication?
-    private var window: Known<Element?> = .unknown
-    private var title: Known<String?> = .unknown
 
-    init(focusedApplication: @escaping () -> FocusedApplication?, applicationElement: @escaping (pid_t) -> Element) {
+    init(focusedApplication: @escaping () -> FocusedApplication?) {
         self.focusedApplication = focusedApplication
-        self.applicationElement = applicationElement
     }
 
-    /// Reads the current focus and returns what changed since the last poll, or nil on the first poll or no change.
+    /// Reads the focused app and returns `app` if it differs from the last known one, or nil on the first poll, no change or no app.
     mutating func poll() -> SpoolRecord.Trigger? {
         application = focusedApplication()
         guard let current = application else { return nil }
-        let previous = lastApplication
-        let sameApp = previous?.processIdentifier == current.processIdentifier
-        var nextWindow = sameApp ? window : .unknown
-        var nextTitle = sameApp ? title : .unknown
-        switch applicationElement(current.processIdentifier).element("AXFocusedWindow") {
+        defer { lastApplication = current }
+        guard let previous = lastApplication else { return nil }
+        return previous.processIdentifier == current.processIdentifier ? nil : .app
+    }
+}
+
+/// Notices when an app's focused window or that window's title changes, by polling accessibility.
+struct WindowWatch<Element: AccessibilityElement> {
+    let applicationElement: (pid_t) -> Element
+    private var processIdentifier: pid_t?
+    private var window: Known<Element?> = .unknown
+    private var title: Known<String?> = .unknown
+
+    init(applicationElement: @escaping (pid_t) -> Element) {
+        self.applicationElement = applicationElement
+    }
+
+    /// Reads the app's focused window and title and returns what changed, or nil on the first poll of a newly focused app or no change.
+    mutating func poll(_ application: FocusedApplication) -> SpoolRecord.Trigger? {
+        let sameApp = processIdentifier == application.processIdentifier
+        if !sameApp { forget() }
+        var nextWindow = window
+        var nextTitle = title
+        switch applicationElement(application.processIdentifier).element("AXFocusedWindow") {
         case .value(let focused):
             if nextWindow != .known(focused) { nextTitle = .unknown }
             nextWindow = .known(focused)
@@ -38,15 +53,21 @@ struct FocusWatch<Element: AccessibilityElement> {
             break
         }
         let change: SpoolRecord.Trigger? =
-            if previous == nil { nil }
-            else if !sameApp { .app }
+            if !sameApp { nil }
             else if window != nextWindow, nextWindow != .unknown { .window }
             else if title.differs(from: nextTitle) { .title }
             else { nil }
-        lastApplication = current
+        processIdentifier = application.processIdentifier
         window = nextWindow
         title = nextTitle
         return change
+    }
+
+    /// Drops what is known about the last app's window.
+    mutating func forget() {
+        processIdentifier = nil
+        window = .unknown
+        title = .unknown
     }
 }
 

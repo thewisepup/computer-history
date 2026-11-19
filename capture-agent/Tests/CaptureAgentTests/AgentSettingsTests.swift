@@ -1,0 +1,181 @@
+import Foundation
+import Testing
+@testable import CaptureAgent
+
+final class TempFolder {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("settings-tests-\(UUID().uuidString)", isDirectory: true)
+
+    init() {
+        try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    deinit { try? FileManager.default.removeItem(at: url) }
+
+    var environment: [String: String] {
+        ["COMPUTER_HISTORY_DB": url.appendingPathComponent("history.db").path]
+    }
+
+    func settings(config: String? = nil) throws -> AgentSettings {
+        if let config {
+            try Data(config.utf8).write(to: url.appendingPathComponent(AgentSettings.configFileName))
+        }
+        return AgentSettings.load(environment: environment)
+    }
+}
+
+@Test func theDefaultFolderIsApplicationSupportWithTheSpoolInside() {
+    let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+    let settings = AgentSettings.load(environment: [:], home: home)
+    #expect(settings.folder.path == "/Users/someone/Library/Application Support/ComputerHistory")
+    #expect(settings.spoolDirectory.path == "/Users/someone/Library/Application Support/ComputerHistory/spool")
+    #expect(settings.configPath.path == "/Users/someone/Library/Application Support/ComputerHistory/agent-config.json")
+    #expect(settings.pause.file.path == "/Users/someone/Library/Application Support/ComputerHistory/capture-paused")
+}
+
+@Test func overridesFollowTheBackendOrder() {
+    let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+    let database = AgentSettings.load(environment: ["COMPUTER_HISTORY_DB": "/tmp/ch/test.db"], home: home)
+    #expect(database.folder.path == "/tmp/ch")
+    #expect(database.spoolDirectory.path == "/tmp/ch/spool")
+    let both = AgentSettings.load(
+        environment: ["COMPUTER_HISTORY_DB": "/tmp/ch/test.db", "COMPUTER_HISTORY_SPOOL": "/tmp/other-spool"], home: home
+    )
+    #expect(both.folder.path == "/tmp/ch")
+    #expect(both.spoolDirectory.path == "/tmp/other-spool")
+    let spoolOnly = AgentSettings.load(environment: ["COMPUTER_HISTORY_SPOOL": "/tmp/other-spool"], home: home)
+    #expect(spoolOnly.folder.path == "/Users/someone/Library/Application Support/ComputerHistory")
+    #expect(spoolOnly.spoolDirectory.path == "/tmp/other-spool")
+}
+
+@Test func emptyOverridesCountAsUnsetAndTildeMeansHome() {
+    let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+    let empty = AgentSettings.load(environment: ["COMPUTER_HISTORY_DB": "", "COMPUTER_HISTORY_SPOOL": ""], home: home)
+    #expect(empty.folder.path == "/Users/someone/Library/Application Support/ComputerHistory")
+    #expect(empty.spoolDirectory.path == "/Users/someone/Library/Application Support/ComputerHistory/spool")
+    let tilde = AgentSettings.load(
+        environment: ["HOME": "/Users/other", "COMPUTER_HISTORY_DB": "~/ch/test.db", "COMPUTER_HISTORY_SPOOL": "~/spool"],
+        home: home
+    )
+    #expect(tilde.folder.path == "/Users/other/ch")
+    #expect(tilde.spoolDirectory.path == "/Users/other/spool")
+    #expect(AgentSettings.load(environment: ["HOME": "/Users/other"], home: home).folder.path
+        == "/Users/other/Library/Application Support/ComputerHistory")
+}
+
+@Test func aMissingFileMeansDefaults() throws {
+    let settings = try TempFolder().settings()
+    #expect(settings.configFile == .missing)
+    #expect(settings.problems.isEmpty)
+    #expect(settings.capture == CaptureSettings())
+    #expect(settings.windowText == WindowTextSettings())
+    #expect(settings.denylist == Denylist())
+    #expect(Denylist.builtIn == [
+        "com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess", "com.apple.Passwords",
+    ])
+    #expect(settings.report == ["config not found at \(settings.configPath.path), using defaults, \(Denylist.builtIn.count) apps denylisted"])
+}
+
+@Test func readsEveryKey() throws {
+    let settings = try TempFolder().settings(config: """
+        {
+          "denylist": ["com.apple.calculator"],
+          "accessibility_flag_off_list": ["com.google.Chrome"],
+          "idle_threshold_seconds": 300,
+          "capture_heartbeat_seconds": 60,
+          "text_cap_bytes": 20000,
+          "call_timeout_seconds": 0.5,
+          "window_timeout_seconds": 3
+        }
+        """)
+    #expect(settings.configFile == .read)
+    #expect(settings.problems.isEmpty)
+    #expect(settings.capture == CaptureSettings(idleThreshold: 300, heartbeatInterval: 60))
+    #expect(settings.windowText == WindowTextSettings(
+        textCapBytes: 20_000, callTimeout: 0.5, windowTimeout: 3, flagOffList: ["com.google.Chrome"]
+    ))
+    #expect(settings.denylist == Denylist(adding: ["com.apple.calculator"]))
+}
+
+@Test func aUserDenylistExtendsTheDefaultsAndCannotRemoveThem() throws {
+    let settings = try TempFolder().settings(config: #"{"denylist": []}"#)
+    #expect(settings.problems.isEmpty)
+    #expect(settings.denylist == Denylist())
+}
+
+@Test(arguments: [
+    ("{", "the file is not a JSON object"),
+    ("[1, 2]", "the file is not a JSON object"),
+    ("", "the file is not a JSON object"),
+])
+func anInvalidFileIsReportedAndDefaultsAreUsed(config: String, problem: String) throws {
+    let settings = try TempFolder().settings(config: config)
+    #expect(settings.configFile == .unreadable)
+    #expect(settings.problems == [problem])
+    #expect(settings.capture == CaptureSettings())
+    #expect(settings.windowText == WindowTextSettings())
+    #expect(settings.denylist == Denylist())
+    #expect(settings.report.first == "config at \(settings.configPath.path) could not be used, using defaults, \(Denylist.builtIn.count) apps denylisted")
+}
+
+@Test func anUnreadableFileIsReported() throws {
+    let folder = TempFolder()
+    try FileManager.default.createDirectory(
+        at: folder.url.appendingPathComponent(AgentSettings.configFileName), withIntermediateDirectories: true
+    )
+    let settings = AgentSettings.load(environment: folder.environment)
+    #expect(settings.configFile == .unreadable)
+    #expect(settings.problems.count == 1)
+    #expect(settings.problems[0].hasPrefix("cannot read the file"))
+    #expect(settings.denylist == Denylist())
+}
+
+@Test func unknownKeysAreReportedAndTheRestIsStillRead() throws {
+    let settings = try TempFolder().settings(config: #"{"idle_threshold_seconds": 60, "idle": 5, "Denylist": ["x"]}"#)
+    #expect(settings.problems == [#"unknown key "Denylist" ignored"#, #"unknown key "idle" ignored"#])
+    #expect(settings.capture.idleThreshold == 60)
+    #expect(settings.denylist == Denylist())
+}
+
+@Test(arguments: [
+    (#"{"idle_threshold_seconds": 5}"#, "idle_threshold_seconds 5 is outside 10–86400, using 180"),
+    (#"{"idle_threshold_seconds": "300"}"#, "idle_threshold_seconds must be a number of seconds, using 180"),
+    (#"{"idle_threshold_seconds": true}"#, "idle_threshold_seconds must be a number of seconds, using 180"),
+    (#"{"idle_threshold_seconds": null}"#, "idle_threshold_seconds must be a number of seconds, using 180"),
+    (#"{"capture_heartbeat_seconds": 1}"#, "capture_heartbeat_seconds 1 is outside 5–3600, using 30"),
+    (#"{"text_cap_bytes": 100}"#, "text_cap_bytes 100 is outside 1000–10000000, using 50000"),
+    (#"{"text_cap_bytes": 2000.5}"#, "text_cap_bytes must be a whole number, using 50000"),
+    (#"{"text_cap_bytes": 1e300}"#, "text_cap_bytes must be a whole number, using 50000"),
+    (#"{"call_timeout_seconds": 0}"#, "call_timeout_seconds 0 is outside 0.05–5, using 0.25"),
+    (#"{"window_timeout_seconds": -1}"#, "window_timeout_seconds -1 is outside 0.1–60, using 2"),
+    (#"{"accessibility_flag_off_list": "com.google.Chrome"}"#, "accessibility_flag_off_list must be a list of bundle ids, ignored"),
+])
+func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: String) throws {
+    let settings = try TempFolder().settings(config: config)
+    #expect(settings.configFile == .read)
+    #expect(settings.problems == [problem])
+    #expect(settings.capture == CaptureSettings())
+    #expect(settings.windowText == WindowTextSettings())
+}
+
+@Test func aBadDenylistKeepsTheDefaultsAndEveryUsableEntry() throws {
+    let wrongType = try TempFolder().settings(config: #"{"denylist": "com.apple.calculator"}"#)
+    #expect(wrongType.problems == ["denylist must be a list of bundle ids, ignored"])
+    #expect(wrongType.denylist == Denylist())
+    let badEntries = try TempFolder().settings(config: #"{"denylist": ["com.apple.calculator", 7, "", null]}"#)
+    #expect(badEntries.problems == [
+        "denylist entry 2 is not a bundle id, ignored",
+        "denylist entry 3 is not a bundle id, ignored",
+        "denylist entry 4 is not a bundle id, ignored",
+    ])
+    #expect(badEntries.denylist == Denylist(adding: ["com.apple.calculator"]))
+}
+
+@Test func checkConfigPrintsTheSettingsAndFailsOnProblems() throws {
+    let good = checkConfig(try TempFolder().settings())
+    #expect(good.exitCode == 0)
+    #expect(good.message.contains("denylist, built-in plus config: com.1password.1password, com.agilebits.onepassword7, com.apple.keychainaccess, com.apple.passwords"))
+    #expect(good.message.contains("idle threshold: 180s"))
+    let bad = checkConfig(try TempFolder().settings(config: #"{"oops": 1}"#))
+    #expect(bad.exitCode == 1)
+    #expect(bad.message.contains(#"config problem: unknown key "oops" ignored"#))
+}

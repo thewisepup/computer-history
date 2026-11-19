@@ -3,19 +3,25 @@ import PackageDescription
 
 /// The capture agent macOS starts at login, which writes captures to the spool for the backend.
 ///
-///     computer-history-agent/main.swift   parse the command line, build the real I/O, run
+///     computer-history-agent/main.swift   load the settings, parse the command line, build the real I/O, run
 ///           |
+///     AgentSettings.swift   the folder, spool and settings from the environment and agent-config.json
 ///     AgentCommand.swift    the commands the binary accepts and what each prints
-///     LoginItem.swift       install, uninstall and status through SMAppService
+///     LoginItem.swift       install, uninstall and status through SMAppService, with the pause state
+///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
 ///     AgentLoop.swift       on start: Accessibility check, spool recovery, capture thread; then
-///           |               the log heartbeat and the one-minute spool finish on the main run loop
-///     CaptureLoop.swift     the capture thread: each tick samples presence, polls focus, and
-///           |               writes a capture when the schedule says one is due
+///           |               the minute log line and the one-minute spool finish on the main run loop
+///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
+///           |               the window or writes a capture, excluded, paused or resumed record
+///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
+///           |               and whether the focused app's window may be touched
+///     Denylist.swift        the apps never read: the built-in password managers plus the config's
 ///     CaptureSchedule.swift capture timing: settle delay, minimum gap, heartbeat, silence gating
-///     CaptureCounts.swift   captures written, timed out and cut off, for the log heartbeat
-///     FocusWatch.swift      app, window and title changes, by polling accessibility
-///     Presence.swift        idle seconds, screen lock, sleep and wake, and the silence they cause
+///     CaptureCounts.swift   captures written, excluded, timed out and cut off, for the minute log line
+///     FocusWatch.swift      app changes from the focused app alone; window and title changes by
+///                           polling that app's accessibility tree
+///     Presence.swift        idle seconds, screen lock, sleep and wake; the reasons for silence
 ///     FocusedApplication.swift   the focused app, asked of the system-wide accessibility element
 ///     WindowTextReader.swift     reads the focused window's title and text
 ///     WindowWalk.swift      the tree walk: content roles only, each element once, within timeouts
@@ -27,7 +33,7 @@ import PackageDescription
 ///     SpoolRecord.swift     one record and its JSON line
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps
 ///
-/// Spool: `~/Library/Application Support/ComputerHistory/spool/`. Records are appended to
+/// Spool: `~/Library/Application Support/ComputerHistory/spool/` by default. Records are appended to
 /// `open.part`, one JSON object per line. Every minute a non-empty `open.part` is renamed to
 /// `<yyyyMMdd'T'HHmmss.SSS'Z'>.jsonl` in UTC, and a leftover one is finished the same way on
 /// start. A torn last line is dropped before the rename, and a finished file only ever holds whole

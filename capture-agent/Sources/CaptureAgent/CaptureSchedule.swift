@@ -25,15 +25,18 @@ public struct CaptureSettings: Equatable, Sendable {
 
 private let precedence: [SpoolRecord.Trigger] = [.app, .window, .title, .heartbeat]
 
-/// Decides when to capture from focus changes, presence samples and the passing time.
+/// Decides when to capture from focus changes, presence samples, pausing and the passing time.
 struct CaptureSchedule {
     enum Event: Equatable {
         case presence(Presence)
+        case paused(Bool)
         case focusChanged(SpoolRecord.Trigger)
     }
 
     let settings: CaptureSettings
     private(set) var silence: Set<Silence> = []
+    private var presenceSilence: Set<Silence> = []
+    private var paused = false
     private var pending: SpoolRecord.Trigger?
     private var pendingSince: TimeInterval = 0
     private var settledAt: TimeInterval = 0
@@ -48,13 +51,11 @@ struct CaptureSchedule {
     mutating func receive(_ event: Event, at now: TimeInterval) {
         switch event {
         case .presence(let presence):
-            let wasSilent = !silence.isEmpty
-            silence = presence.silence(idleThreshold: settings.idleThreshold)
-            if !silence.isEmpty {
-                pending = nil
-            } else if wasSilent {
-                heartbeatDue = now + settings.settleDelay
-            }
+            presenceSilence = presence.silence(idleThreshold: settings.idleThreshold)
+            updateSilence(at: now)
+        case .paused(let paused):
+            self.paused = paused
+            updateSilence(at: now)
         case .focusChanged(let trigger):
             guard silence.isEmpty else { return }
             if let pending {
@@ -64,6 +65,16 @@ struct CaptureSchedule {
                 pendingSince = now
             }
             settledAt = now + settings.settleDelay
+        }
+    }
+
+    private mutating func updateSilence(at now: TimeInterval) {
+        let wasSilent = !silence.isEmpty
+        silence = paused ? presenceSilence.union([.paused]) : presenceSilence
+        if !silence.isEmpty {
+            pending = nil
+        } else if wasSilent {
+            heartbeatDue = now + settings.settleDelay
         }
     }
 

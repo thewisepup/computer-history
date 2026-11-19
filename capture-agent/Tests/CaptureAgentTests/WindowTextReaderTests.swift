@@ -266,3 +266,8 @@ func readOnce(_ tree: FakeAccessibilityTree, _ window: FakeElement?, settings: W
     #expect(readOnce(tree, window).text == "42")
     #expect(tree.reads(of: "application") == ["application.AXRole"])
 }
+
+@Test func theFlagOffListMatchesBundleIDsIgnoringCase() {
+    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], fileExists: { _ in false }))
+    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], fileExists: { _ in false }))
+}

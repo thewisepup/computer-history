@@ -13,22 +13,22 @@ func finish(_ outcome: CommandOutcome) -> Never {
 }
 
 let loginItem = SMAppService.agent(plistName: AgentIdentity.launchAgentPlistName)
+let settings = AgentSettings.load()
+let pause = settings.pause
 
 switch AgentCommand(arguments: Array(CommandLine.arguments.dropFirst())) {
 case .run:
     let logger = Logger(subsystem: AgentIdentity.bundleIdentifier, category: "agent")
     let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
-    let spool = SpoolWriter(directory: SpoolWriter.defaultDirectory, now: Date.init)
+    let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
     AgentLoop(
+        report: settings.report,
+        isPaused: { pause.isPaused },
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
         spool: spool,
         counts: counts,
-        startCapturing: {
-            startCaptureThread(
-                settings: CaptureSettings(), windowText: WindowTextSettings(), spool: spool, counts: counts, log: log
-            )
-        },
+        startCapturing: { startCaptureThread(settings: settings, spool: spool, counts: counts, log: log) },
         log: log
     ).run()
 case .install:
@@ -36,7 +36,13 @@ case .install:
 case .uninstall:
     finish(uninstallLoginItem(loginItem))
 case .status:
-    finish(loginItemStatus(loginItem))
+    finish(agentStatus(loginItem, paused: pause.isPaused))
+case .pause:
+    finish(pauseCapture(pause))
+case .resume:
+    finish(resumeCapture(pause))
+case .checkConfig:
+    finish(checkConfig(settings))
 case .usage:
     finish(.usage)
 }

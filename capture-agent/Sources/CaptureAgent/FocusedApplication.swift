@@ -16,10 +16,9 @@ public struct FocusedApplication: Equatable, Sendable {
 }
 
 /// Asks the system-wide accessibility element for the focused application, falling back to NSWorkspace.
-public func focusedApplication(callTimeout: TimeInterval) -> FocusedApplication? {
+public func focusedApplication() -> FocusedApplication? {
     focusedApplication(
         accessibilityPid: {
-            LiveAccessibilityElement.setProcessCallTimeout(callTimeout)
             guard case .value(let app) = LiveAccessibilityElement.systemWide.element("AXFocusedApplication") else {
                 return nil
             }

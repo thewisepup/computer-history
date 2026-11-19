@@ -7,12 +7,6 @@ public final class SpoolWriter: @unchecked Sendable {
     public static let lockFileName = "agent.lock"
     public static let finishedSuffix = ".jsonl"
 
-    /// The spool folder under the user's Application Support.
-    public static var defaultDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/ComputerHistory/spool", isDirectory: true)
-    }
-
     /// Another agent holds the spool's lock.
     public struct InUse: Error, CustomStringConvertible {
         public let directory: URL

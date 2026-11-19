@@ -103,10 +103,6 @@ import Testing
     #expect(try spool.lines("20261118T090000.000Z.jsonl") == [line(fixtureRecords[1]), ""])
 }
 
-@Test func defaultDirectoryIsTheSpoolInApplicationSupport() {
-    #expect(SpoolWriter.defaultDirectory.path.hasSuffix("/Library/Application Support/ComputerHistory/spool"))
-}
-
 @Test func aSecondWriterCannotTakeTheSpool() throws {
     let spool = TempSpool()
     let first = spool.writer()
