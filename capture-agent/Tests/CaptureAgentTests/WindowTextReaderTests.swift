@@ -2,27 +2,6 @@ import Foundation
 import Testing
 @testable import CaptureAgent
 
-let plainApp = FocusedApplication(
-    processIdentifier: 100,
-    bundleIdentifier: "com.apple.TextEdit",
-    bundleURL: URL(filePath: "/System/Applications/TextEdit.app"),
-    name: "TextEdit"
-)
-
-let chrome = FocusedApplication(
-    processIdentifier: 200,
-    bundleIdentifier: "com.google.Chrome",
-    bundleURL: URL(filePath: "/Applications/Google Chrome.app"),
-    name: "Google Chrome"
-)
-
-let cursor = FocusedApplication(
-    processIdentifier: 300,
-    bundleIdentifier: "com.todesktop.230313mzl4w4u92",
-    bundleURL: URL(filePath: "/Applications/Cursor.app"),
-    name: "Cursor"
-)
-
 func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTextSettings = WindowTextSettings()) -> WindowText {
     mac.reader([plainApp.processIdentifier: mac.app(window: window)], settings: settings).read(plainApp)
 }
@@ -178,7 +157,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let elements = (0..<3).map { _ in mac.app(window: mac.window("Tab", children: [])) }
     var current = elements[0]
     let reader = WindowTextReader(
-        settings: WindowTextSettings(), applicationElement: { _ in current }, fileExists: { _ in true }, now: { mac.clock }
+        settings: WindowTextSettings(), applicationElement: { _ in current }, hasElectronFramework: { _ in true }, now: { mac.clock }
     )
     let launched = FocusedApplication(
         processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
@@ -204,7 +183,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
 @Test func setsTheFlagOnElectronApps() {
     let mac = ScriptedMac()
     let app = mac.app(window: nil)
-    let reader = mac.reader([cursor.processIdentifier: app], electronBundles: ["/Applications/Cursor.app/Contents/Frameworks/Electron Framework.framework"])
+    let reader = mac.reader([cursor.processIdentifier: app], electronBundles: ["/Applications/Cursor.app"])
     _ = reader.read(cursor)
     #expect(app.flagsSet == ["AXManualAccessibility", "AXEnhancedUserInterface"])
 }
@@ -287,6 +266,16 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
 }
 
 @Test func theFlagOffListMatchesBundleIDsIgnoringCase() {
-    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], fileExists: { _ in false }))
-    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], fileExists: { _ in false }))
+    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], hasElectronFramework: { _ in false }))
+    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], hasElectronFramework: { _ in false }))
+}
+
+@Test func anAppIsElectronWhenItsBundleShipsTheElectronFramework() throws {
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent("electron-\(UUID().uuidString).app")
+    defer { try? FileManager.default.removeItem(at: bundle) }
+    #expect(!bundleHasElectronFramework(bundle))
+    try FileManager.default.createDirectory(
+        at: bundle.appending(path: "Contents/Frameworks/Electron Framework.framework"), withIntermediateDirectories: true
+    )
+    #expect(bundleHasElectronFramework(bundle))
 }

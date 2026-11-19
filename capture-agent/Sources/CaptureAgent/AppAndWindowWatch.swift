@@ -1,5 +1,18 @@
 import Foundation
 
+/// What changed about the focus: the focused app, its focused window, or that window's title.
+enum FocusChange: Equatable {
+    case app, window, title
+
+    var trigger: SpoolRecord.Trigger {
+        switch self {
+        case .app: .app
+        case .window: .window
+        case .title: .title
+        }
+    }
+}
+
 /// Notices when the focused app changes, asking only which app is focused and never touching its windows.
 struct AppWatch {
     let focusedApplication: () -> FocusedApplication?
@@ -11,7 +24,7 @@ struct AppWatch {
     }
 
     /// Reads the focused app and returns `app` if it differs from the last known one, or nil on the first poll, no change or no app.
-    mutating func poll() -> SpoolRecord.Trigger? {
+    mutating func poll() -> FocusChange? {
         application = focusedApplication()
         guard let current = application else { return nil }
         defer { lastApplication = current }
@@ -32,7 +45,7 @@ struct WindowWatch<Element: AccessibilityElement> {
     }
 
     /// Reads the app's focused window and title and returns what changed, or nil on the first poll of a newly focused app or no change.
-    mutating func poll(_ application: FocusedApplication) -> SpoolRecord.Trigger? {
+    mutating func poll(_ application: FocusedApplication) -> FocusChange? {
         let sameApp = processIdentifier == application.processIdentifier
         if !sameApp { forget() }
         var nextWindow = window
@@ -52,7 +65,7 @@ struct WindowWatch<Element: AccessibilityElement> {
         case .timedOut:
             break
         }
-        let change: SpoolRecord.Trigger? =
+        let change: FocusChange? =
             if !sameApp { nil }
             else if window != nextWindow, nextWindow != .unknown { .window }
             else if title.differs(from: nextTitle) { .title }

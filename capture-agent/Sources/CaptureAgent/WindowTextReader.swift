@@ -32,19 +32,19 @@ public struct WindowText: Equatable, Sendable {
 public final class WindowTextReader<Element: AccessibilityElement> {
     let settings: WindowTextSettings
     let applicationElement: (pid_t) -> Element
-    let fileExists: (String) -> Bool
+    let hasElectronFramework: (URL) -> Bool
     let now: () -> TimeInterval
     private var flagChecked: Set<ProcessLaunch> = []
 
     public init(
         settings: WindowTextSettings,
         applicationElement: @escaping (pid_t) -> Element,
-        fileExists: @escaping (String) -> Bool,
+        hasElectronFramework: @escaping (URL) -> Bool,
         now: @escaping () -> TimeInterval
     ) {
         self.settings = settings
         self.applicationElement = applicationElement
-        self.fileExists = fileExists
+        self.hasElectronFramework = hasElectronFramework
         self.now = now
     }
 
@@ -58,7 +58,7 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         let app = applicationElement(application.processIdentifier)
         let launch = ProcessLaunch(application)
         if !flagChecked.contains(launch) {
-            let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, fileExists: fileExists)
+            let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, hasElectronFramework: hasElectronFramework)
             if !needsFlag || setAccessibilityFlags(on: app) {
                 flagChecked.insert(launch)
             }

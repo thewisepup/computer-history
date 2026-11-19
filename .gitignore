@@ -2,3 +2,4 @@
 __pycache__/
 *.egg-info/
 output/
+.scratch/m2-capture-agent/ax-measure/measure

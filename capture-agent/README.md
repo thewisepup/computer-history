@@ -30,9 +30,12 @@ scripts/uninstall.sh   # unregister the login item, stop the agent, delete the a
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
 alone it cannot find the `Testing` module, so use `scripts/test.sh`. Swift
-never runs in CI; the pre-commit hook runs `scripts/test.sh` and
-`scripts/e2e.sh` when a commit touches this folder, `fixtures/spool/`,
-`computer_history/sources/ax_text/` or `tests/test_capture_e2e.py`.
+never runs in CI. The pre-commit hook runs `scripts/test.sh` when a commit
+touches this folder, `fixtures/spool/` or `tests/test_capture_e2e.py`, and
+`scripts/e2e.sh` for those and for the Python the check runs through:
+`computer_history/store/`, `cli/`, `text.py`, `sources/ax_text/` and
+`sources/` `runner.py`, `commit.py`, `projection.py`, `contract.py` and
+`agent_health.py`. Without `swift` on the path it skips both and says so.
 
 The installed binary takes the same commands directly:
 
@@ -235,9 +238,12 @@ calls time out) and `children`.
 
 `scripts/e2e.sh` builds the agent and runs `tests/test_capture_e2e.py`. It
 plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
-`e2e/session.json`, then runs the real `computer-history ingest` twice and
-`status` against a temporary database, with a stand-in ActivityWatch that has
-no buckets, and checks the stored records and signals against the scripts.
+`e2e/session.json`, then runs the real `computer-history ingest` three times
+(twice, then once more with the finished files put back) and `status` against
+a temporary database, with a stand-in ActivityWatch that has no buckets, and
+checks the stored records and signals against the scripts. It also checks
+that the agent's `check-config` and the backend name the same default folder
+and spool for a scratch home folder.
 Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs

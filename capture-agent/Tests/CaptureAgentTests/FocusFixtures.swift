@@ -3,6 +3,27 @@ import Foundation
 
 let present = Presence(idleSeconds: 0, locked: false, asleep: false)
 
+let plainApp = FocusedApplication(
+    processIdentifier: 100,
+    bundleIdentifier: "com.apple.TextEdit",
+    bundleURL: URL(filePath: "/System/Applications/TextEdit.app"),
+    name: "TextEdit"
+)
+
+let chrome = FocusedApplication(
+    processIdentifier: 200,
+    bundleIdentifier: "com.google.Chrome",
+    bundleURL: URL(filePath: "/Applications/Google Chrome.app"),
+    name: "Google Chrome"
+)
+
+let cursor = FocusedApplication(
+    processIdentifier: 300,
+    bundleIdentifier: "com.todesktop.230313mzl4w4u92",
+    bundleURL: URL(filePath: "/Applications/Cursor.app"),
+    name: "Cursor"
+)
+
 let onePassword = FocusedApplication(
     processIdentifier: 400,
     bundleIdentifier: "com.1password.1password",
@@ -61,7 +82,7 @@ extension ScriptedMac {
         WindowTextReader(
             settings: settings,
             applicationElement: { apps[$0]! },
-            fileExists: { path in electronBundles.contains { path.hasPrefix($0) } },
+            hasElectronFramework: { electronBundles.contains($0.path) },
             now: { self.clock }
         )
     }

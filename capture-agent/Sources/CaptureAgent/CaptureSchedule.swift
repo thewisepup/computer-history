@@ -23,21 +23,21 @@ public struct CaptureSettings: Equatable, Sendable {
     }
 }
 
-private let precedence: [SpoolRecord.Trigger] = [.app, .window, .title, .heartbeat]
+private let precedence: [FocusChange] = [.app, .window, .title]
 
 /// Decides when to capture from focus changes, presence samples, pausing and the passing time.
 struct CaptureSchedule {
     enum Event: Equatable {
         case presence(Presence)
         case paused(Bool)
-        case focusChanged(SpoolRecord.Trigger)
+        case focusChanged(FocusChange)
     }
 
     let settings: CaptureSettings
     private(set) var silence: Set<Silence> = []
     private var presenceSilence: Set<Silence> = []
     private var paused = false
-    private var pending: SpoolRecord.Trigger?
+    private var pending: FocusChange?
     private var pendingSince: TimeInterval = 0
     private var settledAt: TimeInterval = 0
     private var heartbeatDue: TimeInterval
@@ -56,12 +56,12 @@ struct CaptureSchedule {
         case .paused(let paused):
             self.paused = paused
             updateSilence(at: now)
-        case .focusChanged(let trigger):
+        case .focusChanged(let change):
             guard silence.isEmpty else { return }
             if let pending {
-                self.pending = precedence.first { $0 == pending || $0 == trigger }
+                self.pending = precedence.first { $0 == pending || $0 == change }
             } else {
-                pending = trigger
+                pending = change
                 pendingSince = now
             }
             settledAt = now + settings.settleDelay
@@ -85,7 +85,7 @@ struct CaptureSchedule {
         let trigger: SpoolRecord.Trigger
         if let pending {
             guard now >= settledAt || now >= pendingSince + settings.heartbeatInterval else { return nil }
-            trigger = pending
+            trigger = pending.trigger
         } else {
             guard now >= heartbeatDue else { return nil }
             trigger = .heartbeat

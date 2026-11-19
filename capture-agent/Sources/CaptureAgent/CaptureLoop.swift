@@ -26,7 +26,7 @@ final class CaptureLoop<M: Mac> {
         self.reader = WindowTextReader(
             settings: settings.windowText,
             applicationElement: mac.applicationElement,
-            fileExists: mac.fileExists,
+            hasElectronFramework: mac.hasElectronFramework,
             now: mac.uptime
         )
         self.spool = spool

@@ -38,10 +38,7 @@ public final class SpoolWriter: @unchecked Sendable {
     /// Takes the spool for this process and finishes any open file a previous run left behind.
     @discardableResult
     public func start() throws -> URL? {
-        try lock.withLock {
-            try startIfNeeded()
-            return try finishLocked()
-        }
+        try finish()
     }
 
     /// Appends the record to the open file as one line, opening a new file if none is open.
