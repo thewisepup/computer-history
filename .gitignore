@@ -3,5 +3,9 @@ __pycache__/
 *.egg-info/
 output/
 .scratch/m2-capture-agent/ax-measure/measure
+<<<<<<< HEAD
 formal/spool/out/
 .hypothesis/
+=======
+.claude/worktrees/
+>>>>>>> 476b3ea (Untrack agent worktree links and ignore .claude/worktrees)
