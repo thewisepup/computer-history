@@ -9,7 +9,7 @@
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
             |
     db.py and sources.py (unusable database / source messages),
-    formatting.py (durations, times, sizes)
+    formatting.py (durations, times, sizes, app names)
 """
 
 from computer_history.cli.app import COMMANDS, HANDLERS, build_parser, main

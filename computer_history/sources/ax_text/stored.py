@@ -1,4 +1,4 @@
-"""The agent's stored records, for status: their kinds and flags, the newest, the day's counts."""
+"""The agent's stored records for status: kinds, apps and flags, the newest, the day's counts."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from typing import NamedTuple
 from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE
 from computer_history.sources.ax_text.record import CAPTURE_KIND, EXCLUDED_KIND
 from computer_history.store import latest_payload_value, payload_values
+from computer_history.text import clean_text
 
 KIND_PATH = "$.kind"
+APP_PATH = "$.app_name"
 FLAG_PATHS = ("$.text_cut_off", "$.timed_out")
 
 
@@ -21,6 +23,7 @@ class StoredRecord(NamedTuple):
     kind: str | None
     cut_off: bool = False
     timed_out: bool = False
+    app: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,11 +36,17 @@ class DayCounts:
 
 def stored_records(conn: sqlite3.Connection, start: datetime, end: datetime) -> list[StoredRecord]:
     """The stored records captured in the range, oldest first."""
-    rows = payload_values(conn, AX_TEXT_SOURCE, start, end, (KIND_PATH, *FLAG_PATHS))
+    rows = payload_values(conn, AX_TEXT_SOURCE, start, end, (KIND_PATH, *FLAG_PATHS, APP_PATH))
     return [
-        StoredRecord(row.started_at, kind if isinstance(kind, str) else None, bool(cut), bool(out))
+        StoredRecord(
+            row.started_at,
+            kind if isinstance(kind, str) else None,
+            bool(cut),
+            bool(out),
+            clean_text(app) if isinstance(app, str) else None,
+        )
         for row in rows
-        for kind, cut, out in [row.values]
+        for kind, cut, out, app in [row.values]
     ]
 
 

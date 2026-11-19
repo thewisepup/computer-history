@@ -1,4 +1,4 @@
-"""The capture agent in status: the coverage rule, liveness, the spool backlog and the CLI lines."""
+"""The capture agent in status: coverage, app agreement, liveness, the spool and the CLI lines."""
 
 from __future__ import annotations
 
@@ -19,13 +19,16 @@ from computer_history.cli import status as cli_status
 from computer_history.sources import (
     AFK_SOURCE,
     AGENT_ALIVE_WITHIN,
+    APP_TOLERANCE,
     AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
     HEARTBEAT_SECONDS,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
+    WINDOW_SOURCE,
     StoredRecord,
+    app_agreement,
     capture_coverage,
     capture_health,
     liveness,
@@ -43,6 +46,9 @@ from computer_history.store import (
 NOW = datetime(2026, 11, 18, 18, 0, tzinfo=UTC)
 DAY_START = datetime(2026, 11, 18, 8, 0, tzinfo=UTC)
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
+SECRET_TITLE = "SECRET-TITLE"
+SECRET_TEXT = "SECRET-TEXT"
+WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 
 
 def at(minutes: float, base: datetime = NOW) -> datetime:
@@ -153,6 +159,86 @@ def test_no_afk_data_at_all_leaves_the_silent_stretches_unjudged() -> None:
     result = coverage(records)
     assert result.unobserved == ()
     assert result.unjudged == gaps((-50 + CAPTURE_TOLERANCE.total_seconds() / 60, 0))
+
+
+# --- app agreement ---------------------------------------------------------------------
+
+
+def capture(minutes: float, app: str | None, kind: str = "capture") -> StoredRecord:
+    return StoredRecord(at(minutes), kind, app=app)
+
+
+def agreement(records: list[StoredRecord], spans: list[tuple[float, float, str]]):
+    return app_agreement(
+        records, [(at(a), at(b), app) for a, b, app in spans], start=at(-60), end=at(0)
+    )
+
+
+def test_a_capture_inside_a_span_of_its_app_matches_ignoring_case() -> None:
+    result = agreement([capture(-30, "Cursor"), capture(-10, "google chrome")], [
+        (-40, -20, "Cursor"),
+        (-20, 0, "Google Chrome"),
+    ])
+    assert (result.matched, result.differ, result.unjudged, result.pairs) == (2, 0, 0, ())
+
+
+def test_a_capture_reading_another_app_differs_and_names_the_pair() -> None:
+    result = agreement([capture(-30, "Notes")], [(-40, -20, "Cursor")])
+    assert (result.matched, result.differ, result.unjudged) == (0, 1, 0)
+    assert result.pairs == (("Notes", "Cursor", 1),)
+
+
+def test_a_switch_within_the_tolerance_still_matches() -> None:
+    lag = APP_TOLERANCE.total_seconds() / 60 / 2
+    records = [capture(-30, "Cursor"), capture(-30 - lag, "Notes")]
+    result = agreement(records, [(-40, -30, "Notes"), (-30 + lag, -20, "Cursor")])
+    assert (result.matched, result.differ) == (2, 0)
+
+
+def test_a_switch_noticed_late_differs() -> None:
+    late = APP_TOLERANCE.total_seconds() / 60 * 3
+    result = agreement([capture(-30 + late, "Notes")], [(-40, -30, "Notes"), (-30, -20, "Cursor")])
+    assert result.pairs == (("Notes", "Cursor", 1),)
+
+
+def test_a_capture_with_no_span_near_it_is_unjudged_never_matched() -> None:
+    away = APP_TOLERANCE.total_seconds() / 60 * 2
+    result = agreement([capture(-30, "Cursor")], [(-40, -30 - away, "Cursor")])
+    assert (result.matched, result.differ, result.unjudged) == (0, 0, 1)
+    assert agreement([capture(-30, "Cursor")], []).unjudged == 1
+
+
+def test_a_gap_between_spans_within_the_tolerance_is_judged_by_the_nearest() -> None:
+    edge = APP_TOLERANCE.total_seconds() / 60 / 4
+    result = agreement(
+        [capture(-30, "Notes")], [(-40, -30 - edge, "Cursor"), (-30 + 3 * edge, -20, "Mail")]
+    )
+    assert result.pairs == (("Notes", "Cursor", 1),)
+
+
+def test_only_captures_in_the_range_count() -> None:
+    records = [
+        capture(-61, "Cursor"),
+        capture(-30, "Cursor", kind="excluded"),
+        StoredRecord(at(-29), "paused"),
+        StoredRecord(at(-28), "resumed"),
+        capture(1, "Cursor"),
+    ]
+    result = agreement(records, [(-90, 10, "Notes")])
+    assert (result.matched, result.differ, result.unjudged) == (0, 0, 0)
+
+
+def test_the_pairs_come_most_common_first() -> None:
+    records = [capture(-50, "A"), capture(-40, "B"), capture(-39, "B"), capture(-30, None)]
+    result = agreement(records, [(-60, 0, "Cursor")])
+    assert result.differ == 4
+    assert result.pairs == (("B", "Cursor", 2), ("A", "Cursor", 1), (None, "Cursor", 1))
+
+
+def test_overlapping_spans_from_two_buckets_match_either_app() -> None:
+    records = [capture(-30, "Cursor"), capture(-25, "Notes")]
+    result = agreement(records, [(-40, -20, "Cursor"), (-35, -20, "Notes")])
+    assert (result.matched, result.differ) == (2, 0)
 
 
 # --- liveness --------------------------------------------------------------------------
@@ -298,6 +384,27 @@ def store_afk(conn: sqlite3.Connection, spans: list[tuple[datetime, datetime, st
     insert_observations(conn, observations, project=AW)
 
 
+def store_window(conn: sqlite3.Connection, spans: list[tuple[datetime, datetime, str]]) -> None:
+    observations = [
+        Observation(
+            WINDOW_SOURCE,
+            f"{WINDOW_BUCKET}/{i}",
+            start,
+            end,
+            json.dumps(
+                {
+                    "id": i,
+                    "timestamp": start.isoformat(),
+                    "duration": (end - start).total_seconds(),
+                    "data": {"app": app, "title": SECRET_TITLE},
+                }
+            ),
+        )
+        for i, (start, end, app) in enumerate(spans)
+    ]
+    insert_observations(conn, observations, project=AW)
+
+
 def health(conn: sqlite3.Connection, spool: Path, client: FakeAW | None = None):
     return capture_health(
         conn,
@@ -416,6 +523,30 @@ def test_the_newest_afk_event_from_activitywatch_counts_before_it_is_stored(
     result = health(conn, tmp_path, fake)
     assert result.alive == "no"
     assert result.coverage is not None and result.coverage.unobserved
+
+
+def test_app_agreement_reads_stored_and_newest_window_spans(conn, tmp_path: Path) -> None:
+    store_records(
+        conn,
+        [
+            spool_line(1, at(-50), app_name="  Cursor "),
+            spool_line(2, at(-40), app_name="Notes"),
+            spool_line(3, at(-30), kind="excluded", app_name="1Password"),
+            spool_line(4, at(-20), app_name="Mail"),
+            spool_line(5, at(-5), app_name="Mail"),
+        ],
+    )
+    store_window(conn, [(at(-55), at(-35), "cursor"), (at(-35), at(-25), "Safari")])
+    stored_only = health(conn, tmp_path).agreement
+    assert stored_only is not None
+    assert (stored_only.matched, stored_only.differ, stored_only.unjudged) == (1, 1, 2)
+    assert stored_only.pairs == (("Notes", "cursor", 1),)
+
+    fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=at(-25))
+    fake.add(WINDOW_BUCKET, 0, 25 * 60, {"app": "Mail", "title": SECRET_TITLE})
+    result = health(conn, tmp_path, fake).agreement
+    assert result is not None
+    assert (result.matched, result.differ, result.unjudged) == (3, 1, 0)
 
 
 @pytest.mark.parametrize("unstored", [finished_name(at(-30)), "open.part"])
@@ -538,3 +669,42 @@ def test_status_reports_paused_and_unobserved_capture_gaps(
     assert re.search(r"paused\s+yes, since \S+ \S+ \(20m( \d+s)? ago\)", out)
     assert "alive         paused" in out
     assert "idle" not in out.lower()
+
+
+def test_status_reports_app_agreement_with_names_only(capsys, status_aw, db_path: Path) -> None:
+    now = datetime.now(UTC)
+    minutes = [now - timedelta(minutes=50 - i) for i in range(10)]
+    apps = ["Cursor"] * 5 + ["Notes"] * 3 + ["Mail", "Slack"]
+    conn = connect(db_path)
+    store_records(
+        conn,
+        [
+            spool_line(i, when, app_name=app, window_title=SECRET_TITLE, text=SECRET_TEXT)
+            for i, (when, app) in enumerate(zip(minutes, apps, strict=True))
+        ],
+    )
+    store_window(conn, [(minutes[0], minutes[8] - timedelta(seconds=30), "Cursor")])
+    conn.close()
+    status_aw(FakeAW({}))
+
+    out = run_status(capsys, "--db-path", str(db_path))
+
+    assert re.search(
+        r"app agreement 5 of 8 captures match aw-window \(3 differ, 2 without aw-window data\)\n"
+        r" +3 x Notes -> Cursor\n",
+        out,
+    )
+    leaked = [secret for secret in (SECRET_TITLE, SECRET_TEXT) if secret in out]
+    assert leaked == []
+
+
+def test_status_without_window_data_cannot_judge_app_agreement(
+    capsys, status_aw, db_path: Path
+) -> None:
+    conn = connect(db_path)
+    store_records(conn, [spool_line(1, datetime.now(UTC) - timedelta(minutes=5))])
+    store_records(conn, [spool_line(2, datetime.now(UTC) - timedelta(minutes=4))])
+    conn.close()
+    status_aw(FakeAW({}))
+    out = run_status(capsys, "--db-path", str(db_path))
+    assert "app agreement cannot be judged: no aw-window data\n" in out

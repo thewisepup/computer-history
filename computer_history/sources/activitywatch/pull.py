@@ -1,4 +1,4 @@
-"""Fetch a source's bucket events for a range and keep the settled ones."""
+"""Fetch a source's bucket events for a range and keep the settled ones, or its newest events."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
-from computer_history.sources.activitywatch.discovery import AWSource
+from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
 from computer_history.store import Observation, to_utc
 
 log = logging.getLogger(__name__)
@@ -157,6 +157,17 @@ def pull_source(
         held_back=sum(pull.held_back for pull in pulls),
         frontier=min((pull.frontier for pull in pulls), default=None),
     )
+
+
+def newest_events(client: AWApi, source_name: str) -> list[Any]:
+    """The newest raw event of every bucket feeding the source, including one still growing."""
+    return [
+        raw
+        for source in discover_sources(client)
+        if source.name == source_name
+        for bucket_id in source.bucket_ids
+        for raw in client.get_events(bucket_id, limit=1)
+    ]
 
 
 def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:

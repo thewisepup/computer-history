@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Any, NamedTuple
 
 from computer_history.sources.activitywatch.client import AWApi
-from computer_history.sources.activitywatch.discovery import AFK_SOURCE, discover_sources
-from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times
+from computer_history.sources.activitywatch.discovery import AFK_SOURCE
+from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times, newest_events
 from computer_history.store import payload_values
 
 AFK_STATUS_PATH = "$.data.status"
@@ -34,16 +34,7 @@ def stored_afk_spans(
 
 def newest_afk_spans(client: AWApi) -> list[AfkSpan]:
     """The newest event of every AFK bucket, including one still growing and not yet stored."""
-    spans = []
-    for source in discover_sources(client):
-        if source.name != AFK_SOURCE:
-            continue
-        for bucket_id in source.bucket_ids:
-            for raw in client.get_events(bucket_id, limit=1):
-                span = _span(raw)
-                if span is not None:
-                    spans.append(span)
-    return spans
+    return [span for raw in newest_events(client, AFK_SOURCE) if (span := _span(raw)) is not None]
 
 
 def _span(raw: Any) -> AfkSpan | None:

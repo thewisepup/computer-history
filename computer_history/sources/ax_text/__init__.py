@@ -13,14 +13,18 @@
                      (app, title, capped text, the rest in extras)
 
     For status: backlog.py   what waits in the spool and its newest record, changing nothing
-                stored.py    the stored records' kinds and flags, the newest, the day's counts
+                stored.py    the stored records' kinds, apps and flags, the newest, the
+                             day's counts
                 coverage.py  records judged against attended time: stretches no record
                              explains within the heartbeat tolerance, and liveness
+                agreement.py each capture's app judged against the app aw-window shows
+                             in front, within its polling tolerance
 
 Re-reading a file after a crash between commit and removal stores nothing twice.
 """
 
 from computer_history.sources.ax_text.adapter import CaptureSpool
+from computer_history.sources.ax_text.agreement import APP_TOLERANCE, AppAgreement, app_agreement
 from computer_history.sources.ax_text.backlog import SpoolBacklog, spool_backlog
 from computer_history.sources.ax_text.coverage import (
     AGENT_ALIVE_WITHIN,
@@ -50,6 +54,7 @@ from computer_history.sources.ax_text.stored import (
 
 __all__ = [
     "AGENT_ALIVE_WITHIN",
+    "APP_TOLERANCE",
     "AX_TEXT_SOURCE",
     "CAPTURE_KIND",
     "CAPTURE_TOLERANCE",
@@ -59,6 +64,7 @@ __all__ = [
     "SPOOL_ENV_VAR",
     "SPOOL_VERSION",
     "UNREADABLE_FOLDER",
+    "AppAgreement",
     "CaptureSpool",
     "Coverage",
     "DayCounts",
@@ -66,6 +72,7 @@ __all__ = [
     "SpoolBacklog",
     "SpoolError",
     "StoredRecord",
+    "app_agreement",
     "capture_coverage",
     "day_counts",
     "finished_files",

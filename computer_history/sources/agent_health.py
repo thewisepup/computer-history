@@ -1,4 +1,4 @@
-"""The capture agent's health for status: its stored records and spool, judged against aw-afk."""
+"""The capture agent's health for status: its records and spool, against aw-afk and aw-window."""
 
 from __future__ import annotations
 
@@ -10,19 +10,25 @@ from pathlib import Path
 
 from computer_history.sources.activitywatch import (
     AfkSpan,
+    AppSpan,
     AWApi,
     newest_afk_spans,
+    newest_app_spans,
     stored_afk_spans,
+    stored_app_spans,
 )
 from computer_history.sources.ax_text import (
+    APP_TOLERANCE,
     AX_TEXT_SOURCE,
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    AppAgreement,
     Coverage,
     DayCounts,
     SpoolBacklog,
     SpoolError,
+    app_agreement,
     capture_coverage,
     day_counts,
     liveness,
@@ -49,6 +55,7 @@ class CaptureHealth:
     paused_since: datetime | None = None
     today: DayCounts = DayCounts()
     coverage: Coverage | None = None
+    agreement: AppAgreement | None = None
 
 
 def capture_health(
@@ -62,9 +69,9 @@ def capture_health(
     min_gap_seconds: float = 0,
     day_start: datetime | None = None,
 ) -> CaptureHealth:
-    """Report on the agent from its stored records, its spool folder and aw-afk, as of now.
+    """Report on the agent from its stored records, its spool, aw-afk and aw-window, as of now.
 
-    With a client, the newest AFK events in ActivityWatch count too, even those not stored yet.
+    With a client, the newest AFK and window events count too, even those not stored yet.
     """
     now = to_utc(now)
     try:
@@ -90,8 +97,14 @@ def capture_health(
     paused = newest[1] == PAUSED_KIND
     afk = _afk_spans(conn, client, min(read_from, newest[0]), now)
     active = [(s.start, s.end) for s in afk if not s.afk]
-    coverage = None
+    coverage = agreement = None
     if start < end:
+        agreement = app_agreement(
+            records,
+            _app_spans(conn, client, start - APP_TOLERANCE, end + APP_TOLERANCE),
+            start=start,
+            end=end,
+        )
         coverage = capture_coverage(
             records,
             active=active,
@@ -111,6 +124,7 @@ def capture_health(
         paused_since=newest[0] if paused else None,
         today=day_counts(records, day_start),
         coverage=coverage,
+        agreement=agreement,
     )
 
 
@@ -131,6 +145,18 @@ def _afk_spans(
     if client is not None:
         try:
             spans.extend(newest_afk_spans(client))
+        except SourceUnavailable:
+            pass
+    return spans
+
+
+def _app_spans(
+    conn: sqlite3.Connection, client: AWApi | None, start: datetime, end: datetime
+) -> list[AppSpan]:
+    spans = stored_app_spans(conn, start, end)
+    if client is not None:
+        try:
+            spans.extend(newest_app_spans(client))
         except SourceUnavailable:
             pass
     return spans

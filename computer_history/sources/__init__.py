@@ -21,7 +21,7 @@
                      the projector it is given)
 
     agent_health.py  for status: the capture agent's stored records and spool,
-                     judged against aw-afk, drawing on both adapters
+                     judged against aw-afk and aw-window, drawing on both adapters
 """
 
 from computer_history.sources import (
