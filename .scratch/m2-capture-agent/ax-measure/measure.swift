@@ -124,6 +124,17 @@ func isChromiumFamily(_ app: NSRunningApplication) -> Bool {
     return ids.contains(app.bundleIdentifier ?? "")
 }
 
+func frontmostApp() -> NSRunningApplication? {
+    let (v, e) = copyAttr(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute)
+    if e == .success, let v, CFGetTypeID(v) == AXUIElementGetTypeID() {
+        var pid: pid_t = 0
+        if AXUIElementGetPid(v as! AXUIElement, &pid) == .success, let app = NSRunningApplication(processIdentifier: pid) {
+            return app
+        }
+    }
+    return NSWorkspace.shared.frontmostApplication
+}
+
 let o = parseOptions()
 guard AXIsProcessTrusted() else {
     print("This terminal has no Accessibility permission.")
@@ -145,7 +156,7 @@ if o.mode == "on" { print("The flag stays on in each app until you quit and reop
 while Date() < deadline {
     let tickStart = Date()
     autoreleasepool {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        guard let app = frontmostApp() else { return }
         let pid = app.processIdentifier
         let appEl = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(appEl, perCallTimeout)
@@ -158,7 +169,7 @@ while Date() < deadline {
                 res[name] = e == .success ? "set" : "error \(e.rawValue)"
             }
             flagResults[pid] = res
-            Thread.sleep(forTimeInterval: 1.5)
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         }
         let (winV, winE) = copyAttr(appEl, kAXFocusedWindowAttribute)
         var record: [String: Any] = [
@@ -201,7 +212,7 @@ while Date() < deadline {
         print("\(record["app"]!): \(kb) KB in \(Int(ms)) ms")
     }
     let rest = o.interval - Date().timeIntervalSince(tickStart)
-    if rest > 0 { Thread.sleep(forTimeInterval: rest) }
+    if rest > 0 { RunLoop.current.run(until: Date().addingTimeInterval(rest)) }
 }
 try? handle.close()
 print("done: \(o.out)")
