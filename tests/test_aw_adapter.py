@@ -715,9 +715,17 @@ def test_url_is_capped() -> None:
 
 def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     import computer_history.sources as sources
-    from computer_history.sources import ax_text, backfill, commit, contract, projection, runner
+    from computer_history.sources import (
+        agent_health,
+        ax_text,
+        backfill,
+        commit,
+        contract,
+        projection,
+        runner,
+    )
 
-    modules = (contract, commit, projection, runner, backfill, aw, ax_text)
+    modules = (contract, commit, projection, runner, backfill, aw, ax_text, agent_health)
     assert sources.__all__ == [name for module in modules for name in module.__all__]
     for module in modules:
         for name in module.__all__:

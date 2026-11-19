@@ -1,10 +1,11 @@
-"""Read queries for status: per-source freshness, row counts, coverage gaps."""
+"""Read queries for status: per-source freshness, row counts, coverage gaps, payload values."""
 
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from computer_history.store.timefmt import to_utc, utc_iso
 
@@ -91,6 +92,67 @@ def find_gaps(
         gaps.append((covered_until, end_text))
     result = [Gap(to_utc(a), to_utc(b)) for a, b in gaps]
     return [gap for gap in result if gap.seconds >= min_gap_seconds]
+
+
+_VALUE = "CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END"
+
+
+class PayloadValues(NamedTuple):
+    started_at: datetime
+    ended_at: datetime
+    values: tuple[Any, ...]
+
+
+def payload_values(
+    conn: sqlite3.Connection,
+    source: str,
+    start: datetime | str,
+    end: datetime | str,
+    paths: Sequence[str],
+) -> list[PayloadValues]:
+    """The source's observations that touch the range, oldest first, with their payload values.
+
+    The values are those at the given JSON paths, in order.
+    """
+    if not paths:
+        raise ValueError("payload_values needs at least one JSON path")
+    columns = ", ".join(_VALUE for _ in paths)
+    rows = conn.execute(
+        f"SELECT started_at, ended_at, {columns} FROM observations "
+        "WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id",
+        (*paths, source, utc_iso(end), utc_iso(start)),
+    )
+    return [PayloadValues(to_utc(a), to_utc(b), tuple(values)) for a, b, *values in rows]
+
+
+def latest_signal_time(conn: sqlite3.Connection, source: str) -> datetime | None:
+    """When the source's newest signal starts, or None if it has none."""
+    row = conn.execute(
+        "SELECT started_at FROM signals WHERE source = ? ORDER BY started_at DESC LIMIT 1",
+        (source,),
+    ).fetchone()
+    return None if row is None else to_utc(row[0])
+
+
+def latest_payload_value(
+    conn: sqlite3.Connection,
+    source: str,
+    path: str,
+    *,
+    until: datetime | str,
+    matching: Any = None,
+) -> tuple[datetime, Any] | None:
+    """The start and payload value at the path of the source's newest observation up to a time.
+
+    Given a value to match, only observations whose payload has that value there count.
+    """
+    match = "" if matching is None else f" AND {_VALUE} = ?"
+    row = conn.execute(
+        f"SELECT started_at, {_VALUE} FROM observations WHERE source = ? AND started_at <= ?"
+        f"{match} ORDER BY started_at DESC, id DESC LIMIT 1",
+        (path, source, utc_iso(until), *(() if matching is None else (path, matching))),
+    ).fetchone()
+    return None if row is None else (to_utc(row[0]), row[1])
 
 
 def _maybe_utc(value: str | None) -> datetime | None:

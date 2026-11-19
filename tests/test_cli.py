@@ -518,26 +518,26 @@ def test_status_checks_sources_without_progress_up_to_latest_observation(
 def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_path: Path) -> None:
     now = datetime.now(UTC)
     obs = [
-        Observation("ax-text", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), "")
+        Observation(
+            "screenshot", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), ""
+        )
         for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
     ]
-    spool = ProgressUpdate(
-        "ax-text", "2026-11-18T10.jsonl:48213", settled_until=now - timedelta(minutes=8)
+    opaque = ProgressUpdate(
+        "screenshot", "shots/2026-11-18T10:0042", settled_until=now - timedelta(minutes=8)
     )
     conn = connect(db_path)
-    insert_observations(conn, obs, progress=spool, project=no_signal)
-    insert_observations(
-        conn, [], progress=ProgressUpdate("screenshot", "shots/0042"), project=no_signal
-    )
+    insert_observations(conn, obs, progress=opaque, project=no_signal)
+    insert_observations(conn, [], progress=ProgressUpdate("ocr", "ocr/0042"), project=no_signal)
     conn.close()
     use_aw(FakeAW({}))
     code, out, _ = run(capsys, "--db-path", str(db_path), "status")
     assert code == 0
-    assert re.search(r"ax-text\s+2 observations .* settled until .* \(8m( \d+s)? behind now\)", out)
-    assert re.search(r"screenshot\s+0 observations .* until - \(progress moved \d+s ago\)", out)
-    # The window ends at settled_until: the 2m after the last capture is not a gap.
-    assert re.findall(r"warning: no ax-text coverage from .+ to .+ \((.+)\)", out) == ["30m"]
-    assert "screenshot: no observations yet" in out
+    assert re.search(r"screenshot\s+2 observations .* until .* \(8m( \d+s)? behind now\)", out)
+    assert re.search(r"ocr\s+0 observations .* until - \(progress moved \d+s ago\)", out)
+    # The window ends at settled_until: the 2m after the last observation is not a gap.
+    assert re.findall(r"warning: no screenshot coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+    assert "ocr: no observations yet" in out
 
 
 def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:

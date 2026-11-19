@@ -28,17 +28,25 @@ class _Event:
     end: datetime
 
 
+MALFORMED_EVENT = (KeyError, TypeError, ValueError, AttributeError, OverflowError)
+
+
+def event_times(raw: Any) -> tuple[datetime, datetime]:
+    """A raw event's start and end, raising one of MALFORMED_EVENT if they are unusable."""
+    start = to_utc(raw["timestamp"])
+    duration = float(raw.get("duration") or 0)
+    duration = duration if math.isfinite(duration) and duration > 0 else 0.0
+    return start, start + timedelta(seconds=duration)
+
+
 def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
     """The timing of one raw event, or None if it is malformed."""
     try:
         event_id = raw["id"]
         if isinstance(event_id, bool) or not isinstance(event_id, int | str) or event_id == "":
             raise ValueError(f"bad id {event_id!r}")
-        start = to_utc(raw["timestamp"])
-        duration = float(raw.get("duration") or 0)
-        duration = duration if math.isfinite(duration) and duration > 0 else 0.0
-        end = start + timedelta(seconds=duration)
-    except (KeyError, TypeError, ValueError, AttributeError, OverflowError) as exc:
+        start, end = event_times(raw)
+    except MALFORMED_EVENT as exc:
         log.warning("skipping malformed ActivityWatch event in %s: %s", bucket_id, exc)
         return None
     return _Event(raw, event_id, start, end)

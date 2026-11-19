@@ -11,7 +11,7 @@ app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop)
-  +-- status.py    freshness, coverage gaps, row counts
+  +-- status.py    freshness, coverage gaps, the capture agent, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
         |
@@ -62,6 +62,7 @@ spool, and the reverse: the other source's rows are stored, and the run exits
 
 ```bash
 computer-history status
+computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 ```
 
 ```
@@ -70,16 +71,65 @@ ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-win
 
 Sources:
   aw-window     3,451 observations  latest end 2026-11-18 10:10  settled until 2026-11-18 10:10 (5s behind now)
+  ax-text         812 observations  latest end 2026-11-18 10:09  settled until 2026-11-18 10:09 (1m 10s behind now)
   ...
 Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   warning: no aw-web coverage from 2026-11-17 10:45 to 2026-11-17 12:25 (1h 39m)
+  ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused):
+  warning: no ax-text coverage from 2026-11-18 08:02 to 2026-11-18 08:40 (38m), while you were active
+  warning: no ax-text coverage from 2026-11-18 09:15 to 2026-11-18 09:27 (12m), cannot be judged: no aw-afk data
+
+Capture agent:
+  last capture  2026-11-18 10:09 (40s ago)
+  alive         yes (last record 2026-11-18 10:10 (12s ago))
+  spool         2 finished files waiting (oldest 1m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
+  today         812 captures stored, 14 excluded, 3 cut off, 1 timed out
+  paused        no
+
+Rows:
+  ...
 ```
 
-Read-only: never creates, migrates or writes. Gaps are reported as
-unobserved time, never assumed idle, and are checked up to each source's
-settled-until time. Small lag is normal — a source is settled only up to the
-start of its current, still-growing event. A source whose progress has no
-settled time shows `settled until - (progress moved 30s ago)` instead.
+Read-only: never creates, migrates or writes, and never changes the spool.
+Gaps are reported as unobserved time, never assumed idle, and are checked up
+to each source's settled-until time. Small lag is normal — a source is settled
+only up to the start of its current, still-growing event. A source whose
+progress has no settled time shows `settled until - (progress moved 30s ago)`
+instead.
+
+`ax-text` captures are instants, so its gaps follow their own rule. A record
+of any kind explains the minute on either side of it (twice the agent's 30s
+heartbeat), and a pause explains the time until the next record. A stretch of
+5m or more is unobserved when `aw-afk` shows you active and nothing explains
+it; where `aw-afk` has no data and nothing explains it, the stretch *cannot be
+judged*, never idle or active. The range ends at the last stored record while
+the spool still holds records (finished files or a non-empty `open.part`),
+otherwise now. `aw-afk` includes the newest AFK event from ActivityWatch, when
+it is reachable, even before it is stored.
+
+The capture agent section:
+
+- **last capture**: the newest capture, stored or still in the spool
+  (excluded and pause records are not captures).
+- **alive**: `yes` when the newest record, stored or still in the spool, is
+  at most 5 minutes old; `NO` when `aw-afk` shows you active for over a minute
+  since it; `paused` while capture is paused; otherwise `cannot tell`.
+- **spool**: finished `*.jsonl` files waiting to be ingested and how long the
+  oldest has waited, then the files set aside in `unreadable/`. `open.part`
+  and `agent.lock` are not counted. The spool path resolves as for `ingest`.
+- **today**: the stored captures and excluded records since local midnight,
+  and how many of those captures were cut off or timed out. Records still in
+  the spool count once ingested.
+- **paused**: `yes, since ...` when the newest record, stored or still in the
+  spool, is `paused`: a `resumed`, a capture or an excluded record ends a
+  pause.
+
+Before the agent has stored anything, the section is one line plus the spool:
+
+```
+Capture agent: has not reported yet (no ax-text records stored)
+  spool         3 finished files waiting (oldest 2m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
+```
 
 ## backfill — one-time history import
 
@@ -158,6 +208,6 @@ computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 ```
 
 Every command takes `--db-path`; the networked ones (`ingest`, `status`,
-`backfill`) take `--aw-url`. `ingest` also takes `--spool-path`; without it
-the spool is the `spool/` folder beside the database, so a scratch database
-never collects the real spool. `-h` on any command prints its flags.
+`backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
+without it the spool is the `spool/` folder beside the database, so a scratch
+database never collects the real spool. `-h` on any command prints its flags.
