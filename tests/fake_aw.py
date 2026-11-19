@@ -1,8 +1,7 @@
 """In-memory ActivityWatch API fake shared by the adapter and CLI tests.
 
-It reproduces the real API's range semantics (overlap filter, inclusive end,
-newest-first, ``limit``, and clipping returned events to the query range, as
-verified on AW v0.14.2) and satisfies the adapter's ``AWApi`` Protocol.
+It matches the real API's range queries as verified on ActivityWatch v0.14.2: overlap
+filter, inclusive end, newest first, limit, and events clipped to the query range.
 """
 
 from __future__ import annotations

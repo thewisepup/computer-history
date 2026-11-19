@@ -71,7 +71,7 @@ wrong. On any `FAIL`, run `$C down` and `$C up` again rather than driving.
 | `$C spool-seed --now` | Writes one fresh `capture` record timestamped now (makes the agent read `alive yes`). |
 | `$C spool-seed --bad` | Writes a file with 2 valid records and one torn line (the ingest must reject the line and set the file aside). |
 | `$C spool-ls` | Lists the spool tree, `unreadable/` included. |
-| `$C sql "<SELECT ...>"` | Read-only `sqlite3 -readonly` query on the run's database. |
+| `$C sql "<SELECT ...>"` | Query on the run's database with `PRAGMA query_only=1` (writes are refused); refuses when the database does not exist yet. |
 | `$C aw-advance` | Closes the growing ActivityWatch events (see Launch). |
 | `$C watch-start` / `$C watch-stop` | Runs `ingest --watch` in the background (60s cycles, first cycle immediately) / stops it with SIGINT. |
 | `$C runs` | Lists run folders on this machine as `live` or `stale`. |

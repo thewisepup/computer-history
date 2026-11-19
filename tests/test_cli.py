@@ -431,8 +431,7 @@ def test_status_writes_nothing(capsys, use_aw, db_path: Path) -> None:
     before = db_path.read_bytes()
     assert run(capsys, "--db-path", str(db_path), "status")[0] == 0
     assert db_path.read_bytes() == before
-    # A read-only WAL reader leaves SQLite's empty -wal/-shm bookkeeping behind (it
-    # may not delete them); no data is in them, and the next writer cleans up.
+    # A read-only WAL reader can leave an empty -wal file that the next writer removes.
     wal = Path(f"{db_path}-wal")
     assert not wal.exists() or wal.stat().st_size == 0
     assert run(capsys, "--db-path", str(db_path), "ingest")[0] == 0

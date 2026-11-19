@@ -44,7 +44,8 @@ class Store:
         for day in (3, 2, 1):
             base = now - timedelta(days=day) + timedelta(minutes=5)
             for i, (app, title) in enumerate(WINDOW_PLAN[:3]):
-                self._add(WINDOW, base + timedelta(minutes=10 * i), 600, {"app": app, "title": title})
+                data = {"app": app, "title": title}
+                self._add(WINDOW, base + timedelta(minutes=10 * i), 600, data)
             self._add(AFK, base, 1800, {"status": "not-afk"})
         start = now - timedelta(minutes=40)
         for i in range(8):
@@ -154,10 +155,13 @@ def handler(store: Store, run_id: str, log: Path):
             if len(rest) >= 3 and rest[0] == "buckets" and rest[1] in TYPES and rest[2] == "events":
                 if len(rest) == 4:
                     event = store.one(rest[1], rest[3], now)
-                    return self._send(*(200, _wire(event)) if event else (404, {"message": "no event"}))
+                    if event is None:
+                        return self._send(404, {"message": "no event"})
+                    return self._send(200, _wire(event))
                 q = parse_qs(url.query)
                 limit = int(q.get("limit", ["-1"])[0])
-                events = store.query(rest[1], _time(q.get("start", [])), _time(q.get("end", [])), limit, now)
+                start, end = _time(q.get("start", [])), _time(q.get("end", []))
+                events = store.query(rest[1], start, end, limit, now)
                 return self._send(200, [_wire(e) for e in events])
             return self._send(404, {"message": "not found"})
 

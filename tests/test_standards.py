@@ -10,6 +10,8 @@ import pytest
 
 PACKAGE = Path(__file__).resolve().parent.parent / "computer_history"
 SOURCES = sorted(PACKAGE.rglob("*.py"))
+TESTS = sorted(Path(__file__).resolve().parent.rglob("*.py"))
+COMMENTED = SOURCES + TESTS
 
 BANNED_MODULE_NAMES = {"utils", "helpers", "misc", "common", "shared", "types", "reads", "writes"}
 DOCSTRING_MARKUP = re.compile(
@@ -56,7 +58,7 @@ def test_module_name_is_not_a_grab_bag(path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
+@pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
 def test_docstrings_have_no_doc_references_or_markup(path: Path) -> None:
     found = []
     for node in _docstring_nodes(_tree(path)):
@@ -66,7 +68,7 @@ def test_docstrings_have_no_doc_references_or_markup(path: Path) -> None:
     assert not found, f"{_rel(path)}: docstring references or markup: {found}"
 
 
-@pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
+@pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
 def test_docstrings_are_at_most_two_sentences(path: Path) -> None:
     long = []
     for node in ast.walk(_tree(path)):
@@ -77,7 +79,7 @@ def test_docstrings_are_at_most_two_sentences(path: Path) -> None:
     assert not long, f"{_rel(path)}: docstrings over {MAX_DOCSTRING_SENTENCES} sentences: {long}"
 
 
-@pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
+@pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
 def test_comments_are_single_plain_lines(path: Path) -> None:
     problems = []
     previous_comment_line = None

@@ -120,7 +120,7 @@ cmd_spool_seed() {
   mkdir -p "$SPOOL"
   chmod 700 "$SPOOL"
   local name
-  name="$(date -u +%Y%m%dT%H%M%S).$(printf '%03d' $((RANDOM % 1000)))Z.jsonl"
+  name="$("$PY" -I -c 'from datetime import UTC, datetime; print(datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%f")[:-3])')Z.jsonl"
   case "${1:-}" in
     "") cp "$FIXTURE" "$SPOOL/$name" ;;
     --bad) { head -n 2 "$FIXTURE"; echo '{"version":1,"id":"not-a-record"'; } >"$SPOOL/$name" ;;
@@ -146,7 +146,8 @@ cmd_spool_ls() { need_run; record spool-ls ls -laR "$SPOOL"; }
 cmd_sql() {
   need_run
   [ $# -eq 1 ] || die "usage: chv sql \"<SELECT ...>\""
-  record sql sqlite3 -readonly -header -column "$DB" "$1"
+  [ -f "$DB" ] || die "no database at $DB yet"
+  record sql sqlite3 -cmd "PRAGMA query_only=1" -header -column "$DB" "$1"
 }
 
 cmd_aw_advance() { need_run; record aw-advance curl -sf -X POST "${AW_URL%/api/0}/__chv/advance"; }
