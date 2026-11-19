@@ -11,17 +11,17 @@ let onePassword = FocusedApplication(
 )
 
 final class FocusFixture {
-    let tree = FakeAccessibilityTree()
+    let mac = ScriptedMac()
     var focused: FocusedApplication? = plainApp
-    var apps: [pid_t: FakeElement] = [:]
-    lazy var notes = tree.window("Notes", children: [tree.text("hello")])
-    lazy var tab = tree.window("Inbox", children: [tree.text("mail")])
-    lazy var vault = tree.node("vault", role: "AXWindow", ["AXTitle": "Vault"], children: [tree.text("secret")])
+    var apps: [pid_t: ScriptedElement] = [:]
+    lazy var notes = mac.window("Notes", children: [mac.text("hello")])
+    lazy var tab = mac.window("Inbox", children: [mac.text("mail")])
+    lazy var vault = mac.node("vault", role: "AXWindow", ["AXTitle": "Vault"], children: [mac.text("secret")])
 
     init() {
-        apps[plainApp.processIdentifier] = tree.app(window: notes)
-        apps[chrome.processIdentifier] = tree.app(window: tab)
-        let passwords = tree.node("passwords", role: "AXApplication")
+        apps[plainApp.processIdentifier] = mac.app(window: notes)
+        apps[chrome.processIdentifier] = mac.app(window: tab)
+        let passwords = mac.node("passwords", role: "AXApplication")
         passwords.focusedWindow = vault
         apps[onePassword.processIdentifier] = passwords
     }
@@ -30,11 +30,11 @@ final class FocusFixture {
         AppWatch(focusedApplication: { self.focused })
     }
 
-    var windowWatch: WindowWatch<FakeElement> {
+    var windowWatch: WindowWatch<ScriptedElement> {
         WindowWatch(applicationElement: { self.apps[$0]! })
     }
 
     func passwordAppCalls() -> [String] {
-        tree.calls.filter { $0.hasPrefix("passwords.") || $0.hasPrefix("vault.") || $0.hasPrefix("secret.") }
+        mac.calls.filter { $0.hasPrefix("passwords.") || $0.hasPrefix("vault.") || $0.hasPrefix("secret.") }
     }
 }

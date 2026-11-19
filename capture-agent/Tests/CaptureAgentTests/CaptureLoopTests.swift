@@ -15,16 +15,16 @@ final class LoopFixture {
     private var nextTick: TimeInterval = 0
     private lazy var writer = spool.writer()
 
-    var tree: FakeAccessibilityTree { focus.tree }
+    var mac: ScriptedMac { focus.mac }
 
     init() {
         pause = PauseSwitch(file: spool.directory.appendingPathComponent("folder/\(AgentSettings.pauseFileName)"))
     }
 
-    lazy var loop: CaptureLoop<FakeElement> = makeLoop()
+    lazy var loop: CaptureLoop<ScriptedElement> = makeLoop()
 
-    func makeLoop() -> CaptureLoop<FakeElement> {
-        let reader = tree.reader(focus.apps, settings: windowText)
+    func makeLoop() -> CaptureLoop<ScriptedElement> {
+        let reader = mac.reader(focus.apps, settings: windowText)
         return CaptureLoop(
             settings: CaptureSettings(),
             denylist: denylist,
@@ -36,7 +36,7 @@ final class LoopFixture {
             read: reader.read,
             spool: writer,
             counts: counts,
-            uptime: { self.tree.now },
+            uptime: { self.mac.clock },
             now: { self.spool.clock.now },
             log: { self.logged.append($0) }
         )
@@ -49,7 +49,7 @@ final class LoopFixture {
     func run(for seconds: TimeInterval) {
         let end = nextTick + seconds
         while nextTick < end {
-            tree.now = max(tree.now, nextTick)
+            mac.clock = max(mac.clock, nextTick)
             loop.tick()
             nextTick += 0.5
         }
@@ -106,7 +106,7 @@ final class LoopFixture {
     fixture.presence = Presence(idleSeconds: 0, locked: true, asleep: false)
     fixture.run(for: 60)
     #expect(try fixture.records().isEmpty)
-    #expect(fixture.tree.calls.isEmpty)
+    #expect(fixture.mac.calls.isEmpty)
     fixture.presence = Presence(idleSeconds: 200, locked: false, asleep: false)
     fixture.run(for: 60)
     #expect(try fixture.records().isEmpty)
@@ -120,7 +120,7 @@ final class LoopFixture {
     let fixture = LoopFixture()
     fixture.windowText = WindowTextSettings(textCapBytes: 3)
     fixture.run(for: 2)
-    let stuck = fixture.tree.text("stuck")
+    let stuck = fixture.mac.text("stuck")
     stuck.hangs = ["AXValue"]
     fixture.focus.notes.children.append(stuck)
     fixture.run(for: 30)
@@ -128,7 +128,7 @@ final class LoopFixture {
     #expect(summary.written == 2)
     #expect(summary.cutOff == 2)
     #expect(summary.timedOut == 1)
-    #expect(summary.slowestRead >= fixture.tree.callTimeout)
+    #expect(summary.slowestRead >= fixture.mac.callTimeout)
 }
 
 @Test func skipsCapturesWithoutAccessibility() throws {
@@ -200,10 +200,10 @@ final class LoopFixture {
     #expect(try fixture.pause.pause())
     #expect(try !fixture.pause.pause())
     fixture.run(for: 1)
-    let callsWhilePaused = fixture.tree.calls.count
+    let callsWhilePaused = fixture.mac.calls.count
     fixture.focus.focused = chrome
     fixture.run(for: 120)
-    #expect(fixture.tree.calls.count == callsWhilePaused)
+    #expect(fixture.mac.calls.count == callsWhilePaused)
     #expect(try fixture.kinds() == ["capture", "paused"])
     #expect(try fixture.resumeAndRun(for: 2) == ["capture", "paused", "resumed", "capture"])
     #expect(try fixture.records().last?["trigger"] as? String == "app")
@@ -216,11 +216,11 @@ final class LoopFixture {
     try fixture.pause.pause()
     fixture.run(for: 2)
     #expect(try fixture.kinds() == ["paused"])
-    let callsBeforeRestart = fixture.tree.calls.count
+    let callsBeforeRestart = fixture.mac.calls.count
     fixture.restart()
     fixture.run(for: 60)
     #expect(try fixture.kinds() == ["paused"])
-    #expect(fixture.tree.calls.count == callsBeforeRestart)
+    #expect(fixture.mac.calls.count == callsBeforeRestart)
     #expect(try fixture.resumeAndRun(for: 2) == ["paused", "resumed", "capture"])
 }
 

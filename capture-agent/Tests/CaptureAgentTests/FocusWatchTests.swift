@@ -39,7 +39,7 @@ import Testing
     _ = apps.poll()
     fixture.focused = chrome
     _ = apps.poll()
-    #expect(fixture.tree.calls.isEmpty)
+    #expect(fixture.mac.calls.isEmpty)
 }
 
 @Test func firstWindowPollAndAnUnchangedWindowReportNothing() {
@@ -61,7 +61,7 @@ import Testing
     let fixture = FocusFixture()
     var windows = fixture.windowWatch
     _ = windows.poll(plainApp)
-    fixture.apps[plainApp.processIdentifier]!.focusedWindow = fixture.tree.window("Notes", children: [])
+    fixture.apps[plainApp.processIdentifier]!.focusedWindow = fixture.mac.window("Notes", children: [])
     #expect(windows.poll(plainApp) == .window)
     fixture.apps[plainApp.processIdentifier]!.focusedWindow = nil
     #expect(windows.poll(plainApp) == .window)

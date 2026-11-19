@@ -34,7 +34,7 @@ final class DecisionFixture {
         var outcomes: [TickOutcome] = []
         let end = time + seconds
         while time < end {
-            focus.tree.now = time
+            focus.mac.clock = time
             let outcome = decision.tick(paused: paused, presence: presence, accessibilityTrusted: { true }, at: time)
             if outcome != .nothing { outcomes.append(outcome) }
             if recordsWrite, outcome == .paused || outcome == .resumed { decision.recordedPause(outcome == .paused) }
@@ -49,7 +49,7 @@ final class DecisionFixture {
     fixture.focus.focused = onePassword
     #expect(fixture.run(for: 31.5) == [.excluded(onePassword, .heartbeat), .excluded(onePassword, .heartbeat)])
     #expect(fixture.focus.passwordAppCalls().isEmpty)
-    #expect(fixture.focus.tree.calls.isEmpty)
+    #expect(fixture.focus.mac.calls.isEmpty)
 }
 
 @Test func anAllowedAppIsCaptured() {
@@ -71,7 +71,7 @@ final class DecisionFixture {
     #expect(fixture.run(for: 10).isEmpty)
     fixture.presence = present
     #expect(fixture.run(for: 10).isEmpty)
-    #expect(fixture.focus.tree.calls.isEmpty)
+    #expect(fixture.focus.mac.calls.isEmpty)
     #expect(fixture.decision.silence == [.paused])
     fixture.paused = false
     #expect(fixture.run(for: 2) == [.resumed, .capture(plainApp, .heartbeat)])
@@ -82,7 +82,7 @@ final class DecisionFixture {
     fixture.paused = true
     #expect(fixture.run(for: 60).isEmpty)
     #expect(fixture.decision.silence == [.paused])
-    #expect(fixture.focus.tree.calls.isEmpty)
+    #expect(fixture.focus.mac.calls.isEmpty)
 }
 
 @Test func aPauseRecordThatFailedToWriteIsOfferedAgain() {
@@ -94,5 +94,5 @@ final class DecisionFixture {
     #expect(fixture.decision.silence == [.paused])
     fixture.recordsWrite = true
     #expect(fixture.run(for: 10) == [.paused])
-    #expect(fixture.focus.tree.calls.isEmpty)
+    #expect(fixture.focus.mac.calls.isEmpty)
 }
