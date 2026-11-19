@@ -4,6 +4,9 @@ public enum AgentCommand: Equatable, Sendable {
     case install
     case uninstall
     case status
+    case pause
+    case resume
+    case checkConfig
     case usage
 
     public init(arguments: [String]) {
@@ -12,6 +15,9 @@ public enum AgentCommand: Equatable, Sendable {
         case ["install"]: self = .install
         case ["uninstall"]: self = .uninstall
         case ["status"]: self = .status
+        case ["pause"]: self = .pause
+        case ["resume"]: self = .resume
+        case ["check-config"]: self = .checkConfig
         default: self = .usage
         }
     }
@@ -24,6 +30,6 @@ public struct CommandOutcome: Equatable, Sendable {
 
     public static let usage = CommandOutcome(
         exitCode: 64,
-        message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status]"
+        message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status | pause | resume | check-config]"
     )
 }

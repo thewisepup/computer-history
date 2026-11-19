@@ -48,9 +48,10 @@ public func uninstallLoginItem(_ service: some LoginItemService) -> CommandOutco
     return CommandOutcome(exitCode: 0, message: "Uninstalled. The agent is stopped and no longer starts at login.")
 }
 
-/// Reports the login item's registration state.
-public func loginItemStatus(_ service: some LoginItemService) -> CommandOutcome {
-    CommandOutcome(exitCode: 0, message: "Login item: \(describe(service.status)).")
+/// Reports the login item's registration state and whether capture is paused.
+public func agentStatus(_ service: some LoginItemService, paused: Bool) -> CommandOutcome {
+    let capture = paused ? "paused, run `\(AgentIdentity.executableName) resume` to capture again" : "not paused"
+    return CommandOutcome(exitCode: 0, message: "Login item: \(describe(service.status)).\nCapture: \(capture).")
 }
 
 func describe(_ status: SMAppService.Status) -> String {

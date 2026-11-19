@@ -91,9 +91,11 @@ final class FakeLoginItem: LoginItemService {
     #expect(uninstallLoginItem(service).exitCode == 1)
 }
 
-@Test func statusDescribesTheLoginItem() {
-    #expect(loginItemStatus(FakeLoginItem(status: .enabled)).message == "Login item: enabled, starts at login.")
-    #expect(loginItemStatus(FakeLoginItem(status: .notRegistered)).message == "Login item: not installed.")
+@Test func statusDescribesTheLoginItemAndThePause() {
+    #expect(agentStatus(FakeLoginItem(status: .enabled), paused: false).message
+        == "Login item: enabled, starts at login.\nCapture: not paused.")
+    #expect(agentStatus(FakeLoginItem(status: .notRegistered), paused: true).message
+        == "Login item: not installed.\nCapture: paused, run `\(AgentIdentity.executableName) resume` to capture again.")
 }
 
 @Test func installSucceedsIfRegisterThrowsForAnEnabledItem() {

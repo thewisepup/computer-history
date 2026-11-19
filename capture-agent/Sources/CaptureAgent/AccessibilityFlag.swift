@@ -15,10 +15,10 @@ let chromiumBrowsers: Set<String> = [
     "com.operasoftware.Opera",
 ]
 
-/// Whether an app should get the accessibility flags: Chromium browsers and Electron apps, unless off-listed.
+/// Whether an app should get the accessibility flags: Chromium browsers and Electron apps, unless off-listed by bundle id ignoring case.
 func needsAccessibilityFlag(_ application: FocusedApplication, offList: Set<String>, fileExists: (String) -> Bool) -> Bool {
     if let id = application.bundleIdentifier {
-        if offList.contains(id) { return false }
+        if offList.contains(where: { $0.caseInsensitiveCompare(id) == .orderedSame }) { return false }
         if chromiumBrowsers.contains(id) { return true }
     }
     guard let bundle = application.bundleURL else { return false }

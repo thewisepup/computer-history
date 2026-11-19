@@ -1,9 +1,9 @@
 import Foundation
 
-/// Each tick samples presence, polls focus, and when a capture is due reads the focused window into the spool.
+/// Each tick asks the capture decision what to do, then reads the focused window or writes a gap record into the spool.
 final class CaptureLoop<Element: AccessibilityElement> {
-    private var schedule: CaptureSchedule
-    private var focus: FocusWatch<Element>
+    private var decision: CaptureDecision<Element>
+    private let isPaused: () -> Bool
     private let presence: () -> Presence
     private let accessibilityTrusted: () -> Bool
     private let read: (FocusedApplication) -> WindowText
@@ -15,7 +15,10 @@ final class CaptureLoop<Element: AccessibilityElement> {
 
     init(
         settings: CaptureSettings,
-        focus: FocusWatch<Element>,
+        denylist: Denylist,
+        apps: AppWatch,
+        windows: WindowWatch<Element>,
+        isPaused: @escaping () -> Bool,
         presence: @escaping () -> Presence,
         accessibilityTrusted: @escaping () -> Bool,
         read: @escaping (FocusedApplication) -> WindowText,
@@ -25,8 +28,10 @@ final class CaptureLoop<Element: AccessibilityElement> {
         now: @escaping () -> Date,
         log: @escaping (String) -> Void
     ) {
-        self.schedule = CaptureSchedule(settings: settings, start: uptime())
-        self.focus = focus
+        self.decision = CaptureDecision(
+            settings: settings, denylist: denylist, paused: isPaused(), apps: apps, windows: windows, start: uptime()
+        )
+        self.isPaused = isPaused
         self.presence = presence
         self.accessibilityTrusted = accessibilityTrusted
         self.read = read
@@ -38,70 +43,87 @@ final class CaptureLoop<Element: AccessibilityElement> {
     }
 
     func tick() {
-        let time = uptime()
-        let silenceBefore = schedule.silence
-        schedule.receive(.presence(presence()), at: time)
-        if schedule.silence != silenceBefore { logSilence() }
-        guard schedule.silence.isEmpty else { return }
-        if let change = focus.poll() {
-            schedule.receive(.focusChanged(change), at: time)
+        let silenceBefore = decision.silence
+        let outcome = decision.tick(
+            paused: isPaused(), presence: presence(), accessibilityTrusted: accessibilityTrusted, at: uptime()
+        )
+        if decision.silence != silenceBefore { logSilence() }
+        switch outcome {
+        case .nothing:
+            return
+        case .paused:
+            if write(.paused(at: now())) { decision.recordedPause(true) }
+        case .resumed:
+            if write(.resumed(at: now())) { decision.recordedPause(false) }
+        case .excluded(let application, let trigger):
+            if write(.excluded(at: now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
+                counts.recordExcluded()
+            }
+        case .capture(let application, let trigger):
+            capture(application, trigger: trigger)
         }
-        guard let application = focus.application, accessibilityTrusted(),
-              let trigger = schedule.takeDue(at: time) else { return }
+    }
+
+    private func capture(_ application: FocusedApplication, trigger: SpoolRecord.Trigger) {
         let capturedAt = now()
         let started = uptime()
         let window = read(application)
         counts.recordRead(seconds: uptime() - started)
-        do {
-            try spool.append(record(of: application, window: window, trigger: trigger, at: capturedAt))
-            counts.recordWritten(window)
-        } catch {
-            counts.recordFailed(error)
-        }
-    }
-
-    private func record(
-        of application: FocusedApplication, window: WindowText, trigger: SpoolRecord.Trigger, at capturedAt: Date
-    ) -> SpoolRecord {
-        .capture(
+        let record = SpoolRecord.capture(
             at: capturedAt,
             trigger: trigger,
-            appName: application.name ?? application.bundleIdentifier ?? "unknown",
+            appName: name(of: application),
             bundleID: application.bundleIdentifier,
             windowTitle: window.title,
             text: window.text,
             fullTextBytes: window.fullLength,
             timedOut: window.timedOut
         )
+        if write(record) { counts.recordWritten(window) }
+    }
+
+    private func write(_ record: SpoolRecord) -> Bool {
+        do {
+            try spool.append(record)
+            return true
+        } catch {
+            counts.recordFailed(error)
+            return false
+        }
+    }
+
+    private func name(of application: FocusedApplication) -> String {
+        application.name ?? application.bundleIdentifier ?? "unknown"
     }
 
     private func logSilence() {
-        if schedule.silence.isEmpty {
+        if decision.silence.isEmpty {
             log("capturing again")
         } else {
-            log("silent: " + Silence.allCases.filter(schedule.silence.contains).map(\.rawValue).joined(separator: ", "))
+            log("silent: " + Silence.allCases.filter(decision.silence.contains).map(\.rawValue).joined(separator: ", "))
         }
     }
 }
 
 /// Starts the thread that polls focus and captures for the life of the process, reading through the live accessibility API.
 public func startCaptureThread(
-    settings: CaptureSettings,
-    windowText: WindowTextSettings,
+    settings: AgentSettings,
     spool: SpoolWriter,
     counts: CaptureCounts,
     log: @escaping @Sendable (String) -> Void
 ) {
+    LiveAccessibilityElement.setProcessCallTimeout(settings.windowText.callTimeout)
     let presence = LivePresence()
+    let pause = settings.pause
     let thread = Thread {
         let uptime = { ProcessInfo.processInfo.systemUptime }
-        let reader = WindowTextReader(settings: windowText)
+        let reader = WindowTextReader(settings: settings.windowText)
         let loop = CaptureLoop(
-            settings: settings,
-            focus: FocusWatch(
-                focusedApplication: { focusedApplication(callTimeout: windowText.callTimeout) },
-                applicationElement: LiveAccessibilityElement.application
-            ),
+            settings: settings.capture,
+            denylist: settings.denylist,
+            apps: AppWatch(focusedApplication: focusedApplication),
+            windows: WindowWatch(applicationElement: LiveAccessibilityElement.application),
+            isPaused: { pause.isPaused },
             presence: presence.sample,
             accessibilityTrusted: { isAccessibilityTrusted(prompt: false) },
             read: reader.read,
@@ -114,7 +136,7 @@ public func startCaptureThread(
         while true {
             let started = uptime()
             loop.tick()
-            Thread.sleep(forTimeInterval: max(0, started + settings.pollInterval - uptime()))
+            Thread.sleep(forTimeInterval: max(0, started + settings.capture.pollInterval - uptime()))
         }
     }
     thread.name = "capture"
