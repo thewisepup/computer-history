@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+here="$(dirname "$0")"
+root="$(git -C "$here" rev-parse --show-toplevel)"
+main="$(dirname "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)")"
+for py in "$root/.venv/bin/python" "$main/.venv/bin/python"; do
+  if [ -x "$py" ]; then
+    echo "$py"
+    exit 0
+  fi
+done
+echo "no .venv in $root or $main; create it first (see Setup and checks in AGENTS.md)" >&2
+exit 1

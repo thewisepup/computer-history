@@ -1,11 +1,7 @@
 #!/bin/sh
 set -e
 cd "$(git rev-parse --show-toplevel)"
-PY=.venv/bin/python
-if [ ! -x "$PY" ]; then
-  echo "pre-commit: $PY not found; create the venv first (see AGENTS.md)" >&2
-  exit 1
-fi
+PY="$(scripts/venv-python)"
 if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; then
   echo "pre-commit: ruff failed or fixed files; review, re-stage, and commit again" >&2
   exit 1

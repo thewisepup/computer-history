@@ -34,7 +34,8 @@ git config core.hooksPath .githooks
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
 computer_history tests` must pass; the pre-commit hook runs both, and CI runs
-them plus the POC suite (`python -m unittest`) on pushes to `main`.
+them plus the POC suite (`python -m unittest`) on pushes to `main`. A
+worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
 
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool

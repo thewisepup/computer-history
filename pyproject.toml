@@ -31,6 +31,7 @@ include = ["computer_history*"]
 # Only the new package's tests. The POC suite (test_history.py, test_mcp.py)
 # runs separately via `python -m unittest`.
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py311"
