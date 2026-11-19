@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
@@ -29,13 +29,16 @@ class SourceUnavailable(RuntimeError):
 class Pull:
     """The settled observations one pull read, and where the stream's progress now stands.
 
-    A position of None leaves the stream's stored progress as it is.
+    A position of None leaves the stream's stored progress as it is, and more asks to pull again.
     """
 
     observations: tuple[Observation, ...]
     held_back: int
     position: str | None
     settled_until: datetime | None
+    rejected: int = 0
+    more: bool = False
+    after_commit: Callable[[], None] | None = field(default=None, compare=False)
 
 
 class Projecting(Protocol):

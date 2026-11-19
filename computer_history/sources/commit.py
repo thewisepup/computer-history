@@ -44,7 +44,7 @@ def commit_pull(
     progress_from: Pull | None = None,
     only_if_none: bool = False,
 ) -> Committed:
-    """Write the pull's observations, their signals and the progress progress_from reached, at once.
+    """Write the pull's observations, signals and progress at once, then run its after-commit step.
 
     A progress_from without a position sends no progress update.
     """
@@ -64,6 +64,8 @@ def commit_pull(
     written = insert_observations(
         conn, pulled.observations, project=project, progress=update, now=now
     )
+    if pulled.after_commit is not None:
+        pulled.after_commit()
     return Committed(written.inserted, written.skipped, update is not None, written.progress_moved)
 
 

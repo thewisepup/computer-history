@@ -15,7 +15,7 @@ from computer_history.cli.status import cmd_status
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 
 COMMANDS = {
-    "ingest": "Ingest settled ActivityWatch events into the store.",
+    "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
     "status": "Show store and source status.",
     "rebuild-signals": (
         "Rebuild derived signals from stored observations (blocks ingest while running)."
@@ -83,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
                 help="discover sources and print the planned chunks; write nothing",
             )
         if name == "ingest":
+            sub.add_argument(
+                "--spool-path",
+                help="capture spool folder (default: $COMPUTER_HISTORY_SPOOL, else spool/ beside"
+                " the database)",
+            )
             sub.add_argument(
                 "--watch",
                 action="store_true",

@@ -13,10 +13,13 @@ from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
     ActivityWatch,
     AWClient,
+    CaptureSpool,
     CycleSummary,
     FailureKind,
+    IngestOutcome,
     StreamFailure,
     poll,
+    resolve_spool_path,
     watch,
 )
 from computer_history.store import Purpose, open_store, resolve_db_path
@@ -26,7 +29,8 @@ log = logging.getLogger(__name__)
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
-    sources = [ActivityWatch(AWClient(args.aw_url))]
+    spool_path = resolve_spool_path(args.spool_path, db_path)
+    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn
     if conn is None:
@@ -34,8 +38,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     with store:
         if args.watch:
             log.info(
-                "watching %s every %ds into %s (Ctrl-C to stop)",
+                "watching %s and %s every %ds into %s (Ctrl-C to stop)",
                 args.aw_url,
+                spool_path,
                 POLL_INTERVAL_SECONDS,
                 db_path,
             )
@@ -45,7 +50,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 log.info("stopped")
             return 0
         summary = poll(conn, sources)
-    return _print_summary(summary, args.aw_url, db_path)
+    return _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
 
 
 def log_cycle(summary: CycleSummary, delay: float) -> None:
@@ -58,7 +63,7 @@ def log_cycle(summary: CycleSummary, delay: float) -> None:
 
 def cycle_line(summary: CycleSummary) -> str:
     done = "; ".join(
-        f"{name} +{o.inserted} ({o.skipped} dup, {o.held_back} held)"
+        f"{name} +{o.inserted} ({o.skipped} dup, {o.held_back} held{_rejected(o, ', ')})"
         for name, o in summary.outcomes.items()
     )
     if summary.ok:
@@ -69,16 +74,16 @@ def cycle_line(summary: CycleSummary) -> str:
     return f"{done}; then {failed}" if done else failed
 
 
-def _print_summary(summary: CycleSummary, aw_url: str, db_path: Path) -> int:
+def _print_summary(summary: CycleSummary, read_from: str, db_path: Path) -> int:
     if summary.outcomes or summary.ok:
-        print(f"Ingested from {aw_url} into {db_path}")
-    if summary.ok and not summary.outcomes:
+        print(f"Ingested from {read_from} into {db_path}")
+    if summary.ok and set(summary.outcomes).isdisjoint(ActivityWatch.projectors):
         print("  no ActivityWatch sources found (no window, AFK or web buckets)")
     width = max((len(name) for name in summary.outcomes), default=0)
     for name, o in summary.outcomes.items():
         print(
             f"  {name:<{width}}  inserted {o.inserted:>6,}  skipped {o.skipped:>6,}"
-            f"  held back {o.held_back:>3,}"
+            f"  held back {o.held_back:>3,}{_rejected(o, '  ')}"
         )
     for failure in summary.failures:
         if failure.kind is FailureKind.SOURCE:
@@ -88,6 +93,10 @@ def _print_summary(summary: CycleSummary, aw_url: str, db_path: Path) -> int:
         if failure.kind is not FailureKind.ADAPTER:
             print(db_busy_hint(db_path), file=sys.stderr)
     return 0 if summary.ok else 1
+
+
+def _rejected(outcome: IngestOutcome, separator: str) -> str:
+    return f"{separator}rejected {outcome.rejected:,}" if outcome.rejected else ""
 
 
 def _on(failure: StreamFailure) -> str:

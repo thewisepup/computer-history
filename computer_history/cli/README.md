@@ -1,15 +1,16 @@
 # computer-history CLI
 
 The command line for the local activity store: it ingests settled
-ActivityWatch events into SQLite and reports on what is stored. All business
-logic lives in `sources/` and `store/`; this package only parses arguments,
-builds the clients, source adapters and connection, calls one function, and
-formats the result.
+ActivityWatch events and the capture agent's spool into SQLite and reports on
+what is stored. All business logic lives in `sources/` and `store/`; this
+package only parses arguments, builds the clients, source adapters and
+connection, calls one function, and formats the result.
 
 ```
 app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
+  |                (ActivityWatch and the capture spool in one loop)
   +-- status.py    freshness, coverage gaps, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
@@ -29,19 +30,33 @@ computer-history ingest --watch    # poll every 60s until Ctrl-C
 ```
 
 ```
-Ingested from http://127.0.0.1:5600/api/0 into .../ComputerHistory/history.db
+Ingested from http://127.0.0.1:5600/api/0 and .../ComputerHistory/spool into .../ComputerHistory/history.db
   aw-afk     inserted      5  skipped      0  held back   1
   aw-web     inserted     62  skipped      1  held back   0
   aw-window  inserted    271  skipped      1  held back   1
+  ax-text    inserted    412  skipped      0  held back   0  rejected 1
 ```
 
-`inserted` is new rows, `skipped` is events already stored (re-reads are
-harmless), `held back` is events still growing — they land on a later poll.
-Re-running always inserts 0 for data it already has. `--watch` is the
-long-running collector: one log line per cycle, survives ActivityWatch
-outages and locked databases. A stream whose events no adapter can project
-is reported (`error on aw-window: no source adapter projects observations
-from 'aw-window'`, exit 1) while the other streams are still ingested.
+`inserted` is new rows, `skipped` is rows already stored (re-reads are
+harmless), `held back` is ActivityWatch events still growing — they land on a
+later poll. Re-running always inserts 0 for data it already has. `--watch` is
+the long-running collector: one log line per cycle, survives ActivityWatch
+outages and locked databases. A stream whose observations no adapter can
+project is reported (`error on aw-window: no source adapter projects
+observations from 'aw-window'`, exit 1) while the other streams are still
+ingested.
+
+`ax-text` is the capture agent's spool, read in the same poll. Each finished
+`*.jsonl` file is stored in one commit, oldest first, then deleted; the
+agent's `open.part` and `agent.lock` are never touched. `rejected` counts
+lines that are not usable records (malformed, failing validation, or an
+unknown format version): they are skipped and logged, and the rest of the
+file is stored. A file with any unusable line, or one that cannot be read, is
+moved into `spool/unreadable/` instead of being deleted. A file that cannot be
+removed is reported and not read again until the next `ingest` run. A missing
+spool folder is nothing to ingest. ActivityWatch being down does not stop the
+spool, and the reverse: the other source's rows are stored, and the run exits
+1.
 
 ## status — is everything healthy?
 
@@ -105,13 +120,14 @@ Rebuilt signals in .../history.db from stored observations
 
 Wipes `signals` and re-projects every stored observation through its source
 adapter's projector, the same one ingest used. Needed only after changing a
-projector (ActivityWatch: `normalize.py`) or `text.py`. Aborts (and rolls
-back) if too many rows fail to project or the result would shrink
-suspiciously. It also aborts, without counting them as malformed, when
-observations come from a source this version has no adapter for:
+projector (`activitywatch/normalize.py`, `ax_text/normalize.py`) or
+`text.py`. Aborts (and rolls back) if too many rows fail to project or the
+result would shrink suspiciously. It also aborts, without counting them as
+malformed, when observations come from a source this version has no adapter
+for:
 
 ```
-rebuild-signals aborted: no source adapter projects 'ax-text', the source of 12 stored observations (first id: 7); rolled back, signals unchanged
+rebuild-signals aborted: no source adapter projects 'screenshot', the source of 12 stored observations (first id: 7); rolled back, signals unchanged
   this computer-history has no adapter for that source; rebuild with the version that ingested it
 ```
 
@@ -138,7 +154,10 @@ is created by `ingest` and `backfill` (only once planning succeeds), shown as
 ```bash
 computer-history --db-path /tmp/scratch.db ingest   # or $COMPUTER_HISTORY_DB
 computer-history status --aw-url http://127.0.0.1:5666/api/0
+computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 ```
 
 Every command takes `--db-path`; the networked ones (`ingest`, `status`,
-`backfill`) take `--aw-url`. `-h` on any command prints its flags.
+`backfill`) take `--aw-url`. `ingest` also takes `--spool-path`; without it
+the spool is the `spool/` folder beside the database, so a scratch database
+never collects the real spool. `-h` on any command prints its flags.
