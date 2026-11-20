@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct SavedImage: Equatable, Sendable {
     let path: String
     let bytes: Int
+    let file: URL
 }
 
 struct ImageStoreError: Error, CustomStringConvertible {
@@ -15,7 +16,6 @@ struct ImageStoreError: Error, CustomStringConvertible {
 /// Where kept screenshots are saved.
 public protocol ImageStore {
     func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage
-    func remove(_ path: String)
 }
 
 /// Saves screenshots as downscaled JPEGs in a folder per local day under the screenshots folder, one file per record id.
@@ -38,7 +38,7 @@ public struct JPEGImageStore: ImageStore, Sendable {
         self.timeZone = timeZone
     }
 
-    /// Writes the image and returns its path relative to the folder and its size in bytes.
+    /// Writes the image and returns its path relative to the folder, its size in bytes and its file.
     public func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
         let data = try jpeg(try downscaled(image))
         let day = dayStamp(date)
@@ -52,12 +52,7 @@ public struct JPEGImageStore: ImageStore, Sendable {
         guard FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw ImageStoreError(description: "cannot write \(file.path)")
         }
-        return SavedImage(path: path, bytes: data.count)
-    }
-
-    /// Deletes a saved image by its path relative to the folder.
-    public func remove(_ path: String) {
-        try? FileManager.default.removeItem(at: folder.appendingPathComponent(path))
+        return SavedImage(path: path, bytes: data.count, file: file)
     }
 
     private func downscaled(_ image: CGImage) throws -> CGImage {

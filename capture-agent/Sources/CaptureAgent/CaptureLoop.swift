@@ -7,7 +7,7 @@ final class CaptureLoop<M: Mac> {
     private let pollInterval: TimeInterval
     private let reader: WindowTextReader<M.Element>
     private let spool: any SpoolAppender
-    private var screenshot: CaptureScreenshot<M>?
+    private var screenshots: (stage: CaptureScreenshot<M>, queue: ScreenshotQueue)?
     private let counts: CaptureCounts
     private let log: (String) -> Void
 
@@ -41,15 +41,26 @@ final class CaptureLoop<M: Mac> {
             now: mac.uptime
         )
         self.spool = spool
-        let screenshot = CaptureScreenshot(
-            mac: mac,
-            images: images,
-            longEdge: settings.screenshots.longEdge,
-            pause: settings.pause,
-            idleThreshold: settings.capture.idleThreshold,
-            dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter)
-        )
-        self.screenshot = settings.screenshots.enabled ? screenshot : nil
+        if settings.screenshots.enabled {
+            let stage = CaptureScreenshot(
+                mac: mac,
+                images: images,
+                longEdge: settings.screenshots.longEdge,
+                pause: settings.pause,
+                idleThreshold: settings.capture.idleThreshold,
+                dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter),
+                reminder: PermissionReminder(file: settings.permissionReminderFile),
+                log: log
+            )
+            let queue = ScreenshotQueue(
+                recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },
+                capBytes: settings.windowText.textCapBytes,
+                timeout: settings.screenshots.recognitionTimeout,
+                spool: spool,
+                counts: counts
+            )
+            self.screenshots = (stage, queue)
+        }
         self.counts = counts
         self.log = log
     }
@@ -60,6 +71,16 @@ final class CaptureLoop<M: Mac> {
             tick()
             mac.sleep(max(0, started + pollInterval - mac.uptime()))
         }
+    }
+
+    /// Waits until the screenshot record of every capture so far has been written or refused.
+    func waitForScreenshots() {
+        screenshots?.queue.waitUntilWritten()
+    }
+
+    /// Gives queued screenshot records until the deadline to reach the spool, then writes no more, and returns how many were dropped.
+    func stopScreenshots(by deadline: DispatchTime) -> Int {
+        screenshots?.queue.stop(by: deadline) ?? 0
     }
 
     func tick() {
@@ -101,16 +122,16 @@ final class CaptureLoop<M: Mac> {
         )
         guard write(record) else { return }
         counts.recordWritten(record)
-        guard let shot = screenshot?.take(for: record, of: application) else { return }
-        if !write(shot) { screenshot?.discard(shot) }
+        guard let shot = screenshots?.stage.take(for: record, of: application) else { return }
+        screenshots?.queue.add(shot)
     }
 
-    private func write(_ record: some SpoolLine) -> Bool {
+    private func write(_ record: SpoolRecord) -> Bool {
         do {
             try spool.append(record)
             return true
         } catch {
-            counts.recordFailed(error, screenshot: record is ScreenshotRecord)
+            counts.recordFailed(error)
             return false
         }
     }
@@ -128,17 +149,46 @@ final class CaptureLoop<M: Mac> {
     }
 }
 
-/// Starts the thread that polls focus and captures through the given Mac for the life of the process.
-public func startCaptureThread<M: Mac & Sendable>(
+/// Asks the capture thread to stop capturing and waits for it to give its screenshot records until a deadline.
+public final class CaptureStop: @unchecked Sendable {
+    public static let grace: TimeInterval = 1
+
+    private let lock = NSLock()
+    private let finished = DispatchSemaphore(value: 0)
+    private var deadline: DispatchTime?
+    private var dropped = 0
+
+    public init() {}
+
+    var requestedDeadline: DispatchTime? { lock.withLock { deadline } }
+
+    /// Stops new captures and returns how many screenshot records were dropped at the deadline, or nil if the capture thread had not finished a second after it.
+    public func stop(by deadline: DispatchTime) -> Int? {
+        lock.withLock { self.deadline = deadline }
+        guard finished.wait(timeout: deadline + Self.grace) == .success else { return nil }
+        return lock.withLock { dropped }
+    }
+
+    func finish(dropped: Int) {
+        lock.withLock { self.dropped = dropped }
+        finished.signal()
+    }
+}
+
+/// Starts the thread that polls focus and captures through the given Mac until asked to stop.
+public func startCaptureThread<M: Mac>(
     mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
     images: JPEGImageStore,
     counts: CaptureCounts,
+    stop: CaptureStop,
     log: @escaping @Sendable (String) -> Void
 ) {
     let thread = Thread {
-        CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log).run { true }
+        let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log)
+        loop.run { stop.requestedDeadline == nil }
+        stop.finish(dropped: loop.stopScreenshots(by: stop.requestedDeadline ?? .now()))
     }
     thread.name = "capture"
     thread.stackSize = 8 << 20

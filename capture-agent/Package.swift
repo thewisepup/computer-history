@@ -11,12 +11,21 @@ import PackageDescription
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
 ///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
-///           |               spool recovery, capture thread; then the minute log line and spool finish
+///           |               spool recovery, capture thread; then the minute log line and spool finish;
+///           |               on SIGTERM, stop capturing, drain the screenshot queue briefly, finish, exit
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
-///           |               and after each capture its screenshot record
+///           |               and after each capture queues its screenshot record
 ///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, duplicate
-///           |                   check, image saved, and the screenshot record that names the capture
+///           |                   check, image saved, and the screenshot record that names the capture;
+///           |                   a missing grant posts the reminder, a picture taken clears it
+///     PermissionReminder.swift  the once-a-day missing-grant reminder: when to post, what to log,
+///           |                   the last posted time kept in screen-recording-reminded
+///     ScreenRecordingSettings.swift   the settings pane's links, the reminder that opens them, and
+///           |                         the request-screen-recording command install.sh runs
+///     ScreenshotQueue.swift     the screenshot thread: writes screenshot records in capture order,
+///           |                   reading the text of each kept image, duplicates copying it
+///     TextRecognition.swift     the text in a saved picture, read by Vision
 ///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
 ///           |               and whether a new one changed enough or is old enough to keep
 ///     FrameThumbnail.swift  the small grey copy of a screenshot, one pixel per square of points,
@@ -40,15 +49,20 @@ import PackageDescription
 ///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
 ///                                window's frame, one request at a time, as a WindowImage
 ///                                that carries the window's id
+///     OneRequestAtATime.swift    one request outstanding at a time, each waited for up to a timeout
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
 ///     FrameHash.swift       the 64-bit difference hash each screenshot record carries
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
-///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements and fixture images
+///     Notifications.swift   posting through the notification centre, and opening the first link
+///                           of a clicked one that opens
+///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements, fixture images
+///                           and scripted recognized text
 ///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool
 ///           |
 ///     ScratchFolderCheck.swift   refuses the agent's real folder, or one that holds a database
 ///     ScriptPlayer.swift    builds the script's apps on a ScriptedMac and applies each step as it comes due
+///                           ScriptedRecognition reads each kept picture as its window's scripted text
 ///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line
@@ -65,6 +79,6 @@ let package = Package(
     targets: [
         .target(name: "CaptureAgent"),
         .executableTarget(name: "computer-history-agent", dependencies: ["CaptureAgent"]),
-        .testTarget(name: "CaptureAgentTests", dependencies: ["CaptureAgent"]),
+        .testTarget(name: "CaptureAgentTests", dependencies: ["CaptureAgent"], resources: [.copy("Fixtures/recognized-text.jpg")]),
     ]
 )

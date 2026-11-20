@@ -208,15 +208,6 @@ func spoolDate(_ text: String?) -> Date? {
     #expect(try fixture.statuses() == ["kept", "duplicate", "kept"])
 }
 
-@Test func aKeptImageTheSpoolRefusedIsForgottenSoTheNextFrameIsKeptAgain() throws {
-    let fixture = LoopFixture()
-    fixture.screenshotGate.refusals = 1
-    fixture.run(for: 70)
-    #expect(try fixture.statuses() == ["kept", "duplicate"])
-    let kept = try fixture.screenshotRecords()[0]
-    #expect(savedImages(in: fixture.settings.folder) == ["\(kept["id"] as! String).jpg"])
-}
-
 let start = Date(timeIntervalSince1970: 1_000_000)
 
 func thumbnail(_ pixels: [UInt8], width: Int = 160) -> FrameThumbnail {
@@ -224,23 +215,7 @@ func thumbnail(_ pixels: [UInt8], width: Int = 160) -> FrameThumbnail {
 }
 
 func keptFrame(_ thumbnail: FrameThumbnail, at time: Date = start) -> FrameDedup.KeptFrame {
-    FrameDedup.KeptFrame(recordID: UUID(), imagePath: "screenshots/a.jpg", thumbnail: thumbnail, keptAt: time, text: "", fullTextBytes: 0)
-}
-
-@Test func aRefusedKeptFrameGivesTheWindowBackItsEarlierKeptFrame() throws {
-    let fixture = LoopFixture()
-    var shade: UInt8 = 128
-    fixture.mac.windowImage = { _, _ in .image(greyImage([UInt8](repeating: shade, count: 72), width: 9), windowID: 1) }
-    fixture.run(for: 2)
-    shade = 0
-    fixture.screenshotGate.refusals = 1
-    fixture.run(for: 30)
-    shade = 128
-    fixture.run(for: 30)
-    #expect(try fixture.statuses() == ["kept", "duplicate"])
-    let shots = try fixture.screenshotRecords()
-    #expect(shots[1]["image_path"] as? String == shots[0]["image_path"] as? String)
-    #expect(savedImages(in: fixture.settings.folder) == ["\(shots[0]["id"] as! String).jpg"])
+    FrameDedup.KeptFrame(imagePath: "screenshots/a.jpg", thumbnail: thumbnail, keptAt: time, text: KeptText())
 }
 
 @Test(arguments: [(0, true), (7, true), (8, false), (16_000, false)])
