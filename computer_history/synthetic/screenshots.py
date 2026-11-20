@@ -87,6 +87,4 @@ def perceptual_hash(window: Window, text: str) -> str:
 def screenshot_counts(shots: list[Screenshot]) -> ScreenshotCounts:
     """How many screenshot records carry each status, and the bytes the kept ones saved."""
     statuses = Counter(shot.status for shot in shots)
-    return ScreenshotCounts(
-        dict(sorted(statuses.items())), sum(shot.image_bytes for shot in shots)
-    )
+    return ScreenshotCounts(dict(sorted(statuses.items())), sum(shot.image_bytes for shot in shots))

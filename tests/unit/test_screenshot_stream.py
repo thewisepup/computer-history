@@ -234,9 +234,7 @@ def commit(conn: sqlite3.Connection, spool: CaptureSpool, stream: str, *, crash:
     pulled = spool.pull_after(stream, None, now=NOW)
     if crash:
         pulled = replace(pulled, after_commit=None)
-    commit_pull(
-        conn, stream, pulled, project=projector_for([spool]), now=NOW, progress_from=pulled
-    )
+    commit_pull(conn, stream, pulled, project=projector_for([spool]), now=NOW, progress_from=pulled)
     return pulled
 
 
@@ -316,7 +314,7 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
         screenshot(1, T0, status="blurry"),
         screenshot(2, T0, image_bytes="big"),
         screenshot(3, T0, version=2),
-        screenshot(4, T0) .replace('"id": "00000000-0000-4000-8000-000000000004"', '"id": "x"'),
+        screenshot(4, T0).replace('"id": "00000000-0000-4000-8000-000000000004"', '"id": "x"'),
         "{not json",
         json.dumps(capture | {"kind": "snapshot"}),
         json.dumps(capture | {"timed_out": "no"}),
@@ -368,7 +366,6 @@ def test_the_spool_feeds_both_streams() -> None:
 
     assert spool.streams() == [WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE]
     assert set(spool.projectors) == {WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE}
-
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can remove files from a read-only folder")
