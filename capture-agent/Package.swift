@@ -24,7 +24,8 @@ import PackageDescription
 ///           |     WindowScreenshot.swift   a ScreenCaptureKit still of the window matching the focused
 ///           |                              window's frame, one request at a time, as a WindowImage
 ///           |                              that carries the window's id
-///           |     OneRequestAtATime.swift  one request outstanding at a time, each waited for up to a timeout
+///           |     OneRequestAtATime.swift  one request outstanding at a time, each waited for up to a timeout,
+///           |                              and the answer another thread gives once
 ///           |     ScreenshotHash.swift     the 64-bit difference hash each screenshot record carries
 ///           |     ScreenshotThumbnail.swift   the small grey copy of a screenshot, one pixel per square
 ///           |                                 of points, that dedup compares pixel by pixel

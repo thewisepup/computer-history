@@ -37,7 +37,7 @@ final class LiveNotifications: NSObject, UNUserNotificationCenterDelegate, @unch
     /// Posts the notification, asking the user first to allow notifications if they never answered and calling shownLater once it is posted after they allow them, and waits up to the timeout for the centre.
     func post(_ notification: UserNotification, timeout: TimeInterval, shownLater: @escaping @Sendable () -> Void) -> NotificationPosting {
         guard Self.inAppBundle else { return .unavailable("the agent is not running from its app bundle") }
-        let answer = Answer()
+        let answer = PendingAnswer<NotificationPosting>()
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
@@ -87,21 +87,5 @@ final class LiveNotifications: NSObject, UNUserNotificationCenterDelegate, @unch
         withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         done([.banner, .list])
-    }
-}
-
-private final class Answer: @unchecked Sendable {
-    private let lock = NSLock()
-    private let done = DispatchSemaphore(value: 0)
-    private var posting: NotificationPosting?
-
-    func finish(_ posting: NotificationPosting) {
-        lock.withLock { self.posting = self.posting ?? posting }
-        done.signal()
-    }
-
-    func wait(timeout: TimeInterval) -> NotificationPosting? {
-        guard done.wait(timeout: .now() + timeout) == .success else { return nil }
-        return lock.withLock { posting }
     }
 }

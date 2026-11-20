@@ -23,7 +23,8 @@ final class OneRequestAtATime: @unchecked Sendable {
     }
 }
 
-private final class PendingAnswer<Answer: Sendable>: @unchecked Sendable {
+/// An answer another thread gives once, waited for up to a timeout; later answers are ignored.
+final class PendingAnswer<Answer: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private let done = DispatchSemaphore(value: 0)
     private var answer: Answer?

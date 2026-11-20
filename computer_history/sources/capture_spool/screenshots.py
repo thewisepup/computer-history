@@ -19,7 +19,7 @@ from computer_history.store import (
     screenshot_totals,
     to_utc,
 )
-from computer_history.text import clean_text
+from computer_history.text import clean_text_or_none
 
 NO_RECORDS: Mapping[str, int] = MappingProxyType(dict.fromkeys(SCREENSHOT_STATUSES, 0))
 
@@ -55,11 +55,13 @@ def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> Scree
     if not any(total.statuses.values()):
         return ScreenshotHealth(reported=False)
     kept = newest_screenshot(conn, KEPT_STATUS)
+    last_kept = None
+    if kept is not None:
+        app, image_path = clean_text_or_none(kept.app_name), clean_text_or_none(kept.image_path)
+        last_kept = KeptScreenshot(kept.at, app, image_path)
     return ScreenshotHealth(
         reported=True,
-        last_kept=None
-        if kept is None
-        else KeptScreenshot(kept.at, _text(kept.app_name), _text(kept.image_path)),
+        last_kept=last_kept,
         no_permission_since=_no_permission_since(conn),
         total=total,
         today=_tally(conn, since=to_utc(day_start)),
@@ -83,6 +85,3 @@ def _no_permission_since(conn: sqlite3.Connection) -> datetime | None:
         return None
     return first_screenshot_at(conn, NO_PERMISSION_STATUS, after=taken)
 
-
-def _text(value: object) -> str | None:
-    return clean_text(value) if isinstance(value, str) else None

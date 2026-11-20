@@ -11,7 +11,7 @@ from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.activitywatch.discovery import WINDOW_SOURCE
 from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times, newest_events
 from computer_history.store import payload_values
-from computer_history.text import clean_text
+from computer_history.text import clean_text_or_none
 
 WINDOW_APP_PATH = "$.data.app"
 
@@ -33,7 +33,7 @@ def stored_app_spans(
         AppSpan(row.started_at, row.ended_at, app)
         for row in payload_values(conn, WINDOW_SOURCE, start, end, (WINDOW_APP_PATH,))
         if on_host(row.source_id.rpartition("/")[0], hostname)
-        and (app := _app(row.values[0])) is not None
+        and (app := clean_text_or_none(row.values[0])) is not None
     ]
 
 
@@ -54,12 +54,9 @@ def on_host(bucket_id: str, hostname: str) -> bool:
 
 def _span(raw: Any) -> AppSpan | None:
     try:
-        app = _app(raw["data"]["app"])
+        app = clean_text_or_none(raw["data"]["app"])
         start, end = event_times(raw)
     except MALFORMED_EVENT:
         return None
     return None if app is None else AppSpan(start, end, app)
 
-
-def _app(value: Any) -> str | None:
-    return clean_text(value) if isinstance(value, str) else None

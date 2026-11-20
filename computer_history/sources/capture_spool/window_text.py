@@ -12,7 +12,7 @@ from computer_history.sources.capture_spool.record import (
     WINDOW_TEXT_SOURCE,
 )
 from computer_history.store import latest_payload_value, payload_values
-from computer_history.text import clean_text
+from computer_history.text import clean_text_or_none
 
 KIND_PATH = "$.kind"
 APP_PATH = "$.app_name"
@@ -44,7 +44,7 @@ def stored_records(conn: sqlite3.Connection, start: datetime, end: datetime) -> 
             kind if isinstance(kind, str) else None,
             bool(cut),
             bool(out),
-            clean_text(app) if isinstance(app, str) else None,
+            clean_text_or_none(app),
         )
         for row in rows
         for kind, cut, out, app in [row.values]
