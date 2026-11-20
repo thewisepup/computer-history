@@ -77,3 +77,5 @@ Review findings ratchet into rules:
   never hard-code them.
 - **H5** A change to the pre-commit hook or CI updates every doc that describes
   the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H6** When a function already does something, call it rather than writing
+  it again, and name a test after the code path it actually runs.
