@@ -66,13 +66,18 @@ struct RefusingImageStore: ImageStore {
 
 final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
     let writer: SpoolWriter
+    var refusals: Int
 
-    init(writer: SpoolWriter) {
+    init(writer: SpoolWriter, refusals: Int) {
         self.writer = writer
+        self.refusals = refusals
     }
 
     func append(_ record: some SpoolLine) throws {
-        if record is ScreenshotRecord { throw ImageStoreError(description: "spool refused") }
+        if record is ScreenshotRecord, refusals > 0 {
+            refusals -= 1
+            throw ImageStoreError(description: "spool refused")
+        }
         try writer.append(record)
     }
 }
@@ -211,7 +216,7 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
 
 @Test func aKeptImageWhoseRecordCannotBeWrittenIsRemovedAndCountedApart() throws {
     let fixture = LoopFixture()
-    fixture.spoolRefusesScreenshots = true
+    fixture.screenshotsTheSpoolRefuses = .max
     fixture.run(for: 2)
     #expect(try fixture.records().map { $0["kind"] as? String } == ["capture"])
     #expect(savedImages(in: fixture.settings.folder).isEmpty)
