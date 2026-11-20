@@ -53,6 +53,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     spool_path = resolve_spool_path(args.spool_path, db_path)
     now = datetime.now(UTC)
+    day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
@@ -104,7 +105,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print()
         _print_agent(health, spool_path, now)
         print()
-        _print_screenshots(screenshot_health(store.conn, now=now), now)
+        _print_screenshots(screenshot_health(store.conn, day_start=day_start), now)
         print()
         _print_counts(table_counts(store.conn))
     return 0

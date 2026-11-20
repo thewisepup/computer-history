@@ -56,7 +56,7 @@ def store_shots(conn: sqlite3.Connection, lines: list[str]) -> None:
 
 
 def health(conn: sqlite3.Connection):
-    return screenshot_health(conn, now=NOW, day_start=DAY_START)
+    return screenshot_health(conn, day_start=DAY_START)
 
 
 def test_counts_records_by_status_in_total_and_since_the_day_began(conn) -> None:
@@ -100,14 +100,13 @@ def test_disk_use_sums_the_image_bytes_of_kept_records_in_total_and_today(conn) 
             shot(2, today, "kept", image_bytes=2_500),
             shot(3, today, "kept", image_bytes=40),
             shot(4, today, "duplicate"),
-            shot(5, NOW + timedelta(minutes=1), "kept", image_bytes=9_000),
         ],
     )
     result = health(conn)
     assert (result.total.image_bytes, result.today.image_bytes) == (3_540, 2_540)
 
 
-def test_the_last_kept_screenshot_is_the_newest_kept_record_up_to_now(conn) -> None:
+def test_the_last_kept_screenshot_is_the_newest_kept_record(conn) -> None:
     store_shots(
         conn,
         [
@@ -115,10 +114,30 @@ def test_the_last_kept_screenshot_is_the_newest_kept_record_up_to_now(conn) -> N
             shot(2, NOW - timedelta(minutes=20), "kept", app_name="Notes", image_path="b.jpg"),
             shot(3, NOW - timedelta(minutes=10), "duplicate", app_name="Mail"),
             shot(4, NOW - timedelta(minutes=5), "failed", app_name="Mail"),
-            shot(5, NOW + timedelta(minutes=1), "kept", app_name="Later"),
         ],
     )
     assert health(conn).last_kept == KeptScreenshot(NOW - timedelta(minutes=20), "Notes", "b.jpg")
+
+
+def test_records_dated_after_now_still_count_as_stored(conn) -> None:
+    ahead = NOW + timedelta(hours=2)
+    store_shots(conn, [shot(1, ahead, "kept", image_bytes=500), shot(2, ahead, "failed")])
+    result = health(conn)
+    assert result.reported
+    assert result.last_kept is not None and result.last_kept.at == ahead
+    assert result.total.statuses["kept"] == result.today.statuses["failed"] == 1
+    assert result.total.image_bytes == result.today.image_bytes == 500
+
+
+def test_a_kept_record_dated_after_now_still_clears_the_permission_warning(conn) -> None:
+    store_shots(
+        conn,
+        [
+            shot(1, NOW - timedelta(minutes=5), "no-permission"),
+            shot(2, NOW + timedelta(minutes=5), "kept"),
+        ],
+    )
+    assert health(conn).no_permission_since is None
 
 
 def test_with_nothing_kept_there_is_no_last_kept_screenshot(conn) -> None:

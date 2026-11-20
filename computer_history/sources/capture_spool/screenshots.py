@@ -47,17 +47,12 @@ class ScreenshotHealth:
     today: ScreenshotTally = ScreenshotTally()
 
 
-def screenshot_health(
-    conn: sqlite3.Connection, *, now: datetime, day_start: datetime | None = None
-) -> ScreenshotHealth:
-    """Report on the stored screenshot records up to now, and those since the day began."""
-    now = to_utc(now)
-    total = _tally(conn, now)
+def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> ScreenshotHealth:
+    """Report on every stored screenshot record, and on those since the day began."""
+    total = _tally(conn)
     if not any(total.statuses.values()):
         return ScreenshotHealth(reported=False)
-    if day_start is None:
-        day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
-    kept = newest_screenshot(conn, KEPT, until=now)
+    kept = newest_screenshot(conn, KEPT)
     return ScreenshotHealth(
         reported=True,
         last_kept=None
@@ -67,24 +62,22 @@ def screenshot_health(
             clean_text(kept.app_name) if isinstance(kept.app_name, str) else None,
             kept.image_path if isinstance(kept.image_path, str) else None,
         ),
-        no_permission_since=_no_permission_since(conn, now),
+        no_permission_since=_no_permission_since(conn),
         total=total,
-        today=_tally(conn, now, since=to_utc(day_start)),
+        today=_tally(conn, since=to_utc(day_start)),
     )
 
 
-def _tally(
-    conn: sqlite3.Connection, now: datetime, since: datetime | None = None
-) -> ScreenshotTally:
-    totals = screenshot_totals(conn, until=now, since=since)
+def _tally(conn: sqlite3.Connection, since: datetime | None = None) -> ScreenshotTally:
+    totals = screenshot_totals(conn, since=since)
     statuses = {s: totals[s].count if s in totals else 0 for s in SCREENSHOT_STATUSES}
     kept = totals.get(KEPT)
     return ScreenshotTally(statuses, 0 if kept is None else kept.image_bytes)
 
 
-def _no_permission_since(conn: sqlite3.Connection, now: datetime) -> datetime | None:
+def _no_permission_since(conn: sqlite3.Connection) -> datetime | None:
     kept, duplicate, refused = (
-        newest_screenshot(conn, status, until=now)
+        newest_screenshot(conn, status)
         for status in (KEPT, DUPLICATE, NO_PERMISSION)
     )
     taken = max((found.at for found in (kept, duplicate) if found is not None), default=None)

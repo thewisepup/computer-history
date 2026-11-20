@@ -165,7 +165,9 @@ Capture agent: has not reported yet (no ax-text records stored)
 
 The screenshots section reads only stored `screenshot` records, never the
 screenshots folder, through an index on their status, capture time and image
-size, so it stays quick at months of records:
+size, so it stays quick at months of records. Every stored record counts, by
+its own capture time, including one dated after now when the agent's clock
+runs ahead:
 
 - **last kept**: the newest `kept` record, its app and the image path it
   names (relative to the data folder).
