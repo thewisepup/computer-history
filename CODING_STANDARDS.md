@@ -50,6 +50,10 @@ Review findings ratchet into rules:
   (`CaptureCounts`), never as the plural of an item type in the same package.
 - **S8** A value that picks behaviour is an Enum member, never a free string
   compared in branches (`FindingKind`, not `counter == "full scan"`).
+- **S9** Setup and teardown that two modules repeat becomes one context manager
+  beside the owner of the resource (`started` in `synthetic/operations.py`).
+- **S10** A threshold constant is named for what it bounds
+  (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
 
 ## Architecture
 
@@ -93,3 +97,5 @@ Review findings ratchet into rules:
 - **H7** A capture-agent contract value the backend already defines (the
   heartbeat, the format version, the record kinds) is imported from `sources/`
   by `synthetic/`, never restated.
+- **H8** A change to a CLI command or flag updates `computer_history/cli/README.md`
+  in the same commit.

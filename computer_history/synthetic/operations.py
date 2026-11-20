@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -71,20 +72,33 @@ class Operation:
     windowed: bool = False
 
 
+@contextmanager
+def started(operation: Operation, dataset: GateDataset, folder: Path) -> Iterator[Session]:
+    """The operation started in a scratch folder, closed and its folder removed afterwards."""
+    try:
+        session = operation.start(dataset, folder)
+        try:
+            yield session
+        finally:
+            session.conn.close()
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def measure_operation(operation: Operation, dataset: GateDataset, folder: Path) -> Costs:
-    """Run the operation once uncounted, then once under the cost meter."""
-    warm = operation.start(dataset, folder / "warm")
+    """Run the operation once uncounted, then once under the cost meter, in a scratch folder.
+
+    The folder is removed afterwards, and a fresh run's warm copy before the counted one starts.
+    """
     try:
-        warm.action()
-        if not operation.fresh:
-            return measure(warm.conn, warm.action)
+        with started(operation, dataset, folder / "warm") as warm:
+            warm.action()
+            if not operation.fresh:
+                return measure(warm.conn, warm.action)
+        with started(operation, dataset, folder / "measured") as measured:
+            return measure(measured.conn, measured.action)
     finally:
-        warm.conn.close()
-    measured = operation.start(dataset, folder / "measured")
-    try:
-        return measure(measured.conn, measured.action)
-    finally:
-        measured.conn.close()
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _ingest(dataset: GateDataset, folder: Path) -> Session:

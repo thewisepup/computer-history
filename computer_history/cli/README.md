@@ -15,7 +15,8 @@ app.py         parser + dispatch: one entry per command
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
-  |                dev perf: the performance gate against the committed baseline
+  |                dev perf: the performance gate against the committed baseline;
+  |                dev bench: wall-clock timings against this machine's last ones
         |
 db.py and sources.py (unusable database / source messages),
 formatting.py (durations, times, sizes)
@@ -251,12 +252,14 @@ its database or manifest.
 ```bash
 computer-history dev perf                      # day and month, against the committed baseline
 computer-history dev perf --update-baselines   # record a deliberate change of cost
-computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
+computer-history dev perf --dataset day --dataset year   # nightly: year, heavy-month (also: heavy-year)
+computer-history dev perf --counters costs.json          # also write what an update would write
 ```
 
 ```
 SQLite 3.54.1, 54 compile options:
   ATOMIC_INTRINSICS=1 COMPILER=clang-21.0.0 DEFAULT_AUTOVACUUM ...
+Baseline: .../computer_history/synthetic/perf_baselines/sqlite-3.54.1.json
 
 operation        dataset      statements      VM steps    pages
 ingest           day               8,861       281,335    2,225
@@ -276,7 +279,8 @@ store reads `status` makes, and the capture agent's health) on the developer
 persona's `messy` datasets from the dataset cache, once untimed and once with
 SQLite's work counted: statements run, VM instructions, full table scans in
 the query plans of the reads it ran, and the pages of a database it writes.
-It compares those with `computer_history/synthetic/perf_baselines/sqlite-3.54.1.json` and
+It compares those with the baseline for the SQLite it runs on,
+`computer_history/synthetic/perf_baselines/sqlite-<version>.json`, and
 exits 1 on any difference: statements, scans and pages exactly, VM steps past
 2%, cheaper ones too, so an improvement is locked in by rerunning with
 `--update-baselines` and saying why in the pull request. A scan fails unless
@@ -294,12 +298,62 @@ ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
 ```
 
 The scaling check needs `day` beside a larger dataset and says so when it is
-missing. The committed baseline holds only day and month, so a nightly dataset
-reports `no baseline yet` until its entries are recorded with
-`--update-baselines`. Each entry keeps the SQLite version it was recorded on,
-and the run notes any that differ from the SQLite it runs on.
+missing. A dataset with no entry reports `no baseline yet` until it is recorded
+with `--update-baselines`.
+
+There is one baseline file per SQLite version, because VM steps differ between
+versions: CI's 3.45.1 runs one more instruction per inserted row than 3.54.1,
+so `ingest` costs 2.6% more there, past the tolerance. Statements, scans and
+pages match exactly across both. A SQLite with no file of its own is compared
+with the newest version's file, and the run says so. `--update-baselines`
+writes only the running SQLite's file, so a deliberate change of cost updates
+two files: yours, and CI's from the `perf-counters` artifact of the failed CI
+run, whose `perf-counters.json` is the file an update would write:
+
+```bash
+gh run download <run-id> -n perf-counters -D /tmp/perf
+cp /tmp/perf/perf-counters.json computer_history/synthetic/perf_baselines/sqlite-<CI version>.json
+```
+
+The `heavy-year` dataset (12.5 GB, about 16 GB of memory to build) doesn't fit
+a CI runner, so the nightly run measures a heavy month instead.
 
 `pytest -m perf` runs the same gate; the default `pytest` leaves it out.
+
+## dev bench — the wall-clock benchmark
+
+```bash
+computer-history dev bench                     # day and month, against this machine's last timings
+computer-history dev bench --dataset year      # any dataset dev perf takes
+computer-history dev bench --update-baseline   # record these timings as the machine's new ones
+```
+
+Real output, on an M5 Max, after a first run recorded the baseline:
+
+```
+Median of 5 runs, against this machine's baseline ~/Library/Caches/ComputerHistory/datasets/bench_baseline.json
+
+operation        dataset         median   baseline    change
+ingest           day            0.136 s    0.164 s    -17.0%
+rebuild-signals  day            0.045 s    0.046 s     -2.9%
+status-reads     day            0.002 s    0.002 s     -4.2%
+capture-health   day            0.011 s    0.011 s     +1.2%
+ingest           month          5.415 s    5.537 s     -2.2%
+rebuild-signals  month          1.768 s    1.826 s     -3.2%
+status-reads     month          0.042 s    0.044 s     -4.7%
+capture-health   month          0.042 s    0.044 s     -3.2%
+
+Nothing more than 25% slower than this machine's baseline.
+```
+
+Times each operation `dev perf` counts five times, without the cost meter,
+each run started afresh, and reports the median. It catches Python-side
+slowdowns the counters can't see. The baseline is `bench_baseline.json` in the
+dataset cache folder, so it belongs to this machine: a timing it lacks is
+recorded (`recorded`), and one more than 25% slower is marked `SLOWER`. It
+exits 0 either way; only a run that can't happen at all exits 1. The nightly
+CI run keeps no baseline, since each night lands on a different VM, so there it
+reports medians only.
 
 ## When the database can't be used
 
