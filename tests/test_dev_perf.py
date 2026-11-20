@@ -67,3 +67,20 @@ def test_a_missing_baseline_fails_and_says_how_to_record_one(
 
     assert code == 1
     assert f"ingest on {SMALLEST}: no baseline yet" in printed and "--update-baselines" in printed
+
+
+def test_counters_writes_what_was_measured_in_the_baselines_format(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    baseline, counters = tmp_path / "baseline.json", tmp_path / "counters.json"
+    perf(capsys, "--baseline", str(baseline), "--update-baselines")
+    measured = json.loads(baseline.read_text())
+    doctored = json.loads(baseline.read_text())
+    doctored["status-reads"][SMALLEST]["statements"] -= 1
+    baseline.write_text(json.dumps(doctored))
+
+    code, printed = perf(capsys, "--baseline", str(baseline), "--counters", str(counters))
+
+    assert code == 1
+    assert json.loads(counters.read_text()) == measured
+    assert f"Counters written: {counters}" in printed

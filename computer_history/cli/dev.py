@@ -29,6 +29,7 @@ from computer_history.synthetic import (
     live_folders,
     make_dev_database,
     run_gate,
+    save_baseline,
 )
 
 REGISTRIES: Mapping[str, Mapping[str, object]] = {
@@ -80,6 +81,11 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
         "--update-baselines",
         action="store_true",
         help="record the measured costs as the new baseline, then check against it",
+    )
+    perf.add_argument(
+        "--counters",
+        type=Path,
+        help="also write the measured costs to this file, in the baseline's format",
     )
 
 
@@ -154,6 +160,8 @@ def cmd_perf(args: argparse.Namespace) -> int:
         except (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError) as exc:
             print(f"dev perf failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
+    if args.counters is not None:
+        save_baseline(args.counters, report.build.version, report.measured)
     _print_report(report, args)
     return 0 if report.ok else 1
 
@@ -170,6 +178,8 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
         print(f"  note: some baseline entries were recorded on SQLite {', '.join(older)}")
     if args.update_baselines:
         print(f"Baseline rewritten: {args.baseline}")
+    if args.counters is not None:
+        print(f"Counters written: {args.counters}")
     print()
     print(f"{'operation':<16} {'dataset':<11} {'statements':>11} {'VM steps':>13} {'pages':>8}")
     for (name, label), costs in report.measured.items():
