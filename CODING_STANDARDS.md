@@ -1,8 +1,9 @@
 # Code standards
 
-Rules marked **[checked]** fail automatically in `tests/test_standards.py`
-(run by the pre-commit hook and CI). The comment and docstring checks cover
-`computer_history/` and `tests/`; the rest cover `computer_history/` only.
+Rules marked **[checked]** fail automatically in `tests/test_standards.py`,
+or in the test the rule names (run by the pre-commit hook and CI). The
+comment and docstring checks cover `computer_history/` and `tests/`; the rest
+cover `computer_history/` only.
 Unmarked rules are judgement calls the standards reviewer
 (`.claude/agents/standards-reviewer.md`) enforces on each diff, citing each
 rule by its ID.
@@ -46,20 +47,35 @@ Review findings ratchet into rules:
   modules that exist.
 - **S5** Types live next to their producer (`BucketPull` beside `pull_bucket`).
 - **S6** **[checked]** No module imports another module's `_private` names.
+- **S7** A type that summarises other values is named for what it counts
+  (`CaptureCounts`), never as the plural of an item type in the same package.
+- **S8** A value that picks behaviour is an Enum member, never a free string
+  compared in branches (`FindingKind`, not `counter == "full scan"`).
+- **S9** Setup and teardown that two modules repeat becomes one context manager
+  beside the owner of the resource (`started` in `synthetic/operations.py`).
+- **S10** A threshold constant is named for what it bounds
+  (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
 
 ## Architecture
 
 - **A1** **[checked]** Layers depend downward only: `store/` never imports
-  `sources/` or `cli/`; `sources/` never imports `cli/`.
+  `sources/`, `synthetic/` or `cli/`; `sources/` never imports `synthetic/` or
+  `cli/`; `synthetic/` never imports `cli/`.
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients;
-  everything below takes them as parameters.
+  everything below takes them as parameters. `synthetic/` may also `connect`
+  to a scratch database it builds, or `connect_immutable` to a cached one, by
+  path, never the live one.
 - **A4** Inject the I/O edges (`conn`, `client`, clock, sleep) and nothing else;
   pure logic takes plain data. Interfaces are Protocols (`AWApi`); transport
   clients stay dumb 1:1 API mirrors, with domain logic in free functions.
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
-  one function below, format, exit code.
+  one function below, format, exit code. **[checked]** in part: no constant in
+  `cli/` repeats one a lower layer defines with the same name and value.
+- **A7** A path's resolution rule (flag, then `$ENV`, then default) lives in one
+  function beside what owns the path (`resolve_db_path`, `cache_root`); other
+  code calls it and never reads that variable itself.
 
 ## Hygiene
 
@@ -67,9 +83,25 @@ Review findings ratchet into rules:
   rename detection keeps the file's history.
 - **H2** Re-exports keep callers and tests untouched; tests monkeypatch the
   submodule that owns the name.
-- **H3** `docs/DESIGN.md`'s package layout and any package README change in the
-  same commit as the layout.
+- **H3** **[checked]** `docs/DESIGN.md`'s package layout and any package README change in the
+  same commit as the layout. The check covers the module names in the `store/`,
+  `sources/` and `synthetic/` entries.
 - **H4** Tests derive versions and counts from the code (`len(load_migrations())`),
-  never hard-code them.
+  never hard-code them. They look things up by the constant that names them
+  (`rendered[ActivityWatchRenderer.name]`, `ActivityWatchRenderer.streams`, the
+  port in `DEFAULT_AW_URL`), never a restated literal; expected answers stay literals.
 - **H5** A change to the pre-commit hook or CI updates every doc that describes
   the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H6** **[checked]** Invisible and combining characters in source (Unicode
+  categories Cf, Mn, Zl, Zp: bidi controls, zero-width marks, combining accents,
+  line separators) are written as `\u` escapes, never raw.
+- **H7** A capture-agent contract value the backend already defines (the
+  heartbeat, the format version, the record kinds) is imported from `sources/`
+  by `synthetic/`, never restated.
+- **H8** **[checked]** in `tests/test_synthetic_coverage.py`: a new stream,
+  table, timeline field or public store function on a connection lands with
+  synthetic coverage in the same change (a renderer, generated rows, a
+  rendered or manifest effect, a gate operation that runs it), or with an
+  exemption in that test giving the reason.
+- **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
+  in the same commit.
