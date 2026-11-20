@@ -13,6 +13,13 @@ running() {
   return 1
 }
 
+request_screen_recording() {
+  out="$(mktemp)"
+  open -n -W --stdout "$out" --stderr "$out" "$app" --args request-screen-recording || true
+  cat "$out"
+  rm -f "$out"
+}
+
 scripts/build.sh
 if [ -x "$agent" ]; then
   "$agent" uninstall
@@ -25,6 +32,7 @@ ditto .build/ComputerHistoryAgent.app "$app"
 for _ in 1 2 3; do
   if running; then
     echo "Running from $app"
+    request_screen_recording
     exit 0
   fi
   # Forces the failed launch that makes macOS replace the old binary's launch constraint.

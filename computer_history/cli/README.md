@@ -181,6 +181,18 @@ runs ahead:
   record after the last screenshot taken. `secure-field` and `failed` records
   neither raise nor clear it.
 
+After the end-to-end check's scripted session, whose last two captures lost
+the grant (real output):
+
+```
+Screenshots:
+  last kept     2026-11-18 01:05 (1d 19h ago), Calculator, screenshots/2026-11-18/eb706daf-4138-4be3-aa0d-13ba3f4f63ea.jpg
+  today         0 kept, 0 duplicate, 0 secure-field, 0 no-permission, 0 failed
+  all stored    4 kept, 1 duplicate, 1 secure-field, 2 no-permission, 1 failed
+  disk          299.3 KB in total, 0 B today (from kept records)
+  warning: Screen Recording permission is missing since 2026-11-18 01:07 (1d 19h ago) (records say no-permission, and no screenshot was taken since). Grant it in System Settings > Privacy & Security > Screen Recording.
+```
+
 `screenshot` coverage is not checked: coverage is judged from `ax-text`
 records, so the coverage gaps list says `screenshot: not checked` after the
 `ax-text` check, and says nothing about screenshots when that check has

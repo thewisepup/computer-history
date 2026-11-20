@@ -28,27 +28,32 @@ struct CaptureScript: Decodable, Equatable {
 
     struct Node: Decodable, Equatable {
         let role: String
+        let id: String?
         let title: String?
         let subrole: String?
         let description: String?
         let value: String?
         let `repeat`: Int
         let hangs: [String]
+        let recognizedText: String?
         let children: [Node]
 
         enum CodingKeys: String, CodingKey, CaseIterable {
-            case role, title, subrole, description, value, `repeat`, hangs, children
+            case role, id, title, subrole, description, value, `repeat`, hangs, children
+            case recognizedText = "recognized_text"
         }
 
         init(from decoder: any Decoder) throws {
             let node = try strictContainer(decoder, CodingKeys.self)
             role = try node.decode(String.self, forKey: .role)
+            id = try node.decodeIfPresent(String.self, forKey: .id)
             title = try node.decodeIfPresent(String.self, forKey: .title)
             subrole = try node.decodeIfPresent(String.self, forKey: .subrole)
             description = try node.decodeIfPresent(String.self, forKey: .description)
             value = try node.decodeIfPresent(String.self, forKey: .value)
             `repeat` = try node.decodeIfPresent(Int.self, forKey: .repeat) ?? 1
             hangs = try node.decodeIfPresent([String].self, forKey: .hangs) ?? []
+            recognizedText = try node.decodeIfPresent(String.self, forKey: .recognizedText)
             children = try node.decodeIfPresent([Node].self, forKey: .children) ?? []
         }
 
@@ -69,6 +74,8 @@ struct CaptureScript: Decodable, Equatable {
             case at, focus, pause, resume, presence, end, crash
             case focusWindow = "focus_window"
             case setTitle = "set_title"
+            case focusElement = "focus_element"
+            case windowImage = "window_image"
         }
 
         init(from decoder: any Decoder) throws {
@@ -84,6 +91,8 @@ struct CaptureScript: Decodable, Equatable {
             case .focus: .focus(try step.decode(String.self, forKey: key))
             case .focusWindow: .focusWindow(try step.decode(WindowRef.self, forKey: key))
             case .setTitle: .setTitle(try step.decode(TitleChange.self, forKey: key))
+            case .focusElement: .focusElement(try step.decode(ElementRef.self, forKey: key))
+            case .windowImage: .windowImage(try step.decode(WindowImageAnswer.self, forKey: key))
             case .presence: .presence(try step.decode(PresenceChange.self, forKey: key).presence)
             case .pause: try Self.flag(.pause, step, key)
             case .resume: try Self.flag(.resume, step, key)
@@ -105,6 +114,8 @@ struct CaptureScript: Decodable, Equatable {
         case focus(String)
         case focusWindow(WindowRef)
         case setTitle(TitleChange)
+        case focusElement(ElementRef)
+        case windowImage(WindowImageAnswer)
         case presence(Presence)
         case pause
         case resume
@@ -115,6 +126,20 @@ struct CaptureScript: Decodable, Equatable {
     struct WindowRef: Decodable, Equatable {
         let app: String
         let window: String
+    }
+
+    /// The element an app's focus moves to, by its id in one of the app's windows; neither window nor element clears the focus.
+    struct ElementRef: Decodable, Equatable {
+        let app: String
+        let window: String?
+        let element: String?
+    }
+
+    /// What ScreenCaptureKit gives for a picture of the focused window from this step on.
+    enum WindowImageAnswer: String, Decodable, Equatable {
+        case picture
+        case noPermission = "no-permission"
+        case failed
     }
 
     struct TitleChange: Decodable, Equatable {

@@ -13,6 +13,7 @@ public protocol AccessibilityElement: Hashable {
     func element(_ attribute: String) -> AccessibilityResult<Self>
     func elements(_ attribute: String) -> AccessibilityResult<[Self]>
     func setTrue(_ attribute: String) -> AccessibilityResult<Void>
+    func frame() -> AccessibilityResult<CGRect>
 }
 
 /// An accessibility element of a running application, read through the macOS Accessibility API.
@@ -77,6 +78,21 @@ public struct LiveAccessibilityElement: AccessibilityElement {
         case .success: .value(())
         case .cannotComplete: .timedOut
         default: .missing
+        }
+    }
+
+    public func frame() -> AccessibilityResult<CGRect> {
+        var origin = CGPoint.zero
+        var size = CGSize.zero
+        switch (copy("AXPosition"), copy("AXSize")) {
+        case (.value(let position), .value(let extent))
+            where CFGetTypeID(position) == AXValueGetTypeID() && CFGetTypeID(extent) == AXValueGetTypeID():
+            guard AXValueGetValue(position as! AXValue, .cgPoint, &origin), AXValueGetValue(extent as! AXValue, .cgSize, &size) else {
+                return .missing
+            }
+            return .value(CGRect(origin: origin, size: size))
+        case (.timedOut, _), (_, .timedOut): return .timedOut
+        default: return .missing
         }
     }
 
