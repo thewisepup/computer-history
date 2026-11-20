@@ -230,6 +230,7 @@ def observation_rows(conn: sqlite3.Connection) -> list[tuple[Any, ...]]:
     return [tuple(row) for row in conn.execute("SELECT * FROM observations ORDER BY id")]
 
 
+@pytest.mark.schema_rule
 def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path: Path) -> None:
     path = tmp_path / "old.db"
     old = previous_version(path)
