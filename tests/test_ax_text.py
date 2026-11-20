@@ -18,6 +18,7 @@ from computer_history.sources import (
     AX_TEXT_SOURCE,
     MAX_AX_TEXT_LENGTH,
     MAX_TEXT_LENGTH,
+    SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
@@ -44,7 +45,7 @@ FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "recor
 FIXTURE_LINES = [
     line
     for line in FIXTURE.read_text(encoding="utf-8").splitlines()
-    if json.loads(line)["kind"] != "screenshot"
+    if json.loads(line)["kind"] != SCREENSHOT_KIND
 ]
 FIXTURE_CAPTURES = sum(json.loads(line)["kind"] == "capture" for line in FIXTURE_LINES)
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)

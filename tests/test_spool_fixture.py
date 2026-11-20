@@ -47,7 +47,7 @@ SCREENSHOT_KEYS = {
 def fixture_records(kind: str | None = None) -> list[dict]:
     records = [json.loads(line) for line in FIXTURE_LINES]
     if kind is None:
-        return [r for r in records if r["kind"] != "screenshot"]
+        return [r for r in records if r["kind"] != SCREENSHOT_KIND]
     return [r for r in records if r["kind"] == kind]
 
 
@@ -61,7 +61,7 @@ def test_every_capture_agent_line_parses_with_the_documented_keys() -> None:
 
 
 def test_every_screenshot_line_has_the_documented_keys_and_every_status() -> None:
-    records = fixture_records("screenshot")
+    records = fixture_records(SCREENSHOT_KIND)
     for record in records:
         assert set(record) == SCREENSHOT_KEYS
     assert sorted(r["status"] for r in records) == sorted(
@@ -70,7 +70,7 @@ def test_every_screenshot_line_has_the_documented_keys_and_every_status() -> Non
 
 
 def test_only_kept_and_duplicate_screenshots_carry_an_image_and_text() -> None:
-    for record in fixture_records("screenshot"):
+    for record in fixture_records(SCREENSHOT_KIND):
         with_image = record["status"] in ("kept", "duplicate")
         for key in ("image_path", "perceptual_hash", "text", "text_sha256", "full_text_bytes"):
             assert (record[key] is not None) == with_image, (record["status"], key)
@@ -85,7 +85,7 @@ def test_every_fixture_line_is_a_record_the_backend_reads() -> None:
 
 
 def screenshot_line(**fields: object) -> str:
-    data = fixture_records("screenshot")[1] | fields
+    data = fixture_records(SCREENSHOT_KIND)[1] | fields
     return json.dumps(data, sort_keys=True, ensure_ascii=False)
 
 

@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import NamedTuple
 
-from computer_history.sources.capture_spool.normalize import AX_TEXT_SOURCE
-from computer_history.sources.capture_spool.record import CAPTURE_KIND, EXCLUDED_KIND
+from computer_history.sources.capture_spool.record import (
+    AX_TEXT_SOURCE,
+    CAPTURE_KIND,
+    EXCLUDED_KIND,
+)
 from computer_history.store import latest_payload_value, payload_values
 from computer_history.text import clean_text
 

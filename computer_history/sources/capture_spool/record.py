@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any
 
 from computer_history.store import to_utc
@@ -17,6 +18,12 @@ RESUMED_KIND = "resumed"
 SCREENSHOT_KIND = "screenshot"
 AX_TEXT_KINDS = (CAPTURE_KIND, EXCLUDED_KIND, PAUSED_KIND, RESUMED_KIND)
 KINDS = (*AX_TEXT_KINDS, SCREENSHOT_KIND)
+AX_TEXT_SOURCE = "ax-text"
+SCREENSHOT_SOURCE = "screenshot"
+STREAM_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {AX_TEXT_SOURCE: AX_TEXT_KINDS, SCREENSHOT_SOURCE: (SCREENSHOT_KIND,)}
+)
+SPOOL_STREAMS = tuple(STREAM_KINDS)
 SCREENSHOT_STATUSES = ("kept", "duplicate", "secure-field", "no-permission", "failed")
 
 _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

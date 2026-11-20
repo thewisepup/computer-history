@@ -91,8 +91,8 @@ computer_history/
                 # frontmost (stored and newest aw-window app spans, for status)
                 # capture_spool/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
-                # against format v1), normalize (the ax-text projector),
-                # screenshot (the screenshot projector), adapter (CaptureSpool:
+                # against format v1, and the kinds each stream takes),
+                # normalize (its projectors), adapter (CaptureSpool:
                 # two streams, one file per pull, removed once both stored
                 # it); for status, backlog (what
                 # waits in the spool), stored (the stored records' kinds and

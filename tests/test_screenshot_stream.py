@@ -16,6 +16,8 @@ from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
     AX_TEXT_SOURCE,
+    MAX_RECOGNIZED_TEXT_LENGTH,
+    SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
     CaptureSpool,
@@ -30,7 +32,7 @@ from computer_history.store import connect, get_progress, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()
-SCREENSHOT_LINES = [line for line in FIXTURE_LINES if json.loads(line)["kind"] == "screenshot"]
+SCREENSHOT_LINES = [line for line in FIXTURE_LINES if json.loads(line)["kind"] == SCREENSHOT_KIND]
 CAPTURE_AGENT_LINES = [line for line in FIXTURE_LINES if line not in SCREENSHOT_LINES]
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
@@ -180,7 +182,7 @@ def test_the_fixture_stores_every_screenshot_record_verbatim_with_its_signal(
     assert not spooled.exists()
 
 
-def test_recognized_text_in_the_signal_stops_at_ten_thousand_characters(
+def test_recognized_text_in_the_signal_stops_at_the_recognized_text_cap(
     conn: sqlite3.Connection, spool_dir: Path
 ) -> None:
     line = screenshot(1, T0, text="word " * 4000)
@@ -190,7 +192,7 @@ def test_recognized_text_in_the_signal_stops_at_ten_thousand_characters(
 
     assert stored(conn, SCREENSHOT_SOURCE)[0][3] == line
     text = screenshot_signals(conn)[0][8]
-    assert len(text) == 10_000 and text.startswith("word word")
+    assert len(text) == MAX_RECOGNIZED_TEXT_LENGTH and text.startswith("word word")
 
 
 def test_rebuild_reproduces_the_screenshot_signals(

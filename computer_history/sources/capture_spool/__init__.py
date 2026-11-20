@@ -5,7 +5,8 @@
       spool.py       finished *.jsonl files oldest first (never open.part or agent.lock),
           |          read with what tells the file apart, removed once stored, or set
           |          aside into unreadable/
-      record.py      one line -> a checked record of format v1 (InvalidRecord otherwise)
+      record.py      one line -> a checked record of format v1 (InvalidRecord otherwise);
+          |          the kinds each stream takes
           |
       adapter.py     CaptureSpool, two streams over the same files: ax-text (captures,
                      exclusions, pauses, resumes) and screenshot. Each pull reads one file
@@ -13,10 +14,9 @@
                      after-commit step removes the file, or sets it aside if any line was
                      unusable, only once both streams stored that same file; more while
                      the stream's listed files remain
-                     normalize.py: the ax-text projector, stored record -> signal
-                     (app, title, capped text, the rest in extras)
-                     screenshot.py: the screenshot projector, stored record -> signal
-                     (app, title, capped recognized text, image and status in extras)
+                     normalize.py: its projectors, stored record -> signal: app, title
+                     and capped text (window text, or recognized text for screenshot),
+                     the rest in extras
 
     For status: backlog.py   what waits in the spool and its newest record, changing nothing
                 stored.py    the stored records' kinds, apps and flags, the newest, the
@@ -44,19 +44,21 @@ from computer_history.sources.capture_spool.coverage import (
     capture_coverage,
     liveness,
 )
-from computer_history.sources.capture_spool.normalize import AX_TEXT_SOURCE, MAX_AX_TEXT_LENGTH
+from computer_history.sources.capture_spool.normalize import (
+    MAX_AX_TEXT_LENGTH,
+    MAX_RECOGNIZED_TEXT_LENGTH,
+)
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.sources.capture_spool.record import (
+    AX_TEXT_SOURCE,
     CAPTURE_KIND,
     PAUSED_KIND,
     SCREENSHOT_KIND,
+    SCREENSHOT_SOURCE,
+    SPOOL_STREAMS,
     SPOOL_VERSION,
     InvalidRecord,
     parse_record,
-)
-from computer_history.sources.capture_spool.screenshot import (
-    MAX_RECOGNIZED_TEXT_LENGTH,
-    SCREENSHOT_SOURCE,
 )
 from computer_history.sources.capture_spool.spool import (
     UNREADABLE_FOLDER,
@@ -84,6 +86,7 @@ __all__ = [
     "SCREENSHOT_KIND",
     "SCREENSHOT_SOURCE",
     "SPOOL_ENV_VAR",
+    "SPOOL_STREAMS",
     "SPOOL_VERSION",
     "UNREADABLE_FOLDER",
     "AppAgreement",

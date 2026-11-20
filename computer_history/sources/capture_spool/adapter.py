@@ -4,21 +4,19 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from types import MappingProxyType
 
-from computer_history.sources.capture_spool.normalize import AX_TEXT_SOURCE, project_capture
+from computer_history.sources.capture_spool.normalize import PROJECTORS
 from computer_history.sources.capture_spool.record import (
-    AX_TEXT_KINDS,
-    SCREENSHOT_KIND,
+    AX_TEXT_SOURCE,
+    STREAM_KINDS,
     InvalidRecord,
     parse_record,
 )
-from computer_history.sources.capture_spool.screenshot import SCREENSHOT_SOURCE, project_screenshot
 from computer_history.sources.capture_spool.spool import (
     FileIdentity,
     SpoolError,
@@ -27,27 +25,18 @@ from computer_history.sources.capture_spool.spool import (
     remove_finished,
     set_aside,
 )
-from computer_history.sources.contract import Pull, StreamProjector
+from computer_history.sources.contract import Pull
 from computer_history.store import Observation, utc_iso
 
 log = logging.getLogger(__name__)
 
 Finish = Callable[[Path], object]
 
-STREAM_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
-    {AX_TEXT_SOURCE: AX_TEXT_KINDS, SCREENSHOT_SOURCE: (SCREENSHOT_KIND,)}
-)
-
 
 class CaptureSpool:
-    """Reads the capture agent's finished spool files for the ingest runner, oldest first.
+    """Reads the capture agent's finished spool files for the ingest runner, oldest first."""
 
-    Each stream reads every file for its own records; a file goes once every stream has stored it.
-    """
-
-    projectors: Mapping[str, StreamProjector] = MappingProxyType(
-        {AX_TEXT_SOURCE: project_capture, SCREENSHOT_SOURCE: project_screenshot}
-    )
+    projectors = PROJECTORS
 
     def __init__(self, folder: Path) -> None:
         self.folder = folder
