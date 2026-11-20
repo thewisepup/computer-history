@@ -178,7 +178,7 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(fixture.counts.take().description.contains(", 0 screenshot records queued"))
 }
 
-@Test func aWindowWhoseKeptScreenshotGotNoTextKeepsItsNextFrameAndReadsIt() throws {
+@Test func aWindowWhoseKeptScreenshotGotNoTextKeepsItsNextScreenshotAndReadsIt() throws {
     let fixture = LoopFixture()
     let failing = LockedFlag(true)
     fixture.mac.recognizedText = { image in

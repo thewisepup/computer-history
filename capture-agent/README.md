@@ -503,7 +503,7 @@ every key below, sorted, with `null` where a key does not apply:
 | `app_name`, `bundle_id`, `window_title` | the capture's |
 | `image_path` | `kept` and `duplicate`: the JPEG's path relative to the folder (for `duplicate`, the kept image it matched) |
 | `image_bytes` | `kept` only: the JPEG's size |
-| `perceptual_hash` | `kept` and `duplicate`: the frame's own hash |
+| `perceptual_hash` | `kept` and `duplicate`: the screenshot's own hash |
 | `text` | `kept` and `duplicate`: the recognized text, possibly cut off (for `duplicate`, the kept record's) |
 | `text_sha256`, `full_text_bytes`, `text_cut_off` | as for a capture, of the recognized text |
 

@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// A 64-bit perceptual hash of a frame, written as 16 lowercase hex digits.
+/// A 64-bit perceptual hash of a screenshot, written as 16 lowercase hex digits.
 struct ScreenshotHash: Equatable, Sendable {
     let bits: UInt64
 

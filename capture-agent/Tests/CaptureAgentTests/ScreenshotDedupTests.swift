@@ -34,7 +34,7 @@ func imageHashing(to bits: UInt64) -> CGImage {
     }
 }
 
-@Test func aDuplicateRecordsItsOwnFramesHashAndTheKeptImageAndText() throws {
+@Test func aDuplicateRecordsItsOwnHashAndTheKeptImageAndText() throws {
     let fixture = LoopFixture()
     var pixels = [UInt8](repeating: 128, count: 72)
     fixture.mac.windowImage = { _, _ in .image(greyImage(pixels, width: 9), windowID: 1) }
@@ -169,7 +169,7 @@ func spoolDate(_ text: String?) -> Date? {
     #expect(shots[3]["image_path"] as? String == shots[1]["image_path"] as? String)
 }
 
-@Test func aChangedFrameIsKeptAndLaterFramesAreComparedWithIt() throws {
+@Test func aChangedScreenshotIsKeptAndLaterScreenshotsAreComparedWithIt() throws {
     let fixture = LoopFixture()
     var seed = 1
     fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
@@ -219,7 +219,7 @@ func keptScreenshot(_ thumbnail: ScreenshotThumbnail, at time: Date = start) -> 
 }
 
 @Test(arguments: [(0, true), (7, true), (8, false), (16_000, false)])
-func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, duplicate: Bool) throws {
+func aScreenshotIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, duplicate: Bool) throws {
     var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let white = [UInt8](repeating: 255, count: 16_000)
@@ -247,7 +247,7 @@ func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, dupl
     #expect((match != nil) == duplicate)
 }
 
-@Test func aThresholdOfZeroCountsEveryFrameAsChanged() throws {
+@Test func aThresholdOfZeroCountsEveryScreenshotAsChanged() throws {
     var dedup = ScreenshotDedup(changePixels: 0, keepAfter: 600)
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let grey = thumbnail([UInt8](repeating: 0, count: 16_000))
@@ -256,7 +256,7 @@ func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, dupl
     #expect(match == nil)
 }
 
-@Test func aFrameOfAnotherSizeIsAChange() throws {
+@Test func aScreenshotOfAnotherSizeIsAChange() throws {
     var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     dedup.remember(keptScreenshot(thumbnail([UInt8](repeating: 0, count: 16_000))), for: window)

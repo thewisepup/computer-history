@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Remembers the last kept frame of each of the most recently seen windows.
+/// Remembers the last kept screenshot of each of the most recently seen windows.
 struct ScreenshotDedup {
     static let windows = 12
     static let pixelTolerance = 24
@@ -29,7 +29,7 @@ struct ScreenshotDedup {
         self.keepAfter = keepAfter
     }
 
-    /// Marks the window as just seen and returns its last kept frame if that was kept in the last keepAfter seconds and the frame changed fewer pixels than the threshold.
+    /// Marks the window as just seen and returns its last kept screenshot if that was kept in the last keepAfter seconds and the new one changed fewer pixels than the threshold.
     mutating func see(_ thumbnail: ScreenshotThumbnail, in window: Window, at time: Date) -> KeptScreenshot? {
         guard let index = seen.firstIndex(where: { $0.window == window }) else { return nil }
         let entry = seen.remove(at: index)
@@ -41,7 +41,7 @@ struct ScreenshotDedup {
         return entry.kept
     }
 
-    /// Makes the frame the window's last kept one, forgetting the least recently seen window past the limit.
+    /// Makes the screenshot the window's last kept one, forgetting the least recently seen window past the limit.
     mutating func remember(_ kept: KeptScreenshot, for window: Window) {
         seen.removeAll { $0.window == window }
         seen.append(Entry(window: window, kept: kept))

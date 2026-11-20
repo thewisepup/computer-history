@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// A small grey copy of a window's frame, each pixel the average brightness of the same square of points whatever the window's size.
+/// A small grey copy of a screenshot, each pixel the average brightness of the same square of points whatever the window's size.
 struct ScreenshotThumbnail: Equatable, Sendable {
     static let pointsPerPixel = 9.0
     static let maxLongEdge = 640
