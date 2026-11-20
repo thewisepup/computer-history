@@ -291,6 +291,10 @@ empty text (`full_text_bytes` 0) and its image, its duplicates copy the empty
 text, and the minute log line counts the failure. The window's next picture
 is then kept and read again rather than matched against the image with no
 text; duplicates queued before the failure was known still copy the empty text.
+That retry happens once: if its text cannot be read either, later pictures of
+the window are matched against it as usual and copy its empty text until the
+keep-after limit, so a static window whose text is never read saves at most two
+images per limit.
 
 Vision runs on a thread of its own and gets `ScreenshotSettings.recognitionTimeout`
 (10 seconds) per image; with no answer by then the record is `kept` with empty

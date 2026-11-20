@@ -68,7 +68,8 @@ struct CaptureScreenshot<M: Mac> {
                 return .ready(.failed(of: capture))
             }
             let window = ScreenshotDedup.Window(id: windowID, title: capture.windowTitle)
-            if let kept = dedup.see(thumbnail, in: window, at: capture.capturedAt), !kept.text.failed {
+            let match = dedup.see(thumbnail, in: window, at: capture.capturedAt)
+            if let kept = match, !kept.text.failed || kept.retriesUnreadText {
                 return .copy(from: kept.text) { read in
                     .duplicate(
                         of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: read.text, fullTextBytes: read.fullTextBytes
@@ -79,7 +80,10 @@ struct CaptureScreenshot<M: Mac> {
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
             let text = KeptText()
             dedup.remember(
-                ScreenshotDedup.KeptScreenshot(imagePath: saved.path, thumbnail: thumbnail, keptAt: capture.capturedAt, text: text), for: window
+                ScreenshotDedup.KeptScreenshot(
+                    imagePath: saved.path, thumbnail: thumbnail, keptAt: capture.capturedAt, text: text, retriesUnreadText: match != nil
+                ),
+                for: window
             )
             return .recognize(image: saved.file, into: text) { read in
                 .kept(

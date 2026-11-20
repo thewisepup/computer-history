@@ -435,8 +435,9 @@ settings are provisional until they are measured on real screens (#38).
   fewer than a set number of thumbnail pixels (default 6) differ by more than
   24 grey levels from the window's last kept thumbnail, and that kept
   screenshot is 0 to the keep-after limit old (default 10 minutes). So a static
-  screen saves at most one image per keep-after limit, and a typed line still
-  counts as a change. A duplicate saves nothing, points at the kept image and
+  screen saves at most one image per keep-after limit while its text is read,
+  and at most two while recognition keeps failing (the kept image and one
+  retry), and a typed line still counts as a change. A duplicate saves nothing, points at the kept image and
   copies its recognized text. Each record's `perceptual_hash` is its own
   screenshot's 64-bit difference hash, recorded for measurement only.
 - Text recognition **in the agent**: every screenshot record goes through one
@@ -450,7 +451,9 @@ settings are provisional until they are measured on real screens (#38).
   not returned, later kept images get empty text at once. A `duplicate` waits
   behind its kept record and copies its finished text. A failed or timed-out
   recognition still gives `kept`, with empty text, and the window's next
-  screenshot is kept and read again.
+  screenshot is kept and read again, once: if that retry fails too, the
+  window's screenshots are duplicates of it again, copying its empty text,
+  until the keep-after limit.
 - Stopping: on `SIGTERM` the agent stops taking captures, gives the queue
   until 5 seconds after the signal to write what it can, then writes no more
   screenshot records, finishes the open spool file, logs how many it dropped

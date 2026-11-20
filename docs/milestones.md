@@ -51,7 +51,7 @@ Remaining before ✅: the measurements on real screens
 Screen Recording unknowns
 ([#39](https://github.com/thewisepup/computer-history/issues/39)), a normal
 day within the storage budget, and a static screen saving at most one image
-per keep-after limit. All on Brandon's Mac.
+per keep-after limit while its text is read. All on Brandon's Mac.
 
 - [ ] ScreenCaptureKit still of the focused window only, downscaled JPEG in
       dated folders beside the database. *(Saving, downscaling and folders

@@ -194,6 +194,24 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(shots.map { $0["text"] as? String } == ["", read, read])
 }
 
+@Test(arguments: [false, true])
+func aStaticWindowWhoseTextIsNeverReadKeepsTwoImagesInTheKeepAfterLimitAndDuplicatesTheRest(hung: Bool) throws {
+    let fixture = LoopFixture()
+    fixture.screenshots.recognitionTimeout = 0.05
+    let held = HeldRecognizer()
+    fixture.mac.recognizedText = hung ? held.text : { _ in throw RecognitionError() }
+    defer { held.letGo() }
+    fixture.run(for: 2)
+    fixture.run(for: fixture.screenshots.keepAfter - 2)
+    let shots = try fixture.screenshotRecords()
+    let captures = try fixture.kinds().count
+    #expect(captures > 3)
+    #expect(try fixture.statuses() == ["kept", "kept"] + Array(repeating: "duplicate", count: captures - 2))
+    let retried = try #require(shots[1]["image_path"] as? String)
+    #expect(shots.dropFirst(2).allSatisfy { $0["image_path"] as? String == retried && $0["text"] as? String == "" })
+    #expect(savedImages(in: fixture.settings.folder).count == 2)
+}
+
 final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var current: Bool

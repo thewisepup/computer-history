@@ -12,12 +12,13 @@ struct ScreenshotDedup {
         let title: String?
     }
 
-    /// A kept screenshot as the memory holds it: its image path, thumbnail, capture time and recognized text once known.
+    /// A kept screenshot as the memory holds it: its image path, thumbnail, capture time, recognized text once known, and whether it was kept only because the window's last kept text could not be read.
     struct KeptScreenshot {
         let imagePath: String
         let thumbnail: ScreenshotThumbnail
         let keptAt: Date
         let text: KeptText
+        var retriesUnreadText = false
     }
 
     let changePixels: Int
