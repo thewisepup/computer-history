@@ -78,7 +78,7 @@ shell that sets them act on that other folder.
 | `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
 | `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
-| `screenshot_change_percent` | `0.05` | 0 to 10: a picture is a `duplicate` when under this percent of its thumbnail's pixels changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
+| `screenshot_change_pixels` | `6` | whole number, 0 to 1000: a picture is a `duplicate` when fewer than this many of its thumbnail pixels (each 9x9 points of the window) changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
 | `screenshot_keep_after_minutes` | `10` | whole number, 1 to 1440: an unchanged window gets a new `kept` picture once its last one is older than this |
 
 ```json
@@ -215,7 +215,7 @@ is taken.
 |---|---|
 | `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
 | `kept` | the picture was taken and saved |
-| `duplicate` | under `screenshot_change_percent` of the picture's thumbnail pixels changed from its window's last kept picture, which is at most `screenshot_keep_after_minutes` old; nothing is saved |
+| `duplicate` | fewer than `screenshot_change_pixels` of the picture's thumbnail pixels changed from its window's last kept picture, which is at most `screenshot_keep_after_minutes` old; nothing is saved |
 | `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
 | `failed` | anything else: focus or presence changed during the read, the password-field check got no answer, the window's frame could not be read or matched, another ScreenCaptureKit error, no answer within 2 seconds, an earlier request still unanswered, or the image could not be saved |
 
@@ -239,15 +239,19 @@ are `0700`, set again on every save, and the images `0600`. Nothing is ever
 deleted: an image whose record the spool refuses, or whose record a crash or
 a stop cut off, stays.
 
-Each picture is shrunk to a grey thumbnail at most 160 pixels on its long
-edge, keeping its aspect ratio and never enlarged, each thumbnail pixel the
-average brightness of the block it covers. It is compared with the thumbnail
-of the last kept picture of the same window: a pixel has changed when its
-brightness differs by more than 24 of 255, which absorbs JPEG and scaling
-noise, and the picture has changed when at least `screenshot_change_percent`
-of its pixels have, which lets a blinking caret through but not a typed line.
-A thumbnail of another size (a resized window) is a change, and so is a match
-whose kept picture is older than `screenshot_keep_after_minutes`. A window is
+Each picture is shrunk to a grey thumbnail with one pixel per 9x9 points of
+the window (the window's frame, not the picture's pixels), so a line of text
+covers about as many thumbnail pixels in a small window as in a maximized one
+on a wide display. The thumbnail is at most 640 pixels on its long edge and
+never has more pixels than the picture; each pixel is the average brightness
+of the block it covers. It is compared with the thumbnail of the last kept
+picture of the same window: a pixel has changed when its brightness differs by
+more than 24 of 255, which absorbs JPEG and scaling noise, and the picture has
+changed when at least `screenshot_change_pixels` pixels have, which lets a
+blinking caret through but not a typed line. A thumbnail of another size (a
+resized window) is a change, and so is a match whose kept picture is older
+than `screenshot_keep_after_minutes`, or dated after the new picture (the
+clock was set back). A window is
 the ScreenCaptureKit window id of the window photographed plus its title, so
 two windows of one app with the same title are told apart and each browser
 tab or editor file still counts on its own. The agent remembers the last kept

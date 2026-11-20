@@ -1,8 +1,9 @@
 import CoreGraphics
 
-/// A small grey copy of a frame with its aspect ratio, each pixel the average brightness of the block of the frame it covers.
+/// A small grey copy of a window's frame, each pixel the average brightness of the same square of points whatever the window's size.
 struct FrameThumbnail: Equatable, Sendable {
-    static let longEdge = 160
+    static let pointsPerPixel = 9.0
+    static let maxLongEdge = 640
 
     let width: Int
     let height: Int
@@ -14,13 +15,13 @@ struct FrameThumbnail: Equatable, Sendable {
         self.pixels = pixels
     }
 
-    /// The thumbnail of the image, at most the long edge on its longer side and never larger than the image.
-    init?(_ image: CGImage) {
+    /// The thumbnail of a picture of a window the given size in points: one pixel per square of points, at most the max long edge, never more pixels than the picture.
+    init?(_ image: CGImage, points: CGSize) {
         let (sourceWidth, sourceHeight) = (image.width, image.height)
-        guard sourceWidth > 0, sourceHeight > 0 else { return nil }
-        let scale = min(1, Double(Self.longEdge) / Double(max(sourceWidth, sourceHeight)))
-        let width = max(1, Int((Double(sourceWidth) * scale).rounded()))
-        let height = max(1, Int((Double(sourceHeight) * scale).rounded()))
+        guard sourceWidth > 0, sourceHeight > 0, points.width > 0, points.height > 0 else { return nil }
+        let scale = min(1 / Self.pointsPerPixel, Double(Self.maxLongEdge) / max(points.width, points.height))
+        let width = min(sourceWidth, max(1, Int((points.width * scale).rounded())))
+        let height = min(sourceHeight, max(1, Int((points.height * scale).rounded())))
         var grey = [UInt8](repeating: 0, count: sourceWidth * sourceHeight)
         let drawn = grey.withUnsafeMutableBytes { buffer -> Bool in
             guard let context = CGContext(

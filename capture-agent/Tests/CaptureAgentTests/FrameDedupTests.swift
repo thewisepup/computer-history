@@ -48,26 +48,50 @@ func imageHashing(to bits: UInt64) -> CGImage {
     #expect(shots[1]["text_sha256"] as? String == shots[0]["text_sha256"] as? String)
 }
 
-@Test(arguments: [
-    ("a caret blink", false), ("JPEG re-encoding at the agent's quality", false),
-    ("one typed line", true), ("a one-line scroll", true), ("the next page", true),
-])
-func aTypedLineOrAScrollIsAChangeButACaretOrEncodingNoiseIsNot(change: String, isChange: Bool) throws {
-    let fixture = LoopFixture()
-    var image = CodePage().image()
-    fixture.mac.windowImage = { _, _ in .image(image, windowID: 1) }
-    fixture.run(for: 2)
-    var page = CodePage()
-    switch change {
-    case "a caret blink": page.caretAfterLine = 10
-    case "one typed line": page.lines[10] += " capture window"
-    case "a one-line scroll": page = CodePage(from: 1)
-    case "the next page": page = CodePage(from: CodePage.lineCount)
-    default: break
+extension LoopFixture {
+    func show(_ images: [CGImage], inWindowOf size: CGSize) throws -> [String] {
+        focus.notes.bounds = CGRect(origin: CGPoint(x: 0, y: 25), size: size)
+        var current = images[0]
+        mac.windowImage = { _, _ in .image(current, windowID: 1) }
+        run(for: 2)
+        for image in images.dropFirst() {
+            current = image
+            run(for: 30)
+        }
+        return try statuses()
     }
-    image = change.hasPrefix("JPEG") ? reencoded(page.image(), quality: Double(fixture.screenshots.quality) / 100) : page.image()
-    fixture.run(for: 30)
-    #expect(try fixture.statuses() == ["kept", isChange ? "kept" : "duplicate"])
+}
+
+@Test(arguments: [(1440.0, 900.0), (1920, 1080), (2560, 1440), (3440, 1440), (1440, 60), (120, 80)])
+func aTypedLineIsAChangeAndACaretBlinkIsNotWhateverTheWindowSize(width: Double, height: Double) throws {
+    let page = CodePage(size: CGSize(width: width, height: height))
+    var caret = page
+    caret.caret = true
+    var typed = page
+    typed.typed = true
+    #expect(try LoopFixture().show([page.image(), caret.image(), typed.image()], inWindowOf: page.size) == ["kept", "duplicate", "kept"])
+}
+
+@Test(arguments: [13.0, 22.0], [
+    "a caret blink", "JPEG re-encoding at the agent's quality", "a render at twice the pixels scaled down",
+    "one typed line", "a one-line scroll", "the next page",
+])
+func aTypedLineOrAScrollIsAChangeButACaretOrRenderingNoiseIsNot(fontSize: Double, change: String) throws {
+    let fixture = LoopFixture()
+    let page = CodePage(fontSize: fontSize)
+    var changed = page
+    var image: CGImage?
+    switch change {
+    case "a caret blink": changed.caret = true
+    case "one typed line": changed.typed = true
+    case "a one-line scroll": changed.first = 1
+    case "the next page": changed.first = page.visibleLines
+    case "a render at twice the pixels scaled down": image = page.imageScaledFromTwiceTheSize()
+    default: image = reencoded(page.image(), quality: Double(fixture.screenshots.quality) / 100)
+    }
+    let isChange = ["one typed line", "a one-line scroll", "the next page"].contains(change)
+    let statuses = try fixture.show([page.image(), image ?? changed.image()], inWindowOf: page.size)
+    #expect(statuses == ["kept", isChange ? "kept" : "duplicate"])
 }
 
 func spoolDate(_ text: String?) -> Date? {
@@ -196,7 +220,7 @@ func keptFrame(_ thumbnail: FrameThumbnail, at time: Date = start) -> FrameDedup
 
 @Test(arguments: [(0, true), (7, true), (8, false), (16_000, false)])
 func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, duplicate: Bool) throws {
-    var dedup = FrameDedup(changePercent: 0.05, keepAfter: 600)
+    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
     let window = FrameDedup.Window(id: 1, title: "Notes")
     let white = [UInt8](repeating: 255, count: 16_000)
     dedup.remember(keptFrame(thumbnail(white)), for: window)
@@ -206,16 +230,16 @@ func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, 
 }
 
 @Test func aPixelWithinTheToleranceHasNotChanged() throws {
-    var dedup = FrameDedup(changePercent: 0.05, keepAfter: 600)
+    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
     let window = FrameDedup.Window(id: 1, title: "Notes")
     dedup.remember(keptFrame(thumbnail([UInt8](repeating: 128, count: 16_000))), for: window)
     let match = dedup.see(thumbnail([UInt8](repeating: UInt8(128 + FrameDedup.pixelTolerance), count: 16_000)), in: window, at: start)
     #expect(match != nil)
 }
 
-@Test(arguments: [(0.0, true), (600.0, true), (600.5, false)])
-func aMatchOlderThanTheLimitIsNoDuplicate(age: TimeInterval, duplicate: Bool) throws {
-    var dedup = FrameDedup(changePercent: 0.05, keepAfter: 600)
+@Test(arguments: [(0.0, true), (600.0, true), (600.5, false), (-0.5, false), (-86_400, false)])
+func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, duplicate: Bool) throws {
+    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
     let window = FrameDedup.Window(id: 1, title: "Notes")
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
     dedup.remember(keptFrame(frame), for: window)
@@ -224,7 +248,7 @@ func aMatchOlderThanTheLimitIsNoDuplicate(age: TimeInterval, duplicate: Bool) th
 }
 
 @Test func aThresholdOfZeroCountsEveryFrameAsChanged() throws {
-    var dedup = FrameDedup(changePercent: 0, keepAfter: 600)
+    var dedup = FrameDedup(changePixels: 0, keepAfter: 600)
     let window = FrameDedup.Window(id: 1, title: "Notes")
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
     dedup.remember(keptFrame(frame), for: window)
@@ -233,7 +257,7 @@ func aMatchOlderThanTheLimitIsNoDuplicate(age: TimeInterval, duplicate: Bool) th
 }
 
 @Test func aFrameOfAnotherSizeIsAChange() throws {
-    var dedup = FrameDedup(changePercent: 0.05, keepAfter: 600)
+    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
     let window = FrameDedup.Window(id: 1, title: "Notes")
     dedup.remember(keptFrame(thumbnail([UInt8](repeating: 0, count: 16_000))), for: window)
     let match = dedup.see(thumbnail([UInt8](repeating: 0, count: 16_000), width: 100), in: window, at: start)
@@ -241,7 +265,7 @@ func aMatchOlderThanTheLimitIsNoDuplicate(age: TimeInterval, duplicate: Bool) th
 }
 
 @Test func aWindowIsItsWindowIDAndItsTitle() throws {
-    var dedup = FrameDedup(changePercent: 0.05, keepAfter: 600)
+    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
     dedup.remember(keptFrame(frame), for: FrameDedup.Window(id: 1, title: "Notes"))
     let otherWindow = dedup.see(frame, in: FrameDedup.Window(id: 2, title: "Notes"), at: start)
@@ -252,18 +276,24 @@ func aMatchOlderThanTheLimitIsNoDuplicate(age: TimeInterval, duplicate: Bool) th
     #expect(same != nil)
 }
 
-@Test(arguments: [(1600, 1000, 160, 100), (900, 1440, 100, 160), (1440, 60, 160, 7), (120, 80, 120, 80), (9, 8, 9, 8)])
-func aThumbnailKeepsTheAspectRatioAtALongEdgeOf160AndIsNeverEnlarged(width: Int, height: Int, thumbWidth: Int, thumbHeight: Int) throws {
-    let thumb = try #require(FrameThumbnail(fixtureImage(width: width, height: height)))
-    #expect(thumb.width == thumbWidth)
-    #expect(thumb.height == thumbHeight)
-    #expect(thumb.pixels.count == thumbWidth * thumbHeight)
+@Test(arguments: [
+    (1440.0, 900.0, 1440, 900, 160, 100), (3440, 1440, 1440, 603, 382, 160), (120, 80, 240, 160, 13, 9),
+    (1440, 60, 1440, 60, 160, 7), (6000, 3000, 1440, 720, 640, 320), (1440, 900, 100, 50, 100, 50),
+])
+func aThumbnailPixelCoversNinePointsSquareUpTo640PixelsAndNeverMoreThanTheImage(
+    points: Double, pointsHigh: Double, imageWidth: Int, imageHeight: Int, width: Int, height: Int
+) throws {
+    let image = fixtureImage(width: imageWidth, height: imageHeight)
+    let thumb = try #require(FrameThumbnail(image, points: CGSize(width: points, height: pointsHigh)))
+    #expect(thumb.width == width)
+    #expect(thumb.height == height)
+    #expect(thumb.pixels.count == width * height)
 }
 
 @Test func aThumbnailPixelIsTheAverageBrightnessOfTheBlockItCovers() throws {
     var pixels = [UInt8](repeating: 0, count: 320 * 2)
     for column in stride(from: 0, to: 320, by: 2) { pixels[column] = 200 }
-    let thumb = try #require(FrameThumbnail(greyImage(pixels, width: 320)))
+    let thumb = try #require(FrameThumbnail(greyImage(pixels, width: 320), points: CGSize(width: 1440, height: 9)))
     #expect(thumb.width == 160)
     #expect(thumb.height == 1)
     #expect(Set(thumb.pixels) == [50])

@@ -22,7 +22,8 @@ import PackageDescription
 ///     TextRecognition.swift     the text in a saved picture, read by Vision
 ///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
 ///           |               and whether a new one changed enough or is old enough to keep
-///     FrameThumbnail.swift  the small grey copy of a screenshot that dedup compares, pixel by pixel
+///     FrameThumbnail.swift  the small grey copy of a screenshot, one pixel per square of points,
+///                           that dedup compares pixel by pixel
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
