@@ -16,20 +16,35 @@ import PackageDescription
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture queues its screenshot record
-///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, duplicate
-///           |                   check, image saved, and the screenshot record that names the capture;
-///           |                   a missing grant posts the reminder, a picture taken clears it
-///     PermissionReminder.swift  the once-a-day missing-grant reminder: when to post, what to log,
-///           |                   the last posted time kept in screen-recording-reminded
-///     ScreenRecordingSettings.swift   the settings pane's links, the reminder that opens them, and
-///           |                         the request-screen-recording command install.sh runs
-///     ScreenshotQueue.swift     the screenshot thread: writes screenshot records in capture order,
-///           |                   reading the text of each kept image, duplicates copying it
-///     TextRecognition.swift     the text in a saved picture, read by Vision
-///     ScreenshotDedup.swift      the last kept screenshot of each of the most recently seen windows,
-///           |               and whether a new one changed enough or is old enough to keep
-///     ScreenshotThumbnail.swift  the small grey copy of a screenshot, one pixel per square of points,
-///                           that dedup compares pixel by pixel
+///     Screenshots/CaptureScreenshot.swift   the screenshot stage: password-field check, picture,
+///           |     duplicate check, image saved, and the screenshot record that names the capture;
+///           |     a missing grant posts the reminder, a picture taken clears it
+///           |   Screenshots/ holds the screenshot pipeline:
+///           |     SecureField.swift        whether the focused element is a password field, or no answer
+///           |     WindowScreenshot.swift   a ScreenCaptureKit still of the window matching the focused
+///           |                              window's frame, one request at a time, as a WindowImage
+///           |                              that carries the window's id
+///           |     OneRequestAtATime.swift  one request outstanding at a time, each waited for up to a timeout
+///           |     ScreenshotHash.swift     the 64-bit difference hash each screenshot record carries
+///           |     ScreenshotThumbnail.swift   the small grey copy of a screenshot, one pixel per square
+///           |                                 of points, that dedup compares pixel by pixel
+///           |     ScreenshotDedup.swift    the last kept screenshot of each of the most recently seen
+///           |                              windows, and whether a new one changed enough or is old
+///           |                              enough to keep
+///           |     ImageStore.swift         where kept screenshots go: JPEGImageStore downscales,
+///           |                              encodes and saves each in its day's folder
+///           |     PermissionReminder.swift the once-a-day missing-grant reminder: when to post, what
+///           |                              to log, the last posted time kept in screen-recording-reminded
+///           |     ScreenRecordingSettings.swift   the settings pane's links, the reminder that opens
+///           |                              them, and the request-screen-recording command install.sh runs
+///           |     Notifications.swift      posting through the notification centre, and opening the
+///           |                              first link of a clicked one that opens
+///           |     ScreenshotQueue.swift    the screenshot thread: writes screenshot records in capture
+///           |                              order, reading the text of each kept image, duplicates
+///           |                              copying it
+///           |     TextRecognition.swift    the text in a saved picture, read by Vision
+///           |     ScreenshotRecord.swift   a capture's screenshot record: its status, image and
+///           |                              recognized text
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
@@ -45,17 +60,7 @@ import PackageDescription
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
-///     SecureField.swift     whether the focused element is a password field, or no answer
-///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
-///                                window's frame, one request at a time, as a WindowImage
-///                                that carries the window's id
-///     OneRequestAtATime.swift    one request outstanding at a time, each waited for up to a timeout
-///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
-///                           each in its day's folder
-///     ScreenshotHash.swift       the 64-bit difference hash each screenshot record carries
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
-///     Notifications.swift   posting through the notification centre, and opening the first link
-///                           of a clicked one that opens
 ///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements, fixture images
 ///                           and scripted recognized text
 ///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool
@@ -66,7 +71,6 @@ import PackageDescription
 ///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line
-///     ScreenshotRecord.swift    a capture's screenshot record: its status, image and recognized text
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps
 ///
 /// The spool and its record format are described in README.md.
