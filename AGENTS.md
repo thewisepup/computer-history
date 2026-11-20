@@ -46,6 +46,12 @@ gitleaks scan of the staged changes. CI runs them, the POC suite
 (`python -m unittest`) and gitleaks on every pull request and push to `main`,
 and `main` only merges pull requests whose checks pass. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+Pyright type-checks `computer_history` and `tests` in standard mode
+(`[tool.pyright]` in `pyproject.toml`): `.venv/bin/python -m pyright
+--pythonpath .venv/bin/python`. Without `--pythonpath` it resolves imports
+against whatever `python` is first on `PATH`. CI runs it as the `typecheck`
+job, which is not yet required and still fails on existing errors; #76
+tracks fixing them, requiring it and moving to strict mode.
 Hypothesis tests run derandomized with no example database, so a run never
 passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:
