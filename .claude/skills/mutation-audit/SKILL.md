@@ -36,18 +36,28 @@ It deletes `mutants/`, runs `mutmut run`, then:
   tool cannot see: `tests/test_standards.py`, `tests/test_spool_fixture.py`,
   `tests/test_capture_e2e.py`. The list is
   `pytest_add_cli_args_test_selection` in `pyproject.toml`.
-- `cli/` mutants that only change a string literal are excluded from the
-  score and the survivor list. Rewording a message is not a bug.
+- mutmut mutates Python only, never the SQL in `store/migrations/`. A test
+  that guards a rule the schema enforces (a trigger, `UNIQUE`, a foreign key,
+  a data migration) is marked `@pytest.mark.schema_rule` and never pruned.
+- `cli/` mutants that only `XX`-wrap a string containing a space (a message)
+  are excluded from the score and the survivor list. Rewording a message is
+  not a bug; a broken format string or command name is.
 
 ## Which tests stay
 
 1. **Required:** the only test that kills some mutant. Keep.
 2. **Cover:** after the required tests, the report greedily adds the test
-   that kills the most mutants still unkilled, until every killed mutant is
-   covered. Ties go to the more focused test (calls fewer functions). Keep.
-3. **Everything else is pruned**, including a redundant test that guards an
-   AGENTS.md rule. One test per rule is enough. The report names the kept
-   tests that still kill each pruned test's mutants.
+   that kills the most still-unkilled mutants per function it calls, until
+   every caught mutant is covered. A focused test beats a broad CLI or
+   backfill test that fails on any bug in `connect()`. Keep.
+3. **Protected:** marked `schema_rule`, or calls a mutant the rerun could not
+   attribute to any test. Keep.
+4. **Prune:** one or two kept tests kill all its mutants. Delete it, or merge
+   it into a parametrized sibling. This holds for a redundant test that
+   guards an AGENTS.md rule too: one test per rule is enough.
+5. **Prune (scattered):** its mutants are killed only by three or more kept
+   tests together, so no single test covers its scenario. Read each one in
+   the module PR: prune it, or keep it and say why in the PR.
 
 Prune only from a full run. A module run leaves other mutants unchecked, and
 the report says so at the top.

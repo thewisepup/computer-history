@@ -7,6 +7,7 @@ compare: lists mutants a before-matrix holds that an after-matrix no longer hold
 
 import argparse
 import json
+import subprocess
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -22,11 +23,19 @@ from mutants_data import (
     status,
 )
 
+SCATTERED = 2
+
+
+def _cost(test: str, focus: dict[str, int]) -> int:
+    return max(focus.get(test, 1), 1)
+
 
 def choose_tests(
     kills: dict[str, set[str]], focus: dict[str, int]
 ) -> tuple[set[str], set[str]]:
-    """Return (required, cover): sole killers of some mutant, then a greedy cover of the rest."""
+    """Return (required, cover): sole killers of some mutant, then a cover of the rest.
+
+    The cover favors tests that kill the most new mutants per function they call."""
     killers: dict[str, set[str]] = defaultdict(set)
     for test, mutants in kills.items():
         for mutant in mutants:
@@ -37,21 +46,34 @@ def choose_tests(
     while uncovered:
         best = max(
             (t for t in kills if t not in required | cover),
-            key=lambda t: (len(kills[t] & uncovered), -focus.get(t, 0), t),
+            key=lambda t: (len(kills[t] & uncovered) / _cost(t, focus), -_cost(t, focus), t),
         )
         cover.add(best)
         uncovered -= kills[best]
     return required, cover
 
 
-def replacements(test: str, kills: dict[str, set[str]], kept: set[str]) -> list[str]:
+def replacements(
+    test: str, kills: dict[str, set[str]], kept: set[str], focus: dict[str, int]
+) -> list[str]:
     remaining = set(kills[test])
     chosen = []
     while remaining:
-        best = max(sorted(kept), key=lambda t: len(kills.get(t, set()) & remaining))
+        best = max(
+            sorted(kept), key=lambda t: len(kills.get(t, set()) & remaining) / _cost(t, focus)
+        )
         chosen.append(best)
         remaining -= kills.get(best, set())
     return chosen
+
+
+def schema_rule_tests() -> set[str]:
+    """Node IDs of tests marked schema_rule, which are never pruned."""
+    listing = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-m", "schema_rule"],
+        cwd=MUTANTS.parent, capture_output=True, text=True, check=False,
+    ).stdout
+    return {line for line in listing.splitlines() if "::" in line}
 
 
 def short(test: str) -> str:
@@ -77,10 +99,13 @@ def report(module: str | None) -> str:
     partial = any(status(c) == "not checked" for c in exit_codes.values())
     if module:
         exit_codes = {m: c for m, c in exit_codes.items() if m.startswith(module)}
+    protected |= schema_rule_tests() & set(kills)
     required, cover = choose_tests(kills, focus)
     protected -= required | cover
     kept = required | cover | protected
     prune = sorted(set(kills) - kept)
+    replaced_by = {t: replacements(t, kills, kept, focus) for t in prune}
+    scattered = {t for t in prune if len(replaced_by[t]) > SCATTERED}
 
     checked = {m: c for m, c in exit_codes.items() if status(c) != "not checked"}
     by_status = Counter(status(c) for c in checked.values())
@@ -110,8 +135,9 @@ def report(module: str | None) -> str:
         "| tests | count |", "|---|---|",
         f"| required (only killer of some mutant) | {len(required)} |",
         f"| cover (needed to kill the rest) | {len(cover)} |",
-        f"| protected (call a mutant the rerun could not attribute) | {len(protected)} |",
-        f"| prune candidates | {len(prune)} |",
+        f"| protected (marked schema_rule, or call an unattributed mutant) | {len(protected)} |",
+        f"| prune: one or two kept tests kill all its mutants | {len(prune) - len(scattered)} |",
+        f"| prune (scattered): its mutants need {SCATTERED + 1}+ kept tests | {len(scattered)} |",
         "",
     ]
     if unattributed:
@@ -138,8 +164,11 @@ def report(module: str | None) -> str:
             elif test in protected:
                 verdict, by = "keep (protected)", ""
             else:
-                verdict = "prune" if kills[test] else "prune (kills nothing)"
-                by = ", ".join(f"`{short(t)}`" for t in replacements(test, kills, kept))
+                verdict = (
+                    "prune (kills nothing)" if not kills[test]
+                    else "prune (scattered)" if test in scattered else "prune"
+                )
+                by = ", ".join(f"`{short(t)}`" for t in replaced_by[test])
             out.append(f"| `{short(test)}` | {verdict} | {unique} | {len(kills[test])} | {by} |")
         out.append("")
 
