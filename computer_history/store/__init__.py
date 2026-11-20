@@ -12,9 +12,11 @@ from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
     connect,
+    connect_immutable,
     load_migrations,
     migrate,
     schema_version,
+    supported_version,
     transaction,
 )
 from computer_history.store.observations import InsertResult, Observation, insert_observations
@@ -61,6 +63,7 @@ __all__ = [
     "StoreState",
     "UnclaimedSource",
     "connect",
+    "connect_immutable",
     "content_digest",
     "default_db_path",
     "find_gaps",
@@ -74,6 +77,7 @@ __all__ = [
     "rebuild_signals",
     "resolve_db_path",
     "schema_version",
+    "supported_version",
     "source_summary",
     "table_counts",
     "to_utc",
