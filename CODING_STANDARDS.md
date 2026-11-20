@@ -1,8 +1,9 @@
 # Code standards
 
-Rules marked **[checked]** fail automatically in `tests/test_standards.py`
-(run by the pre-commit hook and CI). The comment and docstring checks cover
-`computer_history/` and `tests/`; the rest cover `computer_history/` only.
+Rules marked **[checked]** fail automatically in `tests/test_standards.py`,
+or in the test the rule names (run by the pre-commit hook and CI). The
+comment and docstring checks cover `computer_history/` and `tests/`; the rest
+cover `computer_history/` only.
 Unmarked rules are judgement calls the standards reviewer
 (`.claude/agents/standards-reviewer.md`) enforces on each diff, citing each
 rule by its ID.

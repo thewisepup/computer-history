@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import inspect
-import json
 import sys
+import threading
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import MISSING, fields, replace
 from datetime import UTC, datetime, timedelta
@@ -16,7 +17,7 @@ import pytest
 
 import computer_history.store as store
 from computer_history.sources import KNOWN_SOURCES, WINDOW_SOURCE
-from computer_history.store import table_counts
+from computer_history.store import source_summary, table_counts
 from computer_history.synthetic import (
     GATE_DATASETS,
     OPERATIONS,
@@ -36,13 +37,13 @@ from computer_history.synthetic.build import render_sources
 from computer_history.synthetic.manifest import true_answers
 
 TABLE_EXEMPTIONS: Mapping[str, str] = {
-    "projects": "classification (M5) proposes projects; no generator until M5 defines them",
-    "work_types": "classification (M5) picks from the active work types; no generator until M5",
-    "blocks": "classification (M5) assembles blocks; no generator until M5",
-    "block_tags": "classification (M5) tags blocks; no generator until M5",
-    "classification_runs": "classification (M5) records its runs; no generator until M5",
-    "reviews": "the weekly review (M7) stores reviews; no generator until M7",
-    "suggestions": "the weekly review (M7) stores suggestions; no generator until M7",
+    "projects": "classification (M5) proposes projects; nothing fills it until M5 defines them",
+    "work_types": "classification (M5) picks from the active work types; nothing fills it until M5",
+    "blocks": "classification (M5) assembles blocks; nothing fills it until M5",
+    "block_tags": "classification (M5) tags blocks; nothing fills it until M5",
+    "classification_runs": "classification (M5) records its runs; nothing fills it until M5",
+    "reviews": "the weekly review (M7) stores reviews; nothing fills it until M7",
+    "suggestions": "the weekly review (M7) stores suggestions; nothing fills it until M7",
 }
 FIELD_EXEMPTIONS: Mapping[tuple[type, str], str] = {
     (Stretch, "work_type"): "a classifier-eval label the manifest records once M5 needs it",
@@ -101,36 +102,43 @@ def gate_day(tmp_path_factory: pytest.TempPathFactory) -> GateDataset:
 
 def test_every_stream_a_source_projects_has_a_renderer(gate_day: GateDataset) -> None:
     projected = {stream for source in KNOWN_SOURCES for stream in source.projectors}
+    claims = Counter(stream for renderer in RENDERERS for stream in renderer.streams)
     rendered = {stream: renderer.name for renderer in RENDERERS for stream in renderer.streams}
-    observed = json.loads(gate_day.entry.manifest_path.read_text(encoding="utf-8"))["observations"]
+    conn = open_cached(gate_day.entry)
+    try:
+        stored = {row.source: row.observation_count for row in source_summary(conn)}
+    finally:
+        conn.close()
 
+    shared = sorted(stream for stream, count in claims.items() if count > 1)
+    assert not shared, f"more than one renderer feeds {shared}: give each stream one renderer"
     missing = sorted(projected - rendered.keys())
     assert not missing, (
         f"no renderer feeds {missing}: write one and add it to RENDERERS in synthetic/build.py"
     )
     stale = sorted(rendered.keys() - projected)
     assert not stale, f"renderers feed {stale}, which no source in KNOWN_SOURCES projects"
-    empty = sorted(stream for stream in projected if not observed.get(stream))
+    empty = sorted(stream for stream in projected if not stored.get(stream))
     assert not empty, (
-        f"the {SMALLEST} gate dataset holds no observations of {empty}: "
-        f"its renderer ({', '.join(rendered[s] for s in empty)}) renders nothing for it"
+        f"the {SMALLEST} gate dataset stores no observations of {empty}: ingest kept nothing "
+        f"the {', '.join(rendered[s] for s in empty)} renderer wrote for it"
     )
 
 
-def test_every_table_has_a_generator_or_an_exemption(gate_day: GateDataset) -> None:
+def test_every_table_holds_rows_or_has_an_exemption(gate_day: GateDataset) -> None:
     conn = open_cached(gate_day.entry)
     try:
         counts = table_counts(conn)
     finally:
         conn.close()
 
-    ungenerated = sorted(t for t, n in counts.items() if not n and t not in TABLE_EXEMPTIONS)
-    assert not ungenerated, (
-        f"the {SMALLEST} gate dataset leaves {ungenerated} empty: render the data ingest fills "
+    empty = sorted(t for t, n in counts.items() if not n and t not in TABLE_EXEMPTIONS)
+    assert not empty, (
+        f"the {SMALLEST} gate dataset leaves {empty} empty: render the data ingest fills "
         "them from, or exempt each in TABLE_EXEMPTIONS with a reason"
     )
     stale = sorted(t for t in TABLE_EXEMPTIONS if counts.get(t, 0) or t not in counts)
-    assert not stale, f"remove {stale} from TABLE_EXEMPTIONS: each is generated or gone"
+    assert not stale, f"remove {stale} from TABLE_EXEMPTIONS: each now holds rows or is gone"
 
 
 def _default_fields(cls: type) -> list[str]:
@@ -184,22 +192,33 @@ def _outputs(timeline: Timeline) -> tuple[dict[str, object], object]:
     return rendered, true_answers(None, timeline, rendered.values(), content_digest="")
 
 
+def _outputs_change(before: Timeline, after: Timeline) -> bool:
+    return _outputs(before) != _outputs(after)
+
+
 def test_rendering_the_same_timeline_twice_compares_equal() -> None:
     assert _outputs(PROBE_TIMELINE) == _outputs(PROBE_TIMELINE), (
         "a renderer's output must compare by value, or the field check below cannot see changes"
     )
 
 
-TIMELINE_FIELDS = [(cls, name) for cls in (Stretch, Fault) for name in _default_fields(cls)]
+TIMELINE_FIELDS = [
+    (cls, f.name) for cls in (Stretch, Fault) for f in fields(cls) if f.name not in ("start", "end")
+]
+
+
+def test_every_exemption_and_probe_names_a_timeline_field() -> None:
+    stale = sorted(
+        f"{c.__name__}.{n}" for c, n in {*FIELD_EXEMPTIONS, *PROBES} - {*TIMELINE_FIELDS}
+    )
+    assert not stale, f"remove {stale} from FIELD_EXEMPTIONS or PROBES: no such field"
 
 
 @pytest.mark.parametrize(
     ("cls", "name"), TIMELINE_FIELDS, ids=[f"{c.__name__}.{n}" for c, n in TIMELINE_FIELDS]
 )
 def test_changing_a_timeline_field_changes_a_renderer_or_the_manifest(cls: type, name: str) -> None:
-    rendered, manifest = _outputs(PROBE_TIMELINE)
-    probed_rendered, probed_manifest = _outputs(_probe(cls, name))
-    moved = probed_rendered != rendered or probed_manifest != manifest
+    moved = _outputs_change(PROBE_TIMELINE, _probe(cls, name))
     reason = FIELD_EXEMPTIONS.get((cls, name))
 
     if reason is not None:
@@ -217,8 +236,8 @@ def _on_a_connection() -> dict[CodeType, str]:
         function = inspect.unwrap(getattr(store, name))
         if not inspect.isfunction(function):
             continue
-        first = next(iter(inspect.signature(function).parameters.values()), None)
-        if first is not None and (first.name == "conn" or "Connection" in str(first.annotation)):
+        parameters = inspect.signature(function).parameters.values()
+        if any(p.name == "conn" or "Connection" in str(p.annotation) for p in parameters):
             found[function.__code__] = name
     return found
 
@@ -230,12 +249,14 @@ def _calls(action: Callable[[], object], watched: Mapping[CodeType, str]) -> set
         if event == "call" and frame.f_code in watched:
             called.add(watched[frame.f_code])
 
-    previous = sys.getprofile()
+    previous, previous_threads = sys.getprofile(), threading.getprofile()
     sys.setprofile(profile)
+    threading.setprofile(profile)
     try:
         action()
     finally:
         sys.setprofile(previous)
+        threading.setprofile(previous_threads)
     return called
 
 
@@ -259,3 +280,12 @@ def test_every_public_store_read_and_write_runs_in_a_gate_operation(
     )
     stale = sorted(r for r in STORE_EXEMPTIONS if r in measured or r not in reads.values())
     assert not stale, f"remove {stale} from STORE_EXEMPTIONS: each is measured or gone"
+
+
+@pytest.mark.parametrize("kind", list(FaultKind), ids=lambda kind: kind.name)
+def test_every_fault_kind_changes_a_renderer_or_the_manifest(kind: FaultKind) -> None:
+    fault = replace(PROBE_TIMELINE.faults[PROBED_FAULT], kind=kind)
+
+    assert _outputs_change(
+        replace(PROBE_TIMELINE, faults=()), replace(PROBE_TIMELINE, faults=(fault,))
+    ), f"a {kind.value} fault changes no renderer's output and not the manifest: render it"

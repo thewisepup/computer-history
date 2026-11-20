@@ -95,14 +95,14 @@ computer-history dev perf                      # the gate against perf_baseline.
 computer-history dev perf --update-baselines   # a deliberate change of cost
 ```
 
-A new source, table, timeline field or public store function lands with its
+A new stream, table, timeline field or public store function lands with its
 synthetic coverage in the same change. `tests/test_synthetic_coverage.py` goes
 red until it does. It needs:
 
 - every stream a source projects fed by a renderer in `RENDERERS`;
 - every table holding rows in the gate's day dataset;
-- every `Stretch` and `Fault` field changing some renderer's output or the
-  manifest;
+- every `Stretch` and `Fault` field, and every `FaultKind`, changing some
+  renderer's output or the manifest;
 - every public store function taking a connection called by an operation in
   `OPERATIONS`.
 

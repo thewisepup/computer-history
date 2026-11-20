@@ -207,7 +207,7 @@ The source-neutral account of a dataset's range: stretches covering it end to en
 _Avoid_: Schedule, script, event list
 
 **Stretch**:
-A span of a timeline with one app and window in front, the user present or AFK, or the Mac asleep.
+One span of a synthetic timeline: an app and window in front with the user present or AFK, or the Mac asleep. Elsewhere, stretch is a plain word for any span of time.
 _Avoid_: Segment, block (that word means a labelled span), event
 
 **Fault**:
@@ -216,10 +216,10 @@ _Avoid_: Outage (that is one kind), error, incident
 
 **Renderer**:
 Turns a whole timeline into one source family's raw data, the way that source really records it, and names the streams it feeds.
-_Avoid_: Generator, exporter, writer
+_Avoid_: Exporter, writer
 
 **Manifest**:
-The true answers for a dataset, computed from its timeline and never its database: time per app and domain, AFK, unobserved stretches, explained gaps and counts.
+The true answers for a dataset, computed from its timeline and never its database: time per app and domain, AFK, unobserved time, explained gaps and counts.
 _Avoid_: Snapshot, golden file, expected output
 
 **Cost counter**:
