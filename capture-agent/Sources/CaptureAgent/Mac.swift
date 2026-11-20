@@ -20,6 +20,7 @@ public protocol Mac {
 public struct LiveMac: Mac, Sendable {
     private let presence = LivePresence()
     private let frontmost = LiveFrontmostApplication()
+    private let screenshots = OneRequestAtATime()
 
     /// Sets every accessibility call this process makes to time out after the given seconds, and starts listening for sleep, wake and app activations.
     public init(callTimeout: TimeInterval) {
@@ -41,6 +42,6 @@ public struct LiveMac: Mac, Sendable {
     public func hasElectronFramework(_ bundle: URL) -> Bool { bundleHasElectronFramework(bundle) }
 
     public func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
-        captureFocusedWindow(window, longEdge: longEdge)
+        screenshots.run(timeout: 2) { captureFocusedWindow(window, longEdge: longEdge, answer: $0) }
     }
 }

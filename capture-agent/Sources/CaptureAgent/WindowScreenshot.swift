@@ -43,17 +43,37 @@ private func sameFrame(_ a: CGRect, _ b: CGRect) -> Bool {
     [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].allSatisfy { abs($0) <= 2 }
 }
 
-/// Takes a still of the focused window through ScreenCaptureKit, giving up after the timeout.
-func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, timeout: TimeInterval = 2) -> WindowImage {
-    let result = WindowImageResult()
+/// Lets one request for a picture be outstanding at a time: while one has not answered, every other fails at once.
+final class OneRequestAtATime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var outstanding = false
+
+    /// Starts the request and waits up to the timeout for its answer, or fails at once if an earlier request has not answered yet.
+    func run(timeout: TimeInterval, _ start: (@escaping @Sendable (WindowImage) -> Void) -> Void) -> WindowImage {
+        let free = lock.withLock {
+            defer { outstanding = true }
+            return !outstanding
+        }
+        guard free else { return .failed }
+        let result = WindowImageResult()
+        start { image in
+            self.lock.withLock { self.outstanding = false }
+            result.finish(image)
+        }
+        return result.wait(timeout: timeout)
+    }
+}
+
+/// Takes a still of the focused window through ScreenCaptureKit, answering once with the image or the reason there is none.
+func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, answer: @escaping @Sendable (WindowImage) -> Void) {
     SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
-        guard let content else { return result.finish(error.map(windowImage(for:)) ?? .failed) }
+        guard let content else { return answer(error.map(windowImage(for:)) ?? .failed) }
         let windows = content.windows.filter(\.isOnScreen)
         let candidates = windows.map {
             WindowCandidate(id: $0.windowID, processIdentifier: $0.owningApplication?.processID ?? -1, frame: $0.frame, title: $0.title)
         }
         guard let id = matchWindow(focused, among: candidates), let window = windows.first(where: { $0.windowID == id }) else {
-            return result.finish(.failed)
+            return answer(.failed)
         }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let configuration = SCStreamConfiguration()
@@ -62,10 +82,9 @@ func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, timeout: Time
         configuration.height = size.height
         configuration.showsCursor = false
         SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
-            result.finish(image.map(WindowImage.image) ?? error.map(windowImage(for:)) ?? .failed)
+            answer(image.map(WindowImage.image) ?? error.map(windowImage(for:)) ?? .failed)
         }
     }
-    return result.wait(timeout: timeout)
 }
 
 private func windowImage(for error: any Error) -> WindowImage {

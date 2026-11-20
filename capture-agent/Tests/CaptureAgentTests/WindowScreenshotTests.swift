@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import CaptureAgent
 
@@ -48,5 +49,29 @@ func theStillIsRequestedAtTheLongEdgeAndNeverAboveNativeSize(
     points: CGSize, scale: Double, longEdge: Int, width: Int, height: Int
 ) {
     let size = captureSize(of: points, pixelScale: scale, longEdge: longEdge)
-    #expect([size.width, size.height] == [width, height])
+    #expect(size.width == width && size.height == height)
+}
+
+final class HeldAnswer: @unchecked Sendable {
+    var answer: (@Sendable (WindowImage) -> Void)?
+    var starts = 0
+}
+
+@Test func aHungRequestBlocksOnceThenLaterCapturesFailAtOnceUntilItAnswers() {
+    let requests = OneRequestAtATime()
+    let held = HeldAnswer()
+    let hang: (@escaping @Sendable (WindowImage) -> Void) -> Void = { answer in
+        held.starts += 1
+        held.answer = answer
+    }
+    let first = Date()
+    guard case .failed = requests.run(timeout: 0.05, hang) else { Issue.record("a hung request must fail"); return }
+    #expect(Date().timeIntervalSince(first) >= 0.05)
+    let second = Date()
+    guard case .failed = requests.run(timeout: 5, hang) else { Issue.record("a second request must fail"); return }
+    #expect(Date().timeIntervalSince(second) < 1)
+    #expect(held.starts == 1)
+    held.answer?(.noPermission)
+    guard case .noPermission = requests.run(timeout: 5, { $0(.noPermission) }) else { Issue.record("an answered gate must run again"); return }
+    #expect(held.starts == 1)
 }
