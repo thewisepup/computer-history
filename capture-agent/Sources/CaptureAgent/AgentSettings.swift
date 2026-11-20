@@ -6,6 +6,7 @@ public struct AgentSettings: Equatable, Sendable {
     public static let spoolEnvironmentVariable = "COMPUTER_HISTORY_SPOOL"
     public static let configFileName = "agent-config.json"
     public static let pauseFileName = "capture-paused"
+    public static let permissionReminderFileName = "screen-recording-reminded"
 
     public enum ConfigFile: Equatable, Sendable {
         case missing, read, unreadable
@@ -22,6 +23,7 @@ public struct AgentSettings: Equatable, Sendable {
 
     public var configPath: URL { folder.appendingPathComponent(Self.configFileName) }
     public var pause: PauseSwitch { PauseSwitch(file: folder.appendingPathComponent(Self.pauseFileName)) }
+    public var permissionReminderFile: URL { folder.appendingPathComponent(Self.permissionReminderFileName) }
 
     /// Finds the folder the way the backend does, then reads the config file in it, falling back to defaults for anything missing or invalid.
     public static func load(

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, a picture of the focused window and the text in a saved picture.
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, a picture of the focused window, the text in a saved picture, and posting a notification.
 public protocol Mac: Sendable {
     associatedtype Element: AccessibilityElement
 
@@ -15,6 +15,7 @@ public protocol Mac: Sendable {
     func hasElectronFramework(_ bundle: URL) -> Bool
     func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage
     func recognizeText(inImageAt file: URL) throws -> String
+    func post(_ notification: UserNotification) -> NotificationPosting
 }
 
 /// The real Mac: system uptime and time, presence from macOS, and the live accessibility API.
@@ -22,8 +23,9 @@ public struct LiveMac: Mac, Sendable {
     private let presence = LivePresence()
     private let frontmost = LiveFrontmostApplication()
     private let screenshots = OneRequestAtATime()
+    private let notifications = LiveNotifications()
 
-    /// Sets every accessibility call this process makes to time out after the given seconds, and starts listening for sleep, wake and app activations.
+    /// Sets every accessibility call this process makes to time out after the given seconds, starts listening for sleep, wake and app activations, and handles clicks on its notifications.
     public init(callTimeout: TimeInterval) {
         LiveAccessibilityElement.setProcessCallTimeout(callTimeout)
     }
@@ -47,4 +49,6 @@ public struct LiveMac: Mac, Sendable {
     }
 
     public func recognizeText(inImageAt file: URL) throws -> String { try CaptureAgent.recognizeText(inImageAt: file) }
+
+    public func post(_ notification: UserNotification) -> NotificationPosting { notifications.post(notification, timeout: 2) }
 }

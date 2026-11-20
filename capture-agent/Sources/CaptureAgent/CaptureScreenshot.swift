@@ -19,7 +19,7 @@ public struct ScreenshotSettings: Equatable, Sendable {
     }
 }
 
-/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, queued for its text.
+/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, queued for its text, reminding once a day while the Screen Recording grant is missing.
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
@@ -27,6 +27,9 @@ struct CaptureScreenshot<M: Mac> {
     let pause: PauseSwitch
     let idleThreshold: TimeInterval
     var dedup: FrameDedup
+    var reminder: PermissionReminder
+    let log: (String) -> Void
+    var toldNotificationsUnavailable = false
 
     mutating func take(for capture: SpoolRecord, of application: FocusedApplication) -> QueuedScreenshot {
         guard !pause.isPaused, mac.samplePresence().silence(idleThreshold: idleThreshold).isEmpty,
@@ -44,10 +47,12 @@ struct CaptureScreenshot<M: Mac> {
         let focused = FocusedWindow(processIdentifier: application.processIdentifier, title: capture.windowTitle, frame: frame)
         switch mac.focusedWindowImage(focused, longEdge: longEdge) {
         case .noPermission:
+            remindOfMissingGrant()
             return .ready(.noPermission(of: capture))
         case .failed:
             return .ready(.failed(of: capture))
         case .image(let image, let windowID):
+            reminder.grantSeen()
             guard let hash = differenceHash(image), let frame = FrameThumbnail(image) else { return .ready(.failed(of: capture)) }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(frame, in: window, at: capture.capturedAt) {
@@ -66,6 +71,20 @@ struct CaptureScreenshot<M: Mac> {
                 id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
             )
             return .recognize(kept, image: saved.file, into: text)
+        }
+    }
+
+    private mutating func remindOfMissingGrant() {
+        guard reminder.remindNow(at: mac.now()) else { return }
+        switch mac.post(ScreenRecordingSettings.reminder) {
+        case .posted:
+            log("screen recording missing, posted a reminder")
+        case .awaitingPermission:
+            log("screen recording missing, asked macOS to allow notifications for the reminder")
+        case .unavailable(let reason):
+            guard !toldNotificationsUnavailable else { return }
+            toldNotificationsUnavailable = true
+            log("screen recording missing, notifications unavailable (\(reason)), status is the only warning")
         }
     }
 

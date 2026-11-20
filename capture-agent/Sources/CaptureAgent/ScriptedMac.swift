@@ -15,6 +15,8 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .failed }
     var windowImageRequests: [pid_t] = []
     var recognizedText: (URL) throws -> String = { _ in "" }
+    var notificationPosting = NotificationPosting.posted
+    var notifications: [UserNotification] = []
     var onCall: (String) -> Void = { _ in }
     private var elements: CGWindowID = 0
 
@@ -46,6 +48,11 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     }
 
     func recognizeText(inImageAt file: URL) throws -> String { try recognizedText(file) }
+
+    func post(_ notification: UserNotification) -> NotificationPosting {
+        notifications.append(notification)
+        return notificationPosting
+    }
 
     func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
         elements += 1
