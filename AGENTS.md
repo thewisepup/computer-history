@@ -50,8 +50,16 @@ git config core.hooksPath .githooks
 computer_history tests` must pass; the pre-commit hook runs both after a
 gitleaks scan of the staged changes. CI runs them, the POC suite
 (`python -m unittest`) and gitleaks on every pull request and push to `main`,
-and `main` only merges pull requests whose checks pass. A
-worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+and `main` only merges pull requests whose checks pass. In a
+worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
+own `.venv` on first use (about a minute), since the main checkout's venv
+imports the main checkout's source.
+Pyright type-checks `computer_history` and `tests` in standard mode
+(`[tool.pyright]` in `pyproject.toml`): `.venv/bin/python -m pyright
+--pythonpath .venv/bin/python`. Without `--pythonpath` it resolves imports
+against whatever `python` is first on `PATH`. CI runs it as the `typecheck`
+job, which is not yet required and still fails on existing errors; #76
+tracks fixing them, requiring it and moving to strict mode.
 The performance gate's tests carry the `perf` marker, which the default run
 leaves out: run them with `.venv/bin/python -m pytest -m perf` or
 `computer-history dev perf` (see `computer_history/cli/README.md`). CI's `perf`
@@ -136,6 +144,10 @@ What to test and what the gate does, by change:
 ### Issue tracker
 
 Issues live in GitHub Issues for `thewisepup/computer-history` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Pull requests
+
+Every pull request description follows the shape in `docs/agents/pull-requests.md`.
 
 ### Domain docs
 
