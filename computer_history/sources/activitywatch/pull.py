@@ -75,8 +75,8 @@ def pull_bucket(
 ) -> BucketPull:
     """The settled events of one bucket that start in the range; writes nothing.
 
-    No start means the beginning of the bucket, and no end means up to now, when events reaching
-    into the range from before its start are kept whole too.
+    No start means the beginning of the bucket and no end means up to now, and a pull up to now
+    also keeps, whole, any event reaching into the range from before its start.
     """
     now = resolve_now(now)
     start_dt = None if start is None else to_utc(start)
