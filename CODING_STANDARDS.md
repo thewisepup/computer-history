@@ -55,13 +55,17 @@ Review findings ratchet into rules:
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients;
   everything below takes them as parameters. `synthetic/` may also `connect`
-  to a scratch database it builds, by path, never the live one.
+  to a scratch database it builds, or `connect_immutable` to a cached one, by
+  path, never the live one.
 - **A4** Inject the I/O edges (`conn`, `client`, clock, sleep) and nothing else;
   pure logic takes plain data. Interfaces are Protocols (`AWApi`); transport
   clients stay dumb 1:1 API mirrors, with domain logic in free functions.
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
   one function below, format, exit code.
+- **A7** A path's resolution rule (flag, then `$ENV`, then default) lives in one
+  function beside what owns the path (`resolve_db_path`, `cache_root`); other
+  code calls it and never reads that variable itself.
 
 ## Hygiene
 
