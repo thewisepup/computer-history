@@ -114,3 +114,53 @@ def test_a_line_naming_no_known_kind_is_invalid_without_a_kind() -> None:
         with pytest.raises(InvalidRecord) as raised:
             parse_record(line)
         assert raised.value.kind is None
+
+
+def screenshot_with(status: str, **fields: object) -> str:
+    data = next(r for r in fixture_records(SCREENSHOT_KIND) if r["status"] == status) | fields
+    return json.dumps({k: v for k, v in data.items() if v is not ...}, sort_keys=True)
+
+
+@pytest.mark.parametrize(
+    ("line", "problem"),
+    [
+        (screenshot_with("kept", image_bytes=None), "a kept screenshot needs image_bytes"),
+        (screenshot_with("kept", image_bytes=...), "a kept screenshot needs image_bytes"),
+        (screenshot_with("kept", image_path=None), "a kept screenshot needs image_path"),
+        (screenshot_with("kept", image_path=...), "a kept screenshot needs image_path"),
+        (screenshot_with("kept", perceptual_hash=None), "a kept screenshot needs perceptual_hash"),
+        (screenshot_with("kept", text=None), "a kept screenshot needs text"),
+        (screenshot_with("kept", text_cut_off=None), "a kept screenshot needs text_cut_off"),
+        (screenshot_with("kept", image_bytes=-1), "image_bytes is negative"),
+        (screenshot_with("duplicate", image_path=None), "a duplicate screenshot needs image_path"),
+        (screenshot_with("duplicate", text=...), "a duplicate screenshot needs text"),
+        (screenshot_with("duplicate", image_bytes=10), "a duplicate screenshot has image_bytes"),
+        (screenshot_with("failed", image_path="shots/x.jpg"), "a failed screenshot has image_path"),
+        (screenshot_with("secure-field", text="hunter2"), "a secure-field screenshot has text"),
+        (screenshot_with("no-permission", perceptual_hash="00"), "has perceptual_hash"),
+    ],
+)
+def test_a_screenshot_record_breaking_its_status_rules_is_invalid(line: str, problem: str) -> None:
+    with pytest.raises(InvalidRecord, match=problem) as raised:
+        parse_record(line)
+    assert raised.value.kind == SCREENSHOT_KIND
+
+
+@pytest.mark.parametrize(
+    ("fields", "kind"),
+    [
+        ({"version": 2}, SCREENSHOT_KIND),
+        ({"id": "NOT-A-UUID"}, SCREENSHOT_KIND),
+        ({"captured_at": "yesterday"}, SCREENSHOT_KIND),
+        ({"kind": "capture", "version": 2}, "capture"),
+        ({"kind": "capture", "id": 7}, "capture"),
+        ({"kind": "snapshot"}, None),
+        ({"kind": None}, None),
+    ],
+)
+def test_a_record_that_fails_names_its_kind_whenever_the_kind_is_readable(
+    fields: dict, kind: str | None
+) -> None:
+    with pytest.raises(InvalidRecord) as raised:
+        parse_record(screenshot_with("kept", **fields))
+    assert raised.value.kind == kind

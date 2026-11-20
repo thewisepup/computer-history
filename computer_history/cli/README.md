@@ -50,12 +50,17 @@ ingested.
 `ax-text` and `screenshot` are the capture agent's spool, read in the same
 poll. Each stream stores its own records from each finished `*.jsonl` file in
 one commit, oldest first; the file is deleted once both streams have stored
-it. The agent's `open.part` and `agent.lock` are never touched. `rejected` counts
-lines that are not usable records (malformed, failing validation, or an
-unknown format version): they are skipped and logged, and the rest of the
-file is stored. A file with any unusable line, or one that cannot be read, is
-moved into `spool/unreadable/` instead of being deleted. A file that cannot be
-removed is reported and not read again until the next `ingest` run. A missing
+it. The agent's `open.part` and `agent.lock` are never touched. A stream's
+`rejected` counts lines of its own kinds that are not usable records (failing
+validation, or an unknown format version); a line whose kind cannot be read
+(not JSON, or a kind this backend does not know) belongs to neither stream and
+is counted in the warning when the file is set aside. Unusable lines are skipped
+and logged, and the rest of the file is stored. A file with any unusable line
+is moved into `spool/unreadable/` instead of being deleted, once both streams
+stored its usable lines. A file one stream cannot read is left for that stream
+to retry on the next poll; only a file neither stream can read is moved aside.
+A file that cannot be removed is reported as `error on the spool` and not read
+again until the next `ingest` run. A missing
 spool folder is nothing to ingest. ActivityWatch being down does not stop the
 spool, and the reverse: the other source's rows are stored, and the run exits
 1.

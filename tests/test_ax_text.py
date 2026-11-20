@@ -305,9 +305,7 @@ def test_a_file_that_cannot_be_removed_fails_once_and_does_not_block_later_files
     finally:
         spool_dir.chmod(0o755)
 
-    assert [(f.stream, f.kind) for f in failed.failures] == [
-        (SCREENSHOT_SOURCE, FailureKind.SOURCE)
-    ]
+    assert [f.kind for f in failed.failures] == [FailureKind.SOURCE]
     assert "cannot remove stored spool file" in failed.failures[0].error
     assert "spool/" + file_name(2) in again.failures[0].error
     assert len(observations(conn)) == 2 and first.exists() and second.exists()
@@ -383,12 +381,14 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
 
     assert summary.ok
     assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(
-        2, 0, 0, T0 + timedelta(seconds=1), rejected=11
+        2, 0, 0, T0 + timedelta(seconds=1), rejected=7
     )
     assert [row[3] for row in observations(conn)] == good
     assert not path.exists()
     assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
-    assert "skipped 11 unusable record(s)" in caplog.text and "line 2: not JSON" in caplog.text
+    assert "skipped 7 unusable record(s)" in caplog.text
+    assert "line 3: unknown version 2" in caplog.text
+    assert "it has 11 unusable line(s), 4 of no readable kind" in caplog.text
     assert "its usable lines are stored" in caplog.text
 
 
@@ -420,7 +420,7 @@ def test_a_file_with_no_usable_record_is_moved_aside_not_deleted(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.ok
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(1, 0, 0, T0, rejected=2)
+    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(1, 0, 0, T0)
     aside = spool_dir / UNREADABLE_FOLDER / file_name(1)
     assert aside.read_bytes() == junk
     assert finished_files(spool_dir) == []
@@ -576,18 +576,22 @@ def test_cli_ingest_reads_the_spool_beside_the_database(
 
 
 def test_cli_ingest_honors_the_spool_flag_and_prints_rejected_records(
-    capsys: pytest.CaptureFixture[str], cli_aw, tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    cli_aw,
+    tmp_path: Path,
 ) -> None:
     cli_aw(healthy_aw(datetime.now(UTC)))
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    write_file(elsewhere, file_name(1), [record(1, T0), "{broken"])
+    write_file(elsewhere, file_name(1), [record(1, T0), record(2, T0, timed_out="no"), "{broken"])
 
     code = cli.main(["--db-path", str(tmp_path / "h.db"), "ingest", "--spool-path", str(elsewhere)])
     out = capsys.readouterr().out
 
     assert code == 0
     assert re.search(r"ax-text\s+inserted\s+1\s+skipped\s+0\s+held back\s+0\s+rejected 1", out)
+    assert "it has 2 unusable line(s), 1 of no readable kind" in caplog.text
     assert finished_files(elsewhere) == []
 
 
@@ -617,5 +621,5 @@ def test_cli_ingest_with_an_unlistable_spool_gives_the_spool_hint(
 
     assert code == 1
     assert re.search(r"aw-window\s+inserted\s+1", out)
-    assert "error on ax-text: cannot list the spool" in err
+    assert "error on the spool: cannot list the spool" in err
     assert "spool folder" in err and "Is ActivityWatch running?" not in err

@@ -137,9 +137,12 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
   modeled, in which the OS keeps written bytes.
 - Torn lines. The model trusts `dropUnfinishedLine` to strip a torn tail
   before every append and rename. A torn line is never an acked record.
-- A file that cannot be read (`OSError` other than missing) is set aside
-  without being stored. That is by design and not modeled. So are
-  `SpoolError` on unlink (`_stuck`) and folder permission changes.
+- A read that fails (`OSError` other than missing) is not modeled. In the
+  code (`_unreadable_by`) the file stays for the failing stream to retry while
+  any stream has stored it or any stream has yet to fail on it; only a file
+  every stream failed to read in one process is set aside unstored, by
+  design, which `NoLoss` would count as a loss. Also not modeled: `SpoolError`
+  on unlink (`_stuck`) and folder permission changes.
 - Directory listings and the agent's folder scan are treated as atomic
   snapshots.
 - Order and duplication are not checked. Duplicates are impossible because of

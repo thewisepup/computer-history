@@ -410,8 +410,10 @@ Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
   (`ax-text`, `screenshot`) read every file for their own records, and a file
   is deleted only once both have stored that same file (told apart from a
   later file of the same name by device, inode, size and mtime). Unusable lines are
-  skipped and counted; a file with any unusable line, or that cannot be read,
-  is moved into `spool/unreadable/`, never deleted. The filesystem is the
+  skipped and counted against the stream their kind names; a file with any
+  unusable line, or that neither stream can read, is moved into
+  `spool/unreadable/`, never deleted. A file only one stream failed to read is
+  left for it to retry. The filesystem is the
   queue; backend downtime just accumulates files.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
   whether to set the apps' accessibility flag is measured in M2); periodic

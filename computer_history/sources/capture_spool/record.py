@@ -43,6 +43,25 @@ _TYPED_FIELDS: Mapping[str, type] = {
 }
 
 
+_SCREENSHOT_IMAGE_FIELDS = (
+    "image_path",
+    "image_bytes",
+    "perceptual_hash",
+    "text",
+    "text_sha256",
+    "full_text_bytes",
+    "text_cut_off",
+)
+_WITH_IMAGE = frozenset(_SCREENSHOT_IMAGE_FIELDS) - {"image_bytes"}
+_SCREENSHOT_NEEDS: Mapping[str, frozenset[str]] = {
+    "kept": frozenset(_SCREENSHOT_IMAGE_FIELDS),
+    "duplicate": _WITH_IMAGE,
+    "secure-field": frozenset(),
+    "no-permission": frozenset(),
+    "failed": frozenset(),
+}
+
+
 class InvalidRecord(ValueError):
     """A spool line that is not a record this backend can use, and the kind it names if known."""
 
@@ -62,42 +81,58 @@ class ParsedRecord:
 
 
 def parse_record(line: str) -> ParsedRecord:
-    """The record on one spool line, or InvalidRecord if it is malformed or of another version."""
+    """The record on one spool line, or InvalidRecord if it is malformed or of another version.
+
+    The error names the line's kind whenever the line names one this backend knows.
+    """
     try:
         data = json.loads(line)
     except ValueError as exc:
         raise InvalidRecord(f"not JSON: {exc}") from exc
     if not isinstance(data, dict):
         raise InvalidRecord("not a JSON object")
+    kind = data.get("kind")
+    try:
+        return _checked(data, kind)
+    except InvalidRecord as exc:
+        exc.kind = kind if kind in KINDS else None
+        raise
+
+
+def _checked(data: dict[str, Any], kind: Any) -> ParsedRecord:
     version = data.get("version")
     if type(version) is not int or version != SPOOL_VERSION:
         raise InvalidRecord(f"unknown version {version!r}")
     record_id = data.get("id")
     if not isinstance(record_id, str) or not _ID.fullmatch(record_id):
         raise InvalidRecord(f"bad id {record_id!r}")
-    kind = data.get("kind")
     if kind not in KINDS:
         raise InvalidRecord(f"unknown kind {kind!r}")
-    try:
-        return _checked(data, record_id, kind)
-    except InvalidRecord as exc:
-        exc.kind = kind
-        raise
-
-
-def _checked(data: dict[str, Any], record_id: str, kind: str) -> ParsedRecord:
     for key, expected in _TYPED_FIELDS.items():
         value = data.get(key)
         if value is not None and type(value) is not expected:
             raise InvalidRecord(f"{key} is not a {expected.__name__}: {value!r}")
     if kind == SCREENSHOT_KIND:
-        status = data.get("status")
-        if status not in SCREENSHOT_STATUSES:
-            raise InvalidRecord(f"unknown status {status!r}")
-        capture_id = data.get("capture_id")
-        if not isinstance(capture_id, str) or not _ID.fullmatch(capture_id):
-            raise InvalidRecord(f"bad capture_id {capture_id!r}")
+        _check_screenshot(data)
     return ParsedRecord(record_id, _captured_at(data.get("captured_at")), kind, data)
+
+
+def _check_screenshot(data: dict[str, Any]) -> None:
+    status = data.get("status")
+    if status not in SCREENSHOT_STATUSES:
+        raise InvalidRecord(f"unknown status {status!r}")
+    capture_id = data.get("capture_id")
+    if not isinstance(capture_id, str) or not _ID.fullmatch(capture_id):
+        raise InvalidRecord(f"bad capture_id {capture_id!r}")
+    needed = _SCREENSHOT_NEEDS[status]
+    for key in _SCREENSHOT_IMAGE_FIELDS:
+        present = data.get(key) is not None
+        if key in needed and not present:
+            raise InvalidRecord(f"a {status} screenshot needs {key}")
+        if key not in needed and present:
+            raise InvalidRecord(f"a {status} screenshot has {key}")
+    if data.get("image_bytes") is not None and data["image_bytes"] < 0:
+        raise InvalidRecord(f"image_bytes is negative: {data['image_bytes']!r}")
 
 
 def _captured_at(value: Any) -> datetime:

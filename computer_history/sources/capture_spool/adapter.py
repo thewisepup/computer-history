@@ -12,7 +12,6 @@ from pathlib import Path
 
 from computer_history.sources.capture_spool.normalize import PROJECTORS
 from computer_history.sources.capture_spool.record import (
-    AX_TEXT_SOURCE,
     STREAM_KINDS,
     InvalidRecord,
     parse_record,
@@ -42,6 +41,7 @@ class CaptureSpool:
         self.folder = folder
         self._listed: dict[str, deque[Path]] = {stream: deque() for stream in STREAM_KINDS}
         self._stored: dict[tuple[Path, FileIdentity], set[str]] = {}
+        self._unreadable: dict[Path, set[str]] = {}
         self._stuck: set[Path] = set()
 
     def streams(self) -> list[str]:
@@ -67,8 +67,7 @@ class CaptureSpool:
         except FileNotFoundError:
             return self._empty(partial(self._drop, stream, path), more)
         except OSError as exc:
-            aside = partial(_move_aside, reason=f"cannot read it: {exc}")
-            return self._empty(partial(self._finish, stream, path, aside), more)
+            return self._empty(partial(self._unreadable_by, stream, path, str(exc)), more)
         read = _read_records(lines, now, stream)
         if read.rejected:
             log.warning(
@@ -79,9 +78,13 @@ class CaptureSpool:
                 *read.first_problem,
             )
         finish: Finish = remove_finished
-        if read.file_has_unusable:
-            kept = "its usable lines are stored" if read.file_has_usable else "no line is usable"
-            finish = partial(_move_aside, reason=f"it has unusable lines ({kept})")
+        if read.file_unusable:
+            kept = "its usable lines are stored" if read.file_usable else "no line is usable"
+            finish = partial(
+                _move_aside,
+                reason=f"it has {read.file_unusable} unusable line(s),"
+                f" {read.file_kindless} of no readable kind ({kept})",
+            )
         newest = None if read.latest is None else utc_iso(read.latest)
         moved = newest is not None and (
             position is None or newest > position or position > utc_iso(now)
@@ -100,6 +103,7 @@ class CaptureSpool:
         return Pull((), 0, None, None, more=more, after_commit=after_commit)
 
     def _stored_by(self, stream: str, path: Path, identity: FileIdentity, finish: Finish) -> None:
+        self._unreadable.get(path, set()).discard(stream)
         streams = self._stored.setdefault((path, identity), set())
         streams.add(stream)
         if len(streams) < len(STREAM_KINDS):
@@ -107,6 +111,19 @@ class CaptureSpool:
             return
         del self._stored[(path, identity)]
         self._finish(stream, path, finish)
+
+    def _unreadable_by(self, stream: str, path: Path, problem: str) -> None:
+        failed = self._unreadable.setdefault(path, set())
+        failed.add(stream)
+        stored_by_any = any(key[0] == path for key in self._stored)
+        if stored_by_any or len(failed) < len(STREAM_KINDS):
+            log.warning(
+                "cannot read spool file %s for %s, will retry: %s", path.name, stream, problem
+            )
+            self._drop(stream, path)
+            return
+        del self._unreadable[path]
+        self._finish(stream, path, partial(_move_aside, reason=f"cannot read it: {problem}"))
 
     def _finish(self, stream: str, path: Path, finish: Finish) -> None:
         self._drop(stream, path)
@@ -125,6 +142,8 @@ class CaptureSpool:
         names = set(present)
         for key in [key for key in self._stored if key[0] not in names]:
             del self._stored[key]
+        for path in [path for path in self._unreadable if path not in names]:
+            del self._unreadable[path]
 
 
 @dataclass(frozen=True)
@@ -133,14 +152,15 @@ class _Read:
     rejected: int
     latest: datetime | None
     first_problem: tuple[int, str]
-    file_has_usable: bool
-    file_has_unusable: bool
+    file_usable: int
+    file_unusable: int
+    file_kindless: int
 
 
 def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
     kinds = STREAM_KINDS[stream]
     observations = []
-    rejected = usable = unusable = 0
+    rejected = usable = unusable = kindless = 0
     latest: datetime | None = None
     first_problem = (0, "")
     for number, raw in enumerate(lines, start=1):
@@ -151,7 +171,9 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
             record = parse_record(line)
         except (UnicodeDecodeError, InvalidRecord) as exc:
             unusable += 1
-            if _stream_of(exc.kind if isinstance(exc, InvalidRecord) else None) == stream:
+            kind = exc.kind if isinstance(exc, InvalidRecord) else None
+            kindless += kind is None
+            if kind in kinds:
                 rejected += 1
                 if rejected == 1:
                     first_problem = (number, str(exc))
@@ -164,18 +186,10 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
         )
         if record.captured_at <= now and (latest is None or record.captured_at > latest):
             latest = record.captured_at
-    return _Read(tuple(observations), rejected, latest, first_problem, usable > 0, unusable > 0)
-
-
-def _stream_of(kind: str | None) -> str:
-    return next((s for s, kinds in STREAM_KINDS.items() if kind in kinds), AX_TEXT_SOURCE)
+    return _Read(tuple(observations), rejected, latest, first_problem, usable, unusable, kindless)
 
 
 def _move_aside(path: Path, *, reason: str) -> None:
     target = set_aside(path)
     if target is not None:
         log.warning("moved spool file %s to %s: %s", path.name, target, reason)
-
-
-def _gone(path: Path) -> None:
-    return None

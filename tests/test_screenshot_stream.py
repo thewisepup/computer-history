@@ -28,6 +28,7 @@ from computer_history.sources import (
     reproject_signals,
     spool_backlog,
 )
+from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import connect, get_progress, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
@@ -305,14 +306,19 @@ def test_a_file_of_screenshot_records_alone_is_stored_and_removed(
 
 
 def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_once(
-    conn: sqlite3.Connection, spool_dir: Path
+    conn: sqlite3.Connection, spool_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    capture = json.loads(CAPTURE_AGENT_LINES[0])
     lines = [
         *FIXTURE_LINES,
         screenshot(1, T0, status="blurry"),
         screenshot(2, T0, image_bytes="big"),
+        screenshot(3, T0, version=2),
+        screenshot(4, T0) .replace('"id": "00000000-0000-4000-8000-000000000004"', '"id": "x"'),
         "{not json",
-        json.dumps(json.loads(CAPTURE_AGENT_LINES[0]) | {"timed_out": "no"}),
+        json.dumps(capture | {"kind": "snapshot"}),
+        json.dumps(capture | {"timed_out": "no"}),
+        json.dumps(capture | {"version": 2}),
     ]
     spooled = write_file(spool_dir, lines)
     kept = spooled.read_bytes()
@@ -320,11 +326,13 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.outcomes[SCREENSHOT_SOURCE].inserted == len(SCREENSHOT_LINES)
-    assert summary.outcomes[SCREENSHOT_SOURCE].rejected == 2
+    assert summary.outcomes[SCREENSHOT_SOURCE].rejected == 4
     assert summary.outcomes[AX_TEXT_SOURCE].inserted == len(CAPTURE_AGENT_LINES)
     assert summary.outcomes[AX_TEXT_SOURCE].rejected == 2
     assert not spooled.exists()
     assert [p.read_bytes() for p in (spool_dir / UNREADABLE_FOLDER).iterdir()] == [kept]
+    assert "skipped 4 unusable record(s) in spool file" in caplog.text
+    assert "it has 8 unusable line(s), 2 of no readable kind" in caplog.text
 
 
 def test_screenshot_records_never_move_the_window_text_progress(
@@ -375,10 +383,70 @@ def test_cli_ingest_gives_the_spool_hint_when_the_screenshot_stream_fails(
 
     assert code == 1
     assert re.search(rf"ax-text\s+inserted\s+{len(CAPTURE_AGENT_LINES)}\s", out)
-    assert "error on screenshot: cannot remove stored spool file" in err
+    assert "error on the spool: cannot remove stored spool file" in err
+    assert "screenshot" not in err
     assert "spool folder" in err and "Is ActivityWatch running?" not in err
     conn = connect(tmp_path / "h.db")
     try:
         assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
     finally:
         conn.close()
+
+
+def failing_read(monkeypatch: pytest.MonkeyPatch, *, failing_call: int) -> None:
+    calls = []
+    real = spool_adapter.read_file
+
+    def read(path: Path):
+        calls.append(path)
+        if len(calls) == failing_call:
+            raise OSError(24, "Too many open files")
+        return real(path)
+
+    monkeypatch.setattr(spool_adapter, "read_file", read)
+
+
+@pytest.mark.parametrize(
+    ("stored_first", "failed"),
+    [(AX_TEXT_SOURCE, SCREENSHOT_SOURCE), (SCREENSHOT_SOURCE, AX_TEXT_SOURCE)],
+)
+def test_one_streams_failed_read_never_sets_aside_what_the_other_stream_still_needs(
+    conn: sqlite3.Connection,
+    spool_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    stored_first: str,
+    failed: str,
+) -> None:
+    spooled = write_file(spool_dir, FIXTURE_LINES)
+    spool = CaptureSpool(spool_dir)
+    failing_read(monkeypatch, failing_call=2)
+    commit(conn, spool, stored_first)
+
+    commit(conn, spool, failed)
+
+    assert spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()
+    assert stored(conn, failed) == []
+    assert f"cannot read spool file {FILE_NAME} for {failed}" in caplog.text
+    summary = poll(conn, [spool], now=NOW + timedelta(minutes=1))
+    assert summary.ok
+    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
+    assert not spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()
+
+
+def test_a_read_failing_for_one_stream_before_any_stream_stored_the_file_waits_too(
+    conn: sqlite3.Connection, spool_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spooled = write_file(spool_dir, FIXTURE_LINES)
+    spool = CaptureSpool(spool_dir)
+    failing_read(monkeypatch, failing_call=1)
+
+    first = poll(conn, [spool], now=NOW)
+
+    assert first.ok and spooled.exists()
+    assert stored(conn, AX_TEXT_SOURCE) == []
+    assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
+    poll(conn, [spool], now=NOW + timedelta(minutes=1))
+    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert not spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()
