@@ -6,12 +6,12 @@ struct RecognitionError: Error, CustomStringConvertible {
     var description: String { "vision broke" }
 }
 
-/// Recognizes each image as "text of <record id>", but only once let go.
+/// Recognizes each image as "text of <record id>", but only once let go or after a minute.
 final class HeldRecognizer: @unchecked Sendable {
     private let gate = DispatchSemaphore(value: 0)
 
     func text(_ image: URL) -> String {
-        _ = gate.wait(timeout: .now() + 2)
+        _ = gate.wait(timeout: .now() + 60)
         gate.signal()
         return "text of \(image.deletingPathExtension().lastPathComponent)"
     }
