@@ -52,7 +52,7 @@ import PackageDescription
 ///     OneRequestAtATime.swift    one request outstanding at a time, each waited for up to a timeout
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
-///     FrameHash.swift       the 64-bit difference hash each screenshot record carries
+///     ScreenshotHash.swift       the 64-bit difference hash each screenshot record carries
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
 ///     Notifications.swift   posting through the notification centre, and opening the first link
 ///                           of a clicked one that opens

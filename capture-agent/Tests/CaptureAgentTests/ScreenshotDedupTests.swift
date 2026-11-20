@@ -30,7 +30,7 @@ func imageHashing(to bits: UInt64) -> CGImage {
 
 @Test func theTestImagesHashToTheirBits() {
     for bits: UInt64 in [0, 1, 0b111, 0x8000_0000_0000_0001, 0xffff_0000_ffff_0000] {
-        #expect(differenceHash(imageHashing(to: bits)) == FrameHash(bits: bits))
+        #expect(differenceHash(imageHashing(to: bits)) == ScreenshotHash(bits: bits))
     }
 }
 
@@ -43,7 +43,7 @@ func imageHashing(to bits: UInt64) -> CGImage {
     fixture.run(for: 30)
     #expect(try fixture.statuses() == ["kept", "duplicate"])
     let shots = try fixture.screenshotRecords()
-    #expect(shots.map { $0["perceptual_hash"] as? String } == [0, 1 << 63].map { FrameHash(bits: $0).hex })
+    #expect(shots.map { $0["perceptual_hash"] as? String } == [0, 1 << 63].map { ScreenshotHash(bits: $0).hex })
     #expect(shots[1]["image_path"] as? String == shots[0]["image_path"] as? String)
     #expect(shots[1]["text_sha256"] as? String == shots[0]["text_sha256"] as? String)
 }

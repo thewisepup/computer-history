@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// A 64-bit perceptual hash of a frame, written as 16 lowercase hex digits.
-struct FrameHash: Equatable, Sendable {
+struct ScreenshotHash: Equatable, Sendable {
     let bits: UInt64
 
     init(bits: UInt64) {
@@ -12,7 +12,7 @@ struct FrameHash: Equatable, Sendable {
 }
 
 /// The difference hash of the image: each bit says whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
-func differenceHash(_ image: CGImage) -> FrameHash? {
+func differenceHash(_ image: CGImage) -> ScreenshotHash? {
     let width = 9, height = 8
     var pixels = [UInt8](repeating: 0, count: width * height)
     let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
@@ -31,5 +31,5 @@ func differenceHash(_ image: CGImage) -> FrameHash? {
             hash = hash << 1 | (pixels[row * width + column] > pixels[row * width + column + 1] ? 1 : 0)
         }
     }
-    return FrameHash(bits: hash)
+    return ScreenshotHash(bits: hash)
 }
