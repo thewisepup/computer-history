@@ -1,6 +1,5 @@
 """Pytest plugin that activates MUTATION_MUTANT after collection and records failing tests.
 
-Collection runs unmutated, as under mutmut, so import-time calls see the original code.
 A test running longer than MUTATION_TEST_TIMEOUT seconds fails, which counts as a kill.
 """
 
@@ -14,8 +13,12 @@ from mutmut.mutation.trampoline import set_mutant_under_test
 _failed: set[str] = set()
 
 
+class MutationTimeout(BaseException):
+    pass
+
+
 def _timeout(signum, frame):
-    raise TimeoutError("mutation test timeout")
+    raise MutationTimeout("mutation test timeout")
 
 
 def pytest_collection_finish(session):
@@ -25,7 +28,8 @@ def pytest_collection_finish(session):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item):
     signal.signal(signal.SIGALRM, _timeout)
-    signal.setitimer(signal.ITIMER_REAL, float(os.environ.get("MUTATION_TEST_TIMEOUT", "30")))
+    limit = float(os.environ.get("MUTATION_TEST_TIMEOUT", "30"))
+    signal.setitimer(signal.ITIMER_REAL, limit, 1.0)
     try:
         yield
     finally:

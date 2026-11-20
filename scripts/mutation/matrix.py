@@ -1,8 +1,8 @@
-"""Build the kill matrix: for each mutant mutmut killed, every test that kills it.
+"""Build the kill matrix: for each mutant the suite catches, every test that kills it.
 
-mutmut stops at the first failing test, so it cannot say which tests are redundant.
-This reruns each killed mutant against every test that calls the mutated function,
-without stopping, and writes mutants/matrix.json.
+Reruns each caught mutant against every test that calls the mutated function, without
+stopping at the first failure, and writes mutants/matrix.json. An entry of null means
+the rerun could not attribute the mutant.
 """
 
 import argparse
@@ -14,10 +14,8 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from mutants_data import KILLED, load_exit_codes, load_stats
+from mutants_data import MUTANTS, caught, load_exit_codes, load_stats, mutant_function
 
-ROOT = Path(__file__).resolve().parents[2]
-MUTANTS = ROOT / "mutants"
 PLUGIN_DIR = Path(__file__).resolve().parent
 TIMEOUT_SECONDS = 600
 
@@ -36,7 +34,7 @@ def killing_tests(mutant: str, tests: list[str]) -> list[str] | None:
         "-p", "failures_plugin", "--no-header", "-o", "addopts=", *tests,
     ]
     try:
-        subprocess.run(
+        run = subprocess.run(
             command, cwd=MUTANTS, env=env, capture_output=True, timeout=TIMEOUT_SECONDS
         )
     except subprocess.TimeoutExpired:
@@ -44,7 +42,11 @@ def killing_tests(mutant: str, tests: list[str]) -> list[str] | None:
     finally:
         text = failures.read_text() if failures.exists() else ""
         failures.unlink(missing_ok=True)
-    return [line for line in text.splitlines() if line]
+    failed = [line for line in text.splitlines() if line]
+    if run.returncode not in (0, 1) or not failed:
+        print(f"\n{mutant}: pytest exit {run.returncode}, {len(failed)} failures", file=sys.stderr)
+        return None
+    return failed
 
 
 def main() -> None:
@@ -58,15 +60,15 @@ def main() -> None:
 
     exit_codes = load_exit_codes(MUTANTS)
     tests_by_function = load_stats(MUTANTS)["tests_by_mangled_function_name"]
-    killed = sorted(name for name, code in exit_codes.items() if code in KILLED)
+    killed = sorted(name for name, code in exit_codes.items() if caught(code))
     matrix: dict[str, list[str] | None] = {}
     if args.retry:
         matrix = json.loads(args.out.read_text())
         killed = [m for m in killed if not matrix.get(m)]
 
     def run(mutant: str) -> tuple[str, list[str] | None]:
-        function = mutant.partition("__mutmut_")[0]
-        return mutant, killing_tests(mutant, sorted(tests_by_function.get(function, [])))
+        tests = sorted(tests_by_function.get(mutant_function(mutant), []))
+        return mutant, killing_tests(mutant, tests)
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         for done, (mutant, tests) in enumerate(pool.map(run, killed), start=1):

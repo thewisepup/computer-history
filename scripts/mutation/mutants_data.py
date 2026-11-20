@@ -5,9 +5,10 @@ import difflib
 import json
 from pathlib import Path
 
-KILLED = {1, 3}
+MUTANTS = Path(__file__).resolve().parents[2] / "mutants"
 STATUS = {
-    0: "survived", 1: "killed", 3: "killed", 5: "no tests", 33: "no tests", None: "not checked"
+    0: "survived", 1: "killed", 3: "killed", 5: "no tests", 33: "no tests", None: "not checked",
+    -24: "timeout", 24: "timeout", 36: "timeout", 152: "timeout", 255: "timeout",
 }
 
 
@@ -19,7 +20,20 @@ def load_exit_codes(mutants: Path) -> dict[str, int | None]:
 
 
 def status(code: int | None) -> str:
-    return STATUS.get(code, "timeout" if code in {-24, 24, 36, 152, 255} else "suspicious")
+    return STATUS.get(code, "suspicious")
+
+
+def caught(code: int | None) -> bool:
+    """True when the suite catches the mutant, by failing or by hanging."""
+    return status(code) in {"killed", "timeout"}
+
+
+def mutant_function(mutant: str) -> str:
+    return mutant.partition("__mutmut_")[0]
+
+
+def mutant_module(mutant: str) -> str:
+    return mutant_function(mutant).rsplit(".", 1)[0]
 
 
 def load_stats(mutants: Path) -> dict:
@@ -27,8 +41,7 @@ def load_stats(mutants: Path) -> dict:
 
 
 def source_file(mutants: Path, mutant: str) -> Path:
-    module = mutant.partition("__mutmut_")[0].rsplit(".", 1)[0]
-    return mutants / (module.replace(".", "/") + ".py")
+    return mutants / (mutant_module(mutant).replace(".", "/") + ".py")
 
 
 def _function_sources(path: Path) -> dict[str, str]:
@@ -50,7 +63,7 @@ def mutant_diff(mutants: Path, mutant: str) -> list[tuple[str, str]]:
         _cache[path] = _function_sources(path)
     sources = _cache[path]
     local = mutant.rsplit(".", 1)[1]
-    original = sources.get(local.partition("__mutmut_")[0] + "__mutmut_orig", "")
+    original = sources.get(mutant_function(local) + "__mutmut_orig", "")
     mutated = sources.get(local, "")
     old_lines = original.splitlines()[1:]
     new_lines = mutated.splitlines()[1:]
@@ -65,8 +78,13 @@ def mutant_diff(mutants: Path, mutant: str) -> list[tuple[str, str]]:
     return pairs
 
 
-def only_changes_a_string(pairs: list[tuple[str, str]]) -> bool:
-    """True when every changed line differs only by XX-wrapping or recasing a string."""
+def only_changes_a_message(pairs: list[tuple[str, str]]) -> bool:
+    """True when every changed line only XX-wraps a string that contains a space."""
     return bool(pairs) and all(
-        new.replace("XX", "") == old or new.lower() == old.lower() for old, new in pairs
+        new.replace("XX", "") == old and _wrapped_has_space(new) for old, new in pairs
     )
+
+
+def _wrapped_has_space(line: str) -> bool:
+    parts = line.split("XX")
+    return any(" " in parts[i] for i in range(1, len(parts), 2))

@@ -1,10 +1,8 @@
 """Turn the kill matrix into a keep/prune report, or compare two matrices.
 
-report: picks the smallest set of tests that still kills every killed mutant and
-writes markdown listing kept tests, prune candidates and surviving mutants. The
-choice of tests always spans the whole package; --module narrows only the score
-and the surviving mutants.
-compare: lists mutants a before-matrix kills that an after-matrix no longer kills.
+report: picks the smallest set of tests that still kills every caught mutant and
+writes markdown listing kept tests, prune candidates and surviving mutants.
+compare: lists mutants a before-matrix holds that an after-matrix no longer holds.
 """
 
 import argparse
@@ -13,10 +11,16 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from mutants_data import load_exit_codes, load_stats, mutant_diff, only_changes_a_string, status
-
-ROOT = Path(__file__).resolve().parents[2]
-MUTANTS = ROOT / "mutants"
+from mutants_data import (
+    MUTANTS,
+    load_exit_codes,
+    load_stats,
+    mutant_diff,
+    mutant_function,
+    mutant_module,
+    only_changes_a_message,
+    status,
+)
 
 
 def choose_tests(
@@ -63,12 +67,10 @@ def report(module: str | None) -> str:
     focus = Counter(t for tests in stats["tests_by_mangled_function_name"].values() for t in tests)
     kills: dict[str, set[str]] = {t: set() for t in all_tests}
     killers: dict[str, set[str]] = defaultdict(set)
-    timed_out, inconsistent = [], []
+    tests_by_function = stats["tests_by_mangled_function_name"]
+    unattributed = sorted(m for m, tests in matrix.items() if not tests)
+    protected = {t for m in unattributed for t in tests_by_function.get(mutant_function(m), [])}
     for mutant, tests in matrix.items():
-        if tests is None:
-            timed_out.append(mutant)
-        elif not tests:
-            inconsistent.append(mutant)
         for test in tests or []:
             kills.setdefault(test, set()).add(mutant)
             killers[mutant].add(test)
@@ -76,7 +78,8 @@ def report(module: str | None) -> str:
     if module:
         exit_codes = {m: c for m, c in exit_codes.items() if m.startswith(module)}
     required, cover = choose_tests(kills, focus)
-    kept = required | cover
+    protected -= required | cover
+    kept = required | cover | protected
     prune = sorted(set(kills) - kept)
 
     checked = {m: c for m, c in exit_codes.items() if status(c) != "not checked"}
@@ -84,7 +87,7 @@ def report(module: str | None) -> str:
     survivors = sorted(m for m, c in checked.items() if status(c) in {"survived", "no tests"})
     cli_strings = [
         m for m in survivors
-        if ".cli." in m and only_changes_a_string(mutant_diff(MUTANTS, m))
+        if ".cli." in m and only_changes_a_message(mutant_diff(MUTANTS, m))
     ]
     real_survivors = [m for m in survivors if m not in cli_strings]
     scored = len(checked) - len(cli_strings)
@@ -101,20 +104,21 @@ def report(module: str | None) -> str:
         "| | count |", "|---|---|",
         f"| mutants checked | {len(checked)} |",
         *(f"| {s} | {n} |" for s, n in sorted(by_status.items())),
-        f"| cli string-only survivors (not scored) | {len(cli_strings)} |",
-        f"| **score** (killed / checked, excluding cli strings) | **{score:.1f}%** |",
+        f"| cli message-only survivors (not scored) | {len(cli_strings)} |",
+        f"| **score** (killed / checked, excluding cli messages) | **{score:.1f}%** |",
         "",
         "| tests | count |", "|---|---|",
         f"| required (only killer of some mutant) | {len(required)} |",
         f"| cover (needed to kill the rest) | {len(cover)} |",
+        f"| protected (call a mutant the rerun could not attribute) | {len(protected)} |",
         f"| prune candidates | {len(prune)} |",
         "",
     ]
-    if timed_out or inconsistent:
+    if unattributed:
         out += [
-            "Mutants the matrix rerun could not attribute "
-            "(timed out, or no test failed though mutmut saw a kill):",
-            *(f"- `{m}`" for m in timed_out + inconsistent), "",
+            "Caught mutants the rerun could not attribute to a test. Every test calling "
+            "their function is kept:",
+            *(f"- `{m}`" for m in unattributed), "",
         ]
 
     out += ["## Tests by file", ""]
@@ -131,6 +135,8 @@ def report(module: str | None) -> str:
                 verdict, by = "keep (required)", ""
             elif test in cover:
                 verdict, by = "keep (cover)", ""
+            elif test in protected:
+                verdict, by = "keep (protected)", ""
             else:
                 verdict = "prune" if kills[test] else "prune (kills nothing)"
                 by = ", ".join(f"`{short(t)}`" for t in replacements(test, kills, kept))
@@ -140,7 +146,7 @@ def report(module: str | None) -> str:
     out += ["## Surviving mutants", ""]
     by_source: dict[str, list[str]] = defaultdict(list)
     for mutant in real_survivors:
-        by_source[mutant.partition("__mutmut_")[0].rsplit(".", 1)[0]].append(mutant)
+        by_source[mutant_module(mutant)].append(mutant)
     for source in sorted(by_source):
         out += [f"### {source}", "", "| mutant | status | change |", "|---|---|---|"]
         for mutant in by_source[source]:
@@ -154,10 +160,10 @@ def report(module: str | None) -> str:
 
 
 def compare(before: Path, after: Path) -> int:
-    old = {m for m, t in json.loads(before.read_text()).items() if t}
-    new = {m for m, t in json.loads(after.read_text()).items() if t}
+    old = set(json.loads(before.read_text()))
+    new = set(json.loads(after.read_text()))
     lost = sorted(old - new)
-    print(f"killed before: {len(old)}  after: {len(new)}  no longer killed: {len(lost)}")
+    print(f"caught before: {len(old)}  after: {len(new)}  no longer caught: {len(lost)}")
     for mutant in lost:
         print(f"  {mutant}")
     return 1 if lost else 0
@@ -167,7 +173,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     rep = sub.add_parser("report")
-    rep.add_argument("--module", help="mutant name prefix for score and survivors")
+    rep.add_argument(
+        "--module",
+        help="mutant name prefix; narrows the score and survivors, never the choice of tests",
+    )
     rep.add_argument("--out", type=Path, default=MUTANTS / "report.md")
     cmp = sub.add_parser("compare")
     cmp.add_argument("before", type=Path)
