@@ -32,7 +32,7 @@ scripts/uninstall.sh   # unregister the login item, stop the agent, delete the a
 ```
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
-alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's `agent`
+alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's `capture-agent-tests`
 job runs `scripts/test.sh` and `scripts/build.sh` (signed ad hoc, with
 `CODESIGN_IDENTITY=-`) on macOS for every pull request, and the nightly
 workflow runs `scripts/e2e.sh`. The pre-commit hook runs neither, so run them

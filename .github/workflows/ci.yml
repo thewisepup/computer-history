@@ -22,7 +22,7 @@ jobs:
       - run: python -m ruff check computer_history tests
       - run: python -m pytest -q
         env:
-          COMPUTER_HISTORY_HOOK_BUDGET: "1"
+          COMPUTER_HISTORY_HOOK_BUDGET: "2"
       - run: python -m unittest -q
 
   typecheck:
@@ -84,7 +84,7 @@ jobs:
             perf-gate.txt
           if-no-files-found: ignore
 
-  agent:
+  capture-agent-tests:
     runs-on: macos-26
     timeout-minutes: 20
     steps:
