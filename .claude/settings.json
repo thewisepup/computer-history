@@ -2,11 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|NotebookEdit",
+        "matcher": "Bash|Edit|MultiEdit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-live-data.py\""
+            "command": "test -f \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-live-data.py\" || exit 0; python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-live-data.py\""
           }
         ]
       }

@@ -1,30 +1,27 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: blocks Bash commands and file-tool targets that name the live data folder.
-
-An accident guard for coding agents, not a security boundary; ComputerHistory-dev/ stays open.
-"""
+"""PreToolUse guard: blocks Bash commands and file-tool targets that name the live data folder."""
 
 import json
 import os
 import re
 import sys
 
-LIVE_FOLDER = re.compile(r"library/application support/computerhistory(?![\w-])", re.IGNORECASE)
+LIVE_FOLDER = re.compile(r"library/application support/computerhistory(?=$|[/\s*;&|)])", re.IGNORECASE)
 PATH_FIELDS = ("file_path", "notebook_path")
 
 
 def names_live_folder(text):
-    flattened = re.sub(r"[\"']|\\(?=\s)", "", text)
+    flattened = re.sub(r"/+", "/", re.sub(r"[\"']|\\(?=\s)", "", text))
     return bool(LIVE_FOLDER.search(flattened))
 
 
 def offending_text(tool_name, tool_input, cwd):
     if tool_name == "Bash":
-        command = tool_input.get("command") or ""
-        return command if names_live_folder(command) else None
+        command = tool_input.get("command")
+        return command if isinstance(command, str) and names_live_folder(command) else None
     for field in PATH_FIELDS:
         path = tool_input.get(field)
-        if not path:
+        if not isinstance(path, str) or not path:
             continue
         expanded = os.path.join(cwd or os.getcwd(), os.path.expanduser(os.path.expandvars(path)))
         for candidate in (path, expanded, os.path.realpath(expanded)):

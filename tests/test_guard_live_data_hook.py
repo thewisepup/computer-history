@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from live_data_guard import LIVE_DATA_DIR
+
+from computer_history.store.paths import default_db_path
 
 REPO = Path(__file__).resolve().parents[1]
 BLOCKED = 2
@@ -77,6 +80,7 @@ def test_bash_naming_the_live_folder_is_blocked_with_a_reason():
         "cp x ~/library/APPLICATION SUPPORT/computerhistory/history.db",
         'cd ~/Library/"Application Support"/ComputerHistory && ls',
         "du -sh ~/Library/Application\\ Support/ComputerHistory/*",
+        "rm ~/Library/Application\\ Support//ComputerHistory/history.db",
     ],
 )
 def test_every_spelling_of_the_live_folder_is_blocked(command: str):
@@ -95,6 +99,10 @@ def test_every_spelling_of_the_live_folder_is_blocked(command: str):
             },
         ),
         ("Write", {"file_path": "~/Library/Application Support/ComputerHistory/x", "content": ""}),
+        (
+            "MultiEdit",
+            {"file_path": "~/Library/Application Support/ComputerHistory/x.json", "edits": []},
+        ),
         (
             "NotebookEdit",
             {
@@ -144,6 +152,9 @@ def test_a_symlink_reached_through_home_is_blocked(tmp_path: Path, path: str):
         ("Bash", {"command": "ls ~/Library/Application\\ Support/ComputerHistory-dev/"}),
         ("Bash", {"command": 'rm "$HOME/Library/Application Support/ComputerHistory-dev"'}),
         ("Bash", {"command": "ls ~/Library/Application\\ Support/"}),
+        ("Bash", {"command": "ls ~/Library/Application\\ Support/ComputerHistory.bak/"}),
+        ("Bash", {"command": "ls ~/Library/Application\\ Support/ComputerHistory_dev/"}),
+        ("Edit", {"file_path": ["not", "a", "path"]}),
         ("Bash", {"command": ".venv/bin/python -m pytest -q"}),
         (
             "Write",
@@ -168,3 +179,28 @@ def test_the_dev_folder_unrelated_paths_and_file_contents_pass(
 @pytest.mark.parametrize("tool_name", ["Read", "Grep", "Glob"])
 def test_only_bash_and_the_file_editing_tools_are_guarded(tool_name: str):
     assert guard_command(tool_name) is None
+
+
+@pytest.mark.parametrize(
+    "path", [default_db_path().parent, LIVE_DATA_DIR], ids=["default_db_path", "LIVE_DATA_DIR"]
+)
+def test_the_folder_the_code_uses_is_the_one_blocked(path: Path):
+    assert run_hook("Bash", {"command": f"ls '{path}'"}).code == BLOCKED
+    assert run_hook("Write", {"file_path": str(path / "x"), "content": ""}).code == BLOCKED
+
+
+def test_a_missing_hook_script_lets_calls_through(tmp_path: Path):
+    command = guard_command("Bash")
+    assert command is not None
+
+    done = subprocess.run(
+        command,
+        shell=True,
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)},
+        timeout=10,
+    )
+
+    assert done.returncode == 0
