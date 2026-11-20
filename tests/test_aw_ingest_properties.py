@@ -79,6 +79,11 @@ IDLE_AFTER_A_TEN_MINUTE_SLEEP = Day(
     afk_phase=0,
     extra_polls=(1,),
 )
+A_REGULAR_POLL_RIGHT_AT_WAKE = Day(
+    (Stretch("active", 151, "Code"), Stretch("asleep", 600, "Code"), Stretch("idle", 2, "Code")),
+    poll_phase=31,
+    afk_phase=2,
+)
 A_DAY_STARTING_ASLEEP = Day(
     (Stretch("asleep", 601, "Code"), Stretch("idle", 100, "Code")),
     poll_phase=0,
@@ -87,6 +92,7 @@ A_DAY_STARTING_ASLEEP = Day(
 
 
 @example(IDLE_AFTER_A_TEN_MINUTE_SLEEP)
+@example(A_REGULAR_POLL_RIGHT_AT_WAKE)
 @example(A_DAY_STARTING_ASLEEP)
 @given(days)
 def test_every_afk_event_is_stored(day: Day) -> None:
