@@ -19,8 +19,9 @@
                      the rest in extras
 
     For status: backlog.py   what waits in the spool and its newest record, changing nothing
-                stored.py    the stored records' kinds, apps and flags, the newest, the
-                             day's counts
+                window_text.py
+                             the stored window text records' kinds, apps and flags, the newest,
+                             the day's counts
                 coverage.py  records judged against attended time: stretches no record
                              explains within the heartbeat tolerance, and liveness
                 agreement.py each capture's app judged against the app aw-window shows
@@ -75,7 +76,7 @@ from computer_history.sources.capture_spool.spool import (
     SpoolError,
     finished_files,
 )
-from computer_history.sources.capture_spool.stored import (
+from computer_history.sources.capture_spool.window_text import (
     DayCounts,
     StoredRecord,
     day_counts,

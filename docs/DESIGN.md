@@ -96,8 +96,8 @@ computer_history/
                 # normalize (its projectors), adapter (CaptureSpool:
                 # two streams, one file per pull, removed once both stored
                 # it); for status, backlog (what
-                # waits in the spool), stored (the stored records' kinds and
-                # apps, the day's counts), coverage (unobserved stretches,
+                # waits in the spool), window_text (the stored window text
+                # records' kinds and apps, the day's counts), coverage (unobserved stretches,
                 # liveness), agreement (each capture's app against aw-window)
                 # and screenshots (the stored screenshot records' statuses,
                 # kept image bytes and missing permission)
