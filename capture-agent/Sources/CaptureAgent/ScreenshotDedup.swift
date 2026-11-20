@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// Remembers the last kept frame of each of the most recently seen windows.
-struct FrameDedup {
+struct ScreenshotDedup {
     static let windows = 12
     static let pixelTolerance = 24
 
@@ -13,7 +13,7 @@ struct FrameDedup {
     }
 
     /// A kept screenshot as the memory holds it: its image path, thumbnail, capture time and recognized text once known.
-    struct KeptFrame {
+    struct KeptScreenshot {
         let imagePath: String
         let thumbnail: FrameThumbnail
         let keptAt: Date
@@ -30,7 +30,7 @@ struct FrameDedup {
     }
 
     /// Marks the window as just seen and returns its last kept frame if that was kept in the last keepAfter seconds and the frame changed fewer pixels than the threshold.
-    mutating func see(_ frame: FrameThumbnail, in window: Window, at time: Date) -> KeptFrame? {
+    mutating func see(_ frame: FrameThumbnail, in window: Window, at time: Date) -> KeptScreenshot? {
         guard let index = seen.firstIndex(where: { $0.window == window }) else { return nil }
         let entry = seen.remove(at: index)
         seen.append(entry)
@@ -42,7 +42,7 @@ struct FrameDedup {
     }
 
     /// Makes the frame the window's last kept one, forgetting the least recently seen window past the limit.
-    mutating func remember(_ kept: KeptFrame, for window: Window) {
+    mutating func remember(_ kept: KeptScreenshot, for window: Window) {
         seen.removeAll { $0.window == window }
         seen.append(Entry(window: window, kept: kept))
         if seen.count > Self.windows { seen.removeFirst() }
@@ -50,6 +50,6 @@ struct FrameDedup {
 
     private struct Entry {
         let window: Window
-        let kept: KeptFrame
+        let kept: KeptScreenshot
     }
 }

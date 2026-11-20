@@ -66,7 +66,7 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(shots[2]["text"] as? String == "text of \(shots[2]["id"] as! String)")
 }
 
-@Test func duplicatesQueuedWhileTheirKeptFrameIsRecognizedCopyItsFinishedText() throws {
+@Test func duplicatesQueuedWhileTheirKeptScreenshotIsRecognizedCopyItsFinishedText() throws {
     let fixture = LoopFixture()
     let recognizer = HeldRecognizer()
     fixture.mac.recognizedText = recognizer.text
@@ -140,7 +140,7 @@ final class HeldRecognizer: @unchecked Sendable {
     ))
 }
 
-@Test func aHungRecognitionCostsOnlyItsTimeoutAndLaterKeptFramesGetEmptyTextUntilItAnswers() throws {
+@Test func aHungRecognitionCostsOnlyItsTimeoutAndLaterKeptScreenshotsGetEmptyTextUntilItAnswers() throws {
     let fixture = LoopFixture()
     fixture.screenshots.recognitionTimeout = 0.05
     let recognizer = HeldRecognizer()
@@ -178,7 +178,7 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(fixture.counts.take().description.contains(", 0 screenshot records queued"))
 }
 
-@Test func aWindowWhoseKeptFrameGotNoTextKeepsItsNextFrameAndReadsIt() throws {
+@Test func aWindowWhoseKeptScreenshotGotNoTextKeepsItsNextFrameAndReadsIt() throws {
     let fixture = LoopFixture()
     let failing = LockedFlag(true)
     fixture.mac.recognizedText = { image in

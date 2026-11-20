@@ -48,7 +48,7 @@ final class CaptureLoop<M: Mac> {
                 longEdge: settings.screenshots.longEdge,
                 pause: settings.pause,
                 idleThreshold: settings.capture.idleThreshold,
-                dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter),
+                dedup: ScreenshotDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter),
                 reminder: PermissionReminder(file: settings.permissionReminderFile),
                 log: log
             )

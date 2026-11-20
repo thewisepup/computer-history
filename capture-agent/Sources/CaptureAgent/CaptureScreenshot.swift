@@ -38,7 +38,7 @@ struct CaptureScreenshot<M: Mac> {
     let longEdge: Int
     let pause: PauseSwitch
     let idleThreshold: TimeInterval
-    var dedup: FrameDedup
+    var dedup: ScreenshotDedup
     var reminder: PermissionReminder
     let log: (String) -> Void
 
@@ -67,7 +67,7 @@ struct CaptureScreenshot<M: Mac> {
             guard let hash = differenceHash(image), let frame = FrameThumbnail(image, points: focused.frame.size) else {
                 return .ready(.failed(of: capture))
             }
-            let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
+            let window = ScreenshotDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(frame, in: window, at: capture.capturedAt), !kept.text.failed {
                 return .copy(from: kept.text) { read in
                     .duplicate(
@@ -79,7 +79,7 @@ struct CaptureScreenshot<M: Mac> {
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
             let text = KeptText()
             dedup.remember(
-                FrameDedup.KeptFrame(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
+                ScreenshotDedup.KeptScreenshot(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
             )
             return .recognize(image: saved.file, into: text) { read in
                 .kept(

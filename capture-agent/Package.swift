@@ -26,7 +26,7 @@ import PackageDescription
 ///     ScreenshotQueue.swift     the screenshot thread: writes screenshot records in capture order,
 ///           |                   reading the text of each kept image, duplicates copying it
 ///     TextRecognition.swift     the text in a saved picture, read by Vision
-///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
+///     ScreenshotDedup.swift      the last kept screenshot of each of the most recently seen windows,
 ///           |               and whether a new one changed enough or is old enough to keep
 ///     FrameThumbnail.swift  the small grey copy of a screenshot, one pixel per square of points,
 ///                           that dedup compares pixel by pixel

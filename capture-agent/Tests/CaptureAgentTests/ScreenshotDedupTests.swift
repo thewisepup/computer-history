@@ -185,7 +185,7 @@ func spoolDate(_ text: String?) -> Date? {
 
 @Test func onlyTheMostRecentlySeenWindowsAreRemembered() throws {
     let fixture = LoopFixture()
-    let titles = (1...FrameDedup.windows + 1).map { "Note \($0)" }
+    let titles = (1...ScreenshotDedup.windows + 1).map { "Note \($0)" }
     titles.forEach(fixture.showTitle)
     fixture.showTitle(titles[1])
     fixture.showTitle(titles[0])
@@ -214,63 +214,63 @@ func thumbnail(_ pixels: [UInt8], width: Int = 160) -> FrameThumbnail {
     FrameThumbnail(width: width, height: pixels.count / width, pixels: pixels)
 }
 
-func keptFrame(_ thumbnail: FrameThumbnail, at time: Date = start) -> FrameDedup.KeptFrame {
-    FrameDedup.KeptFrame(imagePath: "screenshots/a.jpg", thumbnail: thumbnail, keptAt: time, text: KeptText())
+func keptScreenshot(_ thumbnail: FrameThumbnail, at time: Date = start) -> ScreenshotDedup.KeptScreenshot {
+    ScreenshotDedup.KeptScreenshot(imagePath: "screenshots/a.jpg", thumbnail: thumbnail, keptAt: time, text: KeptText())
 }
 
 @Test(arguments: [(0, true), (7, true), (8, false), (16_000, false)])
 func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, duplicate: Bool) throws {
-    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
-    let window = FrameDedup.Window(id: 1, title: "Notes")
+    var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
+    let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let white = [UInt8](repeating: 255, count: 16_000)
-    dedup.remember(keptFrame(thumbnail(white)), for: window)
-    let frame = (0..<16_000).map { $0 < changed ? UInt8(255 - FrameDedup.pixelTolerance - 1) : 255 }
+    dedup.remember(keptScreenshot(thumbnail(white)), for: window)
+    let frame = (0..<16_000).map { $0 < changed ? UInt8(255 - ScreenshotDedup.pixelTolerance - 1) : 255 }
     let match = dedup.see(thumbnail(frame), in: window, at: start)
     #expect((match != nil) == duplicate)
 }
 
 @Test func aPixelWithinTheToleranceHasNotChanged() throws {
-    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
-    let window = FrameDedup.Window(id: 1, title: "Notes")
-    dedup.remember(keptFrame(thumbnail([UInt8](repeating: 128, count: 16_000))), for: window)
-    let match = dedup.see(thumbnail([UInt8](repeating: UInt8(128 + FrameDedup.pixelTolerance), count: 16_000)), in: window, at: start)
+    var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
+    let window = ScreenshotDedup.Window(id: 1, title: "Notes")
+    dedup.remember(keptScreenshot(thumbnail([UInt8](repeating: 128, count: 16_000))), for: window)
+    let match = dedup.see(thumbnail([UInt8](repeating: UInt8(128 + ScreenshotDedup.pixelTolerance), count: 16_000)), in: window, at: start)
     #expect(match != nil)
 }
 
 @Test(arguments: [(0.0, true), (600.0, true), (600.5, false), (-0.5, false), (-86_400, false)])
 func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, duplicate: Bool) throws {
-    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
-    let window = FrameDedup.Window(id: 1, title: "Notes")
+    var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
+    let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptFrame(frame), for: window)
+    dedup.remember(keptScreenshot(frame), for: window)
     let match = dedup.see(frame, in: window, at: start.addingTimeInterval(age))
     #expect((match != nil) == duplicate)
 }
 
 @Test func aThresholdOfZeroCountsEveryFrameAsChanged() throws {
-    var dedup = FrameDedup(changePixels: 0, keepAfter: 600)
-    let window = FrameDedup.Window(id: 1, title: "Notes")
+    var dedup = ScreenshotDedup(changePixels: 0, keepAfter: 600)
+    let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptFrame(frame), for: window)
+    dedup.remember(keptScreenshot(frame), for: window)
     let match = dedup.see(frame, in: window, at: start)
     #expect(match == nil)
 }
 
 @Test func aFrameOfAnotherSizeIsAChange() throws {
-    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
-    let window = FrameDedup.Window(id: 1, title: "Notes")
-    dedup.remember(keptFrame(thumbnail([UInt8](repeating: 0, count: 16_000))), for: window)
+    var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
+    let window = ScreenshotDedup.Window(id: 1, title: "Notes")
+    dedup.remember(keptScreenshot(thumbnail([UInt8](repeating: 0, count: 16_000))), for: window)
     let match = dedup.see(thumbnail([UInt8](repeating: 0, count: 16_000), width: 100), in: window, at: start)
     #expect(match == nil)
 }
 
 @Test func aWindowIsItsWindowIDAndItsTitle() throws {
-    var dedup = FrameDedup(changePixels: 8, keepAfter: 600)
+    var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
     let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptFrame(frame), for: FrameDedup.Window(id: 1, title: "Notes"))
-    let otherWindow = dedup.see(frame, in: FrameDedup.Window(id: 2, title: "Notes"), at: start)
-    let otherTitle = dedup.see(frame, in: FrameDedup.Window(id: 1, title: "Inbox"), at: start)
-    let same = dedup.see(frame, in: FrameDedup.Window(id: 1, title: "Notes"), at: start)
+    dedup.remember(keptScreenshot(frame), for: ScreenshotDedup.Window(id: 1, title: "Notes"))
+    let otherWindow = dedup.see(frame, in: ScreenshotDedup.Window(id: 2, title: "Notes"), at: start)
+    let otherTitle = dedup.see(frame, in: ScreenshotDedup.Window(id: 1, title: "Inbox"), at: start)
+    let same = dedup.see(frame, in: ScreenshotDedup.Window(id: 1, title: "Notes"), at: start)
     #expect(otherWindow == nil)
     #expect(otherTitle == nil)
     #expect(same != nil)
