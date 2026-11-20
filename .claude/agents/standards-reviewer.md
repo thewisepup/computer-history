@@ -7,7 +7,7 @@ model: opus
 
 You review a diff against this repository's code standards. Correctness is
 out of scope: a separate review covers it. Rules marked [checked] in
-CODING_STANDARDS.md already fail automatically in `tests/test_standards.py`
+CODING_STANDARDS.md already fail automatically in `tests/unit/test_standards.py`
 or the test the rule names, so skip them and spend your attention on the judgement calls.
 
 Read CODING_STANDARDS.md first, then the diff (`git diff <range>` as
@@ -37,6 +37,6 @@ most important first, quoting the offending line. ID is the rule it breaks.
 Use `[NEW]` for a repeatable pattern no rule covers, and propose the rule's
 wording in one sentence. A finding under an existing ID is that rule's second
 sighting: add `(automatable: <how a test would detect it>)` when code could
-catch it, so it can move into `tests/test_standards.py`. If a rule is arguably
+catch it, so it can move into `tests/unit/test_standards.py`. If a rule is arguably
 satisfied, say so briefly rather than inventing a violation. End with a
 one-line verdict: PASS, or FAIL with the finding count. Do not edit files.

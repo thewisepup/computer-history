@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 PACKAGE = REPO / "computer_history"
 SOURCES = sorted(PACKAGE.rglob("*.py"))
-TESTS = sorted(Path(__file__).resolve().parent.rglob("*.py"))
+TESTS = sorted((REPO / "tests").rglob("*.py"))
 COMMENTED = SOURCES + TESTS
 
 BANNED_MODULE_NAMES = {"utils", "helpers", "misc", "common", "shared", "types", "reads", "writes"}

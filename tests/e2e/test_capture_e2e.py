@@ -26,7 +26,7 @@ from computer_history.store import DB_ENV_VAR, resolve_db_path
 from computer_history.store.timefmt import to_utc
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "capture-agent" / "e2e"
 CONTRACT = REPO / "fixtures" / "spool" / "records.jsonl"
 CLI = Path(sys.executable).with_name("computer-history")

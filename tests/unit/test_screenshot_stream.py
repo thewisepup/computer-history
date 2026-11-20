@@ -31,7 +31,7 @@ from computer_history.sources import (
 from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import connect, get_progress, utc_iso
 
-FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
+FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()
 SCREENSHOT_LINES = [line for line in FIXTURE_LINES if json.loads(line)["kind"] == SCREENSHOT_KIND]
 CAPTURE_AGENT_LINES = [line for line in FIXTURE_LINES if line not in SCREENSHOT_LINES]

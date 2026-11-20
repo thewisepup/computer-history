@@ -71,7 +71,7 @@ and never blocks a merge.
 Hypothesis tests run derandomized with no example database, so a run never
 passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:
-`HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/test_aw_ingest_properties.py`.
+`HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/unit/test_aw_ingest_properties.py`.
 
 Agents that edit code work in their own git worktree, never in the main
 checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
@@ -121,7 +121,7 @@ computer-history dev bench                     # wall-clock medians against this
 ```
 
 A new stream, table, timeline field or public store function lands with its
-synthetic coverage in the same change. `tests/test_synthetic_coverage.py` goes
+synthetic coverage in the same change. `tests/data/test_synthetic_coverage.py` goes
 red until it does. It needs:
 
 - every stream a source projects fed by a renderer in `RENDERERS`;

@@ -70,7 +70,7 @@ def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: 
     env = {**os.environ, "HOME": str(tmp_path)}
     run = subprocess.run(
         [sys.executable, "-c", script],
-        cwd=Path(__file__).parent,
+        cwd=Path(__file__).resolve().parents[1],
         env=env,
         capture_output=True,
         text=True,
