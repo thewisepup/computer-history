@@ -83,3 +83,14 @@ func scalesTheLongEdgeDownAndNeverEnlarges(width: Int, height: Int, storedWidth:
         try folder.store().save(fixtureImage(width: 10, height: 10), id: UUID(), at: Date())
     }
 }
+
+@Test func anExistingScreenshotsFolderIsClosedToOthersToo() throws {
+    let folder = TempImageFolder()
+    let day = folder.url.appendingPathComponent(JPEGImageStore.folderName).appendingPathComponent("2026-11-18")
+    try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: day.deletingLastPathComponent().path)
+    _ = try folder.store().save(fixtureImage(width: 10, height: 10), id: UUID(), at: utc("2026-11-18T09:00:00.000Z"))
+    for path in [day.deletingLastPathComponent().path, day.path] {
+        #expect(try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int == 0o700)
+    }
+}

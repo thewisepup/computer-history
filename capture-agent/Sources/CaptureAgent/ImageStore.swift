@@ -24,7 +24,7 @@ public struct JPEGImageStore: ImageStore, Sendable {
     let folder: URL
     let longEdge: Int
     let quality: Int
-    var timeZone = TimeZone.current
+    var timeZone = TimeZone.autoupdatingCurrent
 
     public init(folder: URL, longEdge: Int, quality: Int) {
         self.folder = folder
@@ -42,11 +42,11 @@ public struct JPEGImageStore: ImageStore, Sendable {
         let data = try jpeg(try downscaled(image))
         let day = dayStamp(date)
         let path = "\(Self.folderName)/\(day)/\(id.uuidString.lowercased()).jpg"
-        try FileManager.default.createDirectory(
-            at: folder.appendingPathComponent(Self.folderName).appendingPathComponent(day),
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
+        let root = folder.appendingPathComponent(Self.folderName)
+        for directory in [root, root.appendingPathComponent(day)] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            chmod(directory.path, 0o700)
+        }
         let file = folder.appendingPathComponent(path)
         guard FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw ImageStoreError(description: "cannot write \(file.path)")
