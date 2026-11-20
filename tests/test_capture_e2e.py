@@ -18,7 +18,7 @@ import pytest
 
 from computer_history.cli.formatting import human_size, local_midnight, when
 from computer_history.sources.capture_spool import (
-    MAX_AX_TEXT_LENGTH,
+    MAX_WINDOW_TEXT_LENGTH,
     SPOOL_ENV_VAR,
     resolve_spool_path,
 )
@@ -288,7 +288,7 @@ def test_a_long_capture_is_cut_off_in_raw_and_capped_in_its_signal(session: Sess
     assert long["full_text_bytes"] == len(full)
     assert long["text"] == full[:50_000]
     _, _, text, extras = session.signals()[long["id"]]
-    assert text == full[:MAX_AX_TEXT_LENGTH]
+    assert text == full[:MAX_WINDOW_TEXT_LENGTH]
     assert json.loads(extras)["text_cut_off"] is True
 
 

@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     SCREENSHOT_SOURCE,
+    WINDOW_TEXT_SOURCE,
     CaptureSpool,
     commit_pull,
     projector_for,
@@ -39,7 +39,7 @@ def main() -> None:
     (spool / NAME).write_text(line(2) + "\n")  # the agent finishes record 2, then crashes
     first, second = CaptureSpool(spool), CaptureSpool(spool)
     project = projector_for([first])
-    streams = (AX_TEXT_SOURCE, SCREENSHOT_SOURCE)
+    streams = (WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE)
     early = [first.pull_after(s, None, now=NOW) for s in streams]  # both ingests read the file
     late = [second.pull_after(s, None, now=NOW) for s in streams]
     for stream, pulled in zip(streams, late, strict=True):

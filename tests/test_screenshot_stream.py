@@ -15,11 +15,11 @@ from fake_aw import FakeAW
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     MAX_RECOGNIZED_TEXT_LENGTH,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
+    WINDOW_TEXT_SOURCE,
     CaptureSpool,
     IngestOutcome,
     commit_pull,
@@ -102,7 +102,7 @@ def test_the_fixture_stores_every_screenshot_record_verbatim_with_its_signal(
         )
         for line in SCREENSHOT_LINES
     ]
-    assert [row[3] for row in stored(conn, AX_TEXT_SOURCE)] == CAPTURE_AGENT_LINES
+    assert [row[3] for row in stored(conn, WINDOW_TEXT_SOURCE)] == CAPTURE_AGENT_LINES
     capture = "6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e0"
     shot = "6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e1"
     assert screenshot_signals(conn) == [
@@ -240,7 +240,7 @@ def commit(conn: sqlite3.Connection, spool: CaptureSpool, stream: str, *, crash:
 
 @pytest.mark.parametrize(
     ("first", "second"),
-    [(AX_TEXT_SOURCE, SCREENSHOT_SOURCE), (SCREENSHOT_SOURCE, AX_TEXT_SOURCE)],
+    [(WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE), (SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE)],
 )
 def test_a_spool_file_is_removed_only_once_both_streams_have_stored_it(
     conn: sqlite3.Connection, spool_dir: Path, first: str, second: str
@@ -254,11 +254,11 @@ def test_a_spool_file_is_removed_only_once_both_streams_have_stored_it(
 
     commit(conn, spool, second)
     assert not spooled.exists()
-    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert len(stored(conn, WINDOW_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
     assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
 
 
-@pytest.mark.parametrize("crashed", [AX_TEXT_SOURCE, SCREENSHOT_SOURCE])
+@pytest.mark.parametrize("crashed", [WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE])
 def test_a_crash_after_one_stream_stores_a_file_loses_nothing_from_either(
     conn: sqlite3.Connection, spool_dir: Path, crashed: str
 ) -> None:
@@ -269,7 +269,7 @@ def test_a_crash_after_one_stream_stores_a_file_loses_nothing_from_either(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW + timedelta(minutes=1))
 
     assert summary.ok
-    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert len(stored(conn, WINDOW_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
     assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
     assert not spooled.exists()
 
@@ -279,9 +279,9 @@ def test_a_new_file_under_a_name_one_stream_already_stored_waits_for_both(
 ) -> None:
     spooled = write_file(spool_dir, CAPTURE_AGENT_LINES)
     spool = CaptureSpool(spool_dir)
-    commit(conn, spool, AX_TEXT_SOURCE)
+    commit(conn, spool, WINDOW_TEXT_SOURCE)
     other = CaptureSpool(spool_dir)
-    commit(conn, other, AX_TEXT_SOURCE)
+    commit(conn, other, WINDOW_TEXT_SOURCE)
     commit(conn, other, SCREENSHOT_SOURCE)
     assert not spooled.exists()
     write_file(spool_dir, SCREENSHOT_LINES)
@@ -299,9 +299,9 @@ def test_a_file_of_screenshot_records_alone_is_stored_and_removed(
 
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(0, 0, 0, None)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(0, 0, 0, None)
     assert summary.outcomes[SCREENSHOT_SOURCE].inserted == len(SCREENSHOT_LINES)
-    assert get_progress(conn, AX_TEXT_SOURCE) is None
+    assert get_progress(conn, WINDOW_TEXT_SOURCE) is None
     assert not spooled.exists()
 
 
@@ -327,8 +327,8 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
 
     assert summary.outcomes[SCREENSHOT_SOURCE].inserted == len(SCREENSHOT_LINES)
     assert summary.outcomes[SCREENSHOT_SOURCE].rejected == 4
-    assert summary.outcomes[AX_TEXT_SOURCE].inserted == len(CAPTURE_AGENT_LINES)
-    assert summary.outcomes[AX_TEXT_SOURCE].rejected == 2
+    assert summary.outcomes[WINDOW_TEXT_SOURCE].inserted == len(CAPTURE_AGENT_LINES)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE].rejected == 2
     assert not spooled.exists()
     assert [p.read_bytes() for p in (spool_dir / UNREADABLE_FOLDER).iterdir()] == [kept]
     assert "skipped 4 unusable record(s) in spool file" in caplog.text
@@ -343,7 +343,7 @@ def test_screenshot_records_never_move_the_window_text_progress(
 
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert get_progress(conn, AX_TEXT_SOURCE).position == utc_iso(capture["captured_at"])
+    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(capture["captured_at"])
     assert get_progress(conn, SCREENSHOT_SOURCE).position == utc_iso(T0 + timedelta(minutes=9))
 
 
@@ -361,8 +361,8 @@ def test_the_spool_backlog_names_its_newest_capture_agent_record_not_a_screensho
 def test_the_spool_feeds_both_streams() -> None:
     spool = CaptureSpool(Path("unused"))
 
-    assert spool.streams() == [AX_TEXT_SOURCE, SCREENSHOT_SOURCE]
-    assert set(spool.projectors) == {AX_TEXT_SOURCE, SCREENSHOT_SOURCE}
+    assert spool.streams() == [WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE]
+    assert set(spool.projectors) == {WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE}
 
 
 
@@ -408,7 +408,7 @@ def failing_read(monkeypatch: pytest.MonkeyPatch, *, failing_call: int) -> None:
 
 @pytest.mark.parametrize(
     ("stored_first", "failed"),
-    [(AX_TEXT_SOURCE, SCREENSHOT_SOURCE), (SCREENSHOT_SOURCE, AX_TEXT_SOURCE)],
+    [(WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE), (SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE)],
 )
 def test_one_streams_failed_read_never_sets_aside_what_the_other_stream_still_needs(
     conn: sqlite3.Connection,
@@ -430,7 +430,7 @@ def test_one_streams_failed_read_never_sets_aside_what_the_other_stream_still_ne
     assert f"cannot read spool file {FILE_NAME} for {failed}" in caplog.text
     summary = poll(conn, [spool], now=NOW + timedelta(minutes=1))
     assert summary.ok
-    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert len(stored(conn, WINDOW_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
     assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
     assert not spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()
 
@@ -445,8 +445,8 @@ def test_a_read_failing_for_one_stream_before_any_stream_stored_the_file_waits_t
     first = poll(conn, [spool], now=NOW)
 
     assert first.ok and spooled.exists()
-    assert stored(conn, AX_TEXT_SOURCE) == []
+    assert stored(conn, WINDOW_TEXT_SOURCE) == []
     assert len(stored(conn, SCREENSHOT_SOURCE)) == len(SCREENSHOT_LINES)
     poll(conn, [spool], now=NOW + timedelta(minutes=1))
-    assert len(stored(conn, AX_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
+    assert len(stored(conn, WINDOW_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)
     assert not spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()

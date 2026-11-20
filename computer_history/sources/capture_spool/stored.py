@@ -7,9 +7,9 @@ from datetime import datetime
 from typing import NamedTuple
 
 from computer_history.sources.capture_spool.record import (
-    AX_TEXT_SOURCE,
     CAPTURE_KIND,
     EXCLUDED_KIND,
+    WINDOW_TEXT_SOURCE,
 )
 from computer_history.store import latest_payload_value, payload_values
 from computer_history.text import clean_text
@@ -37,7 +37,7 @@ class DayCounts:
 
 def stored_records(conn: sqlite3.Connection, start: datetime, end: datetime) -> list[StoredRecord]:
     """The stored records captured in the range, oldest first."""
-    rows = payload_values(conn, AX_TEXT_SOURCE, start, end, (KIND_PATH, *FLAG_PATHS, APP_PATH))
+    rows = payload_values(conn, WINDOW_TEXT_SOURCE, start, end, (KIND_PATH, *FLAG_PATHS, APP_PATH))
     return [
         StoredRecord(
             row.started_at,
@@ -55,7 +55,7 @@ def newest_stored(
     conn: sqlite3.Connection, *, until: datetime, kind: str | None = None
 ) -> tuple[datetime, str | None] | None:
     """The time and kind of the newest stored record up to a time, of a kind if given."""
-    found = latest_payload_value(conn, AX_TEXT_SOURCE, KIND_PATH, until=until, matching=kind)
+    found = latest_payload_value(conn, WINDOW_TEXT_SOURCE, KIND_PATH, until=until, matching=kind)
     if found is None:
         return None
     at, value = found

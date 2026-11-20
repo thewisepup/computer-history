@@ -18,10 +18,10 @@ from computer_history.sources.activitywatch import (
 )
 from computer_history.sources.capture_spool import (
     APP_TOLERANCE,
-    AX_TEXT_SOURCE,
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    WINDOW_TEXT_SOURCE,
     AppAgreement,
     Coverage,
     DayCounts,
@@ -78,7 +78,7 @@ def capture_health(
         spool, spool_error = spool_backlog(spool_folder), None
     except SpoolError as exc:
         spool, spool_error = None, str(exc)
-    summary = next((s for s in summaries if s.source == AX_TEXT_SOURCE), None)
+    summary = next((s for s in summaries if s.source == WINDOW_TEXT_SOURCE), None)
     stored = newest_stored(conn, until=now)
     if summary is None or summary.earliest_started_at is None or stored is None:
         return CaptureHealth(False, spool, spool_error)

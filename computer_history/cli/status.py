@@ -19,10 +19,10 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
+    WINDOW_TEXT_SOURCE,
     ActivityWatch,
     AWClient,
     CaptureHealth,
@@ -156,13 +156,14 @@ def _print_gaps(
     if not summaries:
         print("  nothing to check yet")
     for s in summaries:
-        if s.source == AX_TEXT_SOURCE and health.reported:
+        if s.source == WINDOW_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
             continue
         if s.source == SCREENSHOT_SOURCE:
             if health.coverage is not None:
                 print(
-                    f"  {s.source}: not checked (coverage is judged from {AX_TEXT_SOURCE} records)"
+                    f"  {s.source}: not checked"
+                    f" (coverage is judged from {WINDOW_TEXT_SOURCE} records)"
                 )
             continue
         end = s.settled_until or s.latest_ended_at
@@ -189,10 +190,10 @@ def _print_gaps(
 def _print_capture_gaps(health: CaptureHealth) -> None:
     coverage = health.coverage
     if coverage is None:
-        print(f"  {AX_TEXT_SOURCE}: no settled span to check yet")
+        print(f"  {WINDOW_TEXT_SOURCE}: no settled span to check yet")
         return
     print(
-        f"  {AX_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
+        f"  {WINDOW_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
         " not paused):"
     )
@@ -201,19 +202,19 @@ def _print_capture_gaps(health: CaptureHealth) -> None:
         + [(gap, "cannot be judged: no aw-afk data") for gap in coverage.unjudged]
     )
     if not warnings:
-        print(f"  {AX_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
+        print(f"  {WINDOW_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
     for gap, why in warnings[:MAX_GAPS_SHOWN]:
         print(
-            f"  warning: no {AX_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
+            f"  warning: no {WINDOW_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
             f" ({duration(gap.seconds)}), {why}"
         )
     if len(warnings) > MAX_GAPS_SHOWN:
-        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {AX_TEXT_SOURCE} gaps")
+        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {WINDOW_TEXT_SOURCE} gaps")
 
 
 def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None:
     if not health.reported:
-        print(f"Capture agent: has not reported yet (no {AX_TEXT_SOURCE} records stored)")
+        print(f"Capture agent: has not reported yet (no {WINDOW_TEXT_SOURCE} records stored)")
         print(f"  spool         {_spool(health, spool_path, now)}")
         return
     print("Capture agent:")

@@ -16,10 +16,10 @@ from projectors import AW
 from computer_history import cli
 from computer_history.cli import status as cli_status
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
+    WINDOW_TEXT_SOURCE,
     KeptScreenshot,
     screenshot_health,
 )
@@ -233,7 +233,7 @@ def store_captures(conn: sqlite3.Connection, times: list[datetime]) -> None:
     for n, when in enumerate(times, start=100):
         at = when.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         data = {**capture, "id": f"00000000-0000-4000-8000-{n:012x}", "captured_at": at}
-        observations.append(Observation(AX_TEXT_SOURCE, data["id"], at, at, json.dumps(data)))
+        observations.append(Observation(WINDOW_TEXT_SOURCE, data["id"], at, at, json.dumps(data)))
     insert_observations(conn, observations, project=AW)
 
 

@@ -49,18 +49,18 @@ from computer_history.sources.capture_spool.coverage import (
     liveness,
 )
 from computer_history.sources.capture_spool.normalize import (
-    MAX_AX_TEXT_LENGTH,
     MAX_RECOGNIZED_TEXT_LENGTH,
+    MAX_WINDOW_TEXT_LENGTH,
 )
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.sources.capture_spool.record import (
-    AX_TEXT_SOURCE,
     CAPTURE_KIND,
     PAUSED_KIND,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_STREAMS,
     SPOOL_VERSION,
+    WINDOW_TEXT_SOURCE,
     InvalidRecord,
     parse_record,
 )
@@ -86,11 +86,11 @@ from computer_history.sources.capture_spool.stored import (
 __all__ = [
     "AGENT_ALIVE_WITHIN",
     "APP_TOLERANCE",
-    "AX_TEXT_SOURCE",
+    "WINDOW_TEXT_SOURCE",
     "CAPTURE_KIND",
     "CAPTURE_TOLERANCE",
     "HEARTBEAT_SECONDS",
-    "MAX_AX_TEXT_LENGTH",
+    "MAX_WINDOW_TEXT_LENGTH",
     "MAX_RECOGNIZED_TEXT_LENGTH",
     "PAUSED_KIND",
     "SCREENSHOT_KIND",
