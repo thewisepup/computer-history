@@ -15,3 +15,8 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
   exit 1
 fi
 "$PY" -m pytest -q -m "not perf and not dataset"
+if ! "$PY" -m pyright --version >/dev/null 2>&1; then
+  echo "pre-commit: pyright not found in $PY; run \"$PY\" -m pip install -e '.[test,dev]'" >&2
+  exit 1
+fi
+"$PY" -m pyright --pythonpath "$PY"

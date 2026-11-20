@@ -37,7 +37,7 @@ class ProgressUpdate:
     def __post_init__(self) -> None:
         if not self.source:
             raise ValueError("progress update has no source")
-        if not isinstance(self.position, str) or not self.position:
+        if not isinstance(self.position, str) or not self.position:  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError(f"progress update for {self.source!r} has no position")
         if self.settled_until is not None:
             to_utc(self.settled_until)

@@ -8,6 +8,7 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
+from computer_history.sources.contract import JsonValue
 from computer_history.store import to_utc
 
 SPOOL_VERSION = 1
@@ -124,7 +125,7 @@ def parse_record(line: str) -> ParsedRecord:
     The error names the line's kind whenever the line names one this backend knows.
     """
     try:
-        data = json.loads(line)
+        data: JsonValue = json.loads(line)
     except ValueError as exc:
         raise InvalidRecord(f"not JSON: {exc}") from exc
     if not isinstance(data, dict):

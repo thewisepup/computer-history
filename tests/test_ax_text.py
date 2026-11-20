@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import stored_progress
 from fake_aw import FakeAW
 
 from computer_history import cli
@@ -166,8 +167,9 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
             text,
         )
         assert json.loads(extras) == {key: r[key] for key in extra_keys}
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(latest)
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).settled_until == latest
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
+    assert progress.position == utc_iso(latest)
+    assert progress.settled_until == latest
     assert not spooled.exists()
 
 
@@ -272,7 +274,8 @@ def test_a_large_backlog_is_ingested_oldest_first_in_one_poll(
     last = T0 + timedelta(minutes=299, seconds=1)
     assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(600, 0, 0, last)
     assert [row[0] for row in observations(conn)] == expected
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(last)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
+    assert progress.position == utc_iso(last)
     assert list(spool_dir.iterdir()) == []
 
 
@@ -286,7 +289,8 @@ def test_progress_never_moves_back_to_an_older_capture(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(1, 0, 0, None)
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(T0 + timedelta(minutes=5))
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
+    assert progress.position == utc_iso(T0 + timedelta(minutes=5))
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can remove files from a read-only folder")
@@ -321,7 +325,8 @@ def test_a_capture_dated_after_now_is_stored_but_does_not_move_progress(
     write_file(spool_dir, file_name(1), [record(1, T0), record(2, future)])
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
     assert len(observations(conn)) == 2
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(T0)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
+    assert progress.position == utc_iso(T0)
 
     write_file(spool_dir, file_name(2), [record(3, future)])
     later = future + timedelta(minutes=1)
@@ -329,7 +334,8 @@ def test_a_capture_dated_after_now_is_stored_but_does_not_move_progress(
     write_file(spool_dir, file_name(3), [record(4, T0 + timedelta(minutes=3))])
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(T0 + timedelta(minutes=3))
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
+    assert progress.position == utc_iso(T0 + timedelta(minutes=3))
 
 
 def test_a_backlog_is_listed_once_per_drain(

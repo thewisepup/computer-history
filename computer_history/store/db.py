@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
@@ -93,7 +93,7 @@ def _open(path: Path, mode: str) -> sqlite3.Connection:
 
 
 @contextmanager
-def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Connection, None, None]:
     """Run the block as one transaction, rolling back on any error.
 
     Takes the write lock up front and cannot be nested.
@@ -123,11 +123,11 @@ def load_migrations(directory: Traversable | None = None) -> list[Migration]:
     if directory is None:
         if _default_migrations is not None:
             return list(_default_migrations)
-        directory = resources.files(__package__).joinpath("migrations")
+        directory = resources.files("computer_history.store").joinpath("migrations")
         use_cache = True
     else:
         use_cache = False
-    migrations = []
+    migrations: list[Migration] = []
     for entry in directory.iterdir():
         if not entry.name.endswith(".sql"):
             continue
@@ -176,7 +176,7 @@ def _applied_by_another_process(conn: sqlite3.Connection, migration: Migration) 
 
 
 def _split_statements(script: str) -> list[str]:
-    statements = []
+    statements: list[str] = []
     buffer = ""
     for piece in script.split(";"):
         buffer += piece + ";"

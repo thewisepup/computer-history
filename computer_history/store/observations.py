@@ -67,9 +67,11 @@ def insert_observations(
             if result.rowcount == 0:
                 continue
             inserted += 1
+            observation_id = result.lastrowid
+            assert observation_id is not None, "an inserted row has a rowid"
             signal = project(source, payload)
             if signal is not None:
-                signals.append((result.lastrowid, source, started, ended, signal))
+                signals.append((observation_id, source, started, ended, signal))
         write_signals(conn, signals)
         moved = progress is not None and write_with_batch(conn, progress, advanced_at=ingested_at)
     return InsertResult(inserted=inserted, skipped=len(rows) - inserted, progress_moved=moved)

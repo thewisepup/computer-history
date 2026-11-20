@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 from computer_history.sources.activitywatch.discovery import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
-from computer_history.sources.contract import StreamProjector
+from computer_history.sources.contract import JsonValue, StreamProjector
 from computer_history.store import Signal
 from computer_history.text import clean_text, clean_url, extract_domain
 
@@ -21,9 +21,10 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
         return None
     if source not in (WINDOW_SOURCE, WEB_SOURCE):
         raise ValueError(f"not an ActivityWatch content source: {source!r}")
+    event: Mapping[str, Any] | JsonValue = payload
     if isinstance(payload, str):
-        payload = json.loads(payload)
-    raw_data = payload.get("data") if isinstance(payload, Mapping) else None
+        event = json.loads(payload)
+    raw_data: JsonValue = event.get("data") if isinstance(event, Mapping) else None
     data = dict(raw_data) if isinstance(raw_data, Mapping) else {}
     if source == WINDOW_SOURCE:
         app = clean_text(_take_str(data, "app"))

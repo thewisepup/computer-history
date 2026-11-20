@@ -135,10 +135,10 @@ def _add_input_option(
     if kind is bool:
         parser.add_argument(flag, dest=field.name, action="store_true", default=default)
         return
-    if kind not in PARSERS:
+    if not isinstance(kind, type) or kind not in PARSERS:
         raise TypeError(f"dev build-db cannot parse DatasetInputs.{field.name} ({kind})")
     choices = REGISTRIES.get(field.name)
-    bare = {}
+    bare: dict[str, Any] = {}
     if field.name in BARE_FLAG_VALUES:
         bare = {"nargs": "?", "const": BARE_FLAG_VALUES[field.name]}
         shown += f"; {flag} alone means {BARE_FLAG_VALUES[field.name]}"

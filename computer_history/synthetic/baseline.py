@@ -31,11 +31,8 @@ def baseline_file(version: str, folder: Path = BASELINE_DIR) -> Path:
 def compared_baseline(version: str, folder: Path = BASELINE_DIR) -> Path:
     """The SQLite version's own baseline file, else the newest version's, else its own unwritten."""
     own = baseline_file(version, folder)
-    others = {
-        _version(path): path
-        for path in folder.glob(baseline_file("*", folder).name)
-        if _version(path) is not None
-    }
+    versions = {path: _version(path) for path in folder.glob(baseline_file("*", folder).name)}
+    others = {version: path for path, version in versions.items() if version is not None}
     if own.exists() or not others:
         return own
     return others[max(others)]

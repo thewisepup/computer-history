@@ -107,6 +107,7 @@ def pull_bucket(
     observations: list[Observation] = []
     held: list[_Event] = []
     for event in events:
+        assert latest_start is not None
         if end_dt is not None:
             if event.start >= end_dt:
                 continue

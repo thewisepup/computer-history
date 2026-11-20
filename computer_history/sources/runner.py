@@ -48,7 +48,7 @@ class CycleSummary:
     """One poll's outcomes for the streams that committed, and the failures that cut it short."""
 
     at: datetime
-    outcomes: dict[str, IngestOutcome] = field(default_factory=dict)
+    outcomes: dict[str, IngestOutcome] = field(default_factory=dict[str, IngestOutcome])
     failures: tuple[StreamFailure, ...] = ()
 
     @property

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import stored_progress
 from fake_aw import FakeAW, at
 from projectors import no_signal
 
@@ -59,8 +60,7 @@ def test_store_round_trips_an_opaque_position_with_settled_until_set_separately(
         conn, [text_capture("c1", 0, 0)], progress=update, now=at(40), project=no_signal
     )
     assert result == InsertResult(inserted=1, skipped=0, progress_moved=True)
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None
+    progress = stored_progress(conn, "ax-text")
     settled = datetime(2026, 11, 17, 10, 30, tzinfo=UTC)
     assert (progress.position, progress.settled_until) == (SPOOL_POSITION, settled)
     assert progress.advanced_at == at(40)
@@ -70,8 +70,7 @@ def test_position_without_a_settled_time_is_kept(conn: sqlite3.Connection) -> No
     insert_observations(
         conn, [], progress=ProgressUpdate("ax-text", SPOOL_POSITION), project=no_signal
     )
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None
+    progress = stored_progress(conn, "ax-text")
     assert (progress.position, progress.settled_until) == (SPOOL_POSITION, None)
 
 
@@ -82,8 +81,7 @@ def test_advance_replaces_the_previous_progress(conn: sqlite3.Connection) -> Non
     insert_observations(
         conn, [], progress=ProgressUpdate("ax-text", "b.jsonl:0", at(9)), project=no_signal
     )
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None
+    progress = stored_progress(conn, "ax-text")
     assert (progress.position, progress.settled_until) == ("b.jsonl:0", at(9))
 
 
@@ -99,8 +97,8 @@ def test_repeating_the_same_progress_does_not_refresh_it(
         conn, [text_capture("c1", 0, 1)], progress=update, now=at(20), project=no_signal
     )
     assert again == InsertResult(inserted=1, skipped=0, progress_moved=False)
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None and progress.advanced_at == at(10)
+    progress = stored_progress(conn, "ax-text")
+    assert progress.advanced_at == at(10)
 
 
 @pytest.mark.parametrize(
@@ -120,8 +118,8 @@ def test_a_changed_position_or_settled_time_refreshes_progress(
     assert insert_observations(
         conn, [], progress=changed, now=at(20), project=no_signal
     ).progress_moved
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None and progress.advanced_at == at(20)
+    progress = stored_progress(conn, "ax-text")
+    assert progress.advanced_at == at(20)
 
 
 def test_set_if_none_sets_absent_progress(conn: sqlite3.Connection) -> None:
@@ -129,8 +127,8 @@ def test_set_if_none_sets_absent_progress(conn: sqlite3.Connection) -> None:
     assert insert_observations(
         conn, [text_capture("c1", 0, 1)], progress=first, project=no_signal
     ).progress_moved
-    progress = get_progress(conn, "ax-text")
-    assert progress is not None and progress.position == SPOOL_POSITION
+    progress = stored_progress(conn, "ax-text")
+    assert progress.position == SPOOL_POSITION
 
 
 def test_set_if_none_never_overwrites(conn: sqlite3.Connection) -> None:
@@ -253,6 +251,7 @@ def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path:
 
 
 def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
+    assert first_pull.frontier is not None
     old = previous_version(path)
     insert_observations(old, first_pull.observations, project=no_signal)
     old.execute(
@@ -264,6 +263,7 @@ def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connec
 
 
 def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
+    assert first_pull.frontier is not None
     conn = connect(path)
     update = ProgressUpdate(
         WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier
@@ -289,8 +289,8 @@ def test_migrated_cursor_resumes_like_progress_written_today(tmp_path: Path, pre
         overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
         assert starts == [at(55) - overlap - CLIP_GUARD]
         assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 3
-        progress = get_progress(conn, WINDOW_SOURCE)
-        assert progress is not None and progress.settled_until == at(70)
+        progress = stored_progress(conn, WINDOW_SOURCE)
+        assert progress.settled_until == at(70)
     finally:
         conn.close()
 

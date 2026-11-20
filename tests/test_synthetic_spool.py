@@ -51,6 +51,7 @@ from computer_history.synthetic.spool import (
     BUNDLE_IDS,
     RENDERED_SPOOL_FOLDER,
     TEXT_CAP_BYTES,
+    RenderedSpool,
     SpoolRenderer,
 )
 from computer_history.synthetic.timeline import PRECISION
@@ -253,10 +254,13 @@ def test_stored_captures_equal_the_manifest_and_fall_in_their_apps_stretches(
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
+    kinds = [r.kind for r in records if r.kind is not None]
+    apps = [r.app for r in records if r.app is not None]
+    assert len(kinds) == len(apps) == len(records)
     stored = CaptureCounts(
-        kinds=dict(sorted(Counter(r.kind for r in records).items())),
+        kinds=dict(sorted(Counter(kinds).items())),
         triggers=dict(sorted(Counter(row.values[0] for row in values).items())),
-        apps=dict(sorted(Counter(r.app for r in records).items())),
+        apps=dict(sorted(Counter(apps).items())),
     )
 
     assert stored == dataset.manifest.captures
@@ -274,6 +278,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     folder = dataset.db_path.parent
     built = sorted(path.name for path in folder.iterdir())
     rendered = dataset.rendered[SpoolRenderer.name]
+    assert isinstance(rendered, RenderedSpool)
     on_disk = {path.name: path.read_bytes() for path in (folder / RENDERED_SPOOL_FOLDER).iterdir()}
     conn = connect(dataset.db_path)
     try:

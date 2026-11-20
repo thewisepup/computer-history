@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from computer_history.sources.contract import SourceUnavailable
+from computer_history.sources.contract import JsonValue, SourceUnavailable
 from computer_history.store import to_utc
 
 DEFAULT_AW_URL = "http://127.0.0.1:5600/api/0"
@@ -88,7 +88,7 @@ class AWClient:
     def _bucket_path(bucket_id: str) -> str:
         return "/buckets/" + quote(bucket_id, safe="")
 
-    def _get(self, path: str) -> Any:
+    def _get(self, path: str) -> JsonValue:
         url = self.base_url + path
         request = Request(url, headers={"Accept": "application/json"}, method="GET")
         try:

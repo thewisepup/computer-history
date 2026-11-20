@@ -216,13 +216,13 @@ def _grew(
     before: Mapping[str, StatementCost], after: Mapping[str, StatementCost]
 ) -> tuple[str, ...]:
     none = StatementCost(0, 0)
-    changes = []
+    changes: list[tuple[int, int, str]] = []
     for text in before.keys() | after.keys():
         old, new = before.get(text, none), after.get(text, none)
         if old != new:
-            changes.append((-abs(new.count - old.count), -abs(new.vm_steps - old.vm_steps), text))
+            changes.append((-abs(new.runs - old.runs), -abs(new.vm_steps - old.vm_steps), text))
     return tuple(
-        f"{before.get(text, none).count:,} -> {after.get(text, none).count:,} runs,"
+        f"{before.get(text, none).runs:,} -> {after.get(text, none).runs:,} runs,"
         f" {before.get(text, none).vm_steps:,} -> {after.get(text, none).vm_steps:,} VM steps:"
         f" {text}"
         for _, _, text in sorted(changes)[:SHOWN_STATEMENTS]

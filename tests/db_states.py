@@ -5,9 +5,16 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from computer_history.store import connect, load_migrations, migrate
+from computer_history.store import Progress, connect, get_progress, load_migrations, migrate
 
 SUPPORTED = len(load_migrations())
+
+
+def stored_progress(conn: sqlite3.Connection, source: str) -> Progress:
+    """The source's stored ingest progress, failing the test if it has none."""
+    progress = get_progress(conn, source)
+    assert progress is not None, f"no stored progress for {source}"
+    return progress
 
 
 def outdated_db(path: Path) -> Path:

@@ -147,7 +147,8 @@ def _progress_note(result: BackfillResult) -> str:
             )
         case BackfillProgress.NO_POSITION:
             return "progress not set: the source reported no position to resume from"
-    return "progress not set: another ingest set it meanwhile"
+        case BackfillProgress.SET_MEANWHILE | None:
+            return "progress not set: another ingest set it meanwhile"
 
 
 def _print_plan(plan: BackfillPlan, *, list_chunks: bool) -> None:

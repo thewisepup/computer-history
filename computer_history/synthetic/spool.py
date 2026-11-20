@@ -117,7 +117,7 @@ class SpoolRenderer:
 
     def _hostile_windows(
         self, timeline: Timeline, captures: list[Capture], rng: random.Random
-    ) -> dict[tuple[str, str], str]:
+    ) -> dict[tuple[str, str] | None, str]:
         windows = list(
             dict.fromkeys(_window(capture) for capture in captures if capture.kind == CAPTURE_KIND)
         )
@@ -201,6 +201,7 @@ def _line(capture: Capture, record_id: str, full: str) -> str:
                 "bundle_id": None if stretch is None else BUNDLE_IDS.get(stretch.app),
             }
         )
+    assert stretch is not None, "a capture names the stretch in front"
     record: dict[str, Any] = {
         "version": SPOOL_VERSION,
         "id": record_id,

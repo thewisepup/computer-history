@@ -139,7 +139,7 @@ def _seconds(found: Counter[str]) -> dict[str, float]:
 
 def _local_days(timeline: Timeline) -> list[tuple[str, datetime, datetime]]:
     zone = ZoneInfo(timeline.timezone)
-    days = []
+    days: list[tuple[str, datetime, datetime]] = []
     day = timeline.start.astimezone(zone).date()
     while (start := local_midnight(day, zone)) < timeline.end:
         days.append((day.isoformat(), start, local_midnight(day + timedelta(days=1), zone)))

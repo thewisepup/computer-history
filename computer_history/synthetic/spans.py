@@ -31,7 +31,8 @@ def intersect(spans: Iterable[Span], within: Sequence[Span]) -> list[Span]:
 
 def outside(covered: Iterable[Span], start: datetime, end: datetime) -> list[Span]:
     """The parts of the range from start to end that no span covers."""
-    found, edge = [], start
+    found: list[Span] = []
+    edge = start
     for lo, hi in merge(covered):
         if lo > edge:
             found.append((edge, min(lo, end)))

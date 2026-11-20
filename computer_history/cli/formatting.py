@@ -9,7 +9,7 @@ def duration(seconds: float) -> str:
     total = max(0, round(seconds))
     if total < 60:
         return f"{total}s"
-    parts = []
+    parts: list[str] = []
     for suffix, size in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
         value, total = divmod(total, size)
         if value:

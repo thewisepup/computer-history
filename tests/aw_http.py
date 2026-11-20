@@ -71,7 +71,8 @@ def _handler(api: AWApi) -> type[BaseHTTPRequestHandler]:
                     if event is None:
                         return self._send(404, {"message": "no such event"})
                     return self._send(200, event)
-            return self._send(404, {"message": "not found"})
+                case _:
+                    return self._send(404, {"message": "not found"})
 
         def _send(self, code: int, body: Any) -> None:
             data = json.dumps(body).encode()

@@ -82,7 +82,8 @@ def test_known_sources_project_every_activitywatch_stream() -> None:
     project = projector_for(KNOWN_SOURCES)
     payload = json.dumps({"data": {"app": "Code", "title": "a.py"}})
     assert project(WINDOW_SOURCE, payload) == Signal(app="Code", title="a.py")
-    assert project(WEB_SOURCE, payload).title == "a.py"
+    web = project(WEB_SOURCE, payload)
+    assert web is not None and web.title == "a.py"
     assert project(AFK_SOURCE, "not even json") is None
 
 
@@ -158,7 +159,7 @@ def test_poll_reports_a_stream_its_adapter_does_not_project_and_goes_on(
     conn: sqlite3.Connection,
 ) -> None:
     spool = FakeSource("transcript", "ocr", "late")
-    del spool.projectors["ocr"]
+    spool.projectors = {s: p for s, p in spool.projectors.items() if s != "ocr"}
     for stream in ("transcript", "ocr", "late"):
         spool.add(stream, f"{stream}1", 0)
     other = FakeSource("b")
@@ -213,7 +214,7 @@ def test_watch_logs_an_unprojected_stream_and_keeps_polling(
     conn: sqlite3.Connection, caplog: pytest.LogCaptureFixture
 ) -> None:
     spool = FakeSource("transcript", "ocr")
-    del spool.projectors["ocr"]
+    spool.projectors = {s: p for s, p in spool.projectors.items() if s != "ocr"}
     spool.add("transcript", "c1", 0)
     spool.add("ocr", "o1", 0)
     sleeps: list[float] = []

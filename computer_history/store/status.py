@@ -100,7 +100,7 @@ def status_reads(
     conn: sqlite3.Connection, summaries: Sequence[SourceSummary], skip: Collection[str] = ()
 ) -> StatusReads:
     """Each source's recent coverage gaps, leaving out the skipped sources, and row counts."""
-    checked = []
+    checked: list[SourceCoverage] = []
     for summary in summaries:
         if summary.source in skip:
             continue

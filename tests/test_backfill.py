@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from db_states import write_locked
+from db_states import stored_progress, write_locked
 from fake_aw import FakeAW
 from projectors import no_signal
 
@@ -95,6 +95,7 @@ def test_plan_chunks_are_fixed_width_oldest_first_from_local_midnight(conn) -> N
     fake = history_aw(NOW)
     created = to_utc(fake.buckets[WINDOW_BUCKET]["created"])
     plan = window_plan(fake, conn)
+    assert plan.start is not None
 
     local = plan.start.astimezone()
     assert (local.hour, local.minute, local.second, local.microsecond) == (0, 0, 0, 0)
@@ -265,7 +266,8 @@ def test_progress_is_set_in_the_last_chunks_commit(conn) -> None:
     assert len(commits) == len(plan.chunks)
     assert len(progress_writes) == 1 and commits[-2] < progress_writes[0] < commits[-1]
     assert result.progress is BackfillProgress.SET and settled(conn) == result.complete_until
-    assert get_progress(conn, WINDOW_SOURCE).advanced_at == NOW
+    progress = stored_progress(conn, WINDOW_SOURCE)
+    assert progress.advanced_at == NOW
 
 
 def test_a_failed_last_chunk_sets_no_progress(conn, db_path: Path) -> None:
@@ -417,8 +419,8 @@ def test_cli_reports_progress_without_a_settled_time_as_existing(
     assert "another ingest set it meanwhile" not in out
     conn = connect(db_path)
     try:
-        progress = get_progress(conn, WINDOW_SOURCE)
-        assert progress is not None and progress.position == "spool.jsonl:7"
+        progress = stored_progress(conn, WINDOW_SOURCE)
+        assert progress.position == "spool.jsonl:7"
     finally:
         conn.close()
 

@@ -159,7 +159,7 @@ class _Read:
 
 def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
     kinds = STREAM_KINDS[stream]
-    observations = []
+    observations: list[Observation] = []
     rejected = usable = unusable = kindless = 0
     latest: datetime | None = None
     first_problem = (0, "")

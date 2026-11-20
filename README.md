@@ -260,7 +260,7 @@ authentication and explicit trusted-host configuration.
 .venv/bin/python -m pytest                              # the computer_history package (tests/)
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
-.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check, standard mode; not yet required (#76)
+.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check: computer_history strict, tests standard
 ```
 
 `docs/agents/checks.md` lists every check and where it runs: the pre-commit

@@ -5,6 +5,7 @@ import os
 import random
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -14,6 +15,7 @@ from store_answers import stored_days, stored_totals
 
 from computer_history.sources import (
     Pull,
+    StreamProjector,
     reproject_signals,
 )
 from computer_history.store import connect, content_digest, source_summary
@@ -221,7 +223,7 @@ def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_d
 
 
 class _NoStreams:
-    projectors: dict = {}
+    projectors: Mapping[str, StreamProjector] = {}
 
     def streams(self) -> list[str]:
         return []

@@ -48,22 +48,20 @@ git config core.hooksPath .githooks
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
 computer_history tests` must pass. The pre-commit hook runs a gitleaks scan of
-the staged changes, ruff, and pytest without the `dataset` tests (those that
-build synthetic datasets or run `dev perf` and `dev bench`), within the
-budget `docs/agents/checks.md` sets. CI runs the full pytest, the POC suite (`python -m unittest`) and
+the staged changes, ruff, pytest without the `dataset` tests (those that
+build synthetic datasets or run `dev perf` and `dev bench`) and pyright, in about ten seconds. CI runs the full pytest, the POC suite (`python -m unittest`) and
 gitleaks on every pull request and push to `main`, and `main` only merges pull
 requests whose required checks pass (`docs/agents/checks.md` lists them). `docs/agents/checks.md` says where a new check
-belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
-which CI enforces. In a
+belongs (pre-commit, pull request CI or nightly). In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
 own `.venv` on first use (about a minute), since the main checkout's venv
 imports the main checkout's source.
-Pyright type-checks `computer_history` and `tests` in standard mode
-(`[tool.pyright]` in `pyproject.toml`): `.venv/bin/python -m pyright
---pythonpath .venv/bin/python`. Without `--pythonpath` it resolves imports
-against whatever `python` is first on `PATH`. CI runs it as the `typecheck`
-job, which is not yet required and still fails on existing errors; #76
-tracks fixing them, requiring it and moving to strict mode.
+Pyright type-checks `computer_history` in strict mode and `tests` in standard
+mode (`[tool.pyright]` in `pyproject.toml`), with zero errors:
+`.venv/bin/python -m pyright --pythonpath .venv/bin/python`. Without
+`--pythonpath` it resolves imports against whatever `python` is first on
+`PATH`. CI runs it as the `typecheck` job, which is not yet a required status
+check on `main`.
 The performance gate's tests carry the `perf` marker, which the default run
 leaves out: run them with `.venv/bin/python -m pytest -m perf` or
 `computer-history dev perf` (see `computer_history/cli/README.md`). CI's `perf`

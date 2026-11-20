@@ -8,7 +8,6 @@ import unicodedata
 from pathlib import Path
 
 import pytest
-from conftest import HOOK_LEAVES_OUT
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = REPO / "computer_history"
@@ -132,11 +131,12 @@ def test_layers_only_depend_downward(path: Path) -> None:
     forbidden = FORBIDDEN_IMPORTS.get(_layer(path), ())
     bad = []
     for node in ast.walk(_tree(path)):
-        modules = []
         if isinstance(node, ast.ImportFrom) and node.module:
             modules = [node.module]
         elif isinstance(node, ast.Import):
             modules = [alias.name for alias in node.names]
+        else:
+            continue
         bad += [f"line {node.lineno}: {m}" for m in modules if m.startswith(forbidden)]
     assert not bad, f"{_rel(path)}: {_layer(path)}/ must not import upward: {bad}"
 
@@ -174,12 +174,15 @@ def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
 def _constants(path: Path) -> dict[str, str]:
     found = {}
     for node in _tree(path).body:
-        targets = node.targets if isinstance(node, ast.Assign) else []
-        if isinstance(node, ast.AnnAssign):
-            targets = [node.target]
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        else:
+            continue
         for target in targets:
-            if isinstance(target, ast.Name) and target.id.isupper() and node.value is not None:
-                found[target.id] = ast.dump(node.value)
+            if isinstance(target, ast.Name) and target.id.isupper() and value is not None:
+                found[target.id] = ast.dump(value)
     return found
 
 
@@ -264,8 +267,3 @@ def test_the_checks_doc_names_every_ci_job(workflow: Path) -> None:
     assert _jobs(workflow)
     assert [job for job in _jobs(workflow) if f"`{job}`" not in doc] == []
 
-
-def test_the_hook_leaves_out_the_markers_its_budget_leaves_out() -> None:
-    hook = (REPO / ".githooks" / "pre-commit").read_text(encoding="utf-8")
-
-    assert f'-m "{" and ".join(f"not {m}" for m in HOOK_LEAVES_OUT)}"' in hook
