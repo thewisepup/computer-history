@@ -100,7 +100,9 @@ final class CaptureLoop<M: Mac> {
         )
         guard write(record) else { return }
         counts.recordWritten(record)
-        if let screenshot { _ = write(screenshot.take(for: record, of: application)) }
+        guard let screenshot else { return }
+        let shot = screenshot.take(for: record, of: application)
+        if !write(shot) { screenshot.discard(shot) }
     }
 
     private func write(_ record: some SpoolLine) -> Bool {
@@ -108,7 +110,7 @@ final class CaptureLoop<M: Mac> {
             try spool.append(record)
             return true
         } catch {
-            counts.recordFailed(error)
+            counts.recordFailed(error, screenshot: record is ScreenshotRecord)
             return false
         }
     }

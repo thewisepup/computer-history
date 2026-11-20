@@ -15,6 +15,7 @@ struct ImageStoreError: Error, CustomStringConvertible {
 /// Where kept screenshots are saved.
 public protocol ImageStore {
     func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage
+    func remove(_ path: String)
 }
 
 /// Saves screenshots as downscaled JPEGs in a folder per local day under the screenshots folder, one file per record id.
@@ -52,6 +53,11 @@ public struct JPEGImageStore: ImageStore, Sendable {
             throw ImageStoreError(description: "cannot write \(file.path)")
         }
         return SavedImage(path: path, bytes: data.count)
+    }
+
+    /// Deletes a saved image by its path relative to the folder.
+    public func remove(_ path: String) {
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent(path))
     }
 
     private func downscaled(_ image: CGImage) throws -> CGImage {

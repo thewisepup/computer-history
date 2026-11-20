@@ -60,6 +60,21 @@ struct RefusingImageStore: ImageStore {
     func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
         throw ImageStoreError(description: "disk full")
     }
+
+    func remove(_ path: String) {}
+}
+
+final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
+    let writer: SpoolWriter
+
+    init(writer: SpoolWriter) {
+        self.writer = writer
+    }
+
+    func append(_ record: some SpoolLine) throws {
+        if record is ScreenshotRecord { throw ImageStoreError(description: "spool refused") }
+        try writer.append(record)
+    }
 }
 
 @Test func anImageThatCannotBeSavedIsRecordedAsFailed() throws {
@@ -192,4 +207,17 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
     #expect(records.first?["text"] as? String == "hello")
     #expect(records.last?["status"] as? String == "failed")
     #expect(fixture.mac.windowImageRequests.isEmpty)
+}
+
+@Test func aKeptImageWhoseRecordCannotBeWrittenIsRemovedAndCountedApart() throws {
+    let fixture = LoopFixture()
+    fixture.spoolRefusesScreenshots = true
+    fixture.run(for: 2)
+    #expect(try fixture.records().map { $0["kind"] as? String } == ["capture"])
+    #expect(savedImages(in: fixture.settings.folder).isEmpty)
+    let summary = fixture.counts.take()
+    #expect(summary.written == 1)
+    #expect(summary.failed == 0)
+    #expect(summary.screenshotsFailed == 1)
+    #expect(summary.description.hasSuffix(", 1 screenshot records failed to write (last: spool refused)"))
 }

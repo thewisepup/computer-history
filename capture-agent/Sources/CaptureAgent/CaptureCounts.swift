@@ -8,13 +8,16 @@ public final class CaptureCounts: @unchecked Sendable {
         public var timedOut = 0
         public var cutOff = 0
         public var failed = 0
+        public var screenshotsFailed = 0
         public var slowestRead: TimeInterval = 0
         public var lastError: String?
 
         public var description: String {
             var line = "\(written) captures written, \(excluded) excluded, \(timedOut) timed out, \(cutOff) cut off, "
                 + "slowest read \(String(format: "%.2f", slowestRead))s"
-            if failed > 0 { line += ", \(failed) failed to write (last: \(lastError ?? "unknown"))" }
+            let failures = (failed > 0 ? ["\(failed) failed to write"] : [])
+                + (screenshotsFailed > 0 ? ["\(screenshotsFailed) screenshot records failed to write"] : [])
+            if !failures.isEmpty { line += ", " + failures.joined(separator: ", ") + " (last: \(lastError ?? "unknown"))" }
             return line
         }
     }
@@ -48,9 +51,9 @@ public final class CaptureCounts: @unchecked Sendable {
         lock.withLock { current.excluded += 1 }
     }
 
-    func recordFailed(_ error: any Error) {
+    func recordFailed(_ error: any Error, screenshot: Bool = false) {
         lock.withLock {
-            current.failed += 1
+            if screenshot { current.screenshotsFailed += 1 } else { current.failed += 1 }
             current.lastError = String(describing: error)
         }
     }

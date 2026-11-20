@@ -51,6 +51,11 @@ struct CaptureScreenshot<M: Mac> {
         }
     }
 
+    /// Deletes the image a kept record names, for a record that never reached the spool.
+    func discard(_ record: ScreenshotRecord) {
+        if record.status == .kept, let path = record.imagePath { images.remove(path) }
+    }
+
     private func has(_ window: M.Element, title: String?) -> Bool {
         switch window.string("AXTitle") {
         case .value(let current): current == title
