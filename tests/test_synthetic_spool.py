@@ -17,11 +17,13 @@ from pathlib import Path
 import pytest
 
 from computer_history.sources import AX_TEXT_SOURCE, day_counts, parse_record, stored_records
+from computer_history.sources.ax_text.record import KINDS
 from computer_history.sources.ax_text.spool import FINISHED_NAME_FORMAT
 from computer_history.store import connect, content_digest, payload_values, source_summary
 from computer_history.synthetic import (
     CaptureCounts,
     DatasetInputs,
+    FaultKind,
     Stretch,
     StretchKind,
     Timeline,
@@ -165,27 +167,36 @@ def _encoded_like_the_agent(line: str) -> str:
     return json.dumps(json.loads(line), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
-def test_every_rendered_line_parses_and_matches_the_fixture_format(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
-    fixture = {parse_record(line).kind: line for line in _fixture_lines()}
-    capture_keys = set(json.loads(fixture["capture"]))
+@pytest.mark.parametrize("scenario", ["typical", "messy"])
+def test_every_rendered_line_parses_and_matches_the_fixture_format(
+    tmp_path: Path, scenario: str
+) -> None:
+    dataset = build_dataset(replace(DEVELOPER_DAY, scenario=scenario), tmp_path / "day")
+    fixture = {parse_record(line).kind: json.loads(line) for line in _fixture_lines()}
     lines = _spool_lines(dataset.db_path.parent / SPOOL_FOLDER)
 
-    assert all(_encoded_like_the_agent(line) == line for line in fixture.values())
+    assert all(_encoded_like_the_agent(line) == line for line in _fixture_lines())
     assert len(lines) == dataset.manifest.observations["ax-text"] > 0
+    kinds: Counter[str] = Counter()
     previous = None
     for path, line in lines:
         record = parse_record(line)
         finished = datetime.strptime(path.stem, FINISHED_NAME_FORMAT).replace(tzinfo=UTC)
         assert AGENT_NAME.fullmatch(path.name), path.name
-        assert record.kind == "capture", line[:200]
-        assert set(record.fields) == capture_keys, line[:200]
+        like = fixture[record.kind]
+        nulls = {key for key, value in record.fields.items() if value is None}
+        assert set(record.fields) == set(like), line[:200]
+        assert nulls - {"bundle_id"} == {k for k, v in like.items() if v is None} - {"bundle_id"}
         assert _encoded_like_the_agent(line) == line, line[:200]
-        assert record.fields["text_sha256"] == sha256(record.fields["text"].encode()).hexdigest()
-        assert len(record.fields["text"].encode()) <= TEXT_CAP_BYTES
         assert record.captured_at < finished, (path.name, line[:200])
         assert previous is None or record.captured_at > previous
         previous = record.captured_at
+        kinds[record.kind] += 1
+        if record.kind == "capture":
+            text = record.fields["text"].encode()
+            assert record.fields["text_sha256"] == sha256(text).hexdigest()
+            assert len(record.fields["text"].encode()) <= TEXT_CAP_BYTES
+    assert kinds == dataset.manifest.captures.kinds
 
 
 def _stretch_at(timeline: Timeline, moment: datetime) -> Stretch:
@@ -437,6 +448,7 @@ def test_separate_processes_render_the_same_spool_and_digest(tmp_path: Path) -> 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
 TICK = timedelta(milliseconds=500)
 AGENT_READ_LAG = timedelta(milliseconds=100)
+PLAYABLE_FAULTS = (FaultKind.PAUSED, FaultKind.EXCLUDED)
 
 
 def _on_ticks(timeline: Timeline) -> Timeline:
@@ -448,7 +460,12 @@ def _on_ticks(timeline: Timeline) -> Timeline:
         start, end = tick(stretch.start), tick(stretch.end)
         if end > start:
             stretches.append(replace(stretch, start=start, end=end))
-    return Timeline(timeline.start, tick(timeline.end), "UTC", tuple(stretches))
+    faults = tuple(
+        replace(fault, start=tick(fault.start), end=tick(fault.end))
+        for fault in timeline.faults
+        if fault.kind in PLAYABLE_FAULTS
+    )
+    return Timeline(timeline.start, tick(timeline.end), "UTC", tuple(stretches), faults)
 
 
 def _script(timeline: Timeline) -> dict:
@@ -499,6 +516,10 @@ def _script(timeline: Timeline) -> dict:
                 steps.append({"at": offset(idle), "presence": {"idle_seconds": idle_seconds}})
         else:
             away_since = None
+    for fault in timeline.faults_of(FaultKind.PAUSED):
+        steps += [{"at": offset(fault.start), "pause": True}]
+        steps += [{"at": offset(fault.end), "resume": True}]
+    steps.sort(key=lambda step: step["at"])
     steps.append({"at": offset(timeline.end), "end": True})
     start = timeline.start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     return {"start": start, "apps": apps, "steps": steps}
@@ -518,8 +539,14 @@ def _records(lines: Iterable[str]) -> list[tuple]:
     not os.environ.get(AGENT_ENV_VAR),
     reason=f"needs the built capture agent in ${AGENT_ENV_VAR}; run capture-agent/scripts/e2e.sh",
 )
-def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(tmp_path: Path) -> None:
-    timeline = _on_ticks(generate_timeline(DEVELOPER_DAY))
+@pytest.mark.parametrize(
+    ("scenario", "kinds"),
+    [("typical", {"capture"}), ("messy", set(KINDS))],
+)
+def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(
+    tmp_path: Path, scenario: str, kinds: set[str]
+) -> None:
+    timeline = _on_ticks(generate_timeline(replace(DEVELOPER_DAY, scenario=scenario)))
     script = tmp_path / "day.json"
     script.write_text(json.dumps(_script(timeline)), encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
@@ -533,11 +560,13 @@ def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(tmp_pat
         timeout=600,
     )
     assert run.returncode == 0, run.stdout + run.stderr
-    agent = _records(line for _, line in _spool_lines(tmp_path / "agent" / "spool"))
+    agent_lines = [line for _, line in _spool_lines(tmp_path / "agent" / "spool")]
+    agent = _records(agent_lines)
     rendered = SpoolRenderer(hostile_windows_per_day=0).render(timeline, random.Random(0))
     ours = _records(line for file in rendered.files for line in file.lines)
 
     assert len(ours) > 1000
+    assert {parse_record(line).kind for line in agent_lines} == kinds
     assert [r[1:] for r in agent] == [r[1:] for r in ours]
     lag = [theirs[0] - mine[0] for theirs, mine in zip(agent, ours, strict=True)]
     assert all(timedelta(0) <= late < AGENT_READ_LAG for late in lag), max(lag)

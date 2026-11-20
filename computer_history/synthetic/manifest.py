@@ -9,15 +9,22 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import CAPTURE_KIND
+from computer_history.sources import WEB_SOURCE, WINDOW_SOURCE
+from computer_history.store import Gap
 from computer_history.synthetic.afk import reported_afk
-from computer_history.synthetic.captures import agent_captures
+from computer_history.synthetic.captures import Capture, agent_captures
+from computer_history.synthetic.gaps import ExplainedGap, explained, unobserved
 from computer_history.synthetic.generate import DatasetInputs
 from computer_history.synthetic.renderer import RenderedSource
-from computer_history.synthetic.timeline import PRECISION, Timeline, local_midnight
+from computer_history.synthetic.timeline import (
+    PRECISION,
+    Timeline,
+    local_midnight,
+    observed_periods,
+)
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 2
+GENERATOR_VERSION = 3
 
 Piece = tuple[datetime, datetime, str]
 
@@ -34,7 +41,7 @@ class Totals:
 
 @dataclass(frozen=True)
 class CaptureCounts:
-    """The capture agent's records by kind, its captures by trigger, and its captures by app."""
+    """The capture agent's records by kind, and those naming one by trigger and by app."""
 
     kinds: Mapping[str, int]
     triggers: Mapping[str, int]
@@ -43,7 +50,10 @@ class CaptureCounts:
 
 @dataclass(frozen=True)
 class Manifest:
-    """What a dataset holds: its inputs and range, time per local day and in total, and counts."""
+    """What a dataset holds: its inputs and range, time per local day and in total, counts and gaps.
+
+    Time counts only what the sources record, so an ActivityWatch outage adds no time.
+    """
 
     generator_version: int
     inputs: DatasetInputs | None
@@ -54,6 +64,8 @@ class Manifest:
     total: Totals
     observations: Mapping[str, int]
     captures: CaptureCounts
+    unobserved: Mapping[str, tuple[Gap, ...]]
+    explained: tuple[ExplainedGap, ...]
     content_digest: str
 
     def to_json(self) -> str:
@@ -68,14 +80,16 @@ def true_answers(
 ) -> Manifest:
     """The manifest for a timeline, with the observation counts its rendered sources hold."""
     afk = reported_afk(timeline)
-    active = [s for s in timeline.stretches if s.active]
-    apps = [(s.start, s.end, s.app) for s in active]
+    records = agent_captures(timeline)
+    seen = [s for period in observed_periods(timeline, WINDOW_SOURCE) for s in period]
+    browsed = [s for period in observed_periods(timeline, WEB_SOURCE) for s in period]
+    apps = [(s.start, s.end, s.app) for s in seen]
     domains = [
-        (s.start, s.end, domain) for s in active if (domain := extract_domain(s.url)) is not None
+        (s.start, s.end, domain) for s in browsed if (domain := extract_domain(s.url)) is not None
     ]
     present = [(span.start, span.end) for span in afk if not span.afk]
     away = [(span.start, span.end, "afk") for span in afk if span.afk]
-    series = (apps, domains, list(_intersect(apps, present)), away)
+    series = (apps, domains, list(_pieces_within(apps, present)), away)
     days = _local_days(timeline)
     per_day = [_by_day(pieces, days) for pieces in series]
     whole = [("total", timeline.start, timeline.end)]
@@ -92,16 +106,17 @@ def true_answers(
         days={day: _totals(*(found[day] for found in per_day)) for day, _, _ in days},
         total=_totals(*total),
         observations=dict(sorted(counts.items())),
-        captures=_captures(timeline),
+        captures=_captures(records),
+        unobserved=unobserved(timeline, afk, records),
+        explained=explained(timeline),
         content_digest=content_digest,
     )
 
 
-def _captures(timeline: Timeline) -> CaptureCounts:
-    captures = agent_captures(timeline)
-    kinds = Counter(CAPTURE_KIND for _ in captures)
-    triggers = Counter(capture.trigger for capture in captures)
-    apps = Counter(capture.stretch.app for capture in captures)
+def _captures(records: list[Capture]) -> CaptureCounts:
+    kinds = Counter(record.kind for record in records)
+    triggers = Counter(record.trigger for record in records if record.trigger is not None)
+    apps = Counter(record.stretch.app for record in records if record.stretch is not None)
     return CaptureCounts(*(dict(sorted(found.items())) for found in (kinds, triggers, apps)))
 
 
@@ -142,7 +157,9 @@ def _by_day(
     return found
 
 
-def _intersect(pieces: list[Piece], spans: list[tuple[datetime, datetime]]) -> Iterator[Piece]:
+def _pieces_within(
+    pieces: list[Piece], spans: list[tuple[datetime, datetime]]
+) -> Iterator[Piece]:
     index = 0
     for start, end, key in pieces:
         while index < len(spans) and spans[index][1] <= start:

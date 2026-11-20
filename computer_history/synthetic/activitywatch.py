@@ -19,7 +19,7 @@ from computer_history.sources import (
 from computer_history.synthetic.afk import reported_afk
 from computer_history.synthetic.aw_api import AWEvent, ServedAW
 from computer_history.synthetic.renderer import Feed
-from computer_history.synthetic.timeline import Stretch, Timeline, awake_periods
+from computer_history.synthetic.timeline import Stretch, Timeline, observed_periods
 
 HOST = "synthetic-mac.local"
 WINDOW_BUCKET = f"aw-watcher-window_{HOST}"
@@ -54,13 +54,12 @@ class ActivityWatchRenderer:
     streams = (WINDOW_SOURCE, AFK_SOURCE, WEB_SOURCE)
 
     def render(self, timeline: Timeline, rng: random.Random) -> RenderedActivityWatch:
-        """Window, web and AFK events for the timeline, one per run of unchanged data."""
-        if timeline.faults:
-            raise ValueError("the ActivityWatch renderer does not render faults yet")
+        """Window, web and AFK events, one per run of unchanged data, none while down."""
         window: list[Span] = []
         web: list[Span] = []
-        for period in awake_periods(timeline):
+        for period in observed_periods(timeline, WINDOW_SOURCE):
             window += _runs(period, lambda s: {"app": s.app, "title": s.title})
+        for period in observed_periods(timeline, WEB_SOURCE):
             web += _runs(period, lambda s: s.url and {"url": s.url, "title": s.title})
         web = [(start, end, {**data, **_tab(rng)}) for start, end, data in web]
         afk = [

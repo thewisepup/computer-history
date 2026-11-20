@@ -99,11 +99,12 @@ computer_history/
                 # apps, the day's counts), coverage (unobserved stretches,
                 # liveness) and agreement (each capture's app against aw-window)
   synthetic/    # synthetic datasets built through the real ingest path:
-                # timeline, seeds, persona (+ developer), days (a persona's
+                # timeline (+ spans), seeds, persona (+ developer), days (a persona's
                 # ordinary days), scenarios, generate (inputs -> timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
                 # buckets served in process), spool (+ captures: when the
-                # agent captures), build, manifest, cache (built datasets per
+                # agent captures), build, manifest (+ gaps: unobserved
+                # stretches and explained gaps), cache (built datasets per
                 # user, keyed by inputs and code), devdb (a cached dataset
                 # copied out, never into a live folder)
   text.py       # text/URL normalization shared by every source
