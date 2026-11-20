@@ -62,7 +62,7 @@ import PackageDescription
 ///           |
 ///     ScratchFolderCheck.swift   refuses the agent's real folder, or one that holds a database
 ///     ScriptPlayer.swift    builds the script's apps on a ScriptedMac and applies each step as it comes due
-///                           ScriptedRecognition reads each kept picture as its window's scripted text
+///     ScriptedImageStore.swift   saves pictures and reads each back as its window's scripted text
 ///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line

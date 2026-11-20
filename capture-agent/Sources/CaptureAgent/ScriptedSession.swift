@@ -36,7 +36,7 @@ public func runScriptedSession(
     guard agent.start() == .started else {
         return CommandOutcome(exitCode: 1, message: "another agent is writing to \(spool.directory.path)")
     }
-    let images = ScriptedRecognition(
+    let images = ScriptedImageStore(
         images: JPEGImageStore(folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality),
         mac: mac,
         texts: player.recognizedTexts

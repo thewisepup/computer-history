@@ -169,7 +169,7 @@ private func picture(_ mac: ScriptedMac) -> String {
         of: #"{"at": 1, "focus_element""#, with: #"{"at": 0.5, "focus_window": {"app": "site", "window": "home"}}, {"at": 1, "focus_element""#
     )
     var player = try ScriptPlayer(try script(json), mac: mac, pause: PauseSwitch(file: scratchFolder()))
-    let images = ScriptedRecognition(
+    let images = ScriptedImageStore(
         images: JPEGImageStore(folder: folder, longEdge: 64, quality: 60), mac: mac, texts: player.recognizedTexts
     )
     let image = fixtureImage(width: 64, height: 40)
