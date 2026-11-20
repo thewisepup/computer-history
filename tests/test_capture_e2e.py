@@ -22,6 +22,7 @@ from computer_history.sources.capture_spool import (
     resolve_spool_path,
 )
 from computer_history.store import DB_ENV_VAR, resolve_db_path
+from computer_history.store.timefmt import to_utc
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
 REPO = Path(__file__).resolve().parent.parent
@@ -315,15 +316,33 @@ def test_every_capture_gets_one_screenshot_kept_beside_the_database_or_marked_du
     assert on_disk == {f"{s['id']}.jpg" for s in kept}
 
 
-def test_a_duplicate_points_at_its_windows_kept_image_and_copies_its_text(
+def _keep_after_seconds(folder: Path) -> int:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["COMPUTER_HISTORY_DB"] = str(folder / "history.db")
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "check-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    found = re.search(r"a new kept image after (\d+) min", run.stdout + run.stderr)
+    assert found, run.stdout + run.stderr
+    return int(found.group(1)) * 60
+
+
+def test_a_duplicate_points_at_its_windows_recent_kept_image_and_copies_its_text(
     session: Session,
 ) -> None:
     screenshots = session.screenshots()
+    keep_after = _keep_after_seconds(session.folder)
     kept = {s["image_path"]: s for s in _by_status(screenshots, "kept")}
     for shot in _by_status(screenshots, "duplicate"):
         original = kept[shot["image_path"]]
         window = ("app_name", "bundle_id", "window_title")
         assert [shot[k] for k in window] == [original[k] for k in window]
+        age = to_utc(shot["captured_at"]) - to_utc(original["captured_at"])
+        assert 0 < age.total_seconds() <= keep_after
         assert shot["image_bytes"] is None
         assert re.fullmatch(r"[0-9a-f]{16}", shot["perceptual_hash"])
         copied = ("text", "text_sha256", "full_text_bytes", "text_cut_off")

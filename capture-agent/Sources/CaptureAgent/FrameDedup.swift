@@ -22,23 +22,23 @@ struct FrameDedup {
         let fullTextBytes: Int
     }
 
-    let changePercent: Double
+    let changePixels: Int
     let keepAfter: TimeInterval
     private var seen: [Entry] = []
 
-    init(changePercent: Double, keepAfter: TimeInterval) {
-        self.changePercent = changePercent
+    init(changePixels: Int, keepAfter: TimeInterval) {
+        self.changePixels = changePixels
         self.keepAfter = keepAfter
     }
 
-    /// Marks the window as just seen and returns its last kept frame if that is recent enough and the frame changed fewer pixels than the threshold.
+    /// Marks the window as just seen and returns its last kept frame if that was kept in the last keepAfter seconds and the frame changed fewer pixels than the threshold.
     mutating func see(_ frame: FrameThumbnail, in window: Window, at time: Date) -> KeptFrame? {
         guard let index = seen.firstIndex(where: { $0.window == window }) else { return nil }
         let entry = seen.remove(at: index)
         seen.append(entry)
-        guard time.timeIntervalSince(entry.kept.keptAt) <= keepAfter,
+        guard (0...keepAfter).contains(time.timeIntervalSince(entry.kept.keptAt)),
               let changed = frame.changedPixels(from: entry.kept.thumbnail, tolerance: Self.pixelTolerance),
-              Double(changed) * 100 < changePercent * Double(frame.pixels.count)
+              changed < changePixels
         else { return nil }
         return entry.kept
     }

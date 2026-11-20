@@ -47,7 +47,7 @@ final class CaptureLoop<M: Mac> {
             longEdge: settings.screenshots.longEdge,
             pause: settings.pause,
             idleThreshold: settings.capture.idleThreshold,
-            dedup: FrameDedup(changePercent: settings.screenshots.changePercent, keepAfter: settings.screenshots.keepAfter)
+            dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter)
         )
         self.screenshot = settings.screenshots.enabled ? screenshot : nil
         self.counts = counts
