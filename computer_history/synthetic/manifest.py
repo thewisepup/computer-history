@@ -89,7 +89,7 @@ def true_answers(
     ]
     present = [(span.start, span.end) for span in afk if not span.afk]
     away = [(span.start, span.end, "afk") for span in afk if span.afk]
-    series = (apps, domains, list(_intersect(apps, present)), away)
+    series = (apps, domains, list(_pieces_within(apps, present)), away)
     days = _local_days(timeline)
     per_day = [_by_day(pieces, days) for pieces in series]
     whole = [("total", timeline.start, timeline.end)]
@@ -157,7 +157,9 @@ def _by_day(
     return found
 
 
-def _intersect(pieces: list[Piece], spans: list[tuple[datetime, datetime]]) -> Iterator[Piece]:
+def _pieces_within(
+    pieces: list[Piece], spans: list[tuple[datetime, datetime]]
+) -> Iterator[Piece]:
     index = 0
     for start, end, key in pieces:
         while index < len(spans) and spans[index][1] <= start:

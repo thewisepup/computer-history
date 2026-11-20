@@ -18,6 +18,7 @@ from typing import Any
 from computer_history.sources import AX_TEXT_SOURCE, CAPTURE_KIND, SPOOL_VERSION, CaptureSpool
 from computer_history.synthetic.captures import Capture, agent_captures
 from computer_history.synthetic.renderer import Feed
+from computer_history.synthetic.spans import merge
 from computer_history.synthetic.timeline import FaultKind, Timeline
 
 SPOOL_FOLDER = "spool"
@@ -166,7 +167,7 @@ def _encode(record: Mapping[str, Any]) -> str:
 def _files(timeline: Timeline, records: Iterable[tuple[datetime, str]]) -> list[SpoolFile]:
     asleep = [(s.start, s.end) for s in timeline.stretches if not s.active]
     down = [(f.start, f.end) for f in timeline.faults_of(FaultKind.AGENT_DOWN)]
-    stopped = _merge(sorted(asleep + down))
+    stopped = merge(asleep + down)
     files: list[SpoolFile] = []
     batch: list[str] = []
     finish = timeline.start
@@ -189,18 +190,6 @@ def _finish_after(at: datetime, stopped: list[tuple[datetime, datetime]]) -> dat
     if index >= 0 and stopped[index][0] <= tick < stopped[index][1]:
         return stopped[index][1]
     return tick
-
-
-def _merge(spans: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
-    merged: list[tuple[datetime, datetime]] = []
-    for start, end in spans:
-        if merged and start <= merged[-1][1]:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-        else:
-            merged.append((start, end))
-    return merged
-
-
 def _iso(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
 

@@ -16,6 +16,7 @@ from computer_history.synthetic.timeline import (
     Stretch,
     StretchKind,
     Timeline,
+    stretch_at,
 )
 
 Scenario = Callable[[Timeline, random.Random], Timeline]
@@ -40,7 +41,7 @@ def messy(timeline: Timeline, rng: random.Random) -> Timeline:
     stretches = list(timeline.stretches)
     workdays = _workdays(stretches, timeline, zone)
     if not workdays:
-        return timeline
+        raise ValueError("the messy scenario needs a workday in the range")
 
     def on(index: int, at: time) -> datetime:
         day = workdays[index % len(workdays)]
@@ -49,17 +50,18 @@ def messy(timeline: Timeline, rng: random.Random) -> Timeline:
     stretches = _overnight_afk(stretches, on(0, OVERNIGHT_CHECK), timeline, zone)
     nap = Stretch(on(1, time(12, 30)), on(1, time(12, 50)), kind=StretchKind.ASLEEP)
     stretches = _replace(stretches, nap)
-    excluded_from = _next_present(stretches, on(3, time(16, 0)))
+    outage = _next_present(stretches, on(0, time(9, 45)))
+    pause = _next_present(stretches, on(2, time(14, 50)))
+    resume = _next_present(stretches, pause + timedelta(minutes=20))
+    excluded_from = _next_present(stretches, max(on(3, time(16, 0)), resume))
     excluded_to = excluded_from + timedelta(minutes=10)
     app = Stretch(excluded_from, excluded_to, app=EXCLUDED_APP, title=EXCLUDED_APP)
     stretches = _replace(stretches, app)
-    outage = _next_present(stretches, on(0, time(9, 45)))
-    pause = _next_present(stretches, on(2, time(14, 50)))
     faults = (
         Fault(outage, _next_present(stretches, outage + timedelta(hours=2)), FaultKind.AW_DOWN),
         Fault(on(1, time(13, 40)), on(1, time(14, 10)), FaultKind.AGENT_DOWN),
         Fault(on(2, time(14, 15)), on(2, time(14, 35)), FaultKind.PERMISSION_LOST),
-        Fault(pause, _next_present(stretches, pause + timedelta(minutes=20)), FaultKind.PAUSED),
+        Fault(pause, resume, FaultKind.PAUSED),
         Fault(excluded_from, excluded_to, FaultKind.EXCLUDED),
     )
     return replace(timeline, stretches=tuple(stretches), faults=timeline.faults + faults)
@@ -70,19 +72,15 @@ def _workdays(stretches: Sequence[Stretch], timeline: Timeline, zone: ZoneInfo) 
     while datetime.combine(day, time(), zone) < timeline.end:
         moments = [datetime.combine(day, at, zone) for at in WORKDAY_CHECKS]
         if all(timeline.start <= m < timeline.end for m in moments) and all(
-            _at(stretches, m).active for m in moments
+            stretch_at(stretches, m).active for m in moments
         ):
             days.append(day)
         day += timedelta(days=1)
     return days
 
 
-def _at(stretches: Sequence[Stretch], moment: datetime) -> Stretch:
-    return stretches[bisect_right(stretches, moment, key=lambda s: s.start) - 1]
-
-
 def _next_present(stretches: Sequence[Stretch], moment: datetime) -> datetime:
-    index = bisect_right(stretches, moment, key=lambda s: s.start) - 1
+    index = max(0, bisect_right(stretches, moment, key=lambda s: s.start) - 1)
     for stretch in stretches[index:]:
         if stretch.active and not stretch.afk:
             return max(moment, stretch.start)
@@ -99,12 +97,10 @@ def _replace(stretches: list[Stretch], inserted: Stretch) -> list[Stretch]:
 def _overnight_afk(
     stretches: list[Stretch], check: datetime, timeline: Timeline, zone: ZoneInfo
 ) -> list[Stretch]:
-    if not timeline.start <= check < timeline.end:
-        return stretches
     index = bisect_right(stretches, check, key=lambda s: s.start) - 1
     night = stretches[index]
     if night.active or index == 0 or not stretches[index - 1].active:
-        return stretches
+        raise ValueError(f"the Mac is not asleep after the day's work at {check}")
     next_day = check.astimezone(zone).date() + timedelta(days=1)
     morning = datetime.combine(next_day, OVERNIGHT_UNTIL, zone)
     until = min(night.end, morning.astimezone(UTC))

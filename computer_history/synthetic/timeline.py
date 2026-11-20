@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
@@ -47,7 +48,7 @@ class FaultKind(Enum):
     AGENT_DOWN = "capture agent down"
     PERMISSION_LOST = "accessibility permission lost"
     PAUSED = "capture paused"
-    EXCLUDED = "app excluded"
+    EXCLUDED = "app excluded"  # the app in front is denylisted
 
 
 AFFECTED_STREAMS: dict[FaultKind, tuple[str, ...]] = {
@@ -59,12 +60,17 @@ AFFECTED_STREAMS: dict[FaultKind, tuple[str, ...]] = {
 }
 
 
+AGENT_FAULTS = (
+    FaultKind.AGENT_DOWN,
+    FaultKind.PERMISSION_LOST,
+    FaultKind.PAUSED,
+    FaultKind.EXCLUDED,
+)
+
+
 @dataclass(frozen=True)
 class Fault:
-    """Something going wrong with one or more sources over a span of time.
-
-    No sources means every stream its kind affects; excluded means the app in front is denylisted.
-    """
+    """Something going wrong with one or more sources over a span of time."""
 
     start: datetime
     end: datetime
@@ -102,6 +108,10 @@ class Timeline:
         for fault in self.faults:
             if not self.start <= fault.start < fault.end <= self.end:
                 raise ValueError(f"fault {fault.start}..{fault.end} is not inside the range")
+        agent = self.faults_of(*AGENT_FAULTS)
+        for earlier, later in zip(agent, agent[1:], strict=False):
+            if later.start < earlier.end:
+                raise ValueError(f"capture agent faults overlap at {later.start}")
         edges = (f for fault in self.faults for f in (fault.start, fault.end))
         for moment in (self.start, self.end, *(s.start for s in self.stretches), *edges):
             if moment.tzinfo is not UTC or moment.microsecond % 1000:
@@ -113,6 +123,11 @@ class Timeline:
             (f for f in self.faults if f.kind in kinds and (stream is None or stream in f.streams)),
             key=lambda fault: (fault.start, fault.end),
         )
+
+
+def stretch_at(stretches: Sequence[Stretch], moment: datetime) -> Stretch:
+    """The stretch the moment falls in, or the first one for a moment before them all."""
+    return stretches[max(0, bisect_right(stretches, moment, key=lambda s: s.start) - 1)]
 
 
 def observed_periods(timeline: Timeline, stream: str) -> Iterator[list[Stretch]]:

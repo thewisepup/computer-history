@@ -11,17 +11,18 @@ from computer_history.sources import (
     AFK_SOURCE,
     AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
+    EXCLUDED_KIND,
+    PAUSED_KIND,
     WINDOW_SOURCE,
 )
 from computer_history.store import Gap
 from computer_history.synthetic.afk import ReportedAfk
 from computer_history.synthetic.captures import Capture
+from computer_history.synthetic.spans import Span, intersect, outside
 from computer_history.synthetic.timeline import FaultKind, Timeline, observed_periods
 
 MIN_GAP = timedelta(seconds=1)
-EXPLAINED_KINDS = {FaultKind.PAUSED: "paused", FaultKind.EXCLUDED: "excluded"}
-
-Span = tuple[datetime, datetime]
+EXPLAINED_KINDS = {FaultKind.PAUSED: PAUSED_KIND, FaultKind.EXCLUDED: EXCLUDED_KIND}
 
 
 @dataclass(frozen=True)
@@ -44,9 +45,9 @@ def unobserved(
     window = [(p[0].start, p[-1].end) for p in observed_periods(timeline, WINDOW_SOURCE)]
     present = [(span.start, span.end) for span in afk if not span.afk]
     return {
-        AFK_SOURCE: _gaps(_outside(timeline, [(s.start, s.end) for s in afk])),
-        AX_TEXT_SOURCE: _gaps(_intersect(_missed_by_agent(timeline, records), present)),
-        WINDOW_SOURCE: _gaps(_outside(timeline, window)),
+        AFK_SOURCE: _gaps(outside([(s.start, s.end) for s in afk], timeline.start, timeline.end)),
+        AX_TEXT_SOURCE: _gaps(intersect(_missed_by_agent(timeline, records), present)),
+        WINDOW_SOURCE: _gaps(outside(window, timeline.start, timeline.end)),
     }
 
 
@@ -66,31 +67,6 @@ def _missed_by_agent(timeline: Timeline, records: Sequence[Capture]) -> list[Spa
         end = timeline.end if after == len(times) else times[after] - CAPTURE_TOLERANCE
         missed.append((start, end))
     return missed
-
-
-def _outside(timeline: Timeline, covered: Iterable[Span]) -> list[Span]:
-    outside, edge = [], timeline.start
-    for start, end in sorted(covered):
-        if start > edge:
-            outside.append((edge, start))
-        edge = max(edge, end)
-    if edge < timeline.end:
-        outside.append((edge, timeline.end))
-    return outside
-
-
-def _intersect(spans: Iterable[Span], within: Sequence[Span]) -> list[Span]:
-    found: list[Span] = []
-    for start, end in sorted(spans):
-        for lo, hi in within:
-            lo, hi = max(start, lo), min(end, hi)
-            if lo >= hi:
-                continue
-            if found and lo <= found[-1][1]:
-                found[-1] = (found[-1][0], max(found[-1][1], hi))
-            else:
-                found.append((lo, hi))
-    return found
 
 
 def _gaps(spans: Iterable[Span]) -> tuple[Gap, ...]:

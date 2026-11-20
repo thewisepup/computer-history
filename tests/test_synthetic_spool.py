@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from computer_history.sources import AX_TEXT_SOURCE, day_counts, parse_record, stored_records
+from computer_history.sources.ax_text.record import KINDS
 from computer_history.sources.ax_text.spool import FINISHED_NAME_FORMAT
 from computer_history.store import connect, content_digest, payload_values, source_summary
 from computer_history.synthetic import (
@@ -540,7 +541,7 @@ def _records(lines: Iterable[str]) -> list[tuple]:
 )
 @pytest.mark.parametrize(
     ("scenario", "kinds"),
-    [("typical", {"capture"}), ("messy", {"capture", "excluded", "paused", "resumed"})],
+    [("typical", {"capture"}), ("messy", set(KINDS))],
 )
 def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(
     tmp_path: Path, scenario: str, kinds: set[str]

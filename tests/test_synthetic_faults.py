@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from collections import Counter
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -117,34 +117,19 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
 ) -> None:
     dataset = build_timeline(FAULTY_HOUR, tmp_path / "hour", seed=1)
     manifest = dataset.manifest
-    start, end = FAULTY_HOUR.start, FAULTY_HOUR.end
+    gaps, records, afk = _store_gaps(dataset)
     conn = connect(dataset.db_path)
     try:
-        gaps = {
-            source: tuple(find_gaps(conn, source, start, end, min_gap_seconds=1))
-            for source in (WINDOW_SOURCE, AFK_SOURCE)
-        }
-        records = stored_records(conn, start, end)
-        afk = stored_afk_spans(conn, start, end)
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
-    coverage = capture_coverage(
-        records,
-        active=[(s.start, s.end) for s in afk if not s.afk],
-        known=[(s.start, s.end) for s in afk],
-        start=start,
-        end=end,
-        paused_at_start=False,
-        min_gap_seconds=1,
-    )
 
     assert manifest.total == FAULTY_HOUR_TOTALS
     assert manifest.observations == counts == FAULTY_HOUR_COUNTS
     assert manifest.captures == FAULTY_HOUR_CAPTURES
     assert manifest.unobserved == FAULTY_HOUR_UNOBSERVED
     assert manifest.explained == FAULTY_HOUR_EXPLAINED
-    assert {**gaps, AX_TEXT_SOURCE: coverage.unobserved} == FAULTY_HOUR_UNOBSERVED
+    assert gaps == FAULTY_HOUR_UNOBSERVED
     assert [(r.at, r.kind, r.app) for r in records] == FAULTY_HOUR_RECORDS
     assert Counter(r.kind for r in records) == FAULTY_HOUR_CAPTURES.kinds
     assert not any(s.afk for s in afk)
@@ -154,6 +139,7 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
 
 
 MESSY_DAY = DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1)
+DEVELOPER_TYPICAL = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 LOCAL = ZoneInfo("America/Los_Angeles")
 
 
@@ -179,9 +165,6 @@ def test_the_messy_scenario_places_every_happening_on_its_one_day() -> None:
     assert any(_local(s.start) == time(12, 30) and _local(s.end) == time(12, 50) for s in asleep)
     assert any(s.end == timeline.end and s.end - s.start >= timedelta(hours=1) for s in away)
     assert generate_timeline(DEVELOPER_TYPICAL).faults == ()
-
-
-DEVELOPER_TYPICAL = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 
 
 def _store_gaps(dataset) -> tuple[dict[str, tuple[Gap, ...]], list, list]:
@@ -377,3 +360,20 @@ def test_lost_permission_holds_captures_back_and_the_first_comes_on_its_return()
         (at(9, 1, 20), "app", "capture", "Terminal"),
         (at(9, 1, 50), "heartbeat", "capture", "Terminal"),
     ]
+
+
+def test_capture_agent_faults_that_overlap_are_refused() -> None:
+    faults = (
+        Fault(at(9, 2), at(9, 8), FaultKind.PERMISSION_LOST),
+        Fault(at(9, 5), at(9, 10), FaultKind.EXCLUDED),
+    )
+    with pytest.raises(ValueError, match="overlap"):
+        Timeline(at(9, 0), at(9, 20), "UTC", OUTAGE_MORNING, faults)
+
+
+def test_the_messy_scenario_refuses_a_range_with_no_workday() -> None:
+    saturday = DatasetInputs(
+        persona="developer", scenario="messy", tier="day", seed=1, start=date(2026, 1, 10)
+    )
+    with pytest.raises(ValueError, match="workday"):
+        generate_timeline(saturday)

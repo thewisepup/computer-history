@@ -1,4 +1,4 @@
-"""When the capture agent writes a capture for a timeline, as its capture schedule decides."""
+"""The records the capture agent writes for a timeline, as its capture schedule decides."""
 
 from __future__ import annotations
 
@@ -15,11 +15,13 @@ from computer_history.sources import (
     RESUMED_KIND,
 )
 from computer_history.synthetic.timeline import (
+    AGENT_FAULTS,
     PRECISION,
     FaultKind,
     Stretch,
     Timeline,
     fault_pieces,
+    stretch_at,
 )
 
 HEARTBEAT = timedelta(seconds=HEARTBEAT_SECONDS)
@@ -29,14 +31,6 @@ IDLE_THRESHOLD = timedelta(seconds=180)
 PRECEDENCE = ("app", "window", "title")
 
 Focus = tuple[str, str | None, str]
-
-
-AGENT_FAULTS = (
-    FaultKind.AGENT_DOWN,
-    FaultKind.PERMISSION_LOST,
-    FaultKind.PAUSED,
-    FaultKind.EXCLUDED,
-)
 
 
 class Mode(Enum):
@@ -114,7 +108,7 @@ def _pause_records(timeline: Timeline) -> Iterator[Capture]:
 
 
 def _agent_awake_at(timeline: Timeline, moment: datetime) -> bool:
-    stretch = next(s for s in timeline.stretches if s.start <= moment < s.end)
+    stretch = stretch_at(timeline.stretches, moment)
     down = timeline.faults_of(FaultKind.AGENT_DOWN)
     return stretch.active and not any(f.start <= moment < f.end for f in down)
 
