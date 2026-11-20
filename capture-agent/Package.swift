@@ -43,6 +43,7 @@ import PackageDescription
 ///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
 ///                                window's frame, one request at a time, as a WindowImage
 ///                                that carries the window's id
+///     OneRequestAtATime.swift    one request outstanding at a time, each waited for up to a timeout
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
 ///     FrameHash.swift       the 64-bit difference hash each screenshot record carries
