@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Removes worktrees whose work has landed on origin/main. A worktree is dead
+# only when all hold: it is not the main checkout or the current one, git
+# status shows nothing (no changes, no untracked files), its branch tip is in
+# origin/main, and the branch was pushed to origin or has a merged PR. A
+# branch never pushed is kept, since a fresh agent worktree looks merged.
+# --dry-run lists what would go.
+set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE
+dry_run=false
+[ "${1:-}" = "--dry-run" ] && dry_run=true
+
+main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+here="$(git rev-parse --show-toplevel)"
+git -C "$main" fetch -q origin main || { echo "prune-worktrees: cannot fetch origin; nothing removed" >&2; exit 0; }
+
+landed() {
+  local branch="$1"
+  git -C "$main" merge-base --is-ancestor "refs/heads/$branch" origin/main || return 1
+  git -C "$main" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null && return 0
+  command -v gh >/dev/null 2>&1 || return 1
+  [ -n "$(cd "$main" && gh pr list --head "$branch" --state merged --json number --jq '.[0].number' 2>/dev/null)" ]
+}
+
+git -C "$main" worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} /^branch /{print w "\t" substr($0,19)}' |
+while IFS="$(printf '\t')" read -r path branch; do
+  [ "$path" = "$main" ] || [ "$path" = "$here" ] && continue
+  [ -d "$path" ] || continue
+  if [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]; then
+    echo "keep    $branch ($path): has changes or untracked files"
+    continue
+  fi
+  landed "$branch" || continue
+  if $dry_run; then
+    echo "would remove $branch ($path)"
+  else
+    git -C "$main" worktree remove "$path" && git -C "$main" branch -d -q "$branch" &&
+      echo "removed $branch ($path)"
+  fi
+done
+git -C "$main" worktree prune

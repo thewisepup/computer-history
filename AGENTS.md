@@ -41,6 +41,11 @@ computer_history tests` must pass; the pre-commit hook runs both, and CI runs
 them plus the POC suite (`python -m unittest`) on pushes to `main`. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
 
+Agents that edit code work in their own git worktree, never in the main
+checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
+on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
+every pull.
+
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool
 contract or the end-to-end test, and the end-to-end check also when it touches
