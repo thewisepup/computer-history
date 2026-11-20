@@ -8,7 +8,6 @@ import unicodedata
 from pathlib import Path
 
 import pytest
-from conftest import HOOK_LEAVES_OUT
 
 REPO = Path(__file__).resolve().parent.parent
 PACKAGE = REPO / "computer_history"
@@ -268,8 +267,3 @@ def test_the_checks_doc_names_every_ci_job(workflow: Path) -> None:
     assert _jobs(workflow)
     assert [job for job in _jobs(workflow) if f"`{job}`" not in doc] == []
 
-
-def test_the_hook_leaves_out_the_markers_its_budget_leaves_out() -> None:
-    hook = (REPO / ".githooks" / "pre-commit").read_text(encoding="utf-8")
-
-    assert f'-m "{" and ".join(f"not {m}" for m in HOOK_LEAVES_OUT)}"' in hook

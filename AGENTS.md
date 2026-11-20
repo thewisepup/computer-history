@@ -49,12 +49,10 @@ git config core.hooksPath .githooks
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
 computer_history tests` must pass. The pre-commit hook runs a gitleaks scan of
 the staged changes, ruff, pytest without the `dataset` tests (those that
-build synthetic datasets or run `dev perf` and `dev bench`) and pyright, within the
-budget `docs/agents/checks.md` sets. CI runs the full pytest, the POC suite (`python -m unittest`) and
+build synthetic datasets or run `dev perf` and `dev bench`) and pyright, in about ten seconds. CI runs the full pytest, the POC suite (`python -m unittest`) and
 gitleaks on every pull request and push to `main`, and `main` only merges pull
 requests whose required checks pass (`docs/agents/checks.md` lists them). `docs/agents/checks.md` says where a new check
-belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
-which CI enforces. In a
+belongs (pre-commit, pull request CI or nightly). In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
 own `.venv` on first use (about a minute), since the main checkout's venv
 imports the main checkout's source.
