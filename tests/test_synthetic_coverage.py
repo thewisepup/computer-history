@@ -187,7 +187,7 @@ def _probe(cls: type, name: str) -> Timeline:
     return replace(PROBE_TIMELINE, faults=tuple(faults))
 
 
-def _outputs(timeline: Timeline) -> tuple[dict[str, object], object]:
+def _outputs(timeline: Timeline) -> tuple[Mapping[str, object], object]:
     rendered = render_sources(timeline, seed=1)
     return rendered, true_answers(None, timeline, rendered.values(), content_digest="")
 

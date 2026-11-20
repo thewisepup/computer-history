@@ -33,7 +33,10 @@ class RenderedSource(Protocol):
 class Renderer(Protocol):
     """Renders a timeline into one source family's raw data for the streams it names."""
 
-    name: str
-    streams: tuple[str, ...]
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def streams(self) -> tuple[str, ...]: ...
 
     def render(self, timeline: Timeline, rng: random.Random) -> RenderedSource: ...

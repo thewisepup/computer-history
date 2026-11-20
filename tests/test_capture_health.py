@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -67,8 +68,8 @@ def gaps(*spans: tuple[float, float]) -> tuple[Gap, ...]:
 def coverage(
     records: list[StoredRecord],
     *,
-    active: list[tuple[float, float]] = (),
-    idle: list[tuple[float, float]] = (),
+    active: Sequence[tuple[float, float]] = (),
+    idle: Sequence[tuple[float, float]] = (),
     start: float = -60,
     end: float = 0,
     paused_at_start: bool = False,

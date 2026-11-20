@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -68,7 +68,7 @@ def local_days(
 
 
 def _seconds_by_key(
-    spans: list[tuple[datetime, datetime, str | None]], lo: datetime, hi: datetime
+    spans: Sequence[tuple[datetime, datetime, str | None]], lo: datetime, hi: datetime
 ) -> dict[str, float]:
     found: Counter[str] = Counter()
     for start, end, key in spans:

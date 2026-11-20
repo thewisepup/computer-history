@@ -253,6 +253,7 @@ def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path:
 
 
 def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
+    assert first_pull.frontier is not None
     old = previous_version(path)
     insert_observations(old, first_pull.observations, project=no_signal)
     old.execute(
@@ -264,6 +265,7 @@ def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connec
 
 
 def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
+    assert first_pull.frontier is not None
     conn = connect(path)
     update = ProgressUpdate(
         WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier

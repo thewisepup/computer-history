@@ -98,7 +98,7 @@ class SpoolRenderer:
 
     def _hostile_windows(
         self, timeline: Timeline, captures: list[Capture], rng: random.Random
-    ) -> dict[tuple[str, str], str]:
+    ) -> dict[tuple[str, str] | None, str]:
         windows = list(
             dict.fromkeys(_window(capture) for capture in captures if capture.kind == CAPTURE_KIND)
         )
@@ -129,6 +129,7 @@ def _line(capture: Capture, hostile: str | None, rng: random.Random) -> str:
                 "bundle_id": None if stretch is None else BUNDLE_IDS.get(stretch.app),
             }
         )
+    assert stretch is not None, "a capture names the stretch in front"
     full = stretch.text if hostile is None else f"{stretch.text}\n{hostile}"
     full_bytes = full.encode("utf-8")
     text = full_bytes[:TEXT_CAP_BYTES].decode("utf-8", errors="ignore")

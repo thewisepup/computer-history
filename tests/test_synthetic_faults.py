@@ -39,7 +39,7 @@ from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import BUCKETS, ActivityWatchRenderer
 from computer_history.synthetic.days import live
 from computer_history.synthetic.persona import Rhythm
-from computer_history.synthetic.spool import SpoolRenderer
+from computer_history.synthetic.spool import RenderedSpool, SpoolRenderer
 from computer_history.synthetic.timeline import local_midnight
 
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
@@ -138,7 +138,9 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
     assert [(r.at, r.kind, r.app) for r in records] == FAULTY_HOUR_RECORDS
     assert Counter(r.kind for r in records) == FAULTY_HOUR_CAPTURES.kinds
     assert not any(s.afk for s in afk)
-    files = {file.name: len(file.lines) for file in dataset.rendered[SpoolRenderer.name].files}
+    spool = dataset.rendered[SpoolRenderer.name]
+    assert isinstance(spool, RenderedSpool)
+    files = {file.name: len(file.lines) for file in spool.files}
     assert files["20260105T095000.000Z.jsonl"] == 2
     assert not [name for name in files if "T0945" <= name[8:13] < "T0950"]
 

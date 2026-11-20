@@ -17,7 +17,7 @@ _READ = re.compile(r"(?:SELECT|WITH)\b", re.I)
 
 
 class StatementCost(NamedTuple):
-    count: int
+    runs: int
     vm_steps: int
 
 

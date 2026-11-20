@@ -69,7 +69,7 @@ def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterab
 def _paused_spans(
     records: Sequence[StoredRecord], start: datetime, end: datetime, paused_at_start: bool
 ) -> list[Span]:
-    spans = []
+    spans: list[Span] = []
     paused_from = start if paused_at_start else None
     for record in sorted(records, key=lambda r: r.at):
         if record.kind == PAUSED_KIND:
@@ -100,7 +100,7 @@ def _clip(spans: Iterable[Span], start: datetime, end: datetime) -> list[Span]:
 
 
 def _subtract(spans: Sequence[Span], holes: Sequence[Span]) -> list[Span]:
-    result = []
+    result: list[Span] = []
     for a, b in spans:
         cursor = a
         for h0, h1 in holes:

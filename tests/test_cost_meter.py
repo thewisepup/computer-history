@@ -67,7 +67,7 @@ def test_an_added_per_row_query_raises_the_statement_count(stored: sqlite3.Conne
 
     assert once.statements == 1
     assert per_row.statements == 4
-    assert {text: cost.count for text, cost in per_row.by_statement.items()} == {
+    assert {text: cost.runs for text, cost in per_row.by_statement.items()} == {
         "SELECT id FROM observations ORDER BY id": 1,
         "SELECT payload FROM observations WHERE id = ?": 3,
     }

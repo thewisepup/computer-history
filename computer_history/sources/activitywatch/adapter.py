@@ -10,11 +10,11 @@ from computer_history.sources.activitywatch.history import history_before, histo
 from computer_history.sources.activitywatch.normalize import PROJECTORS
 from computer_history.sources.activitywatch.position import position_at, resume_start
 from computer_history.sources.activitywatch.pull import SourcePull, pull_source
-from computer_history.sources.contract import Pull
+from computer_history.sources.contract import Pull, StreamProjector
 
 
 class ActivityWatch:
-    projectors = PROJECTORS
+    projectors: Mapping[str, StreamProjector] = PROJECTORS
 
     def __init__(self, client: AWApi) -> None:
         self.client = client

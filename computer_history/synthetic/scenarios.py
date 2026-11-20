@@ -102,7 +102,8 @@ def _after(at: time, offset: timedelta) -> time:
 def _workdays(
     stretches: Sequence[Stretch], timeline: Timeline, zone: ZoneInfo, checks: Sequence[time]
 ) -> list[date]:
-    days, day = [], timeline.start.astimezone(zone).date()
+    days: list[date] = []
+    day = timeline.start.astimezone(zone).date()
     while datetime.combine(day, time(), zone) < timeline.end:
         moments = [datetime.combine(day, at, zone) for at in checks]
         if all(timeline.start <= m < timeline.end for m in moments) and all(

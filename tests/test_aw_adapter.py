@@ -5,6 +5,7 @@ import io
 import json
 import sqlite3
 from datetime import timedelta
+from email.message import Message
 from typing import Any
 from urllib.error import HTTPError, URLError
 
@@ -38,6 +39,7 @@ from computer_history.sources.activitywatch import (
     pull_source,
 )
 from computer_history.sources.activitywatch import client as aw_client
+from computer_history.sources.activitywatch.pull import CLIP_GUARD
 from computer_history.store import (
     Signal,
     get_progress,
@@ -253,6 +255,7 @@ def test_text_hygiene_collapse_cap_and_empty() -> None:
     long_title = "word " * 1000
     payload = {"data": {"app": "  Code\t", "title": long_title}}
     signal = project_signal(WINDOW_SOURCE, payload)
+    assert signal is not None and signal.title is not None
     assert signal.app == "Code"
     assert len(signal.title) == aw.MAX_TEXT_LENGTH
     assert "  " not in signal.title
@@ -263,6 +266,7 @@ def test_text_hygiene_collapse_cap_and_empty() -> None:
 
 def test_lone_surrogates_are_scrubbed() -> None:
     signal = project_signal(WINDOW_SOURCE, {"data": {"app": "Chat", "title": "hi \ud83d there"}})
+    assert signal is not None and signal.title is not None
     assert signal.title == "hi ? there"
     signal.title.encode("utf-8")
 
@@ -270,6 +274,7 @@ def test_lone_surrogates_are_scrubbed() -> None:
 def test_non_string_fields_and_unknown_keys_go_to_extras() -> None:
     payload = {"data": {"app": "Code", "title": 42, "zeta": [1], "alpha": {"b": 1, "a": 2}}}
     signal = project_signal(WINDOW_SOURCE, payload)
+    assert signal is not None
     assert signal.title is None
     assert signal.extras == '{"alpha": {"a": 2, "b": 1}, "title": 42, "zeta": [1]}'
 
@@ -553,7 +558,7 @@ def test_client_maps_404_to_none_and_failures_to_awerror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def not_found(request, timeout):
-        raise HTTPError(request.full_url, 404, "Not Found", {}, None)
+        raise HTTPError(request.full_url, 404, "Not Found", Message(), None)
 
     monkeypatch.setattr(aw_client, "urlopen", not_found)
     assert AWClient().get_event(WINDOW_BUCKET, 1) is None
@@ -652,22 +657,26 @@ def test_adapter_resumes_a_little_before_its_position() -> None:
     fake = RecordingAW({WINDOW_BUCKET: "currentwindow"})
     pulled = ActivityWatch(fake).pull_after(WINDOW_SOURCE, utc_iso(at(30)), now=at(40))
     overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
-    assert fake.starts == [at(30) - overlap - aw.pull.CLIP_GUARD]
+    assert fake.starts == [at(30) - overlap - CLIP_GUARD]
     assert (pulled.position, pulled.settled_until) == (utc_iso(at(40)), at(40))
 
 
 def test_stored_url_and_domain_come_from_the_same_sanitized_string() -> None:
     raw = " \thttps://www.git\nhub.com/a\tb/\x00c\r\n "
     signal = project_signal(WEB_SOURCE, {"data": {"url": raw}})
+    assert signal is not None
     assert signal.url == "https://www.github.com/ab/c"
     assert signal.domain == "github.com"
     assert extract_domain(raw) == "github.com"
-    assert project_signal(WEB_SOURCE, {"data": {"url": "\n\t \x7f"}}).url is None
+    blank = project_signal(WEB_SOURCE, {"data": {"url": "\n\t \x7f"}})
+    assert blank is not None
+    assert blank.url is None
 
 
 def test_url_is_capped() -> None:
     url = "https://example.com/" + "a" * 10_000
     signal = project_signal(WEB_SOURCE, {"data": {"url": url}})
+    assert signal is not None and signal.url is not None
     assert len(signal.url) == aw.MAX_URL_LENGTH
     assert signal.domain == "example.com"
 

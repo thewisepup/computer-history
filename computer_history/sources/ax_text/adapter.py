@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -19,7 +19,7 @@ from computer_history.sources.ax_text.spool import (
     remove_finished,
     set_aside,
 )
-from computer_history.sources.contract import Pull
+from computer_history.sources.contract import Pull, StreamProjector
 from computer_history.store import Observation, utc_iso
 
 log = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ Finish = Callable[[Path], object]
 class CaptureSpool:
     """Reads the capture agent's finished spool files for the ingest runner, oldest first."""
 
-    projectors = PROJECTORS
+    projectors: Mapping[str, StreamProjector] = PROJECTORS
 
     def __init__(self, folder: Path) -> None:
         self.folder = folder
@@ -105,7 +105,7 @@ class _Read:
 
 
 def _read_records(lines: list[bytes], now: datetime) -> _Read:
-    observations = []
+    observations: list[Observation] = []
     rejected = 0
     latest: datetime | None = None
     first_problem = (0, "")

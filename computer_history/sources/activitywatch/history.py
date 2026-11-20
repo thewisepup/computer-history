@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.activitywatch.discovery import AWSource
+from computer_history.sources.contract import JsonValue
 from computer_history.store import to_utc
 
 log = logging.getLogger(__name__)
@@ -14,16 +14,17 @@ log = logging.getLogger(__name__)
 _PROBE_GUARD = timedelta(microseconds=1)
 
 
-def history_floor(buckets: Mapping[str, Any], source: AWSource) -> datetime | None:
+def history_floor(buckets: Mapping[str, JsonValue], source: AWSource) -> datetime | None:
     """Local midnight on or before the earliest bucket creation time, if any."""
-    created = []
+    created: list[datetime] = []
     for bucket_id in source.bucket_ids:
         meta = buckets.get(bucket_id)
         value = meta.get("created") if isinstance(meta, Mapping) else None
-        try:
-            created.append(to_utc(value))
-        except (TypeError, ValueError, AttributeError):
+        when = _created_time(value)
+        if when is None:
             log.warning("bucket %s has no usable 'created' time (%r)", bucket_id, value)
+        else:
+            created.append(when)
     if not created:
         return None
     local = min(created).astimezone()
@@ -34,12 +35,21 @@ def history_before(
     client: AWApi, source: AWSource, start: datetime
 ) -> tuple[tuple[str, datetime | None], ...]:
     """Each bucket with an event beginning before the start, and when the newest one began."""
-    earlier = []
+    earlier: list[tuple[str, datetime | None]] = []
     for bucket_id in source.bucket_ids:
         found, began = _event_before(client, bucket_id, start)
         if found:
             earlier.append((bucket_id, began))
     return tuple(earlier)
+
+
+def _created_time(value: object) -> datetime | None:
+    if not isinstance(value, str | datetime):
+        return None
+    try:
+        return to_utc(value)
+    except ValueError:
+        return None
 
 
 def _event_before(client: AWApi, bucket_id: str, start: datetime) -> tuple[bool, datetime | None]:

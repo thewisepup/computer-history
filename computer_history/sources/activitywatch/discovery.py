@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi
+from computer_history.sources.contract import JsonValue
 
 WINDOW_SOURCE = "aw-window"
 AFK_SOURCE = "aw-afk"
@@ -24,7 +24,9 @@ class AWSource:
     bucket_ids: tuple[str, ...]
 
 
-def discover_sources(client: AWApi, *, buckets: Mapping[str, Any] | None = None) -> list[AWSource]:
+def discover_sources(
+    client: AWApi, *, buckets: Mapping[str, JsonValue] | None = None
+) -> list[AWSource]:
     """Map ActivityWatch buckets to sources by bucket type, ignoring other types.
 
     Pass a bucket listing you already have, otherwise one is fetched.

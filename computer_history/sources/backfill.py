@@ -89,7 +89,7 @@ def plan_backfill(
     has_progress = progress is not None
     if begin is None or begin >= stop:
         return BackfillPlan(stream, parts, begin, stop, settled, (), has_progress=has_progress)
-    chunks = []
+    chunks: list[Chunk] = []
     edge = begin
     while edge < stop:
         chunks.append(Chunk(edge, min(edge + chunk, stop)))
@@ -126,7 +126,7 @@ def plan_all_backfills(
 
     Writes nothing.
     """
-    plans = []
+    plans: list[BackfillPlan] = []
     stream = None
     try:
         for stream in _distinct(source.streams()):
@@ -185,7 +185,7 @@ class BackfillResult:
     skipped: int = 0
     held_back: int = 0
     seconds: float = 0.0
-    incomplete: list[tuple[Chunk, datetime]] = field(default_factory=list)
+    incomplete: list[tuple[Chunk, datetime]] = field(default_factory=list[tuple[Chunk, datetime]])
     complete_until: datetime | None = None
     progress: BackfillProgress | None = None
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from computer_history.sources import Pull, SourceUnavailable
+from computer_history.sources import Pull, SourceUnavailable, StreamProjector
 from computer_history.store import Observation, Signal
 
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
@@ -25,7 +25,9 @@ class Capture:
 class FakeSource:
     def __init__(self, *streams: str) -> None:
         self.captures: dict[str, list[Capture]] = {stream: [] for stream in streams}
-        self.projectors = {stream: self.project for stream in streams}
+        self.projectors: Mapping[str, StreamProjector] = {
+            stream: self.project for stream in streams
+        }
         self.projected: list[str] = []
         self.strays: dict[str, str] = {}
         self.unsettled: set[str] = set()

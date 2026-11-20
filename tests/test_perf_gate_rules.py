@@ -37,7 +37,7 @@ def _costs(
 ) -> Costs:
     by_statement = {text: StatementCost(*cost) for text, cost in statements.items()}
     return Costs(
-        statements=sum(cost.count for cost in by_statement.values()),
+        statements=sum(cost.runs for cost in by_statement.values()),
         vm_steps=sum(cost.vm_steps for cost in by_statement.values()),
         full_scans=scans,
         pages=pages,

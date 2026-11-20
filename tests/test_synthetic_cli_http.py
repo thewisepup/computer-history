@@ -22,7 +22,7 @@ from computer_history.sources import (
 )
 from computer_history.store import connect, content_digest, get_progress, utc_iso
 from computer_history.synthetic import SCENARIOS, Dataset, DatasetInputs, build_dataset
-from computer_history.synthetic.activitywatch import ActivityWatchRenderer
+from computer_history.synthetic.activitywatch import ActivityWatchRenderer, RenderedActivityWatch
 from computer_history.synthetic.aw_api import ServedAW
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
@@ -111,6 +111,7 @@ def test_the_http_server_binds_only_loopback_on_an_ephemeral_port(tmp_path: Path
 
 def _served(dataset: Dataset) -> ServedAW:
     rendered = dataset.rendered[ActivityWatchRenderer.name]
+    assert isinstance(rendered, RenderedActivityWatch)
     return ServedAW(rendered.buckets, rendered.events)
 
 

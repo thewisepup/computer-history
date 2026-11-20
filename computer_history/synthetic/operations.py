@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -71,7 +71,9 @@ class Operation:
 
 
 @contextmanager
-def started(operation: Operation, dataset: GateDataset, folder: Path) -> Iterator[Session]:
+def started(
+    operation: Operation, dataset: GateDataset, folder: Path
+) -> Generator[Session, None, None]:
     """The operation started in a scratch folder, closed and its folder removed afterwards."""
     try:
         session = operation.start(dataset, folder)

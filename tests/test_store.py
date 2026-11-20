@@ -288,8 +288,10 @@ def insert_observation(
     started: str = "2026-11-17T10:00:00Z",
     ended: str = "2026-11-17T10:01:00Z",
 ) -> int:
-    return conn.execute(
+    row_id = conn.execute(
         "INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at) "
         "VALUES ('aw-window', ?, ?, ?, '{}', ?)",
         (source_id, started, ended, ended),
     ).lastrowid
+    assert row_id is not None
+    return row_id

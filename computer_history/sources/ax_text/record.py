@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from computer_history.sources.contract import JsonValue
 from computer_history.store import to_utc
 
 SPOOL_VERSION = 1
@@ -48,7 +49,7 @@ class ParsedRecord:
 def parse_record(line: str) -> ParsedRecord:
     """The record on one spool line, or InvalidRecord if it is malformed or of another version."""
     try:
-        data = json.loads(line)
+        data: JsonValue = json.loads(line)
     except ValueError as exc:
         raise InvalidRecord(f"not JSON: {exc}") from exc
     if not isinstance(data, dict):

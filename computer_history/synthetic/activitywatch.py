@@ -60,7 +60,7 @@ class ActivityWatchRenderer:
         for period in observed_periods(timeline, WINDOW_SOURCE):
             window += _runs(period, lambda s: {"app": s.app, "title": s.title})
         for period in observed_periods(timeline, WEB_SOURCE):
-            web += _runs(period, lambda s: s.url and {"url": s.url, "title": s.title})
+            web += _runs(period, lambda s: {"url": s.url, "title": s.title} if s.url else None)
         web = [(start, end, {**data, **_tab(rng)}) for start, end, data in web]
         afk = [
             (span.start, span.end, {"status": "afk" if span.afk else "not-afk"})
@@ -72,7 +72,7 @@ class ActivityWatchRenderer:
             WEB_BUCKET: _events(web),
         }
         created = timeline.start.isoformat()
-        buckets = {
+        buckets: dict[str, dict[str, Any]] = {
             bucket: {
                 "id": bucket,
                 "created": created,
@@ -89,7 +89,7 @@ class ActivityWatchRenderer:
 def _runs(
     period: Iterable[Stretch], data: Callable[[Stretch], Mapping[str, Any] | None]
 ) -> list[EventSpan]:
-    runs = []
+    runs: list[EventSpan] = []
     for value, run in groupby(period, key=data):
         stretches = list(run)
         if value:

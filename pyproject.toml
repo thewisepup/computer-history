@@ -55,6 +55,10 @@ extend-exclude = ["history.py", "history_mcp.py", "test_history.py", "test_mcp.p
 include = ["computer_history", "tests"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+strict = ["computer_history"]
+reportMatchNotExhaustive = "error"
+reportUnnecessaryComparison = "error"
+reportUnnecessaryIsInstance = "error"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]

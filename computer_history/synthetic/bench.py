@@ -78,7 +78,7 @@ def time_operation(
     clock: Callable[[], float] = time.perf_counter,
 ) -> tuple[float, ...]:
     """The seconds each run takes, each started afresh in scratch that is then removed."""
-    times = []
+    times: list[float] = []
     for run in range(RUNS):
         with started(operation, dataset, folder / str(run)) as session:
             began = clock()
@@ -102,7 +102,7 @@ def run_bench(
     """
     path = baseline_path or bench_baseline_path(cache)
     baseline = _load(path)
-    timings = []
+    timings: list[Timing] = []
     for label, inputs in datasets.items():
         dataset = gate_dataset(inputs, cached_dataset(inputs, cache))
         for name, operation in OPERATIONS.items():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
@@ -136,7 +137,7 @@ def test_a_file_that_is_not_a_database_is_unreadable(db_path: Path, purpose: Pur
 
 
 class _NoWalConnection(sqlite3.Connection):
-    def execute(self, sql: str, *args: object) -> sqlite3.Cursor:
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
         if sql == "PRAGMA journal_mode = WAL":
             sql = "SELECT 'delete'"
         return super().execute(sql, *args)

@@ -146,7 +146,7 @@ def test_timestamps_stored_canonically(conn: sqlite3.Connection) -> None:
     "bad",
     [
         Observation("aw-window", "", at(0), at(1), "{}"),
-        Observation("aw-window", None, at(0), at(1), "{}"),
+        Observation("aw-window", None, at(0), at(1), "{}"),  # pyright: ignore[reportArgumentType]
         Observation("aw-window", "1", at(1), at(0), "{}"),
         Observation("aw-window", "1", "2026-11-17T10:00:00", at(1), "{}"),
     ],
@@ -271,7 +271,8 @@ def test_source_summary(conn: sqlite3.Connection) -> None:
     assert rows["aw-afk"] == ("aw-afk", 2, at(-3), at(2), None, None)
     assert rows["aw-web"][:5] == ("aw-web", 0, None, None, None)
     assert rows["aw-web"].advanced_at is not None
-    assert rows["aw-window"].latest_ended_at.tzinfo is not None
+    latest = rows["aw-window"].latest_ended_at
+    assert latest is not None and latest.tzinfo is not None
 
 
 def test_table_counts(conn: sqlite3.Connection) -> None:

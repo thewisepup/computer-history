@@ -59,7 +59,7 @@ def explained(timeline: Timeline) -> tuple[ExplainedGap, ...]:
 
 def _missed_by_agent(timeline: Timeline, records: Sequence[Capture]) -> list[Span]:
     times = [record.at for record in records]
-    missed = []
+    missed: list[Span] = []
     for fault in timeline.faults_of(FaultKind.AGENT_DOWN, FaultKind.PERMISSION_LOST):
         before = bisect_right(times, fault.start) - 1
         after = bisect_left(times, fault.end)

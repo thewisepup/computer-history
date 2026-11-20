@@ -330,9 +330,10 @@ def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
 
     def drops_odd_titles(source: str, payload: str):
         signal = AW(source, payload)
-        if signal is not None and int(signal.title[1:]) % 2:
+        if signal is None:
             return None
-        return signal
+        assert signal.title is not None
+        return None if int(signal.title[1:]) % 2 else signal
 
     result = rebuild_signals(conn, drops_odd_titles)
     assert (result.signals_before, result.signals_after) == (WINDOW_EVENTS, WINDOW_EVENTS // 2)

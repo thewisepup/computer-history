@@ -11,7 +11,7 @@ import shutil
 import sqlite3
 import sys
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -106,7 +106,7 @@ def _place(staging: Path, entry: Path, aside: Path) -> bool:
 
 
 @contextmanager
-def _locked(folder: Path) -> Iterator[None]:
+def _locked(folder: Path) -> Generator[None, None, None]:
     descriptor = os.open(folder, os.O_RDONLY)
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
@@ -138,7 +138,7 @@ def open_cached(dataset: CachedDataset) -> sqlite3.Connection:
 def copy_dataset(dataset: CachedDataset, destination: Path) -> tuple[Path, ...]:
     """Copy every file of the entry into the destination folder; returns the top-level paths."""
     destination.mkdir(parents=True, exist_ok=True)
-    copied = []
+    copied: list[Path] = []
     for item in sorted(dataset.folder.iterdir()):
         target = destination / item.name
         if item.is_dir():

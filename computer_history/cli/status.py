@@ -148,6 +148,7 @@ def _print_gaps(
         if checked.coverage is Coverage.UNSETTLED:
             print(f"  {s.source}: no settled span to check yet")
             continue
+        assert checked.span is not None
         start, gaps = checked.span[0], checked.gaps
         if not gaps:
             print(f"  {s.source}: no gaps since {when(start)}")

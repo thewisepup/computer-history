@@ -16,10 +16,10 @@ from computer_history.store import (
 
 __all__ = ["KNOWN_SOURCES", "projector_for", "reproject_signals"]
 
-KNOWN_SOURCES: tuple[Projecting, ...] = (ActivityWatch, CaptureSpool)
+KNOWN_SOURCES: tuple[type[Projecting], ...] = (ActivityWatch, CaptureSpool)
 
 
-def projector_for(sources: Iterable[Projecting]) -> Projector:
+def projector_for(sources: Iterable[Projecting | type[Projecting]]) -> Projector:
     """One projector over every stream the sources claim, raising UnclaimedSource for any other.
 
     Two sources claiming one stream with different projectors are refused.
@@ -39,7 +39,7 @@ def reproject_signals(
     conn: sqlite3.Connection,
     *,
     allow_shrink: bool = False,
-    sources: Iterable[Projecting] = KNOWN_SOURCES,
+    sources: Iterable[Projecting | type[Projecting]] = KNOWN_SOURCES,
 ) -> RebuildResult:
     """Rebuild every signal from the stored observations through the known adapters' projectors."""
     sources = list(sources)
@@ -48,7 +48,7 @@ def reproject_signals(
     )
 
 
-def _routes(sources: Iterable[Projecting]) -> dict[str, StreamProjector]:
+def _routes(sources: Iterable[Projecting | type[Projecting]]) -> dict[str, StreamProjector]:
     routes: dict[str, StreamProjector] = {}
     for source in sources:
         for stream, project in source.projectors.items():

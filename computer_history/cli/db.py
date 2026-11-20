@@ -27,7 +27,8 @@ def _unavailable_reason(store: OpenedStore) -> str:
             )
         case StoreState.BUSY | StoreState.UNREADABLE:
             return f"cannot open {store.path}: {store.error}"
-    raise ValueError(f"{store.path} is ready")
+        case StoreState.READY:
+            raise ValueError(f"{store.path} is ready")
 
 
 def outdated_note(store: OpenedStore) -> str:

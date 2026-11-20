@@ -64,13 +64,17 @@ def test_poll_writes_each_stream_with_its_progress_and_resumes_after_it(
         at(10),
         {"ax-text": IngestOutcome(2, 0, 0, at(2)), "ocr": IngestOutcome(1, 0, 0, at(1))},
     )
-    assert get_progress(conn, "ax-text").position == "ax-text.jsonl:2"
+    progress = get_progress(conn, "ax-text")
+    assert progress is not None
+    assert progress.position == "ax-text.jsonl:2"
 
     spool.add("ax-text", "c3", 5)
     again = poll(conn, [spool], now=at(11))
     assert again.outcomes["ax-text"] == IngestOutcome(1, 0, 0, at(6))
     assert again.outcomes["ocr"] == IngestOutcome(0, 0, 0, None)
-    assert get_progress(conn, "ocr").advanced_at == at(10)
+    progress = get_progress(conn, "ocr")
+    assert progress is not None
+    assert progress.advanced_at == at(10)
     assert stored(conn, "ax-text") == ["c1", "c2", "c3"]
 
 
@@ -245,6 +249,7 @@ def test_backfill_reports_an_incomplete_chunk_once_and_sets_progress_from_it(
     assert result.complete_until == at(90)
     assert result.progress is BackfillProgress.SET
     progress = get_progress(conn, "a")
+    assert progress is not None
     assert progress.position == spool.positions[1] == f"range:{at(90).isoformat()}"
     assert progress.settled_until == at(90) and progress.advanced_at == at(180)
     assert stored(conn, "a") == ["a1", "a2", "a3", "a4"]
@@ -330,13 +335,16 @@ def test_backfill_reports_progress_set_meanwhile(conn: sqlite3.Connection) -> No
     poll(conn, [other], now=at(175))
     (result,) = run_backfill(conn, spool, [plan], clock=lambda: at(180)).results
     assert result.progress is BackfillProgress.SET_MEANWHILE
-    assert get_progress(conn, "a").position == "a.jsonl:1"
+    progress = get_progress(conn, "a")
+    assert progress is not None
+    assert progress.position == "a.jsonl:1"
 
 
 def test_backfill_of_a_stream_with_progress_keeps_it(conn: sqlite3.Connection) -> None:
     spool = three_hours()
     poll(conn, [spool], now=at(180))
     before = get_progress(conn, "a")
+    assert before is not None
     plan = hourly_plan(spool, conn, start=at(0))
     assert plan.end == before.settled_until
     (result,) = run_backfill(conn, spool, [plan], clock=lambda: at(180)).results

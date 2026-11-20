@@ -3,12 +3,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from computer_history.store import Observation, Signal
 
 __all__ = [
     "HistorySource",
+    "JsonValue",
     "Projecting",
     "Pull",
     "Source",
@@ -17,6 +18,7 @@ __all__ = [
 ]
 
 StreamProjector = Callable[[str], Signal | None]
+JsonValue = dict[str, Any] | list[Any] | str | int | float | bool | None
 
 
 class SourceUnavailable(RuntimeError):
