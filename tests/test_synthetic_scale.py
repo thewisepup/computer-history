@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from statistics import mean
 from zoneinfo import ZoneInfo
@@ -26,6 +26,7 @@ from computer_history.synthetic import (
     build_timeline,
     generate_timeline,
 )
+from computer_history.synthetic.days import live
 from computer_history.synthetic.seeds import part_random
 from computer_history.text import extract_domain
 
@@ -227,3 +228,21 @@ def test_a_session_across_local_midnight_splits_between_the_two_days(tmp_path: P
     }
     assert dataset.manifest.observations == {"aw-afk": 1, "aw-web": 1, "aw-window": 2}
     assert counts == {"aw-afk": 1, "aw-web": 1, "aw-window": 2}
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_late_evening_stops_at_local_midnight(seed: int) -> None:
+    developer = PERSONAS["developer"]
+    night_owl = replace(
+        developer,
+        rhythm=replace(developer.rhythm, evening_chance=1.0, evening_start=time(23, 45)),
+    )
+    stretches = live(night_owl, MONDAY, 2, "America/Los_Angeles", part_random(seed, "night owl"))
+    midnights = [
+        datetime.combine(MONDAY + timedelta(days=offset), time(), PACIFIC) for offset in (1, 2)
+    ]
+
+    assert stretches[-1].end == midnights[-1]
+    assert not [
+        s for s in stretches if s.active and any(s.start < m < s.end for m in midnights)
+    ]
