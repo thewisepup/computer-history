@@ -115,9 +115,11 @@ def test_no_private_names_imported_across_modules(path: Path) -> None:
 
 
 FORBIDDEN_IMPORTS = {
-    "store": ("computer_history.sources", "computer_history.cli"),
-    "sources": ("computer_history.cli",),
+    "store": ("computer_history.sources", "computer_history.synthetic", "computer_history.cli"),
+    "sources": ("computer_history.synthetic", "computer_history.cli"),
+    "synthetic": ("computer_history.cli",),
 }
+OPENS_ITS_OWN_DATABASES = ("cli", "store", "synthetic")
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
@@ -150,7 +152,7 @@ def test_only_the_store_runs_sql(path: Path) -> None:
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
 def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
-    if _layer(path) in ("cli", "store"):
+    if _layer(path) in OPENS_ITS_OWN_DATABASES:
         return
     calls = [
         f"line {node.lineno}: {node.func.id}()"

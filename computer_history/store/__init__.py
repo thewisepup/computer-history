@@ -4,9 +4,10 @@ Only this package knows SQL. Commands open the database with open_store,
 which reports its state. Ingest writes through insert_observations, the only
 way a source's progress moves. It and rebuild_signals both turn a stored
 payload into its signal with the projector the caller passes, and status and
-backfill use the read queries.
+backfill use the read queries. content_digest hashes what the database holds.
 """
 
+from computer_history.store.contents import content_digest
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
@@ -60,6 +61,7 @@ __all__ = [
     "StoreState",
     "UnclaimedSource",
     "connect",
+    "content_digest",
     "default_db_path",
     "find_gaps",
     "get_progress",

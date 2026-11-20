@@ -15,6 +15,9 @@ summaries.
 - `computer_history/` — the rewrite. Each package's `__init__.py` opens with
   its flow diagram; `computer_history/cli/README.md` shows every command with
   examples.
+- `computer_history/synthetic/` — synthetic datasets: a persona's timeline,
+  rendered per source and built through the real backfill and poll, with a
+  manifest of true answers that tests check against.
 - `capture-agent/` — the signed Swift capture agent macOS starts at login;
   its README has the build, install, test and log commands, and the spool
   record format.
