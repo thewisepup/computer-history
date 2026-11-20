@@ -103,7 +103,9 @@ computer_history/
                 # ordinary days), scenarios, generate (inputs -> timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
                 # buckets served in process), spool (+ captures: when the
-                # agent captures), build, manifest
+                # agent captures), build, manifest, cache (built datasets per
+                # user, keyed by inputs and code), devdb (a cached dataset
+                # copied out, never into a live folder)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

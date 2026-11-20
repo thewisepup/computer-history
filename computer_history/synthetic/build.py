@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.manifest import Manifest, true_answers
 from computer_history.synthetic.renderer import Feed, RenderedSource, Renderer
 from computer_history.synthetic.seeds import part_random
-from computer_history.synthetic.spool import SpoolRenderer
+from computer_history.synthetic.spool import INGEST_FOLDER, SpoolRenderer
 from computer_history.synthetic.timeline import Timeline
 
 RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(), SpoolRenderer())
@@ -82,6 +83,8 @@ def build_timeline(
         for leftover in (db_path, manifest_path, *_sidecars(db_path)):
             leftover.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(folder / INGEST_FOLDER, ignore_errors=True)
     return Dataset(db_path, manifest_path, timeline, rendered, feeds, manifest, now)
 
 

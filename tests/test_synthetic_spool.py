@@ -224,6 +224,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
 ) -> None:
     dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
     folder = dataset.db_path.parent
+    built = sorted(path.name for path in folder.iterdir())
     rendered = dataset.rendered["spool"]
     on_disk = {path.name: path.read_bytes() for path in (folder / SPOOL_FOLDER).iterdir()}
     conn = connect(dataset.db_path)
@@ -233,6 +234,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     finally:
         conn.close()
 
+    assert built == ["history.db", "manifest.json", SPOOL_FOLDER]
     assert on_disk == {
         file.name: "".join(f"{line}\n" for line in file.lines).encode() for file in rendered.files
     }

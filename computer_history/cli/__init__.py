@@ -7,6 +7,7 @@
       +-- status.py    freshness, coverage gaps, row counts
       +-- rebuild.py   rebuild-signals
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
+      +-- dev.py       dev build-db: a database of synthetic history from the dataset cache
             |
     db.py and sources.py (unusable database / source messages),
     formatting.py (durations, times, sizes, app names)
