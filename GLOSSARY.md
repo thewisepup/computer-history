@@ -179,3 +179,53 @@ _Avoid_: Recommendation, idea, tip
 **Nudge**:
 The reminder, shown in status and reviews, that no work types exist yet. It is the whole of onboarding.
 _Avoid_: Onboarding prompt, wizard
+
+### Synthetic datasets
+
+**Synthetic dataset**:
+A database of invented history built through the real ingest path, with its manifest. A persona, a scenario, a scale tier with its heavy factor, and a seed pick it, and the same four always give the same contents.
+_Avoid_: Fixture, fake data, mock database
+
+**Persona**:
+Who a synthetic user is, as typed config: apps, sites, projects, daily rhythm and switch rate. It never decides what goes wrong.
+_Avoid_: Profile, user type
+
+**Scenario**:
+What happens over a dataset's range: faults, extra sleeps and long AFK spans placed on the persona's ordinary timeline. It never changes who the user is.
+_Avoid_: Case, story
+
+**Scale tier**:
+How many days a dataset covers: day, week, month or year.
+_Avoid_: Size, scale
+
+**Heavy**:
+A factor that makes a persona a heavier user: faster switching, more text and weekends worked. The workday keeps its length.
+_Avoid_: Stress mode, load
+
+**Timeline**:
+The source-neutral account of a dataset's range: stretches covering it end to end, plus the faults over them. Every renderer reads the same one.
+_Avoid_: Schedule, script, event list
+
+**Stretch**:
+One span of a synthetic timeline: an app and window in front with the user present or AFK, or the Mac asleep. Elsewhere, stretch is a plain word for any span of time.
+_Avoid_: Segment, block (that word means a labelled span), event
+
+**Fault**:
+A span of a timeline in which sources fail: ActivityWatch down, the capture agent down, Accessibility permission lost, capture paused or an app excluded.
+_Avoid_: Outage (that is one kind), error, incident
+
+**Renderer**:
+Turns a whole timeline into one source family's raw data, the way that source really records it, and names the streams it feeds.
+_Avoid_: Exporter, writer
+
+**Manifest**:
+The true answers for a dataset, computed from its timeline and never its database: time per app and domain, AFK, unobserved time, explained gaps and counts.
+_Avoid_: Snapshot, golden file, expected output
+
+**Cost counter**:
+One deterministic measure of the SQLite work an operation does: statements run, VM steps, full scans or database pages.
+_Avoid_: Metric, timing, benchmark
+
+**Baseline**:
+The committed cost counters per operation and dataset that the performance gate compares against. It changes only on purpose, with the reason in the pull request.
+_Avoid_: Budget, threshold

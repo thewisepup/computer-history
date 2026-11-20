@@ -25,11 +25,16 @@ include = ["computer_history*"]
 
 [tool.setuptools.package-data]
 "computer_history.store" = ["migrations/*.sql"]
+"computer_history.synthetic" = ["perf_baselines/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see"]
+addopts = "-m 'not perf'"
+markers = [
+    "perf: the performance gate, run with -m perf or computer-history dev perf",
+    "schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see",
+]
 
 [tool.mutmut]
 source_paths = ["computer_history/"]
