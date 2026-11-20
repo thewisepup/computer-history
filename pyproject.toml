@@ -33,7 +33,7 @@ pythonpath = ["."]
 addopts = "-m 'not perf'"
 markers = [
     "perf: the performance gate, run with -m perf or computer-history dev perf",
-    "dataset: builds synthetic datasets or runs the dev perf and bench commands; CI runs it, the pre-commit hook leaves it out",
+    "dataset: builds synthetic datasets, runs the dev perf and bench commands, or is too slow for the hook; CI runs it, the pre-commit hook leaves it out",
     "schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see",
 ]
 
