@@ -17,6 +17,7 @@
           |
       build.py          render, backfill and poll into a new database, at a fixed now
       manifest.py       the true answers, from the timeline and never the database
+          |             gaps.py: the stretches each source leaves unobserved, and explained gaps
           |
       cache.py          built datasets per user, keyed by inputs and code, renamed into place
       devdb.py          a cached dataset copied out for local use, never over the live database
@@ -49,6 +50,7 @@ from computer_history.synthetic.devdb import (
     live_folders,
     make_dev_database,
 )
+from computer_history.synthetic.gaps import ExplainedGap
 from computer_history.synthetic.generate import (
     PERSONAS,
     TIERS,
@@ -79,6 +81,7 @@ __all__ = [
     "Dataset",
     "DatasetInputs",
     "DevDatabase",
+    "ExplainedGap",
     "Fault",
     "FaultKind",
     "LiveDatabaseRefused",

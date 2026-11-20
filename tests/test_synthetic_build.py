@@ -41,6 +41,11 @@ from computer_history.synthetic.renderer import Feed
 REPO = Path(__file__).resolve().parent.parent
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
+SCENARIO_DAYS = pytest.mark.parametrize(
+    "inputs",
+    [DEVELOPER_DAY, DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1)],
+    ids=["typical", "messy"],
+)
 
 
 def test_the_same_inputs_build_the_same_dataset(tmp_path: Path) -> None:
@@ -63,8 +68,9 @@ def test_another_seed_builds_a_different_dataset(tmp_path: Path) -> None:
     assert first.manifest.content_digest != other.manifest.content_digest
 
 
-def test_stored_time_equals_the_manifest(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_stored_time_equals_the_manifest(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     manifest = dataset.manifest
     conn = connect(dataset.db_path)
     try:
@@ -122,8 +128,9 @@ def _local_days(start: datetime, end: datetime, timezone: str):
         yield (day - timedelta(days=1)).isoformat(), (lo, datetime.combine(day, time(), zone))
 
 
-def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     conn = connect(dataset.db_path)
     try:
         polled = poll_feeds(conn, dataset.feeds, now=dataset.now)
@@ -138,8 +145,9 @@ def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path) -> None:
     assert digest == dataset.manifest.content_digest
 
 
-def test_rebuilding_signals_gives_the_same_signals(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_rebuilding_signals_gives_the_same_signals(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     conn = connect(dataset.db_path)
     try:
         rebuilt = reproject_signals(conn)
@@ -200,20 +208,21 @@ BUILD_IN_A_NEW_PROCESS = """
 import sys
 from pathlib import Path
 from computer_history.synthetic import DatasetInputs, build_dataset
-inputs = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
+inputs = DatasetInputs(persona="developer", scenario=sys.argv[2], tier="day", seed=1)
 print(build_dataset(inputs, Path(sys.argv[1])).manifest_path.read_text(), end="")
 """
 
 
+@SCENARIO_DAYS
 def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_dataset(
-    tmp_path: Path,
+    tmp_path: Path, inputs: DatasetInputs
 ) -> None:
     manifests = []
     for hash_seed, timezone in (("0", "UTC"), ("4242", "Asia/Kolkata")):
         env = {**os.environ, "PYTHONHASHSEED": hash_seed, "TZ": timezone}
         folder = tmp_path / f"{hash_seed}-{timezone.replace('/', '-')}"
         built = subprocess.run(
-            [sys.executable, "-c", BUILD_IN_A_NEW_PROCESS, str(folder)],
+            [sys.executable, "-c", BUILD_IN_A_NEW_PROCESS, str(folder), inputs.scenario],
             cwd=REPO,
             env=env,
             capture_output=True,
@@ -221,7 +230,7 @@ def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_d
             check=True,
         )
         manifests.append(json.loads(built.stdout))
-    here = json.loads(build_dataset(DEVELOPER_DAY, tmp_path / "here").manifest_path.read_text())
+    here = json.loads(build_dataset(inputs, tmp_path / "here").manifest_path.read_text())
 
     assert manifests[0] == manifests[1] == here
 

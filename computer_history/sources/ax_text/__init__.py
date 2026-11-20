@@ -38,7 +38,9 @@ from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE, MAX_AX_TE
 from computer_history.sources.ax_text.paths import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.sources.ax_text.record import (
     CAPTURE_KIND,
+    EXCLUDED_KIND,
     PAUSED_KIND,
+    RESUMED_KIND,
     SPOOL_VERSION,
     InvalidRecord,
     parse_record,
@@ -58,9 +60,11 @@ __all__ = [
     "AX_TEXT_SOURCE",
     "CAPTURE_KIND",
     "CAPTURE_TOLERANCE",
+    "EXCLUDED_KIND",
     "HEARTBEAT_SECONDS",
     "MAX_AX_TEXT_LENGTH",
     "PAUSED_KIND",
+    "RESUMED_KIND",
     "SPOOL_ENV_VAR",
     "SPOOL_VERSION",
     "UNREADABLE_FOLDER",
