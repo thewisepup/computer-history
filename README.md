@@ -260,16 +260,15 @@ authentication and explicit trusted-host configuration.
 .venv/bin/python -m pytest                              # the computer_history package (tests/)
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
-.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check, standard mode; not yet required (#76)
+.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check: computer_history strict, tests standard
 ```
 
-The pre-commit hook scans the staged changes with gitleaks, then runs ruff and
-pytest. CI runs all three and gitleaks on every pull request and push to
-`main`, and `main` only merges pull requests whose checks pass. Its `perf` job
+The pre-commit hook scans the staged changes with gitleaks, then runs ruff,
+pytest and pyright. CI runs ruff, pytest, the POC suite and gitleaks on every
+pull request and push to `main`, and `main` only merges pull requests whose checks pass. Its `perf` job
 runs the performance gate (`computer-history dev perf`, see
 `computer_history/cli/README.md`) on synthetic day and month datasets, against
 the baseline for CI's SQLite, and fails on any change of cost. A nightly
 workflow runs the gate on a year and a heavy year, and the wall-clock
 benchmark; it reports and never blocks a merge.
-CI also runs pyright as the `typecheck` job, which does not block merges
-until #76 makes it pass.
+CI also runs pyright as the `typecheck` job.

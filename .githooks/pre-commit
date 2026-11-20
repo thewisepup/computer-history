@@ -15,6 +15,7 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
   exit 1
 fi
 "$PY" -m pytest -q
+"$PY" -m pyright --pythonpath "$PY"
 swift_paths='^(capture-agent/|fixtures/spool/|tests/test_capture_e2e\.py$)'
 e2e_paths="$swift_paths"'|^(computer_history/|pyproject\.toml$|tests/test_synthetic_spool\.py$)'
 changed="$(git diff --cached --name-only --no-renames)"
