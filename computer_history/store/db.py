@@ -15,8 +15,6 @@ from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from computer_history.store.paths import resolve_db_path
-
 if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
 
@@ -49,13 +47,13 @@ class WalUnavailable(RuntimeError):
 
 
 def connect(
-    db_path: str | os.PathLike[str] | None = None, *, create: bool = True
+    db_path: str | os.PathLike[str], *, create: bool = True
 ) -> sqlite3.Connection:
     """Open the database for writing and bring its schema up to date.
 
     Creates the file first unless create is False.
     """
-    path = resolve_db_path(db_path)
+    path = Path(db_path)
     if create:
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = _open(path, "rwc" if create else "rw")
@@ -71,9 +69,9 @@ def connect(
     return conn
 
 
-def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
+def connect_readonly(db_path: str | os.PathLike[str]) -> sqlite3.Connection:
     """Open an existing database for reading only. Fails if the file does not exist."""
-    return _open(resolve_db_path(db_path), "ro")
+    return _open(Path(db_path), "ro")
 
 
 def connect_immutable(db_path: str | os.PathLike[str]) -> sqlite3.Connection:

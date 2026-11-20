@@ -275,11 +275,6 @@ def test_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     assert resolve_db_path("~/x.db") == tmp_path / "x.db"
 
 
-def test_connect_uses_env_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv(DB_ENV_VAR, str(tmp_path / "env.db"))
-    connect().close()
-    assert (tmp_path / "env.db").is_file()
-
 
 def insert_observation(
     conn: sqlite3.Connection,

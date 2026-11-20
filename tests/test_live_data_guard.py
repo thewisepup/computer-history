@@ -12,7 +12,6 @@ from live_data_guard import GUARDED_ENV_VARS, LIVE_DATA_DIR, LiveDataTouched
 
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR
 from computer_history.store import DB_ENV_VAR, connect, default_db_path
-from computer_history.store import db as store_db
 from computer_history.store.paths import resolve_db_path
 
 PROBE = LIVE_DATA_DIR / "test-guard-probe-that-never-exists.db"
@@ -80,11 +79,10 @@ def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: 
     assert not PROBE.exists()
 
 
-def test_a_path_dropping_bug_lands_in_the_sandbox_not_the_live_db(
+def test_a_run_given_no_database_path_lands_in_the_sandbox_not_the_live_db(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(store_db, "resolve_db_path", lambda explicit=None: resolve_db_path(None))
-    connect(tmp_path / "meant-for-this.db").close()
+    connect(resolve_db_path(None)).close()
     assert default_db_path().exists()
-    assert not (tmp_path / "meant-for-this.db").exists()
+    assert default_db_path().is_relative_to(tmp_path)
