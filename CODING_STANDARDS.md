@@ -1,8 +1,9 @@
 # Code standards
 
-Rules marked **[checked]** fail automatically in `tests/test_standards.py`
-(run by the pre-commit hook and CI). The comment and docstring checks cover
-`computer_history/` and `tests/`; the rest cover `computer_history/` only.
+Rules marked **[checked]** fail automatically in `tests/test_standards.py`,
+or in the test the rule names (run by the pre-commit hook and CI). The
+comment and docstring checks cover `computer_history/` and `tests/`; the rest
+cover `computer_history/` only.
 Unmarked rules are judgement calls the standards reviewer
 (`.claude/agents/standards-reviewer.md`) enforces on each diff, citing each
 rule by its ID.
@@ -97,5 +98,10 @@ Review findings ratchet into rules:
 - **H7** A capture-agent contract value the backend already defines (the
   heartbeat, the format version, the record kinds) is imported from `sources/`
   by `synthetic/`, never restated.
-- **H8** A change to a CLI command or flag updates `computer_history/cli/README.md`
+- **H8** **[checked]** in `tests/test_synthetic_coverage.py`: a new stream,
+  table, timeline field or public store function on a connection lands with
+  synthetic coverage in the same change (a renderer, generated rows, a
+  rendered or manifest effect, a gate operation that runs it), or with an
+  exemption in that test giving the reason.
+- **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
   in the same commit.
