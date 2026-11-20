@@ -340,11 +340,14 @@ first and `x-apple.systempreferences:com.apple.preference.security?Privacy_Scree
 if that does not open. While the grant stays missing it tries again at most
 once every 24 hours, or at once if the clock was set back by more than that.
 The time of the last notification actually posted is kept in
-`screen-recording-reminded` in the folder, so a restart keeps the 24 hours; a
-try that posted nothing (macOS still asking to allow notifications, a
-notification centre that did not answer within 2 seconds, notifications turned
-off, or the agent not running from its app bundle) waits the 24 hours only
-within that run, and a restart tries again. Any picture taken (`kept` or
+`screen-recording-reminded` in the folder, so a restart keeps the 24 hours.
+When macOS first asks whether the agent may post notifications, the
+notification is posted once the user allows them, and the time of that try is
+saved then, from the notification centre's thread. A try that posted nothing
+(the user declined or has not answered yet, a notification centre that did not
+answer within 2 seconds, notifications turned off, or the agent not running
+from its app bundle) waits the 24 hours only within that run, and a restart
+tries again. Any picture taken (`kept` or
 `duplicate`) deletes the file, and a later loss reminds at once. With
 notifications off, `status` is the only warning.
 

@@ -17,6 +17,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var recognizedText: (URL) throws -> String = { _ in "" }
     var notificationPosting = NotificationPosting.posted
     var notifications: [UserNotification] = []
+    var postedLater: [@Sendable () -> Void] = []
     var onCall: (String) -> Void = { _ in }
     private var elements: CGWindowID = 0
 
@@ -49,8 +50,9 @@ final class ScriptedMac: Mac, @unchecked Sendable {
 
     func recognizeText(inImageAt file: URL) throws -> String { try recognizedText(file) }
 
-    func post(_ notification: UserNotification) -> NotificationPosting {
+    func post(_ notification: UserNotification, shownLater: @escaping @Sendable () -> Void) -> NotificationPosting {
         notifications.append(notification)
+        if notificationPosting == .awaitingPermission { postedLater.append(shownLater) }
         return notificationPosting
     }
 

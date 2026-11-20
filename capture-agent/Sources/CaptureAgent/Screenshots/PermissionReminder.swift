@@ -16,11 +16,13 @@ struct PermissionReminder {
         }
     }
 
-    /// Posts the reminder when none was tried in the last day, saving the time only once one was posted.
-    mutating func grantMissing(at now: Date, post: (UserNotification) -> NotificationPosting, log: (String) -> Void) {
+    /// Posts the reminder when none was tried in the last day, saving the time only once one was posted, which may happen later on another thread once the user allows notifications.
+    mutating func grantMissing(
+        at now: Date, post: (UserNotification, @escaping @Sendable () -> Void) -> NotificationPosting, log: (String) -> Void
+    ) {
         if let lastTried, (-Self.interval..<Self.interval).contains(now.timeIntervalSince(lastTried)) { return }
         lastTried = now
-        switch post(ScreenRecordingSettings.reminder) {
+        switch post(ScreenRecordingSettings.reminder, { [file] in try? Self.write(now, to: file) }) {
         case .posted:
             log("screen recording missing, posted a reminder")
             save(now, log: log)
@@ -44,12 +46,16 @@ struct PermissionReminder {
 
     private mutating func save(_ time: Date, log: (String) -> Void) {
         do {
-            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data((time.formatted(.iso8601) + "\n").utf8).write(to: file, options: .atomic)
+            try Self.write(time, to: file)
         } catch {
             guard !toldUnsaved else { return }
             toldUnsaved = true
             log("could not save the reminder time to \(file.path) (\(error.localizedDescription)), a restart may remind again")
         }
+    }
+
+    private static func write(_ time: Date, to file: URL) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data((time.formatted(.iso8601) + "\n").utf8).write(to: file, options: .atomic)
     }
 }

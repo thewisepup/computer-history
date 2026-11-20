@@ -100,6 +100,22 @@ private func reminderLines(_ fixture: LoopFixture) -> [String] {
     ])
 }
 
+@Test func aReminderShownOnceNotificationsAreAllowedKeepsTheDayAcrossARestart() throws {
+    let fixture = LoopFixture()
+    fixture.mac.notificationPosting = .awaitingPermission
+    missingGrant(fixture)
+    fixture.run(for: 120)
+    let shown = try #require(fixture.mac.postedLater.first)
+    #expect(fixture.mac.postedLater.count == 1)
+    DispatchQueue.global().sync(execute: shown)
+    fixture.mac.notificationPosting = .posted
+    fixture.restart()
+    later(day / 2, fixture)
+    #expect(fixture.mac.notifications.count == 1)
+    later(day / 2, fixture)
+    #expect(fixture.mac.notifications.count == 2)
+}
+
 @Test func aSlowNotificationCentreIsLoggedAsATimeoutAndALaterUnavailableIsStillLogged() throws {
     let fixture = LoopFixture()
     fixture.mac.notificationPosting = .timedOut(2)
@@ -134,7 +150,7 @@ private func reminderFile() -> URL {
 private func posts(at offsets: [TimeInterval], of reminder: inout PermissionReminder, from start: Date) -> [Bool] {
     offsets.map { offset in
         var posted = false
-        reminder.grantMissing(at: start.addingTimeInterval(offset), post: { _ in posted = true; return .posted }, log: { _ in })
+        reminder.grantMissing(at: start.addingTimeInterval(offset), post: { _, _ in posted = true; return .posted }, log: { _ in })
         return posted
     }
 }

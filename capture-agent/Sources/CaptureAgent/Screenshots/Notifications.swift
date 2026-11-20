@@ -34,8 +34,8 @@ final class LiveNotifications: NSObject, UNUserNotificationCenterDelegate, @unch
         if Self.inAppBundle { UNUserNotificationCenter.current().delegate = self }
     }
 
-    /// Posts the notification, asking the user first to allow notifications if they never answered, and waits up to the timeout for the centre.
-    func post(_ notification: UserNotification, timeout: TimeInterval) -> NotificationPosting {
+    /// Posts the notification, asking the user first to allow notifications if they never answered and calling shownLater once it is posted after they allow them, and waits up to the timeout for the centre.
+    func post(_ notification: UserNotification, timeout: TimeInterval, shownLater: @escaping @Sendable () -> Void) -> NotificationPosting {
         guard Self.inAppBundle else { return .unavailable("the agent is not running from its app bundle") }
         let answer = Answer()
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -43,7 +43,7 @@ final class LiveNotifications: NSObject, UNUserNotificationCenterDelegate, @unch
             case .notDetermined:
                 answer.finish(.awaitingPermission)
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, _ in
-                    if granted { Self.add(notification) { _ in } }
+                    if granted { Self.add(notification) { error in if error == nil { shownLater() } } }
                 }
             case .denied:
                 answer.finish(.unavailable("notifications are turned off for the agent"))
