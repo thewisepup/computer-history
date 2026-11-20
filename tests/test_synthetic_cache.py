@@ -87,8 +87,9 @@ def test_a_build_that_loses_the_race_discards_its_copy(dataset_cache: Path) -> N
     rival: list[CachedDataset] = []
 
     def build_while_a_rival_finishes_first(inputs: DatasetInputs, folder: Path) -> object:
+        built = build_dataset(inputs, folder)
         rival.append(cached_dataset(inputs))
-        return build_dataset(inputs, folder)
+        return built
 
     loser = cached_dataset(DEVELOPER_DAY, build=build_while_a_rival_finishes_first)
 
