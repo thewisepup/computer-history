@@ -170,7 +170,7 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
 
 ## Coverage record
 
-Last confirmed that the model describes the code at commit `d6495bf`. Files:
+Last confirmed that the model describes the code at commit `b5c4ede`. Files:
 `capture-agent/Sources/CaptureAgent/SpoolWriter.swift`,
 `computer_history/sources/capture_spool/adapter.py`,
 `computer_history/sources/capture_spool/spool.py`,
@@ -178,7 +178,7 @@ Last confirmed that the model describes the code at commit `d6495bf`. Files:
 `computer_history/sources/runner.py`, `computer_history/cli/ingest.py`.
 
 ```bash
-git diff --stat d6495bf -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
+git diff --stat b5c4ede -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
 ```
 
 If that shows changes, re-read them against the table above. Move the commit
