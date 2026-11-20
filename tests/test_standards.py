@@ -4,6 +4,7 @@ import ast
 import io
 import re
 import tokenize
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -115,9 +116,13 @@ def test_no_private_names_imported_across_modules(path: Path) -> None:
 
 
 FORBIDDEN_IMPORTS = {
-    "store": ("computer_history.sources", "computer_history.cli"),
-    "sources": ("computer_history.cli",),
+    "store": ("computer_history.sources", "computer_history.synthetic", "computer_history.cli"),
+    "sources": ("computer_history.synthetic", "computer_history.cli"),
+    "synthetic": ("computer_history.cli",),
 }
+OPENERS = ("AWClient", "connect", "connect_immutable", "connect_readonly", "open_store")
+SCRATCH_DATABASE_LAYERS = ("synthetic",)
+SCRATCH_OPENERS = ("connect", "connect_immutable")
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
@@ -152,14 +157,45 @@ def test_only_the_store_runs_sql(path: Path) -> None:
 def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
     if _layer(path) in ("cli", "store"):
         return
+    scratch = _layer(path) in SCRATCH_DATABASE_LAYERS
     calls = [
         f"line {node.lineno}: {node.func.id}()"
         for node in ast.walk(_tree(path))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in ("AWClient", "connect", "connect_readonly", "open_store")
+        and node.func.id in OPENERS
+        and not (scratch and node.func.id in SCRATCH_OPENERS and node.args)
     ]
     assert not calls, f"{_rel(path)}: take these as parameters instead: {calls}"
+
+
+def _constants(path: Path) -> dict[str, str]:
+    found = {}
+    for node in _tree(path).body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id.isupper() and node.value is not None:
+                found[target.id] = ast.dump(node.value)
+    return found
+
+
+def test_the_cli_defines_no_constant_a_lower_layer_also_defines() -> None:
+    cli = {
+        name: (path, value)
+        for path in SOURCES
+        if _layer(path) == "cli"
+        for name, value in _constants(path).items()
+    }
+    copies = [
+        f"{name}: {_rel(cli[name][0])} and {_rel(path)}"
+        for path in SOURCES
+        if _layer(path) != "cli"
+        for name, value in _constants(path).items()
+        if name in cli and cli[name][1] == value
+    ]
+    assert not copies, f"import these from the lower layer instead of copying them: {copies}"
 
 
 DIAGRAMMED_PACKAGES = [
@@ -177,3 +213,33 @@ def test_package_diagram_lists_every_module(package: Path) -> None:
     missing, stale = sorted(modules - mentioned), sorted(mentioned - modules)
     assert not missing, f"{_rel(package)}: diagram is missing {missing}"
     assert not stale, f"{_rel(package)}: diagram names files that do not exist: {stale}"
+
+
+DESIGN = PACKAGE.parent / "docs" / "DESIGN.md"
+LAID_OUT_PACKAGES = ("store", "sources", "synthetic")
+
+
+def _layout_block(package: str) -> str:
+    layout = DESIGN.read_text(encoding="utf-8").split("\ncomputer_history/\n", 1)[1]
+    block = re.search(rf"^  {package}/ +#(.*?)(?=^  \S)", layout, re.MULTILINE | re.DOTALL)
+    assert block, f"docs/DESIGN.md's package layout has no {package}/ entry"
+    return block.group(1)
+
+
+@pytest.mark.parametrize("package", LAID_OUT_PACKAGES)
+def test_the_design_layout_names_every_module(package: str) -> None:
+    block = _layout_block(package)
+    modules = sorted({p.stem for p in (PACKAGE / package).rglob("*.py")} - {"__init__"})
+    missing = [stem for stem in modules if not re.search(rf"\b{stem}\b", block)]
+    assert not missing, f"docs/DESIGN.md's {package}/ layout is missing {missing}"
+
+
+@pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
+def test_invisible_characters_are_written_as_escapes(path: Path) -> None:
+    raw = [
+        f"line {number}: U+{ord(char):04X}"
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        for char in line
+        if unicodedata.category(char) in ("Cf", "Mn", "Zl", "Zp")
+    ]
+    assert not raw, f"{_rel(path)}: write these as \\u escapes: {raw}"

@@ -49,6 +49,7 @@ def raw_connection(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(path, isolation_level=None)
 
 
+@pytest.mark.schema_rule
 def test_fresh_db_has_full_schema(conn: sqlite3.Connection) -> None:
     assert schema_objects(conn, "table") == TABLES
     assert schema_objects(conn, "view") == VIEWS
@@ -69,10 +70,28 @@ def test_creates_parent_directory(tmp_path: Path) -> None:
     assert path.is_file()
 
 
+@pytest.mark.schema_rule
 def test_observations_unique_on_source_and_source_id(conn: sqlite3.Connection) -> None:
     insert_observation(conn, source_id="42")
     with pytest.raises(sqlite3.IntegrityError):
         insert_observation(conn, source_id="42")
+
+
+@pytest.mark.schema_rule
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE observations SET payload = '{}' WHERE id = ?",
+        "DELETE FROM observations WHERE id = ?",
+    ],
+    ids=["update", "delete"],
+)
+def test_observations_are_immutable(conn: sqlite3.Connection, sql: str) -> None:
+    obs_id = insert_observation(conn, source_id="42")
+    before = conn.execute("SELECT * FROM observations").fetchall()
+    with pytest.raises(sqlite3.IntegrityError, match="observations are immutable"):
+        conn.execute(sql, (obs_id,))
+    assert conn.execute("SELECT * FROM observations").fetchall() == before
 
 
 def test_reopen_is_noop(db_path: Path) -> None:
@@ -160,6 +179,7 @@ def test_migration_files_must_be_contiguous(tmp_path: Path) -> None:
         load_migrations(tmp_path)
 
 
+@pytest.mark.schema_rule
 def test_signal_without_observation_is_rejected(conn: sqlite3.Connection) -> None:
     with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
         conn.execute(

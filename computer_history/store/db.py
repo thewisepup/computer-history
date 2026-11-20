@@ -76,6 +76,11 @@ def connect_readonly(db_path: str | os.PathLike[str] | None = None) -> sqlite3.C
     return _open(resolve_db_path(db_path), "ro")
 
 
+def connect_immutable(db_path: str | os.PathLike[str]) -> sqlite3.Connection:
+    """Open a finished database that nothing writes again, for reading only and leaving no files."""
+    return _open(Path(db_path), "ro&immutable=1")
+
+
 def _open(path: Path, mode: str) -> sqlite3.Connection:
     conn = sqlite3.connect(
         f"{path.resolve().as_uri()}?mode={mode}",

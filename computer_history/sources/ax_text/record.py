@@ -28,6 +28,7 @@ _TYPED_FIELDS: Mapping[str, type] = {
     "text_cut_off": bool,
     "timed_out": bool,
 }
+RECORD_FIELDS = ("version", "id", "captured_at", "kind", *_TYPED_FIELDS)
 
 
 class InvalidRecord(ValueError):

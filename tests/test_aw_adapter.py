@@ -451,6 +451,19 @@ def test_late_arriving_event_inside_the_overlap_is_picked_up(conn: sqlite3.Conne
     assert RESUME_OVERLAP_SECONDS >= 60
 
 
+def test_event_written_late_reaching_back_past_the_resume_start_is_stored(
+    conn: sqlite3.Connection,
+) -> None:
+    fake = FakeAW({AFK_BUCKET: "afkstatus"})
+    fake.add(AFK_BUCKET, 0, 1, {"status": "not-afk"})
+    poll_aw(conn, fake, now=at(11))
+    woke_up_idle = fake.add(AFK_BUCKET, 0.02, 11 * 60, {"status": "afk"})
+    poll_aw(conn, fake, now=at(60))
+    stored = [json.loads(r["payload"]) for r in rows(conn, AFK_SOURCE)]
+    assert stored[-1] == woke_up_idle
+    assert len(stored) == 2
+
+
 def test_event_straddling_the_query_start_is_never_stored_clipped(
     conn: sqlite3.Connection,
 ) -> None:

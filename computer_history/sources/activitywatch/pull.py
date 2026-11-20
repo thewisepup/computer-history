@@ -75,7 +75,8 @@ def pull_bucket(
 ) -> BucketPull:
     """The settled events of one bucket that start in the range; writes nothing.
 
-    No start means the beginning of the bucket, and no end means up to now.
+    No start means the beginning of the bucket and no end means up to now, and a pull up to now
+    also keeps, whole, any event reaching into the range from before its start.
     """
     now = resolve_now(now)
     start_dt = None if start is None else to_utc(start)
@@ -93,6 +94,12 @@ def pull_bucket(
         limit=-1,
     )
     events = [e for e in (_parse_event(raw, bucket_id) for raw in raw_events) if e is not None]
+    if start_dt is not None:
+        before = [e for e in events if e.start < start_dt]
+        events = [e for e in events if e.start >= start_dt]
+        if end_dt is None:
+            wholes = (_refetch(client, bucket_id, event) for event in before)
+            events += [whole for whole in wholes if whole is not None]
     latest_start = max((e.start for e in events), default=None)
     if newest is not None and latest_start is not None:
         latest_start = max(latest_start, newest.start)
@@ -100,8 +107,6 @@ def pull_bucket(
     observations: list[Observation] = []
     held: list[_Event] = []
     for event in events:
-        if start_dt is not None and event.start < start_dt:
-            continue
         if end_dt is not None:
             if event.start >= end_dt:
                 continue
