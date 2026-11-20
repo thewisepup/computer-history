@@ -19,7 +19,11 @@ struct CaptureScreenshot<M: Mac> {
     let images: any ImageStore
 
     func take(for capture: SpoolRecord, of application: FocusedApplication) -> ScreenshotRecord {
-        if secureTextFieldFocused(in: mac.applicationElement(application.processIdentifier)) { return .secureField(of: capture) }
+        switch focusedField(in: mac.applicationElement(application.processIdentifier)) {
+        case .password: return .secureField(of: capture)
+        case .unknown: return .failed(of: capture)
+        case .other: break
+        }
         switch mac.focusedWindowImage(application, title: capture.windowTitle) {
         case .noPermission:
             return .noPermission(of: capture)

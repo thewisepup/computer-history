@@ -121,3 +121,26 @@ struct RefusingImageStore: ImageStore {
     #expect(first == differenceHash(fixtureImage(width: 1280, height: 800, seed: 1)))
     #expect(first != differenceHash(fixtureImage(width: 640, height: 400, seed: 2)))
 }
+
+@Test(arguments: ["focused element times out", "role times out", "subrole times out", "no role"])
+func aPasswordFieldCheckWithNoAnswerTakesNoPicture(unanswered: String) throws {
+    let fixture = LoopFixture()
+    let app = fixture.mac.apps[plainApp.processIdentifier]!
+    let field = fixture.mac.node("field", role: "AXTextField")
+    app.focusedElement = field
+    switch unanswered {
+    case "focused element times out": app.hangs = ["AXFocusedUIElement"]
+    case "role times out": field.hangs = ["AXRole"]
+    case "subrole times out": field.hangs = ["AXSubrole"]
+    default: field.attributes["AXRole"] = nil
+    }
+    fixture.run(for: 2)
+    #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["failed"])
+    #expect(fixture.mac.windowImageRequests.isEmpty)
+}
+
+@Test func anAppWithNoFocusedElementIsStillPhotographed() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["kept"])
+}
