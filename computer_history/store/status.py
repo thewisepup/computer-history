@@ -127,34 +127,6 @@ def payload_values(
     ]
 
 
-class PayloadTotal(NamedTuple):
-    count: int
-    total: int
-
-
-def payload_totals(
-    conn: sqlite3.Connection,
-    source: str,
-    group_path: str,
-    sum_path: str,
-    *,
-    since: datetime | str,
-    until: datetime | str,
-) -> dict[Any, PayloadTotal]:
-    """The source's observations started in the range, counted by the payload value at one path.
-
-    Each count comes with the sum of the whole numbers found at the other path.
-    """
-    rows = conn.execute(
-        f"SELECT {_VALUE} AS value, COUNT(*), SUM(CASE WHEN json_valid(payload) THEN"
-        " CASE WHEN json_type(payload, ?) = 'integer' THEN json_extract(payload, ?) END END)"
-        " FROM observations WHERE source = ? AND started_at >= ? AND started_at <= ?"
-        " GROUP BY value",
-        (group_path, sum_path, sum_path, source, utc_iso(since), utc_iso(until)),
-    )
-    return {value: PayloadTotal(count, total or 0) for value, count, total in rows}
-
-
 def latest_payload_value(
     conn: sqlite3.Connection,
     source: str,

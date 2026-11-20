@@ -73,7 +73,7 @@ computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 ```
 
 ```
-Database:      .../ComputerHistory/history.db (5.2 MB, schema v3)
+Database:      .../ComputerHistory/history.db (5.2 MB, schema v5)
 ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
 
 Sources:
@@ -164,7 +164,8 @@ Capture agent: has not reported yet (no ax-text records stored)
 ```
 
 The screenshots section reads only stored `screenshot` records, never the
-screenshots folder:
+screenshots folder, through an index on their status, capture time and image
+size, so it stays quick at months of records:
 
 - **last kept**: the newest `kept` record, its app and the image path it
   names (relative to the data folder).
@@ -240,15 +241,15 @@ rebuild-signals aborted: no source adapter projects 'screenshot', the source of 
 Every command opens the store the same way and refuses, with exit code 1 and
 no traceback, when the database is:
 
-- **newer** than this CLI (`cannot use ...: schema v4 is newer than this CLI
-  understands (v3); upgrade computer-history`). Nothing is read or written.
+- **newer** than this CLI (`cannot use ...: schema v6 is newer than this CLI
+  understands (v5); upgrade computer-history`). Nothing is read or written.
 - **busy** while opening for write, e.g. another process is migrating
   (`cannot open ...: database is locked` plus a try-again hint).
 - **not a database** (`cannot open ...: file is not a database`).
 
 An **outdated** schema is migrated by `ingest`, `backfill` and
 `rebuild-signals`. `status` and `backfill --dry-run` never migrate: status
-prints `note: this CLI uses schema v3; computer-history ingest will migrate
+prints `note: this CLI uses schema v5; computer-history ingest will migrate
 the database` and stops there, and a dry run refuses. A **missing** database
 is created by `ingest` and `backfill` (only once planning succeeds), shown as
 "not created yet" by `status`, and refused by `rebuild-signals`.

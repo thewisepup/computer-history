@@ -3,21 +3,22 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from types import MappingProxyType
 from typing import NamedTuple
 
-from computer_history.sources.capture_spool.record import SCREENSHOT_SOURCE, SCREENSHOT_STATUSES
-from computer_history.store import latest_payload_value, payload_totals, payload_values, to_utc
+from computer_history.sources.capture_spool.record import SCREENSHOT_STATUSES
+from computer_history.store import (
+    first_screenshot_at,
+    newest_screenshot,
+    screenshot_totals,
+    to_utc,
+)
 from computer_history.text import clean_text
 
-STATUS_PATH = "$.status"
-IMAGE_BYTES_PATH = "$.image_bytes"
-KEPT_PATHS = (STATUS_PATH, "$.app_name", "$.image_path")
 KEPT = "kept"
 DUPLICATE = "duplicate"
 NO_PERMISSION = "no-permission"
-EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 NO_RECORDS: Mapping[str, int] = MappingProxyType(dict.fromkeys(SCREENSHOT_STATUSES, 0))
 
 
@@ -51,47 +52,42 @@ def screenshot_health(
 ) -> ScreenshotHealth:
     """Report on the stored screenshot records up to now, and those since the day began."""
     now = to_utc(now)
-    if latest_payload_value(conn, SCREENSHOT_SOURCE, STATUS_PATH, until=now) is None:
+    total = _tally(conn, now)
+    if not any(total.statuses.values()):
         return ScreenshotHealth(reported=False)
     if day_start is None:
         day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    kept = newest_screenshot(conn, KEPT, until=now)
     return ScreenshotHealth(
         reported=True,
-        last_kept=_last_kept(conn, now),
+        last_kept=None
+        if kept is None
+        else KeptScreenshot(
+            kept.at,
+            clean_text(kept.app_name) if isinstance(kept.app_name, str) else None,
+            kept.image_path if isinstance(kept.image_path, str) else None,
+        ),
         no_permission_since=_no_permission_since(conn, now),
-        total=_tally(conn, EPOCH, now),
-        today=_tally(conn, day_start, now),
+        total=total,
+        today=_tally(conn, now, since=to_utc(day_start)),
     )
 
 
-def _tally(conn: sqlite3.Connection, since: datetime, until: datetime) -> ScreenshotTally:
-    totals = payload_totals(
-        conn, SCREENSHOT_SOURCE, STATUS_PATH, IMAGE_BYTES_PATH, since=since, until=until
-    )
+def _tally(
+    conn: sqlite3.Connection, now: datetime, since: datetime | None = None
+) -> ScreenshotTally:
+    totals = screenshot_totals(conn, until=now, since=since)
     statuses = {s: totals[s].count if s in totals else 0 for s in SCREENSHOT_STATUSES}
-    return ScreenshotTally(statuses, totals[KEPT].total if KEPT in totals else 0)
-
-
-def _last_kept(conn: sqlite3.Connection, now: datetime) -> KeptScreenshot | None:
-    found = latest_payload_value(conn, SCREENSHOT_SOURCE, STATUS_PATH, until=now, matching=KEPT)
-    if found is None:
-        return None
-    rows = payload_values(conn, SCREENSHOT_SOURCE, found[0], found[0], KEPT_PATHS)
-    _, app, path = [row.values for row in rows if row.values[0] == KEPT][-1]
-    return KeptScreenshot(
-        found[0],
-        clean_text(app) if isinstance(app, str) else None,
-        path if isinstance(path, str) else None,
-    )
+    kept = totals.get(KEPT)
+    return ScreenshotTally(statuses, 0 if kept is None else kept.image_bytes)
 
 
 def _no_permission_since(conn: sqlite3.Connection, now: datetime) -> datetime | None:
     kept, duplicate, refused = (
-        latest_payload_value(conn, SCREENSHOT_SOURCE, STATUS_PATH, until=now, matching=status)
+        newest_screenshot(conn, status, until=now)
         for status in (KEPT, DUPLICATE, NO_PERMISSION)
     )
-    taken = max((found[0] for found in (kept, duplicate) if found is not None), default=EPOCH)
-    if refused is None or refused[0] <= taken:
+    taken = max((found.at for found in (kept, duplicate) if found is not None), default=None)
+    if refused is None or (taken is not None and refused.at <= taken):
         return None
-    rows = payload_values(conn, SCREENSHOT_SOURCE, taken, now, (STATUS_PATH,))
-    return next(r.started_at for r in rows if r.started_at > taken and r.values[0] == NO_PERMISSION)
+    return first_screenshot_at(conn, NO_PERMISSION, after=taken)

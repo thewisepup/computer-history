@@ -75,7 +75,8 @@ computer_history/
                 # observations (ingest writes, projecting each new row),
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
-                # queries), timefmt, paths
+                # queries), screenshots (the screenshot records' status
+                # queries, read through their own index), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and

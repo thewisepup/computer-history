@@ -20,12 +20,18 @@ from computer_history.sources import (
     KeptScreenshot,
     screenshot_health,
 )
-from computer_history.store import Observation, connect, insert_observations
+from computer_history.store import (
+    SCREENSHOT_STATUS_INDEX,
+    Observation,
+    connect,
+    insert_observations,
+)
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
+FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()
 BY_STATUS = {
     data["status"]: data
-    for line in FIXTURE.read_text(encoding="utf-8").splitlines()
+    for line in FIXTURE_LINES
     if (data := json.loads(line))["kind"] == SCREENSHOT_KIND
 }
 NOW = datetime(2026, 11, 18, 18, 0, tzinfo=UTC)
@@ -140,6 +146,22 @@ def test_permission_is_missing_while_no_kept_or_duplicate_record_follows_a_no_pe
     store_shots(conn, [shot(i, t, s) for i, (t, s) in enumerate(zip(times, statuses, strict=True))])
     expected = None if missing_at is None else times[missing_at]
     assert health(conn).no_permission_since == expected
+
+
+def test_every_screenshot_query_reads_only_the_screenshot_status_index(conn) -> None:
+    store_shots(conn, [shot(1, NOW, "kept"), shot(2, NOW, "no-permission"), shot(3, NOW, "failed")])
+    executed: list[str] = []
+    conn.set_trace_callback(executed.append)
+    health(conn)
+    conn.set_trace_callback(None)
+    plans = {sql: [row[3] for row in conn.execute(f"EXPLAIN QUERY PLAN {sql}")] for sql in executed}
+    allowed = (f"INDEX {SCREENSHOT_STATUS_INDEX} ", "INTEGER PRIMARY KEY (rowid=?)")
+    unindexed = {
+        sql: steps
+        for sql, steps in plans.items()
+        if any("observations" in step and not any(a in step for a in allowed) for step in steps)
+    }
+    assert executed and unindexed == {}
 
 
 @pytest.fixture
