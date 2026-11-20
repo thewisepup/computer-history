@@ -35,7 +35,7 @@ from computer_history.synthetic import (
     poll_feeds,
 )
 from computer_history.synthetic import build as synthetic_build
-from computer_history.synthetic.activitywatch import HOST
+from computer_history.synthetic.activitywatch import HOST, ActivityWatchRenderer
 from computer_history.synthetic.renderer import Feed
 
 REPO = Path(__file__).resolve().parent.parent
@@ -274,5 +274,6 @@ def test_a_new_renderer_does_not_change_what_the_others_produce(
     after = build_dataset(DEVELOPER_DAY, tmp_path / "after")
 
     assert after.timeline == before.timeline
-    assert after.rendered["activitywatch"] == before.rendered["activitywatch"]
+    name = ActivityWatchRenderer.name
+    assert after.rendered[name] == before.rendered[name]
     assert after.manifest.content_digest == before.manifest.content_digest
