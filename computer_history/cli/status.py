@@ -15,6 +15,7 @@ from computer_history.cli.formatting import (
     human_size,
     lag,
     local_midnight,
+    printable,
     when,
 )
 from computer_history.sources import (
@@ -283,7 +284,7 @@ def _print_screenshots(shots: ScreenshotHealth, now: datetime) -> None:
     if kept is None:
         print("  last kept     none yet")
     else:
-        path = "(no path)" if kept.image_path is None else _printable(kept.image_path)
+        path = "(no path)" if kept.image_path is None else printable(kept.image_path)
         print(f"  last kept     {ago(kept.at, now)}, {app_name(kept.app)}, {path}")
     print(f"  today         {_statuses(shots.today)}")
     print(f"  all stored    {_statuses(shots.total)}")
@@ -302,10 +303,6 @@ def _print_screenshots(shots: ScreenshotHealth, now: datetime) -> None:
 
 def _statuses(tally: ScreenshotTally) -> str:
     return ", ".join(f"{n:,} {status}" for status, n in tally.statuses.items())
-
-
-def _printable(value: str) -> str:
-    return "".join(c for c in value if c.isprintable())
 
 
 def _print_counts(counts: dict[str, int]) -> None:

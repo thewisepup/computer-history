@@ -7,7 +7,12 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import NamedTuple
 
-from computer_history.sources.capture_spool.record import SCREENSHOT_STATUSES
+from computer_history.sources.capture_spool.record import (
+    DUPLICATE_STATUS,
+    KEPT_STATUS,
+    NO_PERMISSION_STATUS,
+    SCREENSHOT_STATUSES,
+)
 from computer_history.store import (
     first_screenshot_at,
     newest_screenshot,
@@ -16,9 +21,6 @@ from computer_history.store import (
 )
 from computer_history.text import clean_text
 
-KEPT = "kept"
-DUPLICATE = "duplicate"
-NO_PERMISSION = "no-permission"
 NO_RECORDS: Mapping[str, int] = MappingProxyType(dict.fromkeys(SCREENSHOT_STATUSES, 0))
 
 
@@ -52,16 +54,12 @@ def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> Scree
     total = _tally(conn)
     if not any(total.statuses.values()):
         return ScreenshotHealth(reported=False)
-    kept = newest_screenshot(conn, KEPT)
+    kept = newest_screenshot(conn, KEPT_STATUS)
     return ScreenshotHealth(
         reported=True,
         last_kept=None
         if kept is None
-        else KeptScreenshot(
-            kept.at,
-            clean_text(kept.app_name) if isinstance(kept.app_name, str) else None,
-            kept.image_path if isinstance(kept.image_path, str) else None,
-        ),
+        else KeptScreenshot(kept.at, _text(kept.app_name), _text(kept.image_path)),
         no_permission_since=_no_permission_since(conn),
         total=total,
         today=_tally(conn, since=to_utc(day_start)),
@@ -71,16 +69,20 @@ def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> Scree
 def _tally(conn: sqlite3.Connection, since: datetime | None = None) -> ScreenshotTally:
     totals = screenshot_totals(conn, since=since)
     statuses = {s: totals[s].count if s in totals else 0 for s in SCREENSHOT_STATUSES}
-    kept = totals.get(KEPT)
+    kept = totals.get(KEPT_STATUS)
     return ScreenshotTally(statuses, 0 if kept is None else kept.image_bytes)
 
 
 def _no_permission_since(conn: sqlite3.Connection) -> datetime | None:
     kept, duplicate, refused = (
         newest_screenshot(conn, status)
-        for status in (KEPT, DUPLICATE, NO_PERMISSION)
+        for status in (KEPT_STATUS, DUPLICATE_STATUS, NO_PERMISSION_STATUS)
     )
     taken = max((found.at for found in (kept, duplicate) if found is not None), default=None)
     if refused is None or (taken is not None and refused.at <= taken):
         return None
-    return first_screenshot_at(conn, NO_PERMISSION, after=taken)
+    return first_screenshot_at(conn, NO_PERMISSION_STATUS, after=taken)
+
+
+def _text(value: object) -> str | None:
+    return clean_text(value) if isinstance(value, str) else None

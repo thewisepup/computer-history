@@ -48,7 +48,12 @@ def when(value: datetime | None) -> str:
 
 def app_name(value: str | None) -> str:
     """An app name with unprintable characters dropped, or a placeholder when missing."""
-    return "(no name)" if value is None else "".join(c for c in value if c.isprintable())
+    return "(no name)" if value is None else printable(value)
+
+
+def printable(value: str) -> str:
+    """The text with unprintable characters, such as terminal escapes, dropped."""
+    return "".join(c for c in value if c.isprintable())
 
 
 def db_size(path: Path) -> str:
