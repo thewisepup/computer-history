@@ -22,6 +22,18 @@ _Avoid_: Recorder, daemon, tracker
 One reading of the focused window at a single instant, taken by the capture agent. It has no duration.
 _Avoid_: Snapshot, sample, event
 
+**Window text**:
+The text the capture agent reads from the focused window through Accessibility.
+_Avoid_: AX text, content
+
+**Screenshot**:
+An image of the focused window taken by the capture agent. It never leaves the Mac.
+_Avoid_: Frame, screen grab, snapshot
+
+**Recognized text**:
+The text read out of a screenshot by on-device text recognition.
+_Avoid_: OCR text, image text
+
 **Spool record**:
 One entry the capture agent leaves in the spool: a capture, an exclusion, a pause or a resume.
 _Avoid_: Event, entry, line
