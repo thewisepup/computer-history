@@ -11,6 +11,7 @@ public final class CaptureCounts: @unchecked Sendable {
         public var screenshotsFailed = 0
         public var recognitionsFailed = 0
         public var slowestRead: TimeInterval = 0
+        public var screenshotsQueued = 0
         public var lastWriteError: String?
         public var lastScreenshotError: String?
         public var lastRecognitionError: String?
@@ -22,7 +23,8 @@ public final class CaptureCounts: @unchecked Sendable {
                 (recognitionsFailed, "text recognitions failed", lastRecognitionError),
             ].filter { $0.0 > 0 }.map { ", \($0.0) \($0.1) (last: \($0.2 ?? "unknown"))" }
             return "\(written) captures written, \(excluded) excluded, \(timedOut) timed out, \(cutOff) cut off, "
-                + "slowest read \(String(format: "%.2f", slowestRead))s" + failures.joined()
+                + "slowest read \(String(format: "%.2f", slowestRead))s, \(screenshotsQueued) screenshot records queued"
+                + failures.joined()
         }
     }
 
@@ -34,7 +36,7 @@ public final class CaptureCounts: @unchecked Sendable {
     /// Returns the counts since the last call and starts again from zero.
     public func take() -> Summary {
         lock.withLock {
-            defer { current = Summary() }
+            defer { current = Summary(screenshotsQueued: current.screenshotsQueued) }
             return current
         }
     }
@@ -60,6 +62,10 @@ public final class CaptureCounts: @unchecked Sendable {
             current.recognitionsFailed += 1
             current.lastRecognitionError = String(describing: error)
         }
+    }
+
+    func recordScreenshotsQueued(_ count: Int) {
+        lock.withLock { current.screenshotsQueued = count }
     }
 
     func recordScreenshotFailed(_ error: any Error) {

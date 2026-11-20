@@ -287,6 +287,13 @@ no recognition runs for it. If Vision fails, the record is still `kept`, with
 empty text (`full_text_bytes` 0) and its image, its duplicates copy the empty
 text, and the minute log line counts the failure.
 
+Vision runs on a thread of its own and gets `ScreenshotSettings.recognitionTimeout`
+(10 seconds) per image; with no answer by then the record is `kept` with empty
+text and counted as a failed recognition, so a hung Vision call delays the queue
+once, not forever. Only one Vision call runs at a time: while a timed-out call
+has still not returned, later kept images get empty text at once, without
+starting another.
+
 On a stop (the login item's `SIGTERM`, a crash, a forced quit) the queued
 records that have not been written are lost and their images stay. A record is
 written as one line, and a torn last line is dropped on the next start (see
@@ -373,7 +380,8 @@ prompt for it`), `config read from <path>, 4 apps denylisted` (or `config not
 found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
-excluded, 1 timed out, 0 cut off, slowest read 0.42s`, with `, 2 failed to
+excluded, 1 timed out, 0 cut off, slowest read 0.42s, 2 screenshot records
+queued` (records waiting on the queue at that moment), with `, 2 failed to
 write (last: <error>)`, `, 1 screenshot records failed to write (last:
 <error>)` and `, 1 text recognitions failed (last: <error>)` appended when
 writes or recognitions fail, each only when its count is not zero and each

@@ -1,21 +1,24 @@
 import Foundation
 
-/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, how many thumbnail pixels must change for a new image, and the seconds after which an unchanged window gets one anyway.
+/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, how many thumbnail pixels must change for a new image, the seconds after which an unchanged window gets one anyway, and how long text recognition may take.
 public struct ScreenshotSettings: Equatable, Sendable {
     public var enabled: Bool
     public var longEdge: Int
     public var quality: Int
     public var changePixels: Int
     public var keepAfter: TimeInterval
+    public var recognitionTimeout: TimeInterval
 
     public init(
-        enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, changePixels: Int = 6, keepAfter: TimeInterval = 600
+        enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, changePixels: Int = 6, keepAfter: TimeInterval = 600,
+        recognitionTimeout: TimeInterval = 10
     ) {
         self.enabled = enabled
         self.longEdge = longEdge
         self.quality = quality
         self.changePixels = changePixels
         self.keepAfter = keepAfter
+        self.recognitionTimeout = recognitionTimeout
     }
 }
 

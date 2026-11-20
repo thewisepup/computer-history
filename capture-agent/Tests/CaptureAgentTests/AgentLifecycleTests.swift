@@ -53,7 +53,7 @@ final class Recorder: @unchecked Sendable {
     agent.logMinute()
     agent.logMinute()
     #expect(recorder.prompts == [true, false, false])
-    let quiet = "heartbeat, accessibility missing, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s"
+    let quiet = "heartbeat, accessibility missing, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s, 0 screenshot records queued"
     #expect(recorder.lines.suffix(2) == [quiet, quiet])
 }
 
@@ -67,8 +67,8 @@ final class Recorder: @unchecked Sendable {
     agent.logMinute()
     agent.logMinute()
     #expect(recorder.lines == [
-        "heartbeat, accessibility granted, last minute: 2 captures written, 1 excluded, 1 timed out, 1 cut off, slowest read 0.40s",
-        "heartbeat, accessibility granted, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s",
+        "heartbeat, accessibility granted, last minute: 2 captures written, 1 excluded, 1 timed out, 1 cut off, slowest read 0.40s, 0 screenshot records queued",
+        "heartbeat, accessibility granted, last minute: 0 captures written, 0 excluded, 0 timed out, 0 cut off, slowest read 0.00s, 0 screenshot records queued",
     ])
 }
 

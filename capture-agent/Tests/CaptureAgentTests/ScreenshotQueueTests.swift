@@ -9,8 +9,13 @@ struct RecognitionError: Error, CustomStringConvertible {
 /// Recognizes each image as "text of <record id>", but only once let go or after a minute.
 final class HeldRecognizer: @unchecked Sendable {
     private let gate = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var started = 0
+
+    var calls: Int { lock.withLock { started } }
 
     func text(_ image: URL) -> String {
+        lock.withLock { started += 1 }
         _ = gate.wait(timeout: .now() + 60)
         gate.signal()
         return "text of \(image.deletingPathExtension().lastPathComponent)"
@@ -133,4 +138,42 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(fixture.counts.take().description.hasSuffix(
         ", 1 screenshot records failed to write (last: spool refused), 1 text recognitions failed (last: vision broke)"
     ))
+}
+
+@Test func aHungRecognitionCostsOnlyItsTimeoutAndLaterKeptFramesGetEmptyTextUntilItAnswers() throws {
+    let fixture = LoopFixture()
+    fixture.screenshots.recognitionTimeout = 0.05
+    let recognizer = HeldRecognizer()
+    fixture.mac.recognizedText = recognizer.text
+    var seed = 1
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
+    fixture.run(for: 2)
+    seed = 2
+    fixture.run(for: 30)
+    #expect(try fixture.statuses() == ["kept", "kept"])
+    #expect(try fixture.screenshotRecords().map { $0["text"] as? String } == ["", ""])
+    #expect(recognizer.calls == 1)
+    #expect(fixture.counts.take().recognitionsFailed == 2)
+    recognizer.letGo()
+    var shots: [[String: Any]] = []
+    for attempt in 3..<40 where shots.last?["text"] as? String ?? "" == "" {
+        seed = attempt
+        fixture.run(for: 30)
+        shots = try fixture.screenshotRecords()
+    }
+    let last = try #require(shots.last)
+    #expect(last["status"] as? String == "kept")
+    #expect(last["text"] as? String == "text of \(last["id"] as! String)")
+}
+
+@Test func theMinuteLineSaysHowManyScreenshotRecordsAreQueued() throws {
+    let fixture = LoopFixture()
+    let recognizer = HeldRecognizer()
+    fixture.mac.recognizedText = recognizer.text
+    fixture.run(for: 100, waitingForScreenshots: false)
+    let captures = try fixture.kinds().count
+    #expect(fixture.counts.take().description.contains(", \(captures) screenshot records queued"))
+    recognizer.letGo()
+    fixture.waitForScreenshots()
+    #expect(fixture.counts.take().description.contains(", 0 screenshot records queued"))
 }

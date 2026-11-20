@@ -53,6 +53,7 @@ final class CaptureLoop<M: Mac> {
             let queue = ScreenshotQueue(
                 recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },
                 capBytes: settings.windowText.textCapBytes,
+                timeout: settings.screenshots.recognitionTimeout,
                 spool: spool,
                 counts: counts
             )
