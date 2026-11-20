@@ -12,7 +12,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var frontmost: FocusedApplication?
     var apps: [pid_t: ScriptedElement] = [:]
     var calls: [String] = []
-    var windowImage: (FocusedApplication, String?) -> WindowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000)) }
+    var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000)) }
     var windowImageRequests: [pid_t] = []
 
     init(start: Date = Date(timeIntervalSince1970: 0)) {
@@ -34,9 +34,9 @@ final class ScriptedMac: Mac, @unchecked Sendable {
 
     func hasElectronFramework(_ bundle: URL) -> Bool { false }
 
-    func focusedWindowImage(_ application: FocusedApplication, title: String?) -> WindowImage {
-        windowImageRequests.append(application.processIdentifier)
-        return windowImage(application, title)
+    func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
+        windowImageRequests.append(window.processIdentifier)
+        return windowImage(window, longEdge)
     }
 
     func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
@@ -51,6 +51,7 @@ final class ScriptedElement: AccessibilityElement {
     var children: [ScriptedElement]
     var focusedWindow: ScriptedElement?
     var focusedElement: ScriptedElement?
+    var bounds: CGRect? = CGRect(x: 0, y: 25, width: 1600, height: 1000)
     var hangs: Set<String> = []
     var flagsSet: [String] = []
 
@@ -85,6 +86,10 @@ final class ScriptedElement: AccessibilityElement {
             flagsSet.append(attribute)
             return .value(())
         }
+    }
+
+    func frame() -> AccessibilityResult<CGRect> {
+        perform("AXFrame") { bounds.map { .value($0) } ?? .missing }
     }
 
     private func perform<Value>(_ attribute: String, _ body: () -> AccessibilityResult<Value>) -> AccessibilityResult<Value> {

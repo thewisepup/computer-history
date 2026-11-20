@@ -17,14 +17,20 @@ public struct ScreenshotSettings: Equatable, Sendable {
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
+    let longEdge: Int
 
     func take(for capture: SpoolRecord, of application: FocusedApplication) -> ScreenshotRecord {
-        switch focusedField(in: mac.applicationElement(application.processIdentifier)) {
+        let app = mac.applicationElement(application.processIdentifier)
+        switch focusedField(in: app) {
         case .password: return .secureField(of: capture)
         case .unknown: return .failed(of: capture)
         case .other: break
         }
-        switch mac.focusedWindowImage(application, title: capture.windowTitle) {
+        guard case .value(let window) = app.element("AXFocusedWindow"), case .value(let frame) = window.frame() else {
+            return .failed(of: capture)
+        }
+        let focused = FocusedWindow(processIdentifier: application.processIdentifier, title: capture.windowTitle, frame: frame)
+        switch mac.focusedWindowImage(focused, longEdge: longEdge) {
         case .noPermission:
             return .noPermission(of: capture)
         case .failed:

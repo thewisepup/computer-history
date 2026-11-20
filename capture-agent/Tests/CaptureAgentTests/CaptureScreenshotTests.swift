@@ -144,3 +144,28 @@ func aPasswordFieldCheckWithNoAnswerTakesNoPicture(unanswered: String) throws {
     fixture.run(for: 2)
     #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["kept"])
 }
+
+@Test func thePictureIsAskedForByTheFocusedWindowsFrameAndTheLongEdge() throws {
+    let fixture = LoopFixture()
+    fixture.screenshots.longEdge = 1024
+    fixture.focus.notes.bounds = CGRect(x: 10, y: 20, width: 800, height: 600)
+    var asked: [FocusedWindow] = []
+    var longEdges: [Int] = []
+    fixture.mac.windowImage = { window, longEdge in
+        asked.append(window)
+        longEdges.append(longEdge)
+        return .failed
+    }
+    fixture.run(for: 2)
+    #expect(asked == [FocusedWindow(processIdentifier: plainApp.processIdentifier, title: "Notes", frame: CGRect(x: 10, y: 20, width: 800, height: 600))])
+    #expect(longEdges == [1024])
+}
+
+@Test(arguments: [true, false])
+func aWindowWhoseFrameCannotBeReadIsNotPhotographed(timesOut: Bool) throws {
+    let fixture = LoopFixture()
+    if timesOut { fixture.focus.notes.hangs = ["AXFrame"] } else { fixture.focus.notes.bounds = nil }
+    fixture.run(for: 2)
+    #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["failed"])
+    #expect(fixture.mac.windowImageRequests.isEmpty)
+}

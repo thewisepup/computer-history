@@ -13,7 +13,7 @@ public protocol Mac {
     func frontmostApplication() -> FocusedApplication?
     func applicationElement(_ processIdentifier: pid_t) -> Element
     func hasElectronFramework(_ bundle: URL) -> Bool
-    func focusedWindowImage(_ application: FocusedApplication, title: String?) -> WindowImage
+    func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage
 }
 
 /// The real Mac: system uptime and time, presence from macOS, and the live accessibility API.
@@ -40,7 +40,7 @@ public struct LiveMac: Mac, Sendable {
 
     public func hasElectronFramework(_ bundle: URL) -> Bool { bundleHasElectronFramework(bundle) }
 
-    public func focusedWindowImage(_ application: FocusedApplication, title: String?) -> WindowImage {
-        captureFocusedWindow(of: application.processIdentifier, title: title)
+    public func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
+        captureFocusedWindow(window, longEdge: longEdge)
     }
 }

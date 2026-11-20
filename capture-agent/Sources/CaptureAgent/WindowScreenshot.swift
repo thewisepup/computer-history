@@ -9,40 +9,63 @@ public enum WindowImage: Sendable {
     case failed
 }
 
-/// Takes a still of the application's focused window through ScreenCaptureKit, giving up after the timeout.
-func captureFocusedWindow(of processIdentifier: pid_t, title: String?, timeout: TimeInterval = 2) -> WindowImage {
+/// The window to photograph: its app's process, its title, and its frame in screen points from the accessibility tree.
+public struct FocusedWindow: Equatable, Sendable {
+    public let processIdentifier: pid_t
+    public let title: String?
+    public let frame: CGRect
+}
+
+struct WindowCandidate: Equatable {
+    let id: CGWindowID
+    let processIdentifier: pid_t
+    let frame: CGRect
+    let title: String?
+}
+
+/// The one on-screen window of the focused window's app whose frame matches it, using the title only to choose among windows with the same frame.
+func matchWindow(_ focused: FocusedWindow, among candidates: [WindowCandidate]) -> CGWindowID? {
+    let framed = candidates.filter { $0.processIdentifier == focused.processIdentifier && sameFrame($0.frame, focused.frame) }
+    if framed.count == 1 { return framed[0].id }
+    let titled = framed.filter { focused.title != nil && $0.title == focused.title }
+    return titled.count == 1 ? titled[0].id : nil
+}
+
+/// The pixel size to ask for: the window's native size, scaled down so its long edge is at most the given one.
+func captureSize(of points: CGSize, pixelScale: Double, longEdge: Int) -> (width: Int, height: Int) {
+    let width = points.width * pixelScale
+    let height = points.height * pixelScale
+    let scale = min(1, Double(longEdge) / max(width, height, 1))
+    return (max(1, Int((width * scale).rounded())), max(1, Int((height * scale).rounded())))
+}
+
+private func sameFrame(_ a: CGRect, _ b: CGRect) -> Bool {
+    [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].allSatisfy { abs($0) <= 2 }
+}
+
+/// Takes a still of the focused window through ScreenCaptureKit, giving up after the timeout.
+func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, timeout: TimeInterval = 2) -> WindowImage {
     let result = WindowImageResult()
     SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
         guard let content else { return result.finish(error.map(windowImage(for:)) ?? .failed) }
-        guard let window = focusedWindow(in: content.windows, of: processIdentifier, title: title) else {
+        let windows = content.windows.filter(\.isOnScreen)
+        let candidates = windows.map {
+            WindowCandidate(id: $0.windowID, processIdentifier: $0.owningApplication?.processID ?? -1, frame: $0.frame, title: $0.title)
+        }
+        guard let id = matchWindow(focused, among: candidates), let window = windows.first(where: { $0.windowID == id }) else {
             return result.finish(.failed)
         }
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let configuration = SCStreamConfiguration()
-        configuration.width = max(1, Int(window.frame.width * CGFloat(filter.pointPixelScale)))
-        configuration.height = max(1, Int(window.frame.height * CGFloat(filter.pointPixelScale)))
+        let size = captureSize(of: window.frame.size, pixelScale: Double(filter.pointPixelScale), longEdge: longEdge)
+        configuration.width = size.width
+        configuration.height = size.height
         configuration.showsCursor = false
         SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
             result.finish(image.map(WindowImage.image) ?? error.map(windowImage(for:)) ?? .failed)
         }
     }
     return result.wait(timeout: timeout)
-}
-
-private func focusedWindow(in windows: [SCWindow], of processIdentifier: pid_t, title: String?) -> SCWindow? {
-    let candidates = windows.filter { $0.owningApplication?.processID == processIdentifier && $0.windowLayer == 0 && $0.isOnScreen }
-    let order = frontToBackWindowIDs()
-    let frontFirst = candidates.sorted { (order[$0.windowID] ?? .max) < (order[$1.windowID] ?? .max) }
-    return frontFirst.first { title != nil && $0.title == title } ?? frontFirst.first
-}
-
-private func frontToBackWindowIDs() -> [CGWindowID: Int] {
-    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[CFString: Any]] ?? []
-    var order: [CGWindowID: Int] = [:]
-    for (index, info) in list.enumerated() {
-        if let id = info[kCGWindowNumber] as? CGWindowID { order[id] = order[id] ?? index }
-    }
-    return order
 }
 
 private func windowImage(for error: any Error) -> WindowImage {
