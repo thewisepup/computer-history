@@ -49,7 +49,9 @@ the staged changes, ruff, and pytest without the `dataset` tests (those that
 build synthetic datasets or run `dev perf` and `dev bench`), in about ten
 seconds. CI runs the full pytest, the POC suite (`python -m unittest`) and
 gitleaks on every pull request and push to `main`, and `main` only merges pull
-requests whose checks pass. In a
+requests whose checks pass. `docs/agents/checks.md` says where a new check
+belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
+which CI enforces. In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
 own `.venv` on first use (about a minute), since the main checkout's venv
 imports the main checkout's source.
