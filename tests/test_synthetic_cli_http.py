@@ -24,7 +24,7 @@ from computer_history.store import connect, content_digest, get_progress, utc_is
 from computer_history.synthetic import SCENARIOS, Dataset, DatasetInputs, build_dataset
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.aw_api import ServedAW
-from computer_history.synthetic.spool import SPOOL_FOLDER
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
 REPO = Path(__file__).resolve().parent.parent
 CLI = Path(sys.executable).with_name("computer-history")
@@ -39,7 +39,7 @@ def test_the_real_cli_over_http_stores_what_the_in_process_build_stores(
     inputs = DatasetInputs(persona="developer", scenario=scenario, tier="day", seed=1)
     dataset = build_dataset(inputs, tmp_path / "in-process")
     spool = tmp_path / "cli" / "spool"
-    shutil.copytree(dataset.db_path.parent / SPOOL_FOLDER, spool)
+    shutil.copytree(dataset.db_path.parent / RENDERED_SPOOL_FOLDER, spool)
     db_path = tmp_path / "cli" / "history.db"
 
     started = datetime.now(UTC)

@@ -31,7 +31,7 @@ BUCKETS = {
     WEB_BUCKET: ("web.tab.current", "aw-client-web", WEB_SOURCE),
 }
 
-Span = tuple[datetime, datetime, Mapping[str, Any]]
+EventSpan = tuple[datetime, datetime, Mapping[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,8 @@ class ActivityWatchRenderer:
 
     def render(self, timeline: Timeline, rng: random.Random) -> RenderedActivityWatch:
         """Window, web and AFK events, one per run of unchanged data, none while down."""
-        window: list[Span] = []
-        web: list[Span] = []
+        window: list[EventSpan] = []
+        web: list[EventSpan] = []
         for period in observed_periods(timeline, WINDOW_SOURCE):
             window += _runs(period, lambda s: {"app": s.app, "title": s.title})
         for period in observed_periods(timeline, WEB_SOURCE):
@@ -88,7 +88,7 @@ class ActivityWatchRenderer:
 
 def _runs(
     period: Iterable[Stretch], data: Callable[[Stretch], Mapping[str, Any] | None]
-) -> list[Span]:
+) -> list[EventSpan]:
     runs = []
     for value, run in groupby(period, key=data):
         stretches = list(run)
@@ -101,7 +101,7 @@ def _tab(rng: random.Random) -> dict[str, Any]:
     return {"audible": False, "incognito": False, "tabCount": rng.randint(3, 40)}
 
 
-def _events(spans: Iterable[Span]) -> tuple[AWEvent, ...]:
+def _events(spans: Iterable[EventSpan]) -> tuple[AWEvent, ...]:
     return tuple(
         AWEvent(index, start, end, data) for index, (start, end, data) in enumerate(spans, 1)
     )

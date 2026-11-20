@@ -28,6 +28,7 @@ RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(), SpoolRenderer())
 SETTLE_AFTER = timedelta(seconds=STABILITY_MARGIN_SECONDS + 60)
 DATABASE_NAME = "history.db"
 MANIFEST_NAME = "manifest.json"
+SIDECARS = ("-wal", "-shm", "-journal")
 
 
 class BuildFailed(RuntimeError):
@@ -120,4 +121,4 @@ def poll_feeds(conn: sqlite3.Connection, feeds: Sequence[Feed], *, now: datetime
 
 
 def _sidecars(db_path: Path) -> tuple[Path, ...]:
-    return tuple(db_path.with_name(db_path.name + suffix) for suffix in ("-wal", "-shm"))
+    return tuple(db_path.with_name(db_path.name + suffix) for suffix in SIDECARS)

@@ -22,7 +22,7 @@ from computer_history.synthetic import (
     GATE_DATASETS,
     OPERATIONS,
     RENDERERS,
-    SMALLEST,
+    SMALLEST_DATASET,
     Fault,
     FaultKind,
     GateDataset,
@@ -96,7 +96,7 @@ PROBE_TIMELINE = Timeline(
 
 @pytest.fixture(scope="module")
 def gate_day(tmp_path_factory: pytest.TempPathFactory) -> GateDataset:
-    inputs = GATE_DATASETS[SMALLEST]
+    inputs = GATE_DATASETS[SMALLEST_DATASET]
     return gate_dataset(inputs, cached_dataset(inputs, tmp_path_factory.mktemp("cache")))
 
 
@@ -120,8 +120,8 @@ def test_every_stream_a_source_projects_has_a_renderer(gate_day: GateDataset) ->
     assert not stale, f"renderers feed {stale}, which no source in KNOWN_SOURCES projects"
     empty = sorted(stream for stream in projected if not stored.get(stream))
     assert not empty, (
-        f"the {SMALLEST} gate dataset stores no observations of {empty}: ingest kept nothing "
-        f"the {', '.join(rendered[s] for s in empty)} renderer wrote for it"
+        f"the {SMALLEST_DATASET} gate dataset stores no observations of {empty}: ingest kept"
+        f" nothing the {', '.join(rendered[s] for s in empty)} renderer wrote for it"
     )
 
 
@@ -134,7 +134,7 @@ def test_every_table_holds_rows_or_has_an_exemption(gate_day: GateDataset) -> No
 
     empty = sorted(t for t, n in counts.items() if not n and t not in TABLE_EXEMPTIONS)
     assert not empty, (
-        f"the {SMALLEST} gate dataset leaves {empty} empty: render the data ingest fills "
+        f"the {SMALLEST_DATASET} gate dataset leaves {empty} empty: render the data ingest fills "
         "them from, or exempt each in TABLE_EXEMPTIONS with a reason"
     )
     stale = sorted(t for t in TABLE_EXEMPTIONS if counts.get(t, 0) or t not in counts)

@@ -8,7 +8,7 @@ from statistics import mean
 from zoneinfo import ZoneInfo
 
 import pytest
-from store_answers import local_days, stored_days, stored_totals
+from store_answers import local_days, stored_days, stored_gaps, stored_totals
 
 from computer_history.sources import AFK_SOURCE, AX_TEXT_SOURCE, WEB_SOURCE, WINDOW_SOURCE
 from computer_history.store import connect, source_summary
@@ -18,6 +18,7 @@ from computer_history.synthetic import (
     RENDERERS,
     TIERS,
     DatasetInputs,
+    FaultKind,
     Stretch,
     StretchKind,
     Timeline,
@@ -207,10 +208,18 @@ def test_the_messy_scenario_builds_for_every_persona_and_matches_its_manifest(
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
+    gaps, _, afk = stored_gaps(dataset)
+    explained = dataset.manifest.explained
 
     assert days == dataset.manifest.days
     assert counts == dataset.manifest.observations
-    assert dataset.timeline.faults
+    assert len(dataset.timeline.faults) == len(FaultKind)
+    assert gaps == dataset.manifest.unobserved
+    assert sorted(gap.kind for gap in explained) == ["excluded", "paused"]
+    for gap in explained:
+        assert not [g for g in gaps[AX_TEXT_SOURCE] if g.start < gap.end and gap.start < g.end]
+    for gap in gaps[AX_TEXT_SOURCE]:
+        assert any(not s.afk and s.start <= gap.start and gap.end <= s.end for s in afk)
 
 
 def pacific(day: int, hour: int, minute: int) -> datetime:
@@ -281,6 +290,4 @@ def test_a_late_evening_stops_at_local_midnight(seed: int) -> None:
     ]
 
     assert stretches[-1].end == midnights[-1]
-    assert not [
-        s for s in stretches if s.active and any(s.start < m < s.end for m in midnights)
-    ]
+    assert not [s for s in stretches if s.active and any(s.start < m < s.end for m in midnights)]

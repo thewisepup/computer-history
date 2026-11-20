@@ -2,24 +2,26 @@ from __future__ import annotations
 
 import random
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from random import Random
 from zoneinfo import ZoneInfo
 
 import pytest
+from store_answers import stored_gaps
 
 from computer_history.sources import (
     AFK_SOURCE,
     AX_TEXT_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
-    capture_coverage,
     parse_record,
-    stored_afk_spans,
-    stored_records,
 )
-from computer_history.store import Gap, connect, find_gaps, payload_values, source_summary
+from computer_history.store import Gap, connect, payload_values, source_summary
 from computer_history.synthetic import (
+    PERSONAS,
+    SCENARIOS,
     CaptureCounts,
     DatasetInputs,
     ExplainedGap,
@@ -35,7 +37,10 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import BUCKETS, ActivityWatchRenderer
+from computer_history.synthetic.days import live
+from computer_history.synthetic.persona import Rhythm
 from computer_history.synthetic.spool import SpoolRenderer
+from computer_history.synthetic.timeline import local_midnight
 
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/ledger/pull/1"
@@ -117,7 +122,7 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
 ) -> None:
     dataset = build_timeline(FAULTY_HOUR, tmp_path / "hour", seed=1)
     manifest = dataset.manifest
-    gaps, records, afk = _store_gaps(dataset)
+    gaps, records, afk = stored_gaps(dataset)
     conn = connect(dataset.db_path)
     try:
         counts = {row.source: row.observation_count for row in source_summary(conn)}
@@ -133,7 +138,7 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
     assert [(r.at, r.kind, r.app) for r in records] == FAULTY_HOUR_RECORDS
     assert Counter(r.kind for r in records) == FAULTY_HOUR_CAPTURES.kinds
     assert not any(s.afk for s in afk)
-    files = {file.name: len(file.lines) for file in dataset.rendered["spool"].files}
+    files = {file.name: len(file.lines) for file in dataset.rendered[SpoolRenderer.name].files}
     assert files["20260105T095000.000Z.jsonl"] == 2
     assert not [name for name in files if "T0945" <= name[8:13] < "T0950"]
 
@@ -141,6 +146,7 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
 MESSY_DAY = DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1)
 DEVELOPER_TYPICAL = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 LOCAL = ZoneInfo("America/Los_Angeles")
+MONDAY = date(2026, 1, 5)
 
 
 def _local(moment: datetime) -> time:
@@ -167,30 +173,6 @@ def test_the_messy_scenario_places_every_happening_on_its_one_day() -> None:
     assert generate_timeline(DEVELOPER_TYPICAL).faults == ()
 
 
-def _store_gaps(dataset) -> tuple[dict[str, tuple[Gap, ...]], list, list]:
-    start, end = dataset.timeline.start, dataset.timeline.end
-    conn = connect(dataset.db_path)
-    try:
-        gaps = {
-            source: tuple(find_gaps(conn, source, start, end, min_gap_seconds=1))
-            for source in (WINDOW_SOURCE, AFK_SOURCE)
-        }
-        records = stored_records(conn, start, end)
-        afk = stored_afk_spans(conn, start, end)
-    finally:
-        conn.close()
-    coverage = capture_coverage(
-        records,
-        active=[(s.start, s.end) for s in afk if not s.afk],
-        known=[(s.start, s.end) for s in afk],
-        start=start,
-        end=end,
-        paused_at_start=False,
-        min_gap_seconds=1,
-    )
-    return {**gaps, AX_TEXT_SOURCE: coverage.unobserved}, records, afk
-
-
 def _within(inner: tuple[datetime, datetime], gaps: tuple[Gap, ...]) -> bool:
     return any(gap.start <= inner[0] and inner[1] <= gap.end for gap in gaps)
 
@@ -204,7 +186,7 @@ def test_on_a_messy_day_every_source_reports_the_manifests_gaps_and_none_as_idle
 ) -> None:
     dataset = build_dataset(MESSY_DAY, tmp_path / "messy")
     manifest = dataset.manifest
-    gaps, _, afk = _store_gaps(dataset)
+    gaps, _, afk = stored_gaps(dataset)
     outages = dataset.timeline.faults_of(FaultKind.AW_DOWN)
     agent_out = dataset.timeline.faults_of(FaultKind.AGENT_DOWN, FaultKind.PERMISSION_LOST)
 
@@ -224,7 +206,7 @@ def test_on_a_messy_day_capture_coverage_explains_the_exclusion_and_the_pause(
     tmp_path: Path,
 ) -> None:
     dataset = build_dataset(MESSY_DAY, tmp_path / "messy")
-    gaps, records, _ = _store_gaps(dataset)
+    gaps, records, _ = stored_gaps(dataset)
     explained = dataset.manifest.explained
     by_kind = {gap.kind: gap for gap in explained}
 
@@ -377,3 +359,37 @@ def test_the_messy_scenario_refuses_a_range_with_no_workday() -> None:
     )
     with pytest.raises(ValueError, match="workday"):
         generate_timeline(saturday)
+
+
+def test_the_messy_scenario_follows_a_late_persona_s_rhythm() -> None:
+    rhythm = Rhythm(
+        workday_start=time(11, 0),
+        workday_end=time(19, 30),
+        lunch_start=time(14, 0),
+        evening_start=time(21, 0),
+    )
+    persona = replace(PERSONAS["developer"], rhythm=rhythm)
+    start, end = local_midnight(MONDAY, LOCAL), local_midnight(MONDAY + timedelta(days=1), LOCAL)
+    ordinary = Timeline(start, end, LOCAL.key, live(persona, MONDAY, 1, LOCAL.key, Random(1)))
+
+    timeline = SCENARIOS["messy"](ordinary, rhythm, Random(1))
+    faults = {fault.kind: fault for fault in timeline.faults}
+    asleep = [s for s in timeline.stretches if not s.active]
+
+    assert sorted(kind.value for kind in faults) == sorted(kind.value for kind in FaultKind)
+    assert time(11, 30) <= _local(faults[FaultKind.AW_DOWN].start) <= time(12, 0)
+    assert _local(faults[FaultKind.AGENT_DOWN].start) == time(15, 25)
+    assert _local(faults[FaultKind.PERMISSION_LOST].start) == time(16, 0)
+    assert time(16, 35) <= _local(faults[FaultKind.PAUSED].start)
+    assert time(18, 0) <= _local(faults[FaultKind.EXCLUDED].start) < time(19, 0)
+    assert any(_local(s.start) == time(14, 15) and _local(s.end) == time(14, 35) for s in asleep)
+
+
+def test_a_rhythm_that_puts_a_happening_past_midnight_is_refused() -> None:
+    rhythm = Rhythm(evening_start=time(22, 30))
+    persona = replace(PERSONAS["developer"], rhythm=rhythm)
+    start, end = local_midnight(MONDAY, LOCAL), local_midnight(MONDAY + timedelta(days=1), LOCAL)
+    ordinary = Timeline(start, end, LOCAL.key, live(persona, MONDAY, 1, LOCAL.key, Random(1)))
+
+    with pytest.raises(ValueError, match="needs 22:30 \\+150 min to stay within the day"):
+        SCENARIOS["messy"](ordinary, rhythm, Random(1))

@@ -5,11 +5,22 @@ import re
 from pathlib import Path
 
 import pytest
+from store_answers import DATASET_FILES
 
 from computer_history import cli
-from computer_history.sources import SPOOL_ENV_VAR
+from computer_history.cli import dev
+from computer_history.sources import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.store import DB_ENV_VAR, connect, content_digest
-from computer_history.synthetic import PERSONAS, SCENARIOS, TIERS
+from computer_history.store.db import WalUnavailable
+from computer_history.synthetic import (
+    DATABASE_NAME,
+    HEAVY,
+    MANIFEST_NAME,
+    PERSONAS,
+    SCENARIOS,
+    TIERS,
+)
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
 DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
@@ -35,13 +46,14 @@ def test_build_db_copies_the_dataset_out_and_prints_where_it_landed(
     again, reprinted, _ = build_db(capsys, *DEVELOPER_DAY, "--out", str(tmp_path / "again"))
 
     assert (code, again) == (0, 0)
-    assert sorted(path.name for path in out.iterdir()) == ["history.db", "manifest.json", "spool"]
-    assert re.search(rf"database\s+{re.escape(str(out / 'history.db'))}", printed)
-    assert re.search(rf"manifest\s+{re.escape(str(out / 'manifest.json'))}", printed)
-    assert re.search(rf"spool/\s+{re.escape(str(out / 'spool'))}", printed)
+    spool = out / RENDERED_SPOOL_FOLDER
+    assert sorted(path.name for path in out.iterdir()) == DATASET_FILES
+    assert re.search(rf"database\s+{re.escape(str(out / DATABASE_NAME))}", printed)
+    assert re.search(rf"manifest\s+{re.escape(str(out / MANIFEST_NAME))}", printed)
+    assert re.search(rf"{RENDERED_SPOOL_FOLDER}/\s+{re.escape(str(spool))}", printed)
     assert "built" in printed and "reused" in reprinted
-    manifest = json.loads((out / "manifest.json").read_text())
-    conn = connect(out / "history.db")
+    manifest = json.loads((out / MANIFEST_NAME).read_text())
+    conn = connect(out / DATABASE_NAME)
     try:
         assert content_digest(conn) == manifest["content_digest"]
     finally:
@@ -107,12 +119,7 @@ def test_build_db_refuses_an_existing_output_unless_forced(
     assert kept == "mine\n"
     assert forced == 0
     assert json.loads((out / "manifest.json").read_text())["inputs"]["persona"] == "developer"
-    assert sorted(path.name for path in out.iterdir()) == [
-        "history.db",
-        "manifest.json",
-        "notes.txt",
-        "spool",
-    ]
+    assert sorted(path.name for path in out.iterdir()) == sorted([*DATASET_FILES, "notes.txt"])
 
 
 def test_build_db_refuses_the_default_live_database_and_its_folder(
@@ -154,6 +161,25 @@ def test_build_db_refuses_the_database_environment_variable_and_its_folder(
     assert all(f"in {live}, which holds the live database" in said for _, _, said in refused)
     assert not live.exists()
     assert allowed == 0
+
+
+def test_build_db_refuses_to_replace_a_folder_that_holds_the_live_database(
+    capsys: pytest.CaptureFixture[str],
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "dev"
+    live = out / RENDERED_SPOOL_FOLDER / "live" / "history.db"
+    live.parent.mkdir(parents=True)
+    live.write_text("real history\n")
+    monkeypatch.setenv(DB_ENV_VAR, str(live))
+
+    code, _, said = build_db(capsys, *DEVELOPER_DAY, "--out", str(out), "--force")
+
+    assert code == 1
+    assert f"{out / RENDERED_SPOOL_FOLDER} holds {live.parent}" in said
+    assert live.read_text() == "real history\n"
 
 
 def test_build_db_refuses_the_folder_of_a_database_given_with_db_path(
@@ -199,3 +225,52 @@ def test_a_database_already_in_the_output_is_refused_before_anything_is_built(
     assert code == 1
     assert "already holds history.db" in said
     assert list(dataset_cache.iterdir()) == []
+
+
+def test_a_database_that_cannot_be_opened_fails_with_a_message_not_a_traceback(
+    capsys: pytest.CaptureFixture[str],
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_wal(*args: object, **kwargs: object) -> None:
+        raise WalUnavailable("journal_mode stayed delete")
+
+    monkeypatch.setattr(dev, "make_dev_database", no_wal)
+
+    code, _, said = build_db(capsys, *DEVELOPER_DAY, "--out", str(tmp_path / "dev"))
+
+    assert code == 1
+    assert said == "dev build-db failed: WalUnavailable: journal_mode stayed delete\n"
+
+
+def test_heavy_alone_picks_the_heavy_factor_and_takes_another_when_given() -> None:
+    parser = cli.build_parser()
+    base = ["dev", "build-db", *DEVELOPER_DAY, "--out", "/tmp/unused"]
+
+    bare = parser.parse_args([*base, "--heavy"])
+    given = parser.parse_args([*base, "--heavy", "3"])
+    left_out = parser.parse_args(base)
+
+    assert (bare.heavy, given.heavy) == (HEAVY, 3.0)
+    assert "heavy" not in left_out
+
+
+def test_status_on_the_copied_database_finds_no_spool_files_waiting(
+    capsys: pytest.CaptureFixture[str],
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
+    out = tmp_path / "dev"
+    build_db(capsys, *DEVELOPER_DAY, "--out", str(out))
+
+    code = cli.main(
+        ["status", "--db-path", str(out / DATABASE_NAME), "--aw-url", "http://127.0.0.1:1"]
+    )
+    printed = capsys.readouterr().out
+
+    spool = resolve_spool_path(None, out / DATABASE_NAME)
+    assert code == 0
+    assert f"0 finished files waiting, 0 in unreadable/  ({spool})" in printed

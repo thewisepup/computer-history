@@ -27,6 +27,9 @@ summaries.
   MCP until M6 replaces it; `README.md` is its API reference.
 - `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
   `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
+- `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
+  matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
+  says when to run it and which tests to keep.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
 - `CODING_STANDARDS.md` — the review checklist the standards reviewer
   enforces.
@@ -94,8 +97,9 @@ performance gate on them. Its `__init__.py` maps the modules;
 
 ```bash
 computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
-computer-history dev perf                      # the gate against perf_baseline.json
+computer-history dev perf                      # the gate against perf_baselines/sqlite-<version>.json
 computer-history dev perf --update-baselines   # a deliberate change of cost
+computer-history dev bench                     # wall-clock medians against this machine's last run
 ```
 
 A new stream, table, timeline field or public store function lands with its

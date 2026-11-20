@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, NamedTuple
 
 from computer_history.store.timefmt import to_utc, utc_iso
@@ -63,9 +64,7 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
 
 
-def recent_span(
-    summary: SourceSummary, window: timedelta = STATUS_WINDOW
-) -> tuple[datetime, datetime] | None:
+def _recent_span(summary: SourceSummary) -> tuple[datetime, datetime] | None:
     """The window status checks: up to the source's settled time, else its latest end.
 
     It starts no earlier than the source's first observation, and is None without one.
@@ -74,7 +73,46 @@ def recent_span(
     first = summary.earliest_started_at
     if end is None or first is None:
         return None
-    return max(end - window, first), end
+    return max(end - STATUS_WINDOW, first), end
+
+
+class Coverage(Enum):
+    NO_OBSERVATIONS = "no observations"
+    UNSETTLED = "unsettled"
+    CHECKED = "checked"
+
+
+class SourceCoverage(NamedTuple):
+    """One source's recent span, whether it could be checked, and the coverage gaps in it."""
+
+    summary: SourceSummary
+    coverage: Coverage
+    span: tuple[datetime, datetime] | None
+    gaps: list[Gap]
+
+
+class StatusReads(NamedTuple):
+    coverage: list[SourceCoverage]
+    counts: dict[str, int]
+
+
+def status_reads(
+    conn: sqlite3.Connection, summaries: Sequence[SourceSummary], skip: Collection[str] = ()
+) -> StatusReads:
+    """Each source's recent coverage gaps, leaving out the skipped sources, and row counts."""
+    checked = []
+    for summary in summaries:
+        if summary.source in skip:
+            continue
+        span = _recent_span(summary)
+        if span is None:
+            checked.append(SourceCoverage(summary, Coverage.NO_OBSERVATIONS, None, []))
+        elif span[0] >= span[1]:
+            checked.append(SourceCoverage(summary, Coverage.UNSETTLED, span, []))
+        else:
+            gaps = find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
+            checked.append(SourceCoverage(summary, Coverage.CHECKED, span, gaps))
+    return StatusReads(checked, table_counts(conn))
 
 
 def find_gaps(

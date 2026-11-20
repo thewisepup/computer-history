@@ -199,7 +199,7 @@ How many days a dataset covers: day, week, month or year.
 _Avoid_: Size, scale
 
 **Heavy**:
-A factor that makes a persona a heavier user: faster switching, more text, longer workdays and weekends worked.
+A factor that makes a persona a heavier user: faster switching, more text and weekends worked. The workday keeps its length.
 _Avoid_: Stress mode, load
 
 **Timeline**:

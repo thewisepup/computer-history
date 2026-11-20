@@ -25,7 +25,7 @@ COMMANDS = {
     ),
     "dev": (
         "Developer tools: build-db makes a database of synthetic history, perf runs the"
-        " performance gate."
+        " performance gate, bench times each operation."
     ),
 }
 
@@ -59,14 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, help_text in COMMANDS.items():
         if name == "dev":
-            parents = []
-        elif name in ("ingest", "status", "backfill"):
+            add_dev_commands(subparsers.add_parser(name, help=help_text, description=help_text))
+            continue
+        if name in ("ingest", "status", "backfill"):
             parents = [db_after_command, aw]
         else:
             parents = [db_after_command]
         sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
-        if name == "dev":
-            add_dev_commands(sub)
         if name == "rebuild-signals":
             sub.add_argument(
                 "--allow-shrink",

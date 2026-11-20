@@ -6,7 +6,8 @@ from computer_history.synthetic import (
     EXPECTED_SCALING_FAILURES,
     GATE_DATASETS,
     OPERATIONS,
-    SMALLEST,
+    SMALLEST_DATASET,
+    FindingKind,
     GateReport,
     cache_root,
     run_gate,
@@ -14,7 +15,7 @@ from computer_history.synthetic import (
 
 pytestmark = pytest.mark.perf
 USER_CACHE = cache_root()
-LARGER = [label for label in GATE_DATASETS if label != SMALLEST]
+LARGER = [label for label in GATE_DATASETS if label != SMALLEST_DATASET]
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +31,21 @@ def test_the_operation_costs_what_the_baseline_records(
     findings = [f for f in report.findings if (f.operation, f.dataset) == (operation, dataset)]
 
     if findings:
-        pytest.fail("\n".join(finding.describe() for finding in findings), pytrace=False)
+        lines = [_versions(report), *(finding.describe() for finding in findings)]
+        pytest.fail("\n".join(lines), pytrace=False)
+
+
+def test_the_baseline_has_no_costs_for_an_operation_that_is_gone(report: GateReport) -> None:
+    stale = [f for f in report.findings if f.kind is FindingKind.STALE_BASELINE]
+
+    if stale:
+        pytest.fail("\n".join(finding.describe() for finding in stale), pytrace=False)
+
+
+def _versions(report: GateReport) -> str:
+    running = f"SQLite {report.build.version} against {report.baseline.name}"
+    others = report.other_versions
+    return f"{running}, recorded on SQLite {', '.join(others)}" if others else running
 
 
 def _scaling_case(operation: str, label: str) -> object:

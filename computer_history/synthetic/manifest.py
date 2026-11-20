@@ -24,7 +24,7 @@ from computer_history.synthetic.timeline import (
 )
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 3
+GENERATOR_VERSION = 4
 
 Piece = tuple[datetime, datetime, str]
 
@@ -157,9 +157,7 @@ def _by_day(
     return found
 
 
-def _pieces_within(
-    pieces: list[Piece], spans: list[tuple[datetime, datetime]]
-) -> Iterator[Piece]:
+def _pieces_within(pieces: list[Piece], spans: list[tuple[datetime, datetime]]) -> Iterator[Piece]:
     index = 0
     for start, end, key in pieces:
         while index < len(spans) and spans[index][1] <= start:

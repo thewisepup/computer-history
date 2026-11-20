@@ -86,7 +86,7 @@ CONTENT_CREATOR = Persona(
         "Shot list — {project}: wide, close-up, overhead 🎬",
     ),
     rhythm=Rhythm(
-        workday_start=time(9, 0),
+        workday_start=time(10, 0),
         workday_end=time(18, 30),
         lunch_start=time(13, 0),
         breaks_every_minutes=30,

@@ -206,7 +206,7 @@ rebuild-signals aborted: no source adapter projects 'screenshot', the source of 
 
 ```bash
 computer-history dev build-db --persona developer --scenario typical --tier day --seed 1 --out /tmp/dev
-computer-history status --db-path /tmp/dev/history.db   # the spool is /tmp/dev/spool, beside it
+computer-history status --db-path /tmp/dev/history.db   # its spool, /tmp/dev/spool, stays empty
 ```
 
 ```
@@ -214,28 +214,32 @@ Dataset persona=developer, scenario=typical, tier=day, seed=1, start=2026-01-05,
   built: ~/Library/Caches/ComputerHistory/datasets/69b4a3a750a56e1dd6c2543276a92ee8
   database   /tmp/dev/history.db
   manifest   /tmp/dev/manifest.json
-  spool/     /tmp/dev/spool
+  rendered-spool/ /tmp/dev/rendered-spool
 ```
 
 Builds a synthetic dataset through the real backfill and poll, or reuses the
 one already in the dataset cache (`reused from the cache`), and copies every
 file of it into `--out`: the database, the manifest of true answers, and any
-rendered source files such as a spool. Every field of the dataset's inputs is
+rendered source files, such as the spool files in `rendered-spool/`. That folder
+is not named `spool/`, so `status` on the copied database finds no spool files
+waiting: they are already ingested. Every field of the dataset's inputs is
 a flag: `--persona`, `--scenario`, `--tier` and `--seed` are required, and
 their choices are whatever the synthetic package registers (tiers: day, week,
-month, year); `--start` and `--timezone` move the range, and `--heavy 2` makes
-the persona a heavier user (switching twice as often, twice the text, weekends
-worked). The same inputs always give the same database contents.
+month, year); `--start` and `--timezone` move the range, and `--heavy` alone (or
+`--heavy 3` for another factor) makes the persona a heavier user (switching
+twice as often, twice the text, weekends worked). The same inputs always give the same database contents.
 
 It refuses, with exit code 1, to write into a live folder: the default
 `~/Library/Application Support/ComputerHistory/`, the folder of
-`$COMPUTER_HISTORY_DB` or of a global `--db-path`, and `$COMPUTER_HISTORY_SPOOL`.
+`$COMPUTER_HISTORY_DB` or of a global `--db-path`, and `$COMPUTER_HISTORY_SPOOL`,
+and to replace a file or folder that holds one of them.
 Paths are compared after resolving symlinks and ignoring letter case, so
 `~/library/application support/computerhistory` is refused too. It refuses an
 `--out` that already holds any file it would write (`... already holds
 history.db, manifest.json; pass --force to replace them`); `--force` replaces
 just those, plus stale `-wal`/`-shm` files, and leaves the folder's other files
-alone.
+alone. A dataset that can't be built or copied (a cache on a filesystem
+without WAL, say) exits 1 with `dev build-db failed: <error>`.
 
 The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
 `~/Library/Caches/ComputerHistory/datasets/` on macOS (`$XDG_CACHE_HOME`, or
@@ -243,7 +247,8 @@ The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
 worktree. An entry is keyed by the inputs, the package's code and migrations,
 and the schema, SQLite and Python versions, so any change to ingest rebuilds
 it. A build writes into a temporary folder beside the entry and renames it
-into place; when two builds race, the loser discards its copy. Delete the
+into place; when two builds race, the loser discards its copy and uses the
+winner's entry, which is never moved aside. Delete the
 folder at any time: the next request rebuilds, as it does for an entry missing
 its database or manifest.
 
@@ -268,8 +273,8 @@ status-reads     day                  15        78,718        -
 capture-health   day                   6        71,743        -
 ingest           month           251,848     8,087,820   83,286
 ...
-expected to fail, status-reads on month: 340,350 VM steps, over the 45,922 the day tier allows
-expected to fail, capture-health on month: 481,452 VM steps, over the 143,486 the day tier allows
+expected to fail, status-reads on month: 340,350 VM steps, over the 45,922 the day dataset allows
+expected to fail, capture-health on month: 481,452 VM steps, over the 143,486 the day dataset allows
 
 Performance gate passed.
 ```
@@ -335,24 +340,28 @@ Real output, on an M5 Max, after a first run recorded the baseline:
 Median of 5 runs, against this machine's baseline ~/Library/Caches/ComputerHistory/datasets/bench_baseline.json
 
 operation        dataset         median   baseline    change
-ingest           day            0.136 s    0.164 s    -17.0%
-rebuild-signals  day            0.045 s    0.046 s     -2.9%
-status-reads     day            0.002 s    0.002 s     -4.2%
-capture-health   day            0.011 s    0.011 s     +1.2%
-ingest           month          5.415 s    5.537 s     -2.2%
-rebuild-signals  month          1.768 s    1.826 s     -3.2%
-status-reads     month          0.042 s    0.044 s     -4.7%
-capture-health   month          0.042 s    0.044 s     -3.2%
+ingest           day            0.128 s    0.130 s     -1.4%
+rebuild-signals  day            0.041 s    0.041 s     -0.2%
+status-reads     day            0.002 s    0.002 s     -0.1%
+capture-health   day            0.010 s    0.010 s     -0.3%
+ingest           month          4.816 s    4.837 s     -0.4%
+rebuild-signals  month          1.657 s    1.681 s     -1.4%
+status-reads     month          0.040 s    0.040 s     +0.1%
+capture-health   month          0.040 s    0.040 s     +0.5%
 
-Nothing more than 25% slower than this machine's baseline.
+Nothing more than 25% slower than this machine's baseline, of 8.
 ```
 
 Times each operation `dev perf` counts five times, without the cost meter,
 each run started afresh, and reports the median. It catches Python-side
 slowdowns the counters can't see. The baseline is `bench_baseline.json` in the
 dataset cache folder, so it belongs to this machine: a timing it lacks is
-recorded (`recorded`), and one more than 25% slower is marked `SLOWER`. It
-exits 0 either way; only a run that can't happen at all exits 1. The nightly
+recorded (`recorded`), and one more than 25% slower is marked `SLOWER`. A run
+with no baseline at all says so (`No baseline on this machine yet: these
+medians become it, nothing compared.`) rather than that nothing got slower,
+and `--update-baseline` says `Baseline rewritten from these medians`.
+`--update-baselines` is accepted for `--update-baseline`, as `dev perf` spells
+it. It exits 0 either way; only a run that can't happen at all exits 1. The nightly
 CI run keeps no baseline, since each night lands on a different VM, so there it
 reports medians only.
 

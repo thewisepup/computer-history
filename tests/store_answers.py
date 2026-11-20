@@ -9,14 +9,22 @@ from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from computer_history.sources import (
+    AFK_SOURCE,
+    AX_TEXT_SOURCE,
     WEB_SOURCE,
+    WINDOW_SOURCE,
+    capture_coverage,
     extract_domain,
     stored_afk_spans,
     stored_app_spans,
+    stored_records,
 )
-from computer_history.store import payload_values
-from computer_history.synthetic import Manifest, Totals
+from computer_history.store import Gap, connect, find_gaps, payload_values
+from computer_history.synthetic import DATABASE_NAME, MANIFEST_NAME, Dataset, Manifest, Totals
 from computer_history.synthetic.activitywatch import HOST
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
+
+DATASET_FILES = sorted([DATABASE_NAME, MANIFEST_NAME, RENDERED_SPOOL_FOLDER])
 
 
 def stored_totals(conn: sqlite3.Connection, lo: datetime, hi: datetime) -> Totals:
@@ -68,3 +76,28 @@ def _seconds_by_key(
         if key is not None and overlap > timedelta(0):
             found[key] += overlap // timedelta(milliseconds=1)
     return {key: ms / 1000 for key, ms in sorted(found.items())}
+
+
+def stored_gaps(dataset: Dataset) -> tuple[dict[str, tuple[Gap, ...]], list, list]:
+    """Each source's unobserved gaps over the range, plus the capture records and AFK spans read."""
+    start, end = dataset.timeline.start, dataset.timeline.end
+    conn = connect(dataset.db_path)
+    try:
+        gaps = {
+            source: tuple(find_gaps(conn, source, start, end, min_gap_seconds=1))
+            for source in (WINDOW_SOURCE, AFK_SOURCE)
+        }
+        records = stored_records(conn, start, end)
+        afk = stored_afk_spans(conn, start, end)
+    finally:
+        conn.close()
+    coverage = capture_coverage(
+        records,
+        active=[(s.start, s.end) for s in afk if not s.afk],
+        known=[(s.start, s.end) for s in afk],
+        start=start,
+        end=end,
+        paused_at_start=False,
+        min_gap_seconds=1,
+    )
+    return {**gaps, AX_TEXT_SOURCE: coverage.unobserved}, records, afk

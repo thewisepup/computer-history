@@ -10,10 +10,12 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from store_answers import DATASET_FILES
 
 from computer_history.store import connect, content_digest
 from computer_history.synthetic import (
     CACHE_ENV_VAR,
+    DATABASE_NAME,
     CachedDataset,
     DatasetInputs,
     build_dataset,
@@ -23,6 +25,7 @@ from computer_history.synthetic import (
     dataset_key,
     open_cached,
 )
+from computer_history.synthetic import cache as synthetic_cache
 from computer_history.synthetic.cache import PACKAGE
 
 REPO = Path(__file__).resolve().parent.parent
@@ -103,6 +106,29 @@ def test_a_build_that_loses_the_race_discards_its_copy(dataset_cache: Path) -> N
     _assert_complete(loser)
 
 
+def test_a_rival_entry_landing_after_the_first_check_is_kept_not_discarded(
+    dataset_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rival = cached_dataset(DEVELOPER_DAY, dataset_cache)
+    inode = rival.db_path.stat().st_ino
+    first_check = [True]
+    real_complete = synthetic_cache._complete
+
+    def rival_lands_after_the_first_check(entry: Path) -> bool:
+        if first_check.pop() if first_check else False:
+            return False
+        return real_complete(entry)
+
+    monkeypatch.setattr(synthetic_cache, "_complete", rival_lands_after_the_first_check)
+
+    loser = cached_dataset(DEVELOPER_DAY, dataset_cache)
+
+    assert not loser.built
+    assert loser.db_path.stat().st_ino == inode
+    assert _listing(dataset_cache) == [rival.key]
+    _assert_complete(loser)
+
+
 def test_two_processes_building_one_key_leave_one_complete_entry(dataset_cache: Path) -> None:
     builders = [
         subprocess.Popen(
@@ -146,6 +172,19 @@ def test_a_damaged_entry_is_rebuilt_instead_of_reused(dataset_cache: Path) -> No
     _assert_complete(again)
 
 
+def test_a_file_where_the_entry_belongs_is_replaced_and_leaves_nothing_behind(
+    dataset_cache: Path,
+) -> None:
+    dataset_cache.mkdir(parents=True, exist_ok=True)
+    (dataset_cache / dataset_key(DEVELOPER_DAY)).write_text("not a folder\n")
+
+    entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
+
+    assert entry.built
+    assert _listing(dataset_cache) == [entry.key]
+    _assert_complete(entry)
+
+
 def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouched(
     dataset_cache: Path,
 ) -> None:
@@ -159,7 +198,7 @@ def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouche
     finally:
         conn.close()
 
-    assert _listing(entry.folder) == before == ["history.db", "manifest.json", "spool"]
+    assert _listing(entry.folder) == before == DATASET_FILES
 
 
 def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
@@ -167,14 +206,14 @@ def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
 ) -> None:
     entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     copied = copy_dataset(entry, tmp_path / "scratch")
-    conn = connect(tmp_path / "scratch" / "history.db")
+    conn = connect(tmp_path / "scratch" / DATABASE_NAME)
     try:
         conn.execute("DELETE FROM ingest_progress")
         changed = content_digest(conn)
     finally:
         conn.close()
 
-    assert [path.name for path in copied] == ["history.db", "manifest.json", "spool"]
+    assert [path.name for path in copied] == DATASET_FILES
     assert changed != json.loads(entry.manifest_path.read_text())["content_digest"]
     _assert_complete(entry)
 

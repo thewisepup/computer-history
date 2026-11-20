@@ -66,4 +66,5 @@ def generate_timeline(inputs: DatasetInputs) -> Timeline:
     stretches = live(persona, inputs.start, days, inputs.timezone, rng)
     ordinary = Timeline(start, end, inputs.timezone, stretches)
     scenario = SCENARIOS[inputs.scenario]
-    return scenario(ordinary, part_random(inputs.seed, f"scenario:{inputs.scenario}"))
+    happenings = part_random(inputs.seed, f"scenario:{inputs.scenario}")
+    return scenario(ordinary, persona.rhythm, happenings)

@@ -34,7 +34,7 @@ UPDATE_HINT = "run `computer-history dev perf --update-baselines` and say why in
 VM_STEP_TOLERANCE = 0.02
 WINDOWED_GROWTH = 2.0
 EVENT_GROWTH_SLACK = 1.5
-SMALLEST = "day"
+SMALLEST_DATASET = "day"
 SHOWN_STATEMENTS = 5
 
 
@@ -49,6 +49,7 @@ NIGHTLY_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
     {"year": _inputs("year"), "heavy-year": _inputs("year", HEAVY)}
 )
 PERF_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType({**GATE_DATASETS, **NIGHTLY_DATASETS})
+
 
 def perf_datasets(labels: Sequence[str] | None) -> dict[str, DatasetInputs]:
     """The datasets named, each once in the order given, or the pull-request gate's by default."""
@@ -79,6 +80,7 @@ EXPECTED_SCALING_FAILURES: Mapping[str, str] = MappingProxyType(
         "capture-health": "https://github.com/thewisepup/computer-history/issues/84",
     }
 )
+UNEXPECTED_PASS_HINT = "take it off EXPECTED_SCALING_FAILURES in computer_history/synthetic/gate.py"
 
 
 class FindingKind(Enum):
@@ -119,7 +121,8 @@ class Finding:
             ]
         elif self.kind is FindingKind.SCALING:
             lines = [
-                f"{where} {self.after:,} VM steps, over the {self.before:,} the day tier allows"
+                f"{where} {self.after:,} VM steps, over the {self.before:,}"
+                f" the {SMALLEST_DATASET} dataset allows"
             ]
         else:
             change = f"{where} {self.counter} {_change(self.before, self.after)}"
@@ -232,7 +235,7 @@ def scaling(
     smallest: tuple[Costs, int],
     larger: tuple[Costs, int],
 ) -> Finding | None:
-    """A finding if the operation's VM steps grow faster from the day tier than the gate allows."""
+    """A finding if the operation's VM steps grow faster from the smallest dataset than allowed."""
     (small, small_events), (large, large_events) = smallest, larger
     before, after = _scaled(operation, small), _scaled(operation, large)
     steps = sum(cost.vm_steps for cost in before.values())
@@ -288,6 +291,12 @@ class GateReport:
     def ok(self) -> bool:
         return not self.failures and not self.unexpected_passes
 
+    @property
+    def other_versions(self) -> tuple[str, ...]:
+        """The other SQLite versions the measured entries' baselines were recorded on."""
+        versions = {self.recorded_on[key] for key in self.measured if key in self.recorded_on}
+        return tuple(sorted(versions - {self.build.version}))
+
 
 def run_gate(
     datasets: Mapping[str, DatasetInputs],
@@ -313,10 +322,11 @@ def run_gate(
         for name, operation in OPERATIONS.items()
     }
     own = baseline_file(build.version, baselines)
+    kept = load_baseline(compared_baseline(build.version, baselines))
     if counters is not None:
-        save_baseline(counters, build.version, measured, keep=load_baseline(own))
+        save_baseline(counters, build.version, measured, keep=kept)
     if update:
-        save_baseline(own, build.version, measured, keep=load_baseline(own))
+        save_baseline(own, build.version, measured, keep=kept)
     compared = compared_baseline(build.version, baselines)
     baseline = load_baseline(compared)
     findings = [
@@ -331,13 +341,13 @@ def run_gate(
     ]
     scaled: list[Finding] = []
     expected: dict[Key, Finding | None] = {}
-    larger = sorted(gated.keys() - {SMALLEST}) if SMALLEST in gated else []
+    larger = sorted(gated.keys() - {SMALLEST_DATASET}) if SMALLEST_DATASET in gated else []
     for label in larger:
         for name, operation in OPERATIONS.items():
             finding = scaling(
                 operation,
                 label,
-                (measured[(name, SMALLEST)], gated[SMALLEST].observations),
+                (measured[(name, SMALLEST_DATASET)], gated[SMALLEST_DATASET].observations),
                 (measured[(name, label)], gated[label].observations),
             )
             if name in EXPECTED_SCALING_FAILURES:
