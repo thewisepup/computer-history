@@ -50,13 +50,19 @@ def build_dataset(inputs: DatasetInputs, folder: Path) -> Dataset:
 
     A build that fails leaves no database behind.
     """
+    return build_timeline(generate_timeline(inputs), folder, seed=inputs.seed, inputs=inputs)
+
+
+def build_timeline(
+    timeline: Timeline, folder: Path, *, seed: int, inputs: DatasetInputs | None = None
+) -> Dataset:
+    """Render and ingest a given timeline as build_dataset does, recording the inputs if any."""
     folder.mkdir(parents=True, exist_ok=True)
     db_path, manifest_path = folder / DATABASE_NAME, folder / MANIFEST_NAME
     if db_path.exists():
         raise FileExistsError(f"{db_path} already exists")
-    timeline = generate_timeline(inputs)
     rendered = {
-        renderer.name: renderer.render(timeline, part_random(inputs.seed, renderer.name))
+        renderer.name: renderer.render(timeline, part_random(seed, renderer.name))
         for renderer in RENDERERS
     }
     feeds = tuple(source.feed(folder) for source in rendered.values())

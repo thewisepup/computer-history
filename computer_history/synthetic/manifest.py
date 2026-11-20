@@ -35,7 +35,7 @@ class Manifest:
     """What a dataset holds: its inputs and range, time per local day and in total, and counts."""
 
     generator_version: int
-    inputs: DatasetInputs
+    inputs: DatasetInputs | None
     start: datetime
     end: datetime
     timezone: str
@@ -49,7 +49,7 @@ class Manifest:
 
 
 def true_answers(
-    inputs: DatasetInputs,
+    inputs: DatasetInputs | None,
     timeline: Timeline,
     rendered: Iterable[RenderedSource],
     content_digest: str,

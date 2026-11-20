@@ -23,6 +23,7 @@ from computer_history.synthetic.build import (
     Dataset,
     backfill_feeds,
     build_dataset,
+    build_timeline,
     poll_feeds,
 )
 from computer_history.synthetic.generate import (
@@ -53,6 +54,7 @@ __all__ = [
     "Totals",
     "backfill_feeds",
     "build_dataset",
+    "build_timeline",
     "generate_timeline",
     "poll_feeds",
 ]

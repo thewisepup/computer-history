@@ -4,6 +4,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from itertools import product
 
+import aw_watchers as watchers
 from fake_aw import FakeAW
 
 from computer_history.store import to_utc
@@ -105,3 +106,67 @@ def test_served_events_match_the_test_fake_for_every_range_without_ties() -> Non
     for raw in raws:
         assert served.get_event("bucket", raw["id"]) == fake.get_event("bucket", raw["id"])
     assert served.get_event("bucket", 99) is None
+
+
+WATCHED_DAY = watchers.Day(
+    stretches=(
+        watchers.Stretch("active", 600, "Cursor"),
+        watchers.Stretch("idle", 300, "Cursor"),
+        watchers.Stretch("active", 200, "Terminal"),
+        watchers.Stretch("idle", 60, "Terminal"),
+        watchers.Stretch("active", 100, "Terminal"),
+        watchers.Stretch("asleep", 600, "Terminal"),
+        watchers.Stretch("active", 300, "Cursor"),
+    ),
+    poll_phase=0,
+    afk_phase=2,
+)
+AFK_POLL = timedelta(seconds=watchers.AFK_POLL_TIME)
+SECOND = timedelta(seconds=1)
+
+
+def watched_timeline(day: watchers.Day) -> Timeline:
+    edge, stretches = watchers.T0, []
+    for step in day.stretches:
+        end = edge + timedelta(seconds=step.seconds)
+        if step.kind == "asleep":
+            stretches.append(Stretch(edge, end, kind=StretchKind.ASLEEP))
+        else:
+            stretches.append(
+                Stretch(edge, end, app=step.app, title=step.app, afk=step.kind == "idle")
+            )
+        edge = end
+    return Timeline(watchers.T0, edge, "UTC", tuple(stretches))
+
+
+def spans(raws: list[dict]) -> list[tuple[datetime, datetime, dict]]:
+    found = []
+    for raw in sorted(raws, key=lambda raw: to_utc(raw["timestamp"])):
+        start = to_utc(raw["timestamp"])
+        found.append((start, start + timedelta(seconds=raw["duration"]), raw["data"]))
+    return found
+
+
+def simulated_and_rendered(bucket: str, simulated_bucket: str):
+    simulated = watchers.HeartbeatAW()
+    watchers.live_through(WATCHED_DAY, simulated, lambda now: None)
+    rendered = ActivityWatchRenderer().render(watched_timeline(WATCHED_DAY), random.Random(0))
+    served = ServedAW(rendered.buckets, rendered.events)
+    return spans(simulated.events[simulated_bucket]), spans(served.get_events(bucket))
+
+
+def test_window_events_match_the_watcher_except_for_its_last_one_second_poll() -> None:
+    simulated, rendered = simulated_and_rendered(WINDOW_BUCKET, watchers.WINDOW_BUCKET)
+
+    assert simulated == [(start, end - SECOND, data) for start, end, data in rendered]
+
+
+def test_afk_spans_match_the_watcher_within_one_afk_poll() -> None:
+    simulated, rendered = simulated_and_rendered(AFK_BUCKET, watchers.AFK_BUCKET)
+
+    assert [data for _, _, data in simulated] == [data for _, _, data in rendered]
+    for (sim_start, sim_end, data), (start, end, _) in zip(simulated, rendered, strict=True):
+        if data["status"] == "afk":
+            assert sim_start == start - SECOND, (sim_start, start)
+        assert abs(sim_start - start) < AFK_POLL, (data, sim_start, start)
+        assert abs(sim_end - end) < AFK_POLL, (data, sim_end, end)
