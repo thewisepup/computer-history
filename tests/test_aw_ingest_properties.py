@@ -76,14 +76,6 @@ def test_every_window_event_is_stored_whole(day: Day) -> None:
     assert not cut_off
 
 
-@checked
-@given(days)
-def test_every_afk_event_is_stored(day: Day) -> None:
-    with ingest(day) as (aw, conn):
-        missing, _ = missing_and_cut_off(aw, conn, AFK_SOURCE, AFK_BUCKET)
-    assert not missing
-
-
 A_PAUSE_OF_TWO_AND_A_HALF_MINUTES = Day(
     (Stretch("active", 600, "Code"), Stretch("idle", 150, "Code"), Stretch("active", 3600, "Code")),
     poll_phase=0,

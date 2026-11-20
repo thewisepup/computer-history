@@ -75,6 +75,22 @@ def test_observations_unique_on_source_and_source_id(conn: sqlite3.Connection) -
         insert_observation(conn, source_id="42")
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE observations SET payload = '{}' WHERE id = ?",
+        "DELETE FROM observations WHERE id = ?",
+    ],
+    ids=["update", "delete"],
+)
+def test_observations_are_immutable(conn: sqlite3.Connection, sql: str) -> None:
+    obs_id = insert_observation(conn, source_id="42")
+    before = conn.execute("SELECT * FROM observations").fetchall()
+    with pytest.raises(sqlite3.IntegrityError, match="observations are immutable"):
+        conn.execute(sql, (obs_id,))
+    assert conn.execute("SELECT * FROM observations").fetchall() == before
+
+
 def test_reopen_is_noop(db_path: Path) -> None:
     first = connect(db_path)
     insert_observation(first, source_id="1")
