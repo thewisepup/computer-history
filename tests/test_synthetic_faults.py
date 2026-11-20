@@ -14,6 +14,7 @@ from computer_history.sources import (
     WEB_SOURCE,
     WINDOW_SOURCE,
     capture_coverage,
+    parse_record,
     stored_afk_spans,
     stored_records,
 )
@@ -147,6 +148,9 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
     assert [(r.at, r.kind, r.app) for r in records] == FAULTY_HOUR_RECORDS
     assert Counter(r.kind for r in records) == FAULTY_HOUR_CAPTURES.kinds
     assert not any(s.afk for s in afk)
+    files = {file.name: len(file.lines) for file in dataset.rendered["spool"].files}
+    assert files["20260105T095000.000Z.jsonl"] == 2
+    assert not [name for name in files if "T0945" <= name[8:13] < "T0950"]
 
 
 MESSY_DAY = DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1)
@@ -334,3 +338,42 @@ def test_a_pause_the_agent_cannot_see_is_refused() -> None:
 
     with pytest.raises(ValueError, match="pause edge"):
         SpoolRenderer().render(timeline, random.Random(0))
+
+
+def _records(timeline: Timeline) -> list[tuple[datetime, str | None, str, str | None]]:
+    rendered = SpoolRenderer(hostile_windows_per_day=0).render(timeline, random.Random(0))
+    return [
+        (record.captured_at, record.fields["trigger"], record.kind, record.fields["app_name"])
+        for file in rendered.files
+        for record in map(parse_record, file.lines)
+    ]
+
+
+def test_a_restarted_agent_starts_afresh_and_sees_no_switch_made_while_it_was_down() -> None:
+    switched = (
+        Stretch(at(9, 0), at(9, 1), app="Cursor", title="a.py"),
+        Stretch(at(9, 1), at(9, 2), app="Terminal", title="zsh"),
+    )
+    down = Fault(at(9, 0, 50), at(9, 1, 20), FaultKind.AGENT_DOWN)
+
+    assert _records(Timeline(at(9, 0), at(9, 2), "UTC", switched, (down,))) == [
+        (at(9, 0, 1), "heartbeat", "capture", "Cursor"),
+        (at(9, 0, 31), "heartbeat", "capture", "Cursor"),
+        (at(9, 1, 21), "heartbeat", "capture", "Terminal"),
+        (at(9, 1, 51), "heartbeat", "capture", "Terminal"),
+    ]
+
+
+def test_lost_permission_holds_captures_back_and_the_first_comes_on_its_return() -> None:
+    switched = (
+        Stretch(at(9, 0), at(9, 1), app="Cursor", title="a.py"),
+        Stretch(at(9, 1), at(9, 2), app="Terminal", title="zsh"),
+    )
+    lost = Fault(at(9, 0, 50), at(9, 1, 20), FaultKind.PERMISSION_LOST)
+
+    assert _records(Timeline(at(9, 0), at(9, 2), "UTC", switched, (lost,))) == [
+        (at(9, 0, 1), "heartbeat", "capture", "Cursor"),
+        (at(9, 0, 31), "heartbeat", "capture", "Cursor"),
+        (at(9, 1, 20), "app", "capture", "Terminal"),
+        (at(9, 1, 50), "heartbeat", "capture", "Terminal"),
+    ]
