@@ -4,6 +4,7 @@ import ast
 import io
 import re
 import tokenize
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -183,3 +184,33 @@ def test_package_diagram_lists_every_module(package: Path) -> None:
     missing, stale = sorted(modules - mentioned), sorted(mentioned - modules)
     assert not missing, f"{_rel(package)}: diagram is missing {missing}"
     assert not stale, f"{_rel(package)}: diagram names files that do not exist: {stale}"
+
+
+DESIGN = PACKAGE.parent / "docs" / "DESIGN.md"
+LAID_OUT_PACKAGES = ("store", "sources", "synthetic")
+
+
+def _layout_block(package: str) -> str:
+    layout = DESIGN.read_text(encoding="utf-8").split("\ncomputer_history/\n", 1)[1]
+    block = re.search(rf"^  {package}/ +#(.*?)(?=^  \S)", layout, re.MULTILINE | re.DOTALL)
+    assert block, f"docs/DESIGN.md's package layout has no {package}/ entry"
+    return block.group(1)
+
+
+@pytest.mark.parametrize("package", LAID_OUT_PACKAGES)
+def test_the_design_layout_names_every_module(package: str) -> None:
+    block = _layout_block(package)
+    modules = sorted({p.stem for p in (PACKAGE / package).rglob("*.py")} - {"__init__"})
+    missing = [stem for stem in modules if not re.search(rf"\b{stem}\b", block)]
+    assert not missing, f"docs/DESIGN.md's {package}/ layout is missing {missing}"
+
+
+@pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
+def test_invisible_characters_are_written_as_escapes(path: Path) -> None:
+    raw = [
+        f"line {number}: U+{ord(char):04X}"
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        for char in line
+        if unicodedata.category(char) in ("Cf", "Mn", "Zl", "Zp")
+    ]
+    assert not raw, f"{_rel(path)}: write these as \\u escapes: {raw}"

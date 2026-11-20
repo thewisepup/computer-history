@@ -59,12 +59,13 @@ every pull.
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool
 contract or the end-to-end test, and the end-to-end check also when it touches
-`computer_history/` or `pyproject.toml`; without `swift` it skips both and says
+`computer_history/`, `pyproject.toml` or `tests/test_synthetic_spool.py`; without `swift` it skips both and says
 so (see the agent's README):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests
-capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> status, in a temp folder
+capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> status, in a temp folder,
+                                # and the synthetic spool renderer against the agent
 ```
 
 ## Rules every change keeps

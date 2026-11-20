@@ -35,9 +35,10 @@ def test_build_db_copies_the_dataset_out_and_prints_where_it_landed(
     again, reprinted, _ = build_db(capsys, *DEVELOPER_DAY, "--out", str(tmp_path / "again"))
 
     assert (code, again) == (0, 0)
-    assert sorted(path.name for path in out.iterdir()) == ["history.db", "manifest.json"]
+    assert sorted(path.name for path in out.iterdir()) == ["history.db", "manifest.json", "spool"]
     assert re.search(rf"database\s+{re.escape(str(out / 'history.db'))}", printed)
     assert re.search(rf"manifest\s+{re.escape(str(out / 'manifest.json'))}", printed)
+    assert re.search(rf"spool/\s+{re.escape(str(out / 'spool'))}", printed)
     assert "built" in printed and "reused" in reprinted
     manifest = json.loads((out / "manifest.json").read_text())
     conn = connect(out / "history.db")
@@ -110,6 +111,7 @@ def test_build_db_refuses_an_existing_output_unless_forced(
         "history.db",
         "manifest.json",
         "notes.txt",
+        "spool",
     ]
 
 

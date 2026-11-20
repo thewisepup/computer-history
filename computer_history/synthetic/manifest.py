@@ -9,13 +9,15 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from computer_history.sources import CAPTURE_KIND
 from computer_history.synthetic.afk import reported_afk
+from computer_history.synthetic.captures import agent_captures
 from computer_history.synthetic.generate import DatasetInputs
 from computer_history.synthetic.renderer import RenderedSource
 from computer_history.synthetic.timeline import PRECISION, Timeline, local_midnight
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 Piece = tuple[datetime, datetime, str]
 
@@ -31,6 +33,15 @@ class Totals:
 
 
 @dataclass(frozen=True)
+class CaptureCounts:
+    """The capture agent's records by kind, its captures by trigger, and its captures by app."""
+
+    kinds: Mapping[str, int]
+    triggers: Mapping[str, int]
+    apps: Mapping[str, int]
+
+
+@dataclass(frozen=True)
 class Manifest:
     """What a dataset holds: its inputs and range, time per local day and in total, and counts."""
 
@@ -42,6 +53,7 @@ class Manifest:
     days: Mapping[str, Totals]
     total: Totals
     observations: Mapping[str, int]
+    captures: CaptureCounts
     content_digest: str
 
     def to_json(self) -> str:
@@ -80,8 +92,17 @@ def true_answers(
         days={day: _totals(*(found[day] for found in per_day)) for day, _, _ in days},
         total=_totals(*total),
         observations=dict(sorted(counts.items())),
+        captures=_captures(timeline),
         content_digest=content_digest,
     )
+
+
+def _captures(timeline: Timeline) -> CaptureCounts:
+    captures = agent_captures(timeline)
+    kinds = Counter(CAPTURE_KIND for _ in captures)
+    triggers = Counter(capture.trigger for capture in captures)
+    apps = Counter(capture.stretch.app for capture in captures)
+    return CaptureCounts(*(dict(sorted(found.items())) for found in (kinds, triggers, apps)))
 
 
 def _totals(

@@ -102,9 +102,10 @@ computer_history/
                 # timeline, seeds, persona (+ developer), days (a persona's
                 # ordinary days), scenarios, generate (inputs -> timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
-                # buckets served in process), build, manifest, cache (built
-                # datasets per user, keyed by inputs and code), devdb (a cached
-                # dataset copied out, never into a live folder)
+                # buckets served in process), spool (+ captures: when the
+                # agent captures), build, manifest, cache (built datasets per
+                # user, keyed by inputs and code), devdb (a cached dataset
+                # copied out, never into a live folder)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
