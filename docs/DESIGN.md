@@ -97,7 +97,9 @@ computer_history/
                 # it); for status, backlog (what
                 # waits in the spool), stored (the stored records' kinds and
                 # apps, the day's counts), coverage (unobserved stretches,
-                # liveness) and agreement (each capture's app against aw-window)
+                # liveness), agreement (each capture's app against aw-window)
+                # and screenshots (the stored screenshot records' statuses,
+                # kept image bytes and missing permission)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

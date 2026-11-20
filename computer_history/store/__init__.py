@@ -30,10 +30,12 @@ from computer_history.store.signals import (
 )
 from computer_history.store.status import (
     Gap,
+    PayloadTotal,
     PayloadValues,
     SourceSummary,
     find_gaps,
     latest_payload_value,
+    payload_totals,
     payload_values,
     source_summary,
     table_counts,
@@ -48,6 +50,7 @@ __all__ = [
     "Migration",
     "Observation",
     "OpenedStore",
+    "PayloadTotal",
     "PayloadValues",
     "Progress",
     "ProgressUpdate",
@@ -68,6 +71,7 @@ __all__ = [
     "load_migrations",
     "migrate",
     "open_store",
+    "payload_totals",
     "payload_values",
     "rebuild_signals",
     "resolve_db_path",

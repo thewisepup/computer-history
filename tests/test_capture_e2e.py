@@ -279,6 +279,7 @@ def test_status_reports_the_capture_agent(session: Session) -> None:
     assert session.status.returncode == 0, session.status.stderr
     assert "Capture agent:" in session.status.stdout
     assert "last capture" in session.status.stdout
+    assert "Screenshots: none stored yet (no screenshot records)\n" in session.status.stdout
 
 
 def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(

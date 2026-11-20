@@ -9,11 +9,13 @@ from computer_history.store import (
     Gap,
     InsertResult,
     Observation,
+    PayloadTotal,
     ProgressUpdate,
     UnclaimedSource,
     find_gaps,
     get_progress,
     insert_observations,
+    payload_totals,
     source_summary,
     table_counts,
     transaction,
@@ -351,3 +353,23 @@ def test_gaps_accept_string_bounds_and_reject_empty_range(conn: sqlite3.Connecti
     assert result[0].seconds == 1800
     with pytest.raises(ValueError, match="empty"):
         find_gaps(conn, "aw-window", at(5), at(5))
+
+
+def test_payload_totals_count_by_value_and_sum_only_whole_numbers(
+    conn: sqlite3.Connection,
+) -> None:
+    payloads = [
+        '{"s": "a", "n": 2}',
+        '{"s": "a", "n": 3}',
+        '{"s": "a", "n": "4"}',
+        '{"s": "b", "n": 1.5}',
+        '{"s": "b"}',
+        "not json",
+        '{"s": "a", "n": 7}',
+    ]
+    observations = [
+        Observation("shots", str(i), at(i), at(i), payload) for i, payload in enumerate(payloads)
+    ]
+    insert_observations(conn, observations, project=lambda source, payload: None)
+    totals = payload_totals(conn, "shots", "$.s", "$.n", since=at(0), until=at(5))
+    assert totals == {"a": PayloadTotal(3, 5), "b": PayloadTotal(2, 0), None: PayloadTotal(1, 0)}

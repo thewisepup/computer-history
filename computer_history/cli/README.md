@@ -11,7 +11,7 @@ app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop)
-  +-- status.py    freshness, coverage gaps, the capture agent, row counts
+  +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
         |
@@ -85,6 +85,7 @@ Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused):
   warning: no ax-text coverage from 2026-11-18 08:02 to 2026-11-18 08:40 (38m), while you were active
   warning: no ax-text coverage from 2026-11-18 09:15 to 2026-11-18 09:27 (12m), cannot be judged: no aw-afk data
+  screenshot: not checked (coverage is judged from ax-text records)
 
 Capture agent:
   last capture  2026-11-18 10:09 (40s ago)
@@ -96,6 +97,12 @@ Capture agent:
                 5 x Discord -> Google Chrome
                 3 x Google Chrome -> Discord
                 2 x Zoom -> Discord
+
+Screenshots:
+  last kept     2026-11-18 10:09 (45s ago), Cursor, screenshots/2026-11-18/6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e11.jpg
+  today         402 kept, 377 duplicate, 6 secure-field, 0 no-permission, 1 failed
+  all stored    6,904 kept, 7,311 duplicate, 85 secure-field, 12 no-permission, 9 failed
+  disk          1.1 GB in total, 71.2 MB today (from kept records)
 
 Rows:
   ...
@@ -154,6 +161,28 @@ Before the agent has stored anything, the section is one line plus the spool:
 ```
 Capture agent: has not reported yet (no ax-text records stored)
   spool         3 finished files waiting (oldest 2m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
+```
+
+The screenshots section reads only stored `screenshot` records, never the
+screenshots folder:
+
+- **last kept**: the newest `kept` record, its app and the image path it
+  names (relative to the data folder).
+- **today** and **all stored**: records by status, since local midnight and
+  in total. Records still in the spool count once ingested.
+- **disk**: the `image_bytes` of the `kept` records, in total and today. An
+  image left without a record is not counted.
+- **warning**: printed when a `no-permission` record is newer than every
+  `kept` and `duplicate` record, with the time of the first `no-permission`
+  record after the last screenshot taken. `secure-field` and `failed` records
+  neither raise nor clear it.
+
+`screenshot` coverage is not checked: coverage is judged from `ax-text`
+records, so the coverage gaps list says `screenshot: not checked`. With no
+screenshot records stored, the section is one line:
+
+```
+Screenshots: none stored yet (no screenshot records)
 ```
 
 ## backfill — one-time history import
