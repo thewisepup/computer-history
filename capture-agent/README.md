@@ -374,9 +374,10 @@ found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
 excluded, 1 timed out, 0 cut off, slowest read 0.42s`, with `, 2 failed to
-write, 1 screenshot records failed to write, 1 text recognitions failed (last:
-<error>)` appended when writes or recognitions fail (each part only when its
-count is not zero). `silent: paused`, `silent:
+write (last: <error>)`, `, 1 screenshot records failed to write (last:
+<error>)` and `, 1 text recognitions failed (last: <error>)` appended when
+writes or recognitions fail, each only when its count is not zero and each
+with the last error of its own kind. `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
 changing and ending. The log never holds window titles or text. After a crash,
 start also logs `spool finished leftover file <name>`.

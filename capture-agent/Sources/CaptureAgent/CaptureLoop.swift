@@ -7,8 +7,7 @@ final class CaptureLoop<M: Mac> {
     private let pollInterval: TimeInterval
     private let reader: WindowTextReader<M.Element>
     private let spool: any SpoolAppender
-    private var screenshot: CaptureScreenshot<M>?
-    private let screenshotQueue: ScreenshotQueue
+    private var screenshots: (stage: CaptureScreenshot<M>, queue: ScreenshotQueue)?
     private let counts: CaptureCounts
     private let log: (String) -> Void
 
@@ -42,21 +41,23 @@ final class CaptureLoop<M: Mac> {
             now: mac.uptime
         )
         self.spool = spool
-        let screenshot = CaptureScreenshot(
-            mac: mac,
-            images: images,
-            longEdge: settings.screenshots.longEdge,
-            pause: settings.pause,
-            idleThreshold: settings.capture.idleThreshold,
-            dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter)
-        )
-        self.screenshot = settings.screenshots.enabled ? screenshot : nil
-        self.screenshotQueue = ScreenshotQueue(
-            recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },
-            capBytes: settings.windowText.textCapBytes,
-            spool: spool,
-            counts: counts
-        )
+        if settings.screenshots.enabled {
+            let stage = CaptureScreenshot(
+                mac: mac,
+                images: images,
+                longEdge: settings.screenshots.longEdge,
+                pause: settings.pause,
+                idleThreshold: settings.capture.idleThreshold,
+                dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter)
+            )
+            let queue = ScreenshotQueue(
+                recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },
+                capBytes: settings.windowText.textCapBytes,
+                spool: spool,
+                counts: counts
+            )
+            self.screenshots = (stage, queue)
+        }
         self.counts = counts
         self.log = log
     }
@@ -71,7 +72,7 @@ final class CaptureLoop<M: Mac> {
 
     /// Waits until the screenshot record of every capture so far has been written or refused.
     func waitForScreenshots() {
-        screenshotQueue.waitUntilWritten()
+        screenshots?.queue.waitUntilWritten()
     }
 
     func tick() {
@@ -113,8 +114,8 @@ final class CaptureLoop<M: Mac> {
         )
         guard write(record) else { return }
         counts.recordWritten(record)
-        guard let shot = screenshot?.take(for: record, of: application) else { return }
-        screenshotQueue.add(shot)
+        guard let shot = screenshots?.stage.take(for: record, of: application) else { return }
+        screenshots?.queue.add(shot)
     }
 
     private func write(_ record: SpoolRecord) -> Bool {

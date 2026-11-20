@@ -19,11 +19,13 @@ public struct ScreenshotSettings: Equatable, Sendable {
     }
 }
 
-/// A screenshot record waiting for the spool: ready as it is, waiting on its own image's text, or copying a kept screenshot's text.
+/// A screenshot record waiting for the spool: ready as it is, or built once its own image's text is read or its kept screenshot's text is known.
 enum QueuedScreenshot: Sendable {
+    typealias Record = @Sendable (_ text: String, _ fullTextBytes: Int) -> ScreenshotRecord
+
     case ready(ScreenshotRecord)
-    case recognize(ScreenshotRecord, image: URL, into: KeptText)
-    case copy(ScreenshotRecord, from: KeptText)
+    case recognize(image: URL, into: KeptText, record: Record)
+    case copy(from: KeptText, record: Record)
 }
 
 /// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record.
@@ -60,10 +62,9 @@ struct CaptureScreenshot<M: Mac> {
             }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(frame, in: window, at: capture.capturedAt) {
-                let duplicate = ScreenshotRecord.duplicate(
-                    of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: "", fullTextBytes: 0
-                )
-                return .copy(duplicate, from: kept.text)
+                return .copy(from: kept.text) { text, fullTextBytes in
+                    .duplicate(of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: text, fullTextBytes: fullTextBytes)
+                }
             }
             let id = UUID()
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
@@ -71,10 +72,12 @@ struct CaptureScreenshot<M: Mac> {
             dedup.remember(
                 FrameDedup.KeptFrame(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
             )
-            let kept = ScreenshotRecord.kept(
-                id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
-            )
-            return .recognize(kept, image: saved.file, into: text)
+            return .recognize(image: saved.file, into: text) { text, fullTextBytes in
+                .kept(
+                    id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: text,
+                    fullTextBytes: fullTextBytes
+                )
+            }
         }
     }
 

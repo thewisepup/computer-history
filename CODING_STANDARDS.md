@@ -64,6 +64,9 @@ Review findings ratchet into rules:
   uses, not a whole settings struct it reads part of.
 - **A8** In-memory state keeps typed values; text from the spool or the wire
   is parsed once, where it comes in.
+- **A9** A factory parameter that every production caller fills with a
+  placeholder is removed, and the value is set once, where it becomes known.
+- **A10** A Bool flag that picks between two counters becomes two methods.
 
 ## Hygiene
 

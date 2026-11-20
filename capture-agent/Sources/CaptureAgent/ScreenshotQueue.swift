@@ -34,9 +34,9 @@ final class ScreenshotQueue: Sendable {
         switch screenshot {
         case .ready(let record):
             return record
-        case .copy(let record, let kept):
-            return record.withText(kept.text, fullTextBytes: kept.fullTextBytes)
-        case .recognize(let record, let image, let kept):
+        case .copy(let kept, let record):
+            return record(kept.text, kept.fullTextBytes)
+        case .recognize(let image, let kept, let record):
             do {
                 var capped = CappedText(capBytes: capBytes)
                 capped.append(try recognize(image))
@@ -45,7 +45,7 @@ final class ScreenshotQueue: Sendable {
             } catch {
                 counts.recordRecognitionFailed(error)
             }
-            return record.withText(kept.text, fullTextBytes: kept.fullTextBytes)
+            return record(kept.text, kept.fullTextBytes)
         }
     }
 
@@ -53,7 +53,7 @@ final class ScreenshotQueue: Sendable {
         do {
             try spool.append(record)
         } catch {
-            counts.recordFailed(error, screenshot: true)
+            counts.recordScreenshotFailed(error)
         }
     }
 }

@@ -124,3 +124,13 @@ final class HeldRecognizer: @unchecked Sendable {
     #expect(savedImages(in: fixture.settings.folder).count == 1)
     #expect(fixture.counts.take().screenshotsFailed == 1)
 }
+
+@Test func eachKindOfFailureKeepsItsOwnLastError() throws {
+    let fixture = LoopFixture()
+    fixture.mac.recognizedText = { _ in throw RecognitionError() }
+    fixture.screenshotGate.refusals = 1
+    fixture.run(for: 2)
+    #expect(fixture.counts.take().description.hasSuffix(
+        ", 1 screenshot records failed to write (last: spool refused), 1 text recognitions failed (last: vision broke)"
+    ))
+}
