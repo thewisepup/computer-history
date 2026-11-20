@@ -5,7 +5,7 @@ public func runScriptedSession(
     script file: URL,
     settings: AgentSettings,
     homes: [URL],
-    log: @escaping @Sendable (String) -> Void
+    log: AgentLog
 ) -> CommandOutcome {
     if let refusal = scriptedSessionRefusal(settings, homes: homes) {
         return CommandOutcome(exitCode: 1, message: refusal)
