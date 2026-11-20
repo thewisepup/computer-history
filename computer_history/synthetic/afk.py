@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from itertools import groupby
 from typing import NamedTuple
 
-from computer_history.synthetic.timeline import Stretch, Timeline, awake_periods
+from computer_history.sources import AFK_SOURCE
+from computer_history.synthetic.timeline import Stretch, Timeline, observed_periods
 
 AFK_TIMEOUT = timedelta(seconds=180)
 WATCHER_STEP = timedelta(milliseconds=1)
@@ -19,9 +20,12 @@ class ReportedAfk(NamedTuple):
 
 
 def reported_afk(timeline: Timeline) -> list[ReportedAfk]:
-    """The not-afk and afk spans the watcher reports, oldest first, and nothing while asleep."""
+    """The not-afk and afk spans the watcher reports, oldest first, none while asleep or down.
+
+    A restart after an outage is dated like a wake.
+    """
     reported: list[ReportedAfk] = []
-    for period in awake_periods(timeline):
+    for period in observed_periods(timeline, AFK_SOURCE):
         for afk, start, end in _states(period):
             after_afk = bool(reported) and reported[-1].afk and reported[-1].end == start
             nudged = afk or after_afk

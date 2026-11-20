@@ -12,7 +12,10 @@ from pathlib import Path
 import pytest
 from store_answers import stored_days, stored_totals
 
-from computer_history.sources import Pull, reproject_signals
+from computer_history.sources import (
+    Pull,
+    reproject_signals,
+)
 from computer_history.store import connect, content_digest, source_summary
 from computer_history.synthetic import (
     HEAVY,
@@ -27,11 +30,17 @@ from computer_history.synthetic import (
     poll_feeds,
 )
 from computer_history.synthetic import build as synthetic_build
+from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.renderer import Feed
 
 REPO = Path(__file__).resolve().parent.parent
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
+SCENARIO_DAYS = pytest.mark.parametrize(
+    "inputs",
+    [DEVELOPER_DAY, DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1)],
+    ids=["typical", "messy"],
+)
 
 
 def test_the_same_inputs_build_the_same_dataset(tmp_path: Path) -> None:
@@ -54,8 +63,9 @@ def test_another_seed_builds_a_different_dataset(tmp_path: Path) -> None:
     assert first.manifest.content_digest != other.manifest.content_digest
 
 
-def test_stored_time_equals_the_manifest(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_stored_time_equals_the_manifest(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     manifest = dataset.manifest
     conn = connect(dataset.db_path)
     try:
@@ -71,8 +81,9 @@ def test_stored_time_equals_the_manifest(tmp_path: Path) -> None:
     assert manifest.total.foreground_app_seconds and manifest.total.afk_seconds > 0
 
 
-def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     conn = connect(dataset.db_path)
     try:
         polled = poll_feeds(conn, dataset.feeds, now=dataset.now)
@@ -87,8 +98,9 @@ def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path) -> None:
     assert digest == dataset.manifest.content_digest
 
 
-def test_rebuilding_signals_gives_the_same_signals(tmp_path: Path) -> None:
-    dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
+@SCENARIO_DAYS
+def test_rebuilding_signals_gives_the_same_signals(tmp_path: Path, inputs: DatasetInputs) -> None:
+    dataset = build_dataset(inputs, tmp_path / "day")
     conn = connect(dataset.db_path)
     try:
         rebuilt = reproject_signals(conn)
@@ -149,8 +161,8 @@ BUILD_IN_A_NEW_PROCESS = """
 import sys
 from pathlib import Path
 from computer_history.synthetic import DatasetInputs, build_dataset
-persona, tier, heavy, folder = sys.argv[1:]
-inputs = DatasetInputs(persona=persona, scenario="typical", tier=tier, seed=1, heavy=float(heavy))
+persona, scenario, tier, heavy, folder = sys.argv[1:]
+inputs = DatasetInputs(persona, scenario, tier, seed=1, heavy=float(heavy))
 print(build_dataset(inputs, Path(folder)).manifest_path.read_text(), end="")
 """
 
@@ -159,19 +171,20 @@ print(build_dataset(inputs, Path(folder)).manifest_path.read_text(), end="")
     "inputs",
     [
         DEVELOPER_DAY,
+        DatasetInputs(persona="developer", scenario="messy", tier="day", seed=1),
         DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1, heavy=HEAVY),
         DatasetInputs(persona="content-creator", scenario="typical", tier="week", seed=1),
     ],
-    ids=["developer-day", "heavy-developer-day", "content-creator-week"],
+    ids=["typical", "messy", "heavy-developer-day", "content-creator-week"],
 )
 def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_dataset(
-    inputs: DatasetInputs, tmp_path: Path
+    tmp_path: Path, inputs: DatasetInputs
 ) -> None:
     manifests = []
     for hash_seed, timezone in (("0", "UTC"), ("4242", "Asia/Kolkata")):
         env = {**os.environ, "PYTHONHASHSEED": hash_seed, "TZ": timezone}
         folder = tmp_path / f"{hash_seed}-{timezone.replace('/', '-')}"
-        argv = [inputs.persona, inputs.tier, str(inputs.heavy), str(folder)]
+        argv = [inputs.persona, inputs.scenario, inputs.tier, str(inputs.heavy), str(folder)]
         built = subprocess.run(
             [sys.executable, "-c", BUILD_IN_A_NEW_PROCESS, *argv],
             cwd=REPO,
@@ -225,5 +238,6 @@ def test_a_new_renderer_does_not_change_what_the_others_produce(
     after = build_dataset(DEVELOPER_DAY, tmp_path / "after")
 
     assert after.timeline == before.timeline
-    assert after.rendered["activitywatch"] == before.rendered["activitywatch"]
+    name = ActivityWatchRenderer.name
+    assert after.rendered[name] == before.rendered[name]
     assert after.manifest.content_digest == before.manifest.content_digest

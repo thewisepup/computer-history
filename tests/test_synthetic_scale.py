@@ -191,6 +191,28 @@ def test_the_content_creator_week_builds_the_same_every_time(tmp_path: Path) -> 
     assert first.manifest == second.manifest
 
 
+@pytest.mark.parametrize(
+    ("persona", "tier", "heavy"),
+    [(persona, "week", 1.0) for persona in sorted(PERSONAS)]
+    + [(persona, "day", HEAVY) for persona in sorted(PERSONAS)],
+)
+def test_the_messy_scenario_builds_for_every_persona_and_matches_its_manifest(
+    tmp_path: Path, persona: str, tier: str, heavy: float
+) -> None:
+    inputs = DatasetInputs(persona, "messy", tier, seed=1, start=MONDAY, heavy=heavy)
+    dataset = build_dataset(inputs, tmp_path / "messy")
+    conn = connect(dataset.db_path)
+    try:
+        days = stored_days(conn, dataset.manifest)
+        counts = {row.source: row.observation_count for row in source_summary(conn)}
+    finally:
+        conn.close()
+
+    assert days == dataset.manifest.days
+    assert counts == dataset.manifest.observations
+    assert dataset.timeline.faults
+
+
 def pacific(day: int, hour: int, minute: int) -> datetime:
     return datetime(2026, 1, day, hour, minute, tzinfo=PACIFIC).astimezone(UTC)
 
