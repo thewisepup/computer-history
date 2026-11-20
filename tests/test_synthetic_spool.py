@@ -225,7 +225,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     dataset = build_dataset(DEVELOPER_DAY, tmp_path / "day")
     folder = dataset.db_path.parent
     built = sorted(path.name for path in folder.iterdir())
-    rendered = dataset.rendered["spool"]
+    rendered = dataset.rendered[SpoolRenderer.name]
     on_disk = {path.name: path.read_bytes() for path in (folder / SPOOL_FOLDER).iterdir()}
     conn = connect(dataset.db_path)
     try:

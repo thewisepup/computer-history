@@ -79,7 +79,9 @@ Review findings ratchet into rules:
   same commit as the layout. The check covers the module names in the `store/`,
   `sources/` and `synthetic/` entries.
 - **H4** Tests derive versions and counts from the code (`len(load_migrations())`),
-  never hard-code them.
+  never hard-code them. They look things up by the constant that names them
+  (`rendered[ActivityWatchRenderer.name]`, `ActivityWatchRenderer.streams`, the
+  port in `DEFAULT_AW_URL`), never a restated literal; expected answers stay literals.
 - **H5** A change to the pre-commit hook or CI updates every doc that describes
   the checks (`AGENTS.md`, `README.md`) in the same commit.
 - **H6** **[checked]** Invisible and combining characters in source (Unicode
