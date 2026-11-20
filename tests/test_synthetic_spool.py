@@ -16,7 +16,13 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.sources import AX_TEXT_SOURCE, day_counts, parse_record, stored_records
+from computer_history.sources import (
+    AX_TEXT_SOURCE,
+    RECORD_FIELDS,
+    day_counts,
+    parse_record,
+    stored_records,
+)
 from computer_history.sources.ax_text.record import KINDS
 from computer_history.sources.ax_text.spool import FINISHED_NAME_FORMAT
 from computer_history.store import connect, content_digest, payload_values, source_summary
@@ -38,7 +44,7 @@ from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.captures import IDLE_THRESHOLD, agent_captures
 from computer_history.synthetic.spool import (
     BUNDLE_IDS,
-    SPOOL_FOLDER,
+    RENDERED_SPOOL_FOLDER,
     TEXT_CAP_BYTES,
     SpoolRenderer,
 )
@@ -125,7 +131,7 @@ def test_a_hand_worked_capture_session_reports_the_records_worked_out_by_hand(
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
-    files = sorted((dataset.db_path.parent / SPOOL_FOLDER).iterdir())
+    files = sorted((dataset.db_path.parent / RENDERED_SPOOL_FOLDER).iterdir())
 
     assert dataset.manifest.captures == SPOOL_HAND_WORKED_CAPTURES
     assert dataset.manifest.observations == {
@@ -174,9 +180,10 @@ def test_every_rendered_line_parses_and_matches_the_fixture_format(
 ) -> None:
     dataset = build_dataset(replace(DEVELOPER_DAY, scenario=scenario), tmp_path / "day")
     fixture = {parse_record(line).kind: json.loads(line) for line in _fixture_lines()}
-    lines = _spool_lines(dataset.db_path.parent / SPOOL_FOLDER)
+    lines = _spool_lines(dataset.db_path.parent / RENDERED_SPOOL_FOLDER)
 
     assert all(_encoded_like_the_agent(line) == line for line in _fixture_lines())
+    assert all(set(like) == set(RECORD_FIELDS) for like in fixture.values())
     assert len(lines) == dataset.manifest.observations["ax-text"] > 0
     kinds: Counter[str] = Counter()
     previous = None
@@ -238,7 +245,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     folder = dataset.db_path.parent
     built = sorted(path.name for path in folder.iterdir())
     rendered = dataset.rendered[SpoolRenderer.name]
-    on_disk = {path.name: path.read_bytes() for path in (folder / SPOOL_FOLDER).iterdir()}
+    on_disk = {path.name: path.read_bytes() for path in (folder / RENDERED_SPOOL_FOLDER).iterdir()}
     conn = connect(dataset.db_path)
     try:
         again = poll_feeds(conn, [rendered.feed(folder)], now=dataset.now)
@@ -246,7 +253,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     finally:
         conn.close()
 
-    assert built == ["history.db", "manifest.json", SPOOL_FOLDER]
+    assert built == ["history.db", "manifest.json", RENDERED_SPOOL_FOLDER]
     assert on_disk == {
         file.name: "".join(f"{line}\n" for line in file.lines).encode() for file in rendered.files
     }
@@ -415,7 +422,7 @@ print(dataset.manifest.content_digest, end="")
 
 def _spool_digest(folder: Path) -> str:
     digest = sha256()
-    for path in sorted((folder / SPOOL_FOLDER).iterdir()):
+    for path in sorted((folder / RENDERED_SPOOL_FOLDER).iterdir()):
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()
 

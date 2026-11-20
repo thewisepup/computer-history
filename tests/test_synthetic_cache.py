@@ -14,6 +14,8 @@ import pytest
 from computer_history.store import connect, content_digest
 from computer_history.synthetic import (
     CACHE_ENV_VAR,
+    DATABASE_NAME,
+    MANIFEST_NAME,
     CachedDataset,
     DatasetInputs,
     build_dataset,
@@ -23,9 +25,12 @@ from computer_history.synthetic import (
     dataset_key,
     open_cached,
 )
+from computer_history.synthetic import cache as synthetic_cache
 from computer_history.synthetic.cache import PACKAGE
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
 REPO = Path(__file__).resolve().parent.parent
+ENTRY_FILES = sorted([DATABASE_NAME, MANIFEST_NAME, RENDERED_SPOOL_FOLDER])
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 
@@ -103,6 +108,29 @@ def test_a_build_that_loses_the_race_discards_its_copy(dataset_cache: Path) -> N
     _assert_complete(loser)
 
 
+def test_a_rival_entry_landing_after_the_first_check_is_kept_not_discarded(
+    dataset_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rival = cached_dataset(DEVELOPER_DAY, dataset_cache)
+    inode = rival.db_path.stat().st_ino
+    first_check = [True]
+    real_complete = synthetic_cache._complete
+
+    def rival_lands_after_the_first_check(entry: Path) -> bool:
+        if first_check.pop() if first_check else False:
+            return False
+        return real_complete(entry)
+
+    monkeypatch.setattr(synthetic_cache, "_complete", rival_lands_after_the_first_check)
+
+    loser = cached_dataset(DEVELOPER_DAY, dataset_cache)
+
+    assert not loser.built
+    assert loser.db_path.stat().st_ino == inode
+    assert _listing(dataset_cache) == [rival.key]
+    _assert_complete(loser)
+
+
 def test_two_processes_building_one_key_leave_one_complete_entry(dataset_cache: Path) -> None:
     builders = [
         subprocess.Popen(
@@ -159,7 +187,7 @@ def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouche
     finally:
         conn.close()
 
-    assert _listing(entry.folder) == before == ["history.db", "manifest.json", "spool"]
+    assert _listing(entry.folder) == before == ENTRY_FILES
 
 
 def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
@@ -167,14 +195,14 @@ def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
 ) -> None:
     entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     copied = copy_dataset(entry, tmp_path / "scratch")
-    conn = connect(tmp_path / "scratch" / "history.db")
+    conn = connect(tmp_path / "scratch" / DATABASE_NAME)
     try:
         conn.execute("DELETE FROM ingest_progress")
         changed = content_digest(conn)
     finally:
         conn.close()
 
-    assert [path.name for path in copied] == ["history.db", "manifest.json", "spool"]
+    assert [path.name for path in copied] == ENTRY_FILES
     assert changed != json.loads(entry.manifest_path.read_text())["content_digest"]
     _assert_complete(entry)
 

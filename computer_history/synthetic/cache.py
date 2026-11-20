@@ -84,19 +84,34 @@ def cached_dataset(
     if _complete(entry):
         return CachedDataset(key, entry, built=False)
     root.mkdir(parents=True, exist_ok=True)
-    if entry.exists():
-        _discard(entry, root / f".{key}.{uuid.uuid4().hex}.damaged")
     staging = root / f".{key}.{uuid.uuid4().hex}.partial"
     try:
         build(inputs, staging)
-        staging.rename(entry)
-    except OSError:
-        if not _complete(entry):
-            raise
-        return CachedDataset(key, entry, built=False)
+        placed = _place(staging, entry, root / f".{key}.{uuid.uuid4().hex}.damaged")
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    return CachedDataset(key, entry, built=True)
+    return CachedDataset(key, entry, built=placed)
+
+
+def _place(staging: Path, entry: Path, aside: Path) -> bool:
+    """Rename the staging folder into place; False if a complete entry is already there.
+
+    Only an incomplete entry that blocked the rename is moved aside, never a rival's finished one.
+    """
+    try:
+        staging.rename(entry)
+        return True
+    except OSError:
+        if _complete(entry):
+            return False
+    _discard(entry, aside)
+    try:
+        staging.rename(entry)
+        return True
+    except OSError:
+        if _complete(entry):
+            return False
+        raise
 
 
 def _complete(entry: Path) -> bool:

@@ -10,11 +10,10 @@ from pathlib import Path
 
 from computer_history.sources import resolve_spool_path
 from computer_history.store import default_db_path, resolve_db_path
-from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME
+from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME, SIDECARS
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
 from computer_history.synthetic.generate import DatasetInputs
 
-SIDECARS = ("-wal", "-shm", "-journal")
 KNOWN_NAMES = (MANIFEST_NAME, DATABASE_NAME, *(DATABASE_NAME + suffix for suffix in SIDECARS))
 
 
@@ -60,7 +59,7 @@ def make_dev_database(
     _refuse_existing(out, _in_the_way(target, KNOWN_NAMES), force)
     dataset = cached_dataset(inputs, cache)
     names = [*(item.name for item in sorted(dataset.folder.iterdir())), *KNOWN_NAMES]
-    _refuse_live([target / name for name in names], live)
+    _refuse_live([target / name for name in names], live, replaced=True)
     in_the_way = _in_the_way(target, names)
     _refuse_existing(out, in_the_way, force)
     for path in in_the_way:
@@ -71,12 +70,16 @@ def make_dev_database(
     return DevDatabase(dataset, copy_dataset(dataset, target))
 
 
-def _refuse_live(paths: Iterable[Path], live: Sequence[Path]) -> None:
+def _refuse_live(paths: Iterable[Path], live: Sequence[Path], *, replaced: bool = False) -> None:
     for path in paths:
         for folder in live:
             if _within(path, folder):
                 raise LiveDatabaseRefused(
                     f"{path} is in {folder}, which holds the live database or spool"
+                )
+            if replaced and _within(folder, path):
+                raise LiveDatabaseRefused(
+                    f"{path} holds {folder}, the live database's or spool's folder"
                 )
 
 

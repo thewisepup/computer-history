@@ -19,10 +19,8 @@ from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
     connect,
-    find_gaps,
-    recent_span,
     source_summary,
-    table_counts,
+    status_reads,
     to_utc,
 )
 from computer_history.synthetic.activitywatch import HOST
@@ -124,14 +122,7 @@ def _rebuild_signals(dataset: GateDataset, folder: Path) -> Session:
 def _status_reads(dataset: GateDataset, folder: Path) -> Session:
     conn = open_cached(dataset.entry)
 
-    def status_reads() -> None:
-        for summary in source_summary(conn):
-            span = recent_span(summary, STATUS_WINDOW)
-            if summary.source != AX_TEXT_SOURCE and span is not None and span[0] < span[1]:
-                find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
-        table_counts(conn)
-
-    return Session(conn, status_reads)
+    return Session(conn, lambda: status_reads(conn, source_summary(conn), skip={AX_TEXT_SOURCE}))
 
 
 def _capture_health(dataset: GateDataset, folder: Path) -> Session:

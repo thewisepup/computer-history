@@ -97,8 +97,9 @@ performance gate on them. Its `__init__.py` maps the modules;
 
 ```bash
 computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
-computer-history dev perf                      # the gate against perf_baseline.json
+computer-history dev perf                      # the gate against perf_baselines/sqlite-<version>.json
 computer-history dev perf --update-baselines   # a deliberate change of cost
+computer-history dev bench                     # wall-clock medians against this machine's last run
 ```
 
 A new stream, table, timeline field or public store function lands with its

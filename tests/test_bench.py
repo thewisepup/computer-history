@@ -12,7 +12,7 @@ from computer_history import cli
 from computer_history.synthetic import (
     CACHE_ENV_VAR,
     OPERATIONS,
-    SMALLEST,
+    SMALLEST_DATASET,
     GateDataset,
     Operation,
     Timing,
@@ -59,7 +59,7 @@ def dataset_cache(monkeypatch: pytest.MonkeyPatch, shared_cache: Path) -> Path:
 
 
 def bench(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str]:
-    code = cli.main(["dev", "bench", "--dataset", SMALLEST, *argv])
+    code = cli.main(["dev", "bench", "--dataset", SMALLEST_DATASET, *argv])
     captured = capsys.readouterr()
     return code, captured.out + captured.err
 
@@ -75,6 +75,8 @@ def test_a_first_run_records_the_machines_baseline_and_the_next_compares_with_it
     assert (first, second) == (0, 0)
     assert sorted(json.loads(baseline.read_text())) == sorted(OPERATIONS)
     assert recorded.count("recorded") == len(OPERATIONS)
+    assert "slower" not in recorded
+    assert "No baseline on this machine yet: these medians become it, nothing compared." in recorded
     assert "recorded" not in compared and "%" in compared
     for name in OPERATIONS:
         assert name in compared
@@ -86,12 +88,28 @@ def test_a_slowdown_is_flagged_and_still_exits_zero(
     baseline = tmp_path / "bench.json"
     bench(capsys, "--baseline", str(baseline))
     recorded = json.loads(baseline.read_text())
-    recorded["status-reads"][SMALLEST] /= 10
+    recorded["status-reads"][SMALLEST_DATASET] /= 10
     baseline.write_text(json.dumps(recorded))
 
     code, printed = bench(capsys, "--baseline", str(baseline))
 
     assert code == 0
     flagged = [line for line in printed.splitlines() if line.endswith("SLOWER")]
-    assert [line.split()[:2] for line in flagged] == [["status-reads", SMALLEST]]
+    assert [line.split()[:2] for line in flagged] == [["status-reads", SMALLEST_DATASET]]
     assert "1 timing more than 25% slower than this machine's baseline" in printed
+
+
+def test_timings_new_to_the_baseline_are_counted_apart_from_the_compared(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    baseline = tmp_path / "bench.json"
+    bench(capsys, "--baseline", str(baseline))
+    recorded = json.loads(baseline.read_text())
+    del recorded["ingest"]
+    baseline.write_text(json.dumps(recorded))
+
+    _, printed = bench(capsys, "--baseline", str(baseline))
+
+    compared = len(OPERATIONS) - 1
+    assert f"Nothing more than 25% slower than this machine's baseline, of {compared}" in printed
+    assert "1 timing had no baseline and was recorded." in printed

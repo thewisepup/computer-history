@@ -21,7 +21,7 @@ from computer_history.synthetic.captures import Capture
 from computer_history.synthetic.spans import Span, intersect, outside
 from computer_history.synthetic.timeline import FaultKind, Timeline, observed_periods
 
-MIN_GAP = timedelta(seconds=1)
+SHORTEST_GAP = timedelta(seconds=1)
 EXPLAINED_KINDS = {FaultKind.PAUSED: PAUSED_KIND, FaultKind.EXCLUDED: EXCLUDED_KIND}
 
 
@@ -70,4 +70,4 @@ def _missed_by_agent(timeline: Timeline, records: Sequence[Capture]) -> list[Spa
 
 
 def _gaps(spans: Iterable[Span]) -> tuple[Gap, ...]:
-    return tuple(Gap(start, end) for start, end in spans if end - start >= MIN_GAP)
+    return tuple(Gap(start, end) for start, end in spans if end - start >= SHORTEST_GAP)

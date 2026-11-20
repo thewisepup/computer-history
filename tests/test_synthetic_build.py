@@ -18,7 +18,9 @@ from computer_history.sources import (
 )
 from computer_history.store import connect, content_digest, source_summary
 from computer_history.synthetic import (
+    DATABASE_NAME,
     HEAVY,
+    BuildFailed,
     DatasetInputs,
     Stretch,
     StretchKind,
@@ -32,6 +34,7 @@ from computer_history.synthetic import (
 from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.renderer import Feed
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -84,18 +87,34 @@ def test_stored_time_equals_the_manifest(tmp_path: Path, inputs: DatasetInputs) 
 @SCENARIO_DAYS
 def test_ingesting_the_dataset_again_adds_nothing(tmp_path: Path, inputs: DatasetInputs) -> None:
     dataset = build_dataset(inputs, tmp_path / "day")
+    feeds = tuple(source.feed(tmp_path / "again") for source in dataset.rendered.values())
     conn = connect(dataset.db_path)
     try:
-        polled = poll_feeds(conn, dataset.feeds, now=dataset.now)
-        backfilled = backfill_feeds(
-            conn, dataset.feeds, start=dataset.timeline.start, now=dataset.now
-        )
+        polled = poll_feeds(conn, feeds, now=dataset.now)
+        backfilled = backfill_feeds(conn, feeds, start=dataset.timeline.start, now=dataset.now)
         digest = content_digest(conn)
     finally:
         conn.close()
 
     assert (polled, backfilled) == (0, 0)
     assert digest == dataset.manifest.content_digest
+
+
+def test_a_failed_build_leaves_no_database_manifest_or_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "day"
+
+    def fail_with_a_journal_left(conn, feeds, *, now):
+        (folder / f"{DATABASE_NAME}-journal").write_text("hot journal\n")
+        raise BuildFailed("polling failed")
+
+    monkeypatch.setattr(synthetic_build, "poll_feeds", fail_with_a_journal_left)
+
+    with pytest.raises(BuildFailed):
+        build_dataset(DEVELOPER_DAY, folder)
+
+    assert sorted(path.name for path in folder.iterdir()) == [RENDERED_SPOOL_FOLDER]
 
 
 @SCENARIO_DAYS

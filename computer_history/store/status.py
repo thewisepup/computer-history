@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime, timedelta
 from typing import Any, NamedTuple
 
@@ -63,9 +63,7 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
 
 
-def recent_span(
-    summary: SourceSummary, window: timedelta = STATUS_WINDOW
-) -> tuple[datetime, datetime] | None:
+def _recent_span(summary: SourceSummary) -> tuple[datetime, datetime] | None:
     """The window status checks: up to the source's settled time, else its latest end.
 
     It starts no earlier than the source's first observation, and is None without one.
@@ -74,7 +72,38 @@ def recent_span(
     first = summary.earliest_started_at
     if end is None or first is None:
         return None
-    return max(end - window, first), end
+    return max(end - STATUS_WINDOW, first), end
+
+
+class SourceCoverage(NamedTuple):
+    """The span status checks for one source, None without observations, and the gaps in it."""
+
+    summary: SourceSummary
+    span: tuple[datetime, datetime] | None
+    gaps: list[Gap]
+
+
+class StatusReads(NamedTuple):
+    coverage: list[SourceCoverage]
+    counts: dict[str, int]
+
+
+def status_reads(
+    conn: sqlite3.Connection, summaries: Sequence[SourceSummary], skip: Collection[str] = ()
+) -> StatusReads:
+    """The store reads status makes: each source's recent gaps, but the skipped, and row counts."""
+    coverage = []
+    for summary in summaries:
+        if summary.source in skip:
+            continue
+        span = _recent_span(summary)
+        gaps = (
+            find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
+            if span is not None and span[0] < span[1]
+            else []
+        )
+        coverage.append(SourceCoverage(summary, span, gaps))
+    return StatusReads(coverage, table_counts(conn))
 
 
 def find_gaps(

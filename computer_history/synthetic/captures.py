@@ -27,7 +27,7 @@ from computer_history.synthetic.timeline import (
 HEARTBEAT = timedelta(seconds=HEARTBEAT_SECONDS)
 SETTLE = timedelta(seconds=1)
 POLL = timedelta(milliseconds=500)
-MINIMUM_GAP = timedelta(seconds=1)
+RECORD_SPACING = timedelta(seconds=1)
 IDLE_THRESHOLD = timedelta(seconds=180)
 PRECEDENCE = ("app", "window", "title")
 
@@ -93,7 +93,7 @@ def agent_captures(timeline: Timeline) -> list[Capture]:
             else:
                 due, trigger = min(settled_at, pending_since + HEARTBEAT), pending
             if last is not None:
-                due = max(due, last + MINIMUM_GAP)
+                due = max(due, last + RECORD_SPACING)
             due = max(due, start)
             if due >= end or mode is Mode.BLIND:
                 break

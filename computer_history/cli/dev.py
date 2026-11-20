@@ -16,6 +16,7 @@ from computer_history.synthetic import (
     BENCH_BASELINE_NAME,
     DATABASE_NAME,
     GATE_DATASETS,
+    HEAVY,
     MANIFEST_NAME,
     OPERATIONS,
     PERF_DATASETS,
@@ -23,11 +24,14 @@ from computer_history.synthetic import (
     RUNS,
     SCENARIOS,
     SLOWDOWN_TOLERANCE,
-    SMALLEST,
+    SMALLEST_DATASET,
     TIERS,
-    BuildFailed,
+    UNEXPECTED_PASS_HINT,
+    BenchReport,
     DatasetInputs,
     GateReport,
+    LiveDatabaseRefused,
+    OutputExists,
     Timing,
     cache_root,
     live_folders,
@@ -49,6 +53,9 @@ PARSERS: Mapping[type, Callable[[str], Any]] = {
     date: date.fromisoformat,
 }
 LABELS = {DATABASE_NAME: "database", MANIFEST_NAME: "manifest"}
+BARE_FLAG_VALUES: Mapping[str, object] = {"heavy": HEAVY}
+REFUSALS = (LiveDatabaseRefused, OutputExists, NotADirectoryError)
+FAILURES = (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError)
 
 
 def add_dev_commands(dev: argparse.ArgumentParser) -> None:
@@ -110,6 +117,8 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
     )
     bench.add_argument(
         "--update-baseline",
+        "--update-baselines",
+        dest="update_baseline",
         action="store_true",
         help="record these timings as the machine's new baseline",
     )
@@ -128,6 +137,10 @@ def _add_input_option(
     if kind not in PARSERS:
         raise TypeError(f"dev build-db cannot parse DatasetInputs.{field.name} ({kind})")
     choices = REGISTRIES.get(field.name)
+    bare = {}
+    if field.name in BARE_FLAG_VALUES:
+        bare = {"nargs": "?", "const": BARE_FLAG_VALUES[field.name]}
+        shown += f"; {flag} alone means {BARE_FLAG_VALUES[field.name]}"
     parser.add_argument(
         flag,
         dest=field.name,
@@ -136,6 +149,7 @@ def _add_input_option(
         required=required,
         default=default,
         help=f"dataset {field.name.replace('_', ' ')}{shown}",
+        **bare,
     )
 
 
@@ -158,8 +172,11 @@ def cmd_build_db(args: argparse.Namespace) -> int:
             live=live_folders(args.db_path),
             force=args.force,
         )
-    except (ValueError, OSError, BuildFailed) as exc:
+    except REFUSALS as exc:
         print(f"dev build-db refused: {exc}", file=sys.stderr)
+        return 1
+    except FAILURES as exc:
+        print(f"dev build-db failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     described = ", ".join(f"{name}={value}" for name, value in dataclasses.asdict(inputs).items())
     how = "built" if made.dataset.built else "reused from the cache"
@@ -183,7 +200,7 @@ def cmd_perf(args: argparse.Namespace) -> int:
                 update=args.update_baselines,
                 counters=args.counters,
             )
-        except (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError) as exc:
+        except FAILURES as exc:
             print(f"dev perf failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
     _print_report(report, args)
@@ -194,14 +211,11 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     build = report.build
     print(f"SQLite {build.version}, {len(build.compile_options)} compile options:")
     print(f"  {' '.join(build.compile_options)}")
-    older = sorted(
-        {version for key, version in report.recorded_on.items() if key in report.measured}
-        - {build.version}
-    )
     print(f"Baseline: {report.baseline}")
-    if older:
+    if report.other_versions:
         print(
-            f"  note: entries recorded on SQLite {', '.join(older)}, whose VM steps can differ;"
+            f"  note: entries recorded on SQLite {', '.join(report.other_versions)},"
+            " whose VM steps can differ;"
             f" --update-baselines records SQLite {build.version}'s own"
         )
     if args.update_baselines:
@@ -217,7 +231,7 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
         pages = f"{costs.pages:,}" if OPERATIONS[name].writes else "-"
         print(f"{name:<16} {label:<11} {costs.statements:>11,} {costs.vm_steps:>13,} {pages:>8}")
     if not report.scaling_checked:
-        print(f"scaling not checked: it needs {SMALLEST} and a larger dataset")
+        print(f"scaling not checked: it needs {SMALLEST_DATASET} and a larger dataset")
     for finding in report.expected.values():
         if finding is not None:
             print(f"expected to fail, {finding.describe().splitlines()[0]}")
@@ -229,8 +243,7 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
         print(finding.describe())
     for name, label in report.unexpected_passes:
         print(
-            f"{name} on {label}: the scaling check passes now;"
-            " take it off EXPECTED_SCALING_FAILURES"
+            f"{name} on {label}: the scaling check passes now; {UNEXPECTED_PASS_HINT}"
         )
     count = len(report.failures) + len(report.unexpected_passes)
     print(f"Performance gate failed: {count} findings.")
@@ -246,7 +259,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
                 baseline_path=args.baseline,
                 update=args.update_baseline,
             )
-        except (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError) as exc:
+        except FAILURES as exc:
             print(f"dev bench failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
     print(f"Median of {RUNS} runs, against this machine's baseline {report.baseline}")
@@ -255,17 +268,31 @@ def cmd_bench(args: argparse.Namespace) -> int:
     for timing in report.timings:
         print(_timing_row(timing))
     print()
+    print(_bench_verdict(report))
+    return 0
+
+
+def _bench_verdict(report: BenchReport) -> str:
+    compared = sum(timing.baseline is not None for timing in report.timings)
+    if not compared:
+        return "No baseline on this machine yet: these medians become it, nothing compared."
     slower = sum(timing.slower for timing in report.timings)
     tolerance = f"{SLOWDOWN_TOLERANCE:.0%}"
     if slower:
         noun = "timing" if slower == 1 else "timings"
-        print(
+        verdict = (
             f"{slower} {noun} more than {tolerance} slower than this machine's baseline."
             " A report, not a failure: rerun with --update-baseline once the cost is intended."
         )
     else:
-        print(f"Nothing more than {tolerance} slower than this machine's baseline.")
-    return 0
+        verdict = (
+            f"Nothing more than {tolerance} slower than this machine's baseline, of {compared}."
+        )
+    new = len(report.timings) - compared
+    if new:
+        had = "timing had" if new == 1 else "timings had"
+        verdict += f"\n{new} {had} no baseline and {'was' if new == 1 else 'were'} recorded."
+    return verdict
 
 
 def _timing_row(timing: Timing) -> str:
