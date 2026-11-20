@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from computer_history.cli.backfill import cmd_backfill
+from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
@@ -22,6 +23,10 @@ COMMANDS = {
         "One-time ingest of existing ActivityWatch history, in bounded chunks"
         " (idempotent: re-running adds nothing)."
     ),
+    "dev": (
+        "Developer tools: build-db makes a database of synthetic history, perf runs the"
+        " performance gate, bench times each operation."
+    ),
 }
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
@@ -29,6 +34,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "status": cmd_status,
     "rebuild-signals": cmd_rebuild_signals,
     "backfill": cmd_backfill,
+    "dev": cmd_dev,
 }
 
 
@@ -52,11 +58,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name, help_text in COMMANDS.items():
-        parents = (
-            [db_after_command, aw]
-            if name in ("ingest", "status", "backfill")
-            else [db_after_command]
-        )
+        if name == "dev":
+            add_dev_commands(subparsers.add_parser(name, help=help_text, description=help_text))
+            continue
+        if name in ("ingest", "status", "backfill"):
+            parents = [db_after_command, aw]
+        else:
+            parents = [db_after_command]
         sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
         if name == "rebuild-signals":
             sub.add_argument(

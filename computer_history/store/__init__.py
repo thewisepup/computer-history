@@ -4,17 +4,27 @@ Only this package knows SQL. Commands open the database with open_store,
 which reports its state. Ingest writes through insert_observations, the only
 way a source's progress moves. It and rebuild_signals both turn a stored
 payload into its signal with the projector the caller passes, and status and
-backfill use the read queries.
+backfill use the read queries. content_digest hashes what the database holds.
 """
 
+from computer_history.store.contents import content_digest
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
     connect,
+    connect_immutable,
     load_migrations,
     migrate,
     schema_version,
+    supported_version,
     transaction,
+)
+from computer_history.store.introspection import (
+    DbstatUnavailable,
+    SqliteBuild,
+    page_counts,
+    scanned_tables,
+    sqlite_build,
 )
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
@@ -37,13 +47,19 @@ from computer_history.store.signals import (
     rebuild_signals,
 )
 from computer_history.store.status import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
+    Coverage,
     Gap,
     PayloadValues,
+    SourceCoverage,
     SourceSummary,
+    StatusReads,
     find_gaps,
     latest_payload_value,
     payload_values,
     source_summary,
+    status_reads,
     table_counts,
 )
 from computer_history.store.timefmt import to_utc, utc_iso
@@ -52,6 +68,10 @@ __all__ = [
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
     "SCREENSHOT_STATUS_INDEX",
+    "MIN_GAP_SECONDS",
+    "STATUS_WINDOW",
+    "Coverage",
+    "DbstatUnavailable",
     "Gap",
     "InsertResult",
     "Migration",
@@ -66,11 +86,16 @@ __all__ = [
     "RebuildAborted",
     "RebuildResult",
     "Signal",
+    "SourceCoverage",
     "SourceSummary",
     "StatusTotal",
+    "SqliteBuild",
+    "StatusReads",
     "StoreState",
     "UnclaimedSource",
     "connect",
+    "connect_immutable",
+    "content_digest",
     "default_db_path",
     "find_gaps",
     "first_screenshot_at",
@@ -81,12 +106,17 @@ __all__ = [
     "migrate",
     "newest_screenshot",
     "open_store",
+    "page_counts",
     "payload_values",
     "rebuild_signals",
     "resolve_db_path",
     "screenshot_totals",
+    "scanned_tables",
     "schema_version",
+    "supported_version",
     "source_summary",
+    "status_reads",
+    "sqlite_build",
     "table_counts",
     "to_utc",
     "transaction",

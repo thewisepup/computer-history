@@ -417,9 +417,13 @@ that post one reminder and leave `status` warning. The test checks the images
 on disk, the stored records and their signals (a `rebuild-signals` included),
 the reminder's saved time, and every line of the screenshots section in
 `status`. The backend runs with the screenshots folder closed to it (mode
-`000`), and the images must come out byte for byte the same. It also checks that the agent's `check-config` and the backend name
-the same default folder and spool for a scratch home folder.
-Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
+`000`), and the images must come out byte for byte the same. It also checks
+that the agent's `check-config` and the backend name the same default folder
+and spool for a scratch home folder. It also runs `tests/test_synthetic_spool.py`,
+which plays a synthetic developer day through `scripted-session` and checks the
+synthetic spool renderer writes the same captures (time, trigger, app, bundle
+id and title) as the agent.
+Plain `pytest` skips both agent tests unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs
 

@@ -71,6 +71,33 @@ _SCREENSHOT_NEEDS: Mapping[str, frozenset[str]] = {
     NO_PERMISSION_STATUS: frozenset(),
     FAILED_STATUS: frozenset(),
 }
+WINDOW_TEXT_RECORD_FIELDS = (
+    "version",
+    "id",
+    "captured_at",
+    "kind",
+    "trigger",
+    "app_name",
+    "bundle_id",
+    "window_title",
+    "text",
+    "text_sha256",
+    "full_text_bytes",
+    "text_cut_off",
+    "timed_out",
+)
+SCREENSHOT_RECORD_FIELDS = (
+    "version",
+    "id",
+    "captured_at",
+    "kind",
+    "capture_id",
+    "status",
+    "app_name",
+    "bundle_id",
+    "window_title",
+    *_SCREENSHOT_IMAGE_FIELDS,
+)
 
 
 class InvalidRecord(ValueError):

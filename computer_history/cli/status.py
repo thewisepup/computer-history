@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from socket import gethostname
 
@@ -34,18 +33,19 @@ from computer_history.sources import (
     screenshot_health,
 )
 from computer_history.store import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
+    Coverage,
     Purpose,
+    SourceCoverage,
     SourceSummary,
     StoreState,
-    find_gaps,
     open_store,
     resolve_db_path,
     source_summary,
-    table_counts,
+    status_reads,
 )
 
-STATUS_WINDOW = timedelta(hours=24)
-MIN_GAP_SECONDS = 300
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
@@ -105,16 +105,18 @@ def cmd_status(args: argparse.Namespace) -> int:
             min_gap_seconds=MIN_GAP_SECONDS,
             day_start=day_start,
         )
+        skip = {SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE} if health.reported else {SCREENSHOT_SOURCE}
+        reads = status_reads(store.conn, summaries, skip=skip)
         print()
         _print_sources(summaries, now)
         print()
-        _print_gaps(store.conn, summaries, health)
+        _print_gaps(summaries, reads.coverage, health)
         print()
         _print_agent(health, spool_path, now)
         print()
         _print_screenshots(screenshot_health(store.conn, day_start=day_start, now=now), now)
         print()
-        _print_counts(table_counts(store.conn))
+        _print_counts(reads.counts)
     return 0
 
 
@@ -146,7 +148,7 @@ def _freshness(summary: SourceSummary, now: datetime) -> str:
 
 
 def _print_gaps(
-    conn: sqlite3.Connection, summaries: list[SourceSummary], health: CaptureHealth
+    summaries: list[SourceSummary], coverage: list[SourceCoverage], health: CaptureHealth
 ) -> None:
     print(
         f"Coverage gaps (unobserved: nothing recorded) of {duration(MIN_GAP_SECONDS)} or"
@@ -155,6 +157,7 @@ def _print_gaps(
     )
     if not summaries:
         print("  nothing to check yet")
+    by_source = {source.summary.source: source for source in coverage}
     for s in summaries:
         if s.source == WINDOW_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
@@ -166,16 +169,14 @@ def _print_gaps(
                     f" (coverage is judged from {WINDOW_TEXT_SOURCE} records)"
                 )
             continue
-        end = s.settled_until or s.latest_ended_at
-        first = s.earliest_started_at
-        if end is None or first is None:
+        checked = by_source[s.source]
+        if checked.coverage is Coverage.NO_OBSERVATIONS:
             print(f"  {s.source}: no observations yet")
             continue
-        start = max(end - STATUS_WINDOW, first)
-        if start >= end:
+        if checked.coverage is Coverage.UNSETTLED:
             print(f"  {s.source}: no settled span to check yet")
             continue
-        gaps = find_gaps(conn, s.source, start, end, min_gap_seconds=MIN_GAP_SECONDS)
+        start, gaps = checked.span[0], checked.gaps
         if not gaps:
             print(f"  {s.source}: no gaps since {when(start)}")
         for gap in gaps[:MAX_GAPS_SHOWN]:

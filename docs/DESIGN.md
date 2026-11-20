@@ -76,7 +76,9 @@ computer_history/
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
                 # queries), screenshots (the screenshot records' status
-                # queries, read through their own index), timefmt, paths
+                # queries, read through their own index), contents (a digest
+                # of what the database holds), introspection (query plans,
+                # pages and the SQLite build, for the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -101,6 +103,21 @@ computer_history/
                 # liveness), agreement (each capture's app against aw-window)
                 # and screenshots (the stored screenshot records' statuses,
                 # kept image bytes and missing permission)
+  synthetic/    # synthetic datasets built through the real ingest path:
+                # timeline (+ spans), seeds, persona (+ developer,
+                # content_creator; heavier), days (a persona's ordinary
+                # days), scenarios, generate (inputs, tiers and heavy ->
+                # timeline),
+                # renderer (the contract), activitywatch (+ afk, aw_api: the
+                # buckets served in process), spool (+ captures: when the
+                # agent captures; screenshots: kept or a duplicate), build, manifest (+ gaps: unobserved
+                # stretches and explained gaps), cache (built datasets per
+                # user, keyed by inputs and code), devdb (a cached dataset
+                # copied out, never into a live folder), operations (what
+                # the product does, on a cached dataset), meter (the cost
+                # meter), gate (costs against the committed baseline,
+                # + baseline: one file per SQLite version), bench (median
+                # wall-clock times against this machine's last baseline)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
