@@ -1,0 +1,117 @@
+import Foundation
+import Testing
+@testable import CaptureAgent
+
+func savedImages(in folder: URL) -> [String] {
+    let root = folder.appendingPathComponent(ImageStore.folderName)
+    let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
+    return files.filter { $0.pathExtension == "jpg" }.map(\.lastPathComponent)
+}
+
+@Test func everyCaptureIsFollowedByOneKeptScreenshotRecordWhoseImageIsSaved() throws {
+    let fixture = LoopFixture()
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 2880, height: 1800)) }
+    fixture.run(for: 2)
+    let records = try fixture.records()
+    try #require(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
+    let (capture, screenshot) = (records[0], records[1])
+    #expect(screenshot["status"] as? String == "kept")
+    #expect(screenshot["capture_id"] as? String == capture["id"] as? String)
+    #expect(screenshot["captured_at"] as? String == capture["captured_at"] as? String)
+    #expect(screenshot["window_title"] as? String == "Notes")
+    #expect(screenshot["text"] as? String == "")
+    #expect(screenshot["full_text_bytes"] as? Int == 0)
+    #expect((screenshot["perceptual_hash"] as? String)?.wholeMatch(of: /[0-9a-f]{16}/) != nil)
+    let id = try #require(screenshot["id"] as? String)
+    let path = try #require(screenshot["image_path"] as? String)
+    #expect(path.wholeMatch(of: try Regex("screenshots/\\d{4}-\\d{2}-\\d{2}/\(id)\\.jpg")) != nil)
+    let file = fixture.settings.folder.appendingPathComponent(path)
+    #expect(screenshot["image_bytes"] as? Int == (try FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int))
+    #expect(pixelSize(ofJPEG: file).map { [$0.width, $0.height] } == [1440, 900])
+    #expect(fixture.mac.windowImageRequests == [plainApp.processIdentifier])
+}
+
+@Test func theCaptureRecordIsInTheSpoolBeforeTheScreenshotIsTaken() throws {
+    let fixture = LoopFixture()
+    var kindsWhenTaken: [[String]] = []
+    fixture.mac.windowImage = { _, _ in
+        kindsWhenTaken.append((try? fixture.records().map { $0["kind"] as! String }) ?? [])
+        return .failed
+    }
+    fixture.run(for: 2)
+    #expect(kindsWhenTaken == [["capture"]])
+}
+
+@Test(arguments: [(WindowImage.noPermission, "no-permission"), (.failed, "failed")])
+func aMissingGrantOrAFailedPictureIsRecordedAndTheCaptureKeepsItsText(image: WindowImage, status: String) throws {
+    let fixture = LoopFixture()
+    fixture.mac.windowImage = { _, _ in image }
+    fixture.run(for: 2)
+    let records = try fixture.records()
+    #expect(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
+    #expect(records[0]["text"] as? String == "hello")
+    #expect(records[1]["status"] as? String == status)
+    #expect(records[1]["image_path"] is NSNull)
+    #expect(savedImages(in: fixture.settings.folder).isEmpty)
+}
+
+@Test func anImageThatCannotBeSavedIsRecordedAsFailed() throws {
+    let fixture = LoopFixture()
+    try FileManager.default.createDirectory(at: fixture.settings.folder, withIntermediateDirectories: true)
+    try Data().write(to: fixture.settings.folder.appendingPathComponent(ImageStore.folderName))
+    fixture.run(for: 2)
+    let records = try fixture.records()
+    #expect(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
+    #expect(records[1]["status"] as? String == "failed")
+}
+
+@Test func aFocusedPasswordFieldTakesNoPicture() throws {
+    let fixture = LoopFixture()
+    let password = fixture.mac.node("password", role: "AXTextField", ["AXSubrole": "AXSecureTextField"])
+    fixture.mac.apps[plainApp.processIdentifier]!.focusedElement = password
+    fixture.run(for: 2)
+    #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["secure-field"])
+    #expect(fixture.mac.windowImageRequests.isEmpty)
+    let field = fixture.mac.node("field", role: "AXTextField")
+    fixture.mac.apps[plainApp.processIdentifier]!.focusedElement = field
+    fixture.run(for: 30)
+    #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["secure-field", "kept"])
+}
+
+@Test func withScreenshotsOffNoPictureIsTakenAndNoScreenshotRecordWritten() throws {
+    let fixture = LoopFixture()
+    fixture.screenshots.enabled = false
+    fixture.run(for: 40)
+    #expect(try fixture.kinds() == ["capture", "capture"])
+    #expect(try fixture.screenshotRecords().isEmpty)
+    #expect(fixture.mac.windowImageRequests.isEmpty)
+    #expect(savedImages(in: fixture.settings.folder).isEmpty)
+}
+
+@Test func onlyCapturesGetAScreenshotRecordAndEachGetsExactlyOneRightAfterIt() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    fixture.mac.focused = onePassword
+    fixture.run(for: 40)
+    fixture.mac.focused = chrome
+    fixture.run(for: 3)
+    try fixture.pause.pause()
+    fixture.run(for: 40)
+    try fixture.pause.resume()
+    fixture.run(for: 3)
+    let records = try fixture.records()
+    #expect(records.map { $0["kind"] as! String } == [
+        "capture", "screenshot", "excluded", "excluded", "capture", "screenshot", "paused", "resumed", "capture", "screenshot",
+    ])
+    for (index, record) in records.enumerated() where record["kind"] as? String == "screenshot" {
+        #expect(record["capture_id"] as? String == records[index - 1]["id"] as? String)
+    }
+    #expect(Set(savedImages(in: fixture.settings.folder)) == Set(try fixture.screenshotRecords().map { "\($0["id"] as! String).jpg" }))
+    #expect(fixture.mac.windowImageRequests == [plainApp.processIdentifier, chrome.processIdentifier, chrome.processIdentifier])
+}
+
+@Test func theHashIsTheSameForTheSamePictureAndDiffersForAnother() {
+    let first = differenceHash(fixtureImage(width: 640, height: 400, seed: 1))
+    #expect(first == differenceHash(fixtureImage(width: 1280, height: 800, seed: 1)))
+    #expect(first != differenceHash(fixtureImage(width: 640, height: 400, seed: 2)))
+}

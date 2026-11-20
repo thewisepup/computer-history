@@ -1,6 +1,14 @@
+import CoreGraphics
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree and whether its bundle ships Electron.
+/// What asking for a picture of the focused window came to.
+public enum WindowImage: Sendable {
+    case image(CGImage)
+    case noPermission
+    case failed
+}
+
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, whether a password field is focused and a picture of the focused window.
 public protocol Mac {
     associatedtype Element: AccessibilityElement
 
@@ -13,6 +21,15 @@ public protocol Mac {
     func frontmostApplication() -> FocusedApplication?
     func applicationElement(_ processIdentifier: pid_t) -> Element
     func hasElectronFramework(_ bundle: URL) -> Bool
+    func secureFieldFocused(_ application: FocusedApplication) -> Bool
+    func focusedWindowImage(_ application: FocusedApplication, title: String?) -> WindowImage
+}
+
+extension Mac {
+    /// Whether the application's focused element is a password field, asked of its accessibility tree.
+    public func secureFieldFocused(_ application: FocusedApplication) -> Bool {
+        secureTextFieldFocused(in: applicationElement(application.processIdentifier))
+    }
 }
 
 /// The real Mac: system uptime and time, presence from macOS, and the live accessibility API.
@@ -38,4 +55,8 @@ public struct LiveMac: Mac, Sendable {
     }
 
     public func hasElectronFramework(_ bundle: URL) -> Bool { bundleHasElectronFramework(bundle) }
+
+    public func focusedWindowImage(_ application: FocusedApplication, title: String?) -> WindowImage {
+        captureFocusedWindow(of: application.processIdentifier, title: title)
+    }
 }

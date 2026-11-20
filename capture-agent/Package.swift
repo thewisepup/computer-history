@@ -13,7 +13,8 @@ import PackageDescription
 ///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
 ///           |               spool recovery, capture thread; then the minute log line and spool finish
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
-///           |               the window or writes a capture, excluded, paused or resumed record
+///           |               the window or writes a capture, excluded, paused or resumed record,
+///           |               and after each capture its screenshot record
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
@@ -29,8 +30,12 @@ import PackageDescription
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
+///     SecureField.swift     whether the focused element is a password field
+///     WindowScreenshot.swift     a ScreenCaptureKit still of the focused window
+///     ImageStore.swift      downscale, encode as JPEG and save a screenshot in its day's folder
+///     FrameHash.swift       the 64-bit difference hash of a screenshot
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
-///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements
+///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements and fixture images
 ///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool
 ///           |
 ///     ScratchFolderCheck.swift   refuses the agent's real folder, or one that holds a database

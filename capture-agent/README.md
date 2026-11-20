@@ -3,7 +3,7 @@
 The Swift agent that macOS starts at login. It checks its Accessibility grant
 on start, readies the spool, then captures the focused window's text into the
 spool whenever focus changes and every 30 seconds (by default) while the user is
-at the Mac.
+at the Mac, with a screenshot of that window saved beside the database.
 
 | | |
 |---|---|
@@ -14,6 +14,7 @@ at the Mac.
 | Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent` |
 | Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db` |
 | Spool | `spool/` in the folder |
+| Screenshots | `screenshots/` in the folder |
 | Config | `agent-config.json` in the folder, optional |
 
 ## Commands
@@ -74,6 +75,9 @@ shell that sets them act on that other folder.
 | `text_cap_bytes` | `50000` | whole number, 1000 to 10000000 |
 | `call_timeout_seconds` | `0.25` | 0.05 to 5 |
 | `window_timeout_seconds` | `2` | 0.1 to 60 |
+| `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
+| `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
+| `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
 
 ```json
 {
@@ -192,6 +196,35 @@ or the session is switched away (`CGSessionCopyCurrentDictionary`), or between
 last reason clears. Without the Accessibility grant no `capture` record is
 written; `excluded` records still are, since they touch no window.
 
+## Screenshots
+
+Right after each `capture` record is written, the capture thread writes one
+`screenshot` record for it. `excluded`, `paused` and `resumed` records get
+none, and a capture record that could not be written gets none.
+
+| Status | When |
+|---|---|
+| `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
+| `kept` | the picture was taken and saved |
+| `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
+| `failed` | anything else: no matching window, another ScreenCaptureKit error, no answer within 2 seconds, or the image could not be saved |
+
+The picture is a ScreenCaptureKit still of one window: of the focused app's
+on-screen windows in the normal layer, the one whose title matches the
+capture's window title, else the frontmost. It is scaled down so its long edge
+is at most `screenshot_long_edge_pixels`, encoded as JPEG at
+`screenshot_jpeg_quality`, and saved as
+`screenshots/<local yyyy-MM-dd>/<record id>.jpg` in the folder. The folders
+are `0700` and the images `0600`. Nothing is ever deleted.
+
+For now every `kept` record has empty recognized text, its perceptual hash is
+a 64-bit difference hash, and `duplicate` is never written.
+
+The Screen Recording grant is not requested yet. Turn on Computer History
+Agent in System Settings > Privacy & Security > Screen Recording; until then
+every screenshot record says `no-permission` and window text capture carries
+on.
+
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
 that finds the spool held by another agent exits without capturing.
@@ -200,8 +233,10 @@ that finds the spool held by another agent exits without capturing.
 
 Everything the capture loop asks of the Mac is one protocol, `Mac`: the
 clocks, presence, the Accessibility grant, the focused app and its
-accessibility tree. `LiveMac` answers from macOS; `ScriptedMac` answers from a
-script on a virtual clock, with scripted accessibility elements, so the real
+accessibility tree, whether a password field is focused, and a picture of the
+focused window. `LiveMac` answers from macOS; `ScriptedMac` answers from a
+script on a virtual clock, with scripted accessibility elements and a striped
+1600x1000 fixture image for every picture, so the real
 `CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
 `SpoolWriter` run unchanged on top of it. The unit tests use `ScriptedMac`
 too. `main.swift` is the only place that picks `LiveMac`.
@@ -314,7 +349,7 @@ with `null` where a key does not apply:
 | `timed_out` | `capture` only: `true` when reading stopped at a timeout and the text is partial |
 
 A `screenshot` record (`ScreenshotRecord`) tells what became of the
-screenshot taken with one capture. The agent does not write these yet. It has
+screenshot taken with one capture (see Screenshots). It has
 every key below, sorted, with `null` where a key does not apply:
 
 | Key | Value |

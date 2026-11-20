@@ -16,6 +16,7 @@ public struct AgentSettings: Equatable, Sendable {
     public var capture = CaptureSettings()
     public var windowText = WindowTextSettings()
     public var denylist = Denylist()
+    public var screenshots = ScreenshotSettings()
     public var configFile: ConfigFile = .missing
     public var problems: [String] = []
 
@@ -91,6 +92,12 @@ public struct AgentSettings: Equatable, Sendable {
                 windowText.windowTimeout = seconds(value, key: key, range: 0.1...60, default: windowText.windowTimeout)
             case .textCapBytes:
                 windowText.textCapBytes = wholeNumber(value, key: key, range: 1_000...10_000_000, default: windowText.textCapBytes)
+            case .screenshots:
+                screenshots.enabled = flag(value, key: key, default: screenshots.enabled)
+            case .screenshotLongEdgePixels:
+                screenshots.longEdge = wholeNumber(value, key: key, range: 256...8_192, default: screenshots.longEdge)
+            case .screenshotJPEGQuality:
+                screenshots.quality = wholeNumber(value, key: key, range: 1...100, default: screenshots.quality)
             }
         }
     }
@@ -127,6 +134,14 @@ public struct AgentSettings: Equatable, Sendable {
         return number
     }
 
+    private mutating func flag(_ value: Any, key: ConfigKey, default fallback: Bool) -> Bool {
+        guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+            problems.append("\(key.rawValue) must be true or false, using \(fallback)")
+            return fallback
+        }
+        return number.boolValue
+    }
+
     private mutating func wholeNumber(_ value: Any, key: ConfigKey, range: ClosedRange<Int>, default fallback: Int) -> Int {
         guard let number = number(value), number.rounded() == number, abs(number) < 1e15 else {
             problems.append("\(key.rawValue) must be a whole number, using \(fallback)")
@@ -148,6 +163,9 @@ private enum ConfigKey: String, CaseIterable {
     case textCapBytes = "text_cap_bytes"
     case callTimeoutSeconds = "call_timeout_seconds"
     case windowTimeoutSeconds = "window_timeout_seconds"
+    case screenshots
+    case screenshotLongEdgePixels = "screenshot_long_edge_pixels"
+    case screenshotJPEGQuality = "screenshot_jpeg_quality"
 }
 
 /// Prints where the settings came from, every problem in the config file, and the settings in effect.
@@ -163,6 +181,8 @@ public func checkConfig(_ settings: AgentSettings) -> CommandOutcome {
         "text cap: \(settings.windowText.textCapBytes) bytes",
         "call timeout: \(formatted(settings.windowText.callTimeout))s",
         "window timeout: \(formatted(settings.windowText.windowTimeout))s",
+        "screenshots: \(settings.screenshots.enabled ? "on" : "off"), long edge \(settings.screenshots.longEdge) px, "
+            + "JPEG quality \(settings.screenshots.quality)",
     ]
     return CommandOutcome(exitCode: settings.problems.isEmpty ? 0 : 1, message: lines.joined(separator: "\n"))
 }

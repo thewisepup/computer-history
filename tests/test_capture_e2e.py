@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from computer_history.cli.formatting import human_size
 from computer_history.sources.capture_spool import (
     MAX_AX_TEXT_LENGTH,
     SPOOL_ENV_VAR,
@@ -74,6 +75,13 @@ class Session:
             ).fetchall()
         return [json.loads(payload) for (payload,) in rows]
 
+    def screenshots(self) -> list[dict]:
+        with sqlite3.connect(self.db) as conn:
+            rows = conn.execute(
+                "SELECT payload FROM observations WHERE source = 'screenshot' ORDER BY started_at"
+            ).fetchall()
+        return [json.loads(payload) for (payload,) in rows]
+
     def payloads(self) -> list[str]:
         with sqlite3.connect(self.db) as conn:
             return [p for (p,) in conn.execute("SELECT payload FROM observations")]
@@ -83,6 +91,7 @@ class Session:
             rows = conn.execute(
                 "SELECT o.source_id, s.app, s.title, s.text, s.extras"
                 " FROM signals s JOIN observations o ON o.id = s.observation_id"
+                " WHERE s.source = 'ax-text'"
             ).fetchall()
         return {row[0]: row[1:] for row in rows}
 
@@ -185,7 +194,8 @@ def test_every_record_has_exactly_the_contract_fixtures_keys_and_version(session
 
 
 def test_raw_payloads_are_the_spool_lines_verbatim(session: Session) -> None:
-    assert len(session.spool_lines) == len(EXPECTED)
+    captures = sum(kind == "capture" for kind, _, _ in EXPECTED)
+    assert len(session.spool_lines) == len(EXPECTED) + captures
     assert sorted(session.payloads()) == sorted(session.spool_lines)
 
 
@@ -279,7 +289,29 @@ def test_status_reports_the_capture_agent(session: Session) -> None:
     assert session.status.returncode == 0, session.status.stderr
     assert "Capture agent:" in session.status.stdout
     assert "last capture" in session.status.stdout
-    assert "Screenshots: none stored yet (no screenshot records)\n" in session.status.stdout
+
+
+def test_every_capture_keeps_one_screenshot_saved_beside_the_database(session: Session) -> None:
+    captures = [r for r in session.records() if r["kind"] == "capture"]
+    screenshots = session.screenshots()
+    assert sorted(s["capture_id"] for s in screenshots) == sorted(r["id"] for r in captures)
+    for shot in screenshots:
+        assert shot["status"] == "kept"
+        image = session.folder / shot["image_path"]
+        assert shot["image_path"] == f"screenshots/{image.parent.name}/{shot['id']}.jpg"
+        assert image.stat().st_size == shot["image_bytes"]
+        assert image.read_bytes()[:3] == b"\xff\xd8\xff"
+        assert stat.S_IMODE(image.stat().st_mode) == 0o600
+    on_disk = {p.name for p in (session.folder / "screenshots").rglob("*.jpg")}
+    assert on_disk == {f"{s['id']}.jpg" for s in screenshots}
+
+
+def test_status_reports_the_kept_screenshots_and_their_size(session: Session) -> None:
+    shots = session.screenshots()
+    out = session.status.stdout
+    assert f"  all stored    {len(shots)} kept, 0 duplicate, 0 secure-field," in out
+    total = human_size(sum(s["image_bytes"] for s in shots))
+    assert f"  disk          {total} in total," in out
 
 
 def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(

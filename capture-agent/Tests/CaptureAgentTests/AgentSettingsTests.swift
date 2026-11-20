@@ -69,6 +69,7 @@ final class TempFolder {
     #expect(settings.capture == CaptureSettings())
     #expect(settings.windowText == WindowTextSettings())
     #expect(settings.denylist == Denylist())
+    #expect(settings.screenshots == ScreenshotSettings(enabled: true, longEdge: 1440, quality: 60))
     #expect(Denylist.builtIn == [
         "com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess", "com.apple.Passwords",
     ])
@@ -84,7 +85,10 @@ final class TempFolder {
           "capture_heartbeat_seconds": 60,
           "text_cap_bytes": 20000,
           "call_timeout_seconds": 0.5,
-          "window_timeout_seconds": 3
+          "window_timeout_seconds": 3,
+          "screenshots": false,
+          "screenshot_long_edge_pixels": 1024,
+          "screenshot_jpeg_quality": 80
         }
         """)
     #expect(settings.configFile == .read)
@@ -94,6 +98,7 @@ final class TempFolder {
         textCapBytes: 20_000, callTimeout: 0.5, windowTimeout: 3, flagOffList: ["com.google.Chrome"]
     ))
     #expect(settings.denylist == Denylist(adding: ["com.apple.calculator"]))
+    #expect(settings.screenshots == ScreenshotSettings(enabled: false, longEdge: 1024, quality: 80))
 }
 
 @Test func aUserDenylistExtendsTheDefaultsAndCannotRemoveThem() throws {
@@ -149,6 +154,12 @@ func anInvalidFileIsReportedAndDefaultsAreUsed(config: String, problem: String) 
     (#"{"call_timeout_seconds": 0}"#, "call_timeout_seconds 0 is outside 0.05–5, using 0.25"),
     (#"{"window_timeout_seconds": -1}"#, "window_timeout_seconds -1 is outside 0.1–60, using 2"),
     (#"{"accessibility_flag_off_list": "com.google.Chrome"}"#, "accessibility_flag_off_list must be a list of bundle ids, ignored"),
+    (#"{"screenshots": 0}"#, "screenshots must be true or false, using true"),
+    (#"{"screenshots": "off"}"#, "screenshots must be true or false, using true"),
+    (#"{"screenshot_long_edge_pixels": 100}"#, "screenshot_long_edge_pixels 100 is outside 256–8192, using 1440"),
+    (#"{"screenshot_long_edge_pixels": 1440.5}"#, "screenshot_long_edge_pixels must be a whole number, using 1440"),
+    (#"{"screenshot_jpeg_quality": 0}"#, "screenshot_jpeg_quality 0 is outside 1–100, using 60"),
+    (#"{"screenshot_jpeg_quality": 101}"#, "screenshot_jpeg_quality 101 is outside 1–100, using 60"),
 ])
 func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: String) throws {
     let settings = try TempFolder().settings(config: config)
@@ -156,6 +167,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
     #expect(settings.problems == [problem])
     #expect(settings.capture == CaptureSettings())
     #expect(settings.windowText == WindowTextSettings())
+    #expect(settings.screenshots == ScreenshotSettings())
 }
 
 @Test func aBadDenylistKeepsTheDefaultsAndEveryUsableEntry() throws {
@@ -176,6 +188,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
     #expect(good.exitCode == 0)
     #expect(good.message.contains("denylist, built-in plus config: com.1password.1password, com.agilebits.onepassword7, com.apple.keychainaccess, com.apple.passwords"))
     #expect(good.message.contains("idle threshold: 180s"))
+    #expect(good.message.contains("screenshots: on, long edge 1440 px, JPEG quality 60"))
     let bad = checkConfig(try TempFolder().settings(config: #"{"oops": 1}"#))
     #expect(bad.exitCode == 1)
     #expect(bad.message.contains(#"config problem: unknown key "oops" ignored"#))
