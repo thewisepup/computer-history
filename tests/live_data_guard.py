@@ -1,32 +1,39 @@
-"""Keep every test run away from the live database, spool and agent folder.
+"""Move HOME to a throwaway folder and make any touch of the live data folder raise.
 
-conftest installs this once, before any test runs, and it holds for the whole
-process, including mutmut's mutant runs and any CLI subprocess a test starts:
-
-- HOME moves to a throwaway folder, so every default path (database, spool,
-  agent settings, dataset cache) lands there, and $COMPUTER_HISTORY_DB and
-  $COMPUTER_HISTORY_SPOOL are cleared.
-- An audit hook makes any open, SQLite connect, delete, rename or mkdir under
-  the real data folder raise LiveDataTouched, whatever path the code computed.
+Importing this installs the guard, so conftest imports it before anything else.
 """
 
 from __future__ import annotations
 
+import atexit
 import os
+import pwd
 import shutil
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
-LIVE_DATA_DIR = Path.home() / "Library" / "Application Support" / "ComputerHistory"
 GUARDED_ENV_VARS = ("COMPUTER_HISTORY_DB", "COMPUTER_HISTORY_SPOOL")
-_MARKER = "ComputerHistory"
-_live_roots = (os.path.abspath(LIVE_DATA_DIR), os.path.realpath(LIVE_DATA_DIR))
+_DATA_FOLDER = Path("Library") / "Application Support" / "ComputerHistory"
+LIVE_DATA_DIR = Path(pwd.getpwuid(os.getuid()).pw_dir) / _DATA_FOLDER
+_MARKER = _DATA_FOLDER.name.casefold()
 
 
 class LiveDataTouched(RuntimeError):
     pass
+
+
+def _roots() -> tuple[str, ...]:
+    found = set()
+    for home in (LIVE_DATA_DIR.parents[2], Path.home()):
+        folder = home / _DATA_FOLDER
+        found.add(os.path.abspath(folder).casefold())
+        found.add(os.path.realpath(folder).casefold())
+    return tuple(found)
+
+
+_live_roots = _roots()
 
 
 def _as_path(value: object, event: str) -> str | None:
@@ -34,11 +41,14 @@ def _as_path(value: object, event: str) -> str | None:
         value = os.fspath(value)
     if isinstance(value, bytes):
         value = value.decode(errors="replace")
-    if not isinstance(value, str) or _MARKER not in value:
+    if not isinstance(value, str):
+        return None
+    value = unquote(value)
+    if _MARKER not in value.casefold():
         return None
     if event == "sqlite3.connect" and value.startswith("file:"):
-        value = unquote(value[len("file:") :].split("?", 1)[0])
-    return os.path.abspath(value)
+        value = urlsplit(value).path
+    return os.path.abspath(value).casefold()
 
 
 def _is_live(path: str) -> bool:
@@ -61,8 +71,8 @@ def install() -> Path:
     for name in GUARDED_ENV_VARS:
         os.environ.pop(name, None)
     sys.addaudithook(_guard)
+    atexit.register(shutil.rmtree, sandbox, ignore_errors=True)
     return sandbox
 
 
-def remove(sandbox: Path) -> None:
-    shutil.rmtree(sandbox, ignore_errors=True)
+SANDBOX_HOME = install()

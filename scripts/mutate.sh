@@ -7,12 +7,10 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 python="$(scripts/venv-python)"
 module="${1:-}"
-# Mutants break path handling, so nothing here may reach the live database or
-# spool: HOME and the path variables point into a throwaway folder (the tests'
-# conftest guard does the same inside pytest).
+# HOME and the path variables point into a throwaway folder.
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/computer-history-mutate.XXXXXX")"
 trap 'rm -rf "$sandbox"' EXIT
-export HOME="$sandbox"
+export HOME="$sandbox" TMPDIR="$sandbox"
 unset COMPUTER_HISTORY_DB COMPUTER_HISTORY_SPOOL
 rm -rf mutants
 if [ -n "$module" ]; then
