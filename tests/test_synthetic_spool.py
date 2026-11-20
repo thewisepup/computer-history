@@ -8,6 +8,8 @@ import subprocess
 import sys
 from bisect import bisect_right
 from collections import Counter
+from collections.abc import Iterable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -25,11 +27,17 @@ from computer_history.synthetic import (
     Timeline,
     build_dataset,
     build_timeline,
+    generate_timeline,
     poll_feeds,
 )
 from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
-from computer_history.synthetic.spool import SPOOL_FOLDER, TEXT_CAP_BYTES, SpoolRenderer
+from computer_history.synthetic.spool import (
+    BUNDLE_IDS,
+    SPOOL_FOLDER,
+    TEXT_CAP_BYTES,
+    SpoolRenderer,
+)
 
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/computer-history/pulls"
@@ -423,3 +431,111 @@ def test_separate_processes_render_the_same_spool_and_digest(tmp_path: Path) -> 
             _spool_digest(tmp_path / "here"),
         )
     )
+
+
+AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
+TICK = timedelta(milliseconds=500)
+AGENT_READ_LAG = timedelta(milliseconds=100)
+
+
+def _on_ticks(timeline: Timeline) -> Timeline:
+    def tick(moment: datetime) -> datetime:
+        return timeline.start + -((timeline.start - moment) // TICK) * TICK
+
+    stretches = []
+    for stretch in timeline.stretches:
+        start, end = tick(stretch.start), tick(stretch.end)
+        if end > start:
+            stretches.append(replace(stretch, start=start, end=end))
+    return Timeline(timeline.start, tick(timeline.end), "UTC", tuple(stretches))
+
+
+def _script(timeline: Timeline) -> dict:
+    def offset(moment: datetime) -> float:
+        return (moment - timeline.start) / timedelta(seconds=1)
+
+    def app_id(app: str) -> str:
+        return re.sub(r"[^A-Za-z0-9]", "-", app)
+
+    apps: dict[str, dict] = {}
+    steps: list[dict] = []
+    titles: dict[tuple[str, str], str] = {}
+    focused: dict[str, str] = {}
+    front: str | None = None
+    away_since: datetime | None = None
+    for stretch in timeline.stretches:
+        at_ = offset(stretch.start)
+        if not stretch.active:
+            steps.append({"at": at_, "presence": {"asleep": True}})
+            away_since = None
+            continue
+        if not stretch.afk or away_since is None:
+            steps.append({"at": at_, "presence": {}})
+        app, window = app_id(stretch.app), app_id(stretch.project or "none")
+        spec = apps.setdefault(
+            app,
+            {"name": stretch.app, "bundle_id": BUNDLE_IDS.get(stretch.app), "windows": {}},
+        )
+        spec["windows"].setdefault(window, {"role": "AXWindow", "title": stretch.title})
+        spec.setdefault("focused_window", window)
+        titles.setdefault((app, window), stretch.title)
+        focused.setdefault(app, window)
+        if titles[(app, window)] != stretch.title:
+            change = {"app": app, "window": window, "title": stretch.title}
+            steps.append({"at": at_, "set_title": change})
+            titles[(app, window)] = stretch.title
+        if focused[app] != window:
+            steps.append({"at": at_, "focus_window": {"app": app, "window": window}})
+            focused[app] = window
+        if front != app:
+            steps.append({"at": at_, "focus": app})
+            front = app
+        if stretch.afk:
+            away_since = away_since or stretch.start
+            idle = away_since + timedelta(seconds=180) + MS
+            if stretch.start <= idle < stretch.end:
+                steps.append({"at": offset(idle), "presence": {"idle_seconds": 181}})
+        else:
+            away_since = None
+    steps.append({"at": offset(timeline.end), "end": True})
+    start = timeline.start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return {"start": start, "apps": apps, "steps": steps}
+
+
+def _records(lines: Iterable[str]) -> list[tuple]:
+    return [
+        (
+            r.captured_at,
+            *(r.fields[k] for k in ("trigger", "app_name", "bundle_id", "window_title")),
+        )
+        for r in map(parse_record, lines)
+    ]
+
+
+@pytest.mark.skipif(
+    not os.environ.get(AGENT_ENV_VAR),
+    reason=f"needs the built capture agent in ${AGENT_ENV_VAR}; run capture-agent/scripts/e2e.sh",
+)
+def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(tmp_path: Path) -> None:
+    timeline = _on_ticks(generate_timeline(DEVELOPER_DAY))
+    script = tmp_path / "day.json"
+    script.write_text(json.dumps(_script(timeline)), encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["COMPUTER_HISTORY_DB"] = str(tmp_path / "agent" / "history.db")
+    (tmp_path / "agent").mkdir()
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "scripted-session", str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    agent = _records(line for _, line in _spool_lines(tmp_path / "agent" / "spool"))
+    rendered = SpoolRenderer(hostile_windows_per_day=0).render(timeline, random.Random(0))
+    ours = _records(line for file in rendered.files for line in file.lines)
+
+    assert len(ours) > 1000
+    assert [r[1:] for r in agent] == [r[1:] for r in ours]
+    lag = [theirs[0] - mine[0] for theirs, mine in zip(agent, ours, strict=True)]
+    assert all(timedelta(0) <= late < AGENT_READ_LAG for late in lag), max(lag)
