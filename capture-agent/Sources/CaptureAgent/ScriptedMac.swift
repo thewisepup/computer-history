@@ -14,7 +14,6 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var calls: [String] = []
     var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .failed }
     var windowImageRequests: [pid_t] = []
-    var recognizedText: (URL) throws -> String = { _ in "" }
     var notificationPosting = NotificationPosting.posted
     var notifications: [UserNotification] = []
     var postedLater: [@Sendable () -> Void] = []
@@ -47,8 +46,6 @@ final class ScriptedMac: Mac, @unchecked Sendable {
         windowImageRequests.append(window.processIdentifier)
         return windowImage(window, longEdge)
     }
-
-    func recognizeText(inImageAt file: URL) throws -> String { try recognizedText(file) }
 
     func post(_ notification: UserNotification, shownLater: @escaping @Sendable () -> Void) -> NotificationPosting {
         notifications.append(notification)

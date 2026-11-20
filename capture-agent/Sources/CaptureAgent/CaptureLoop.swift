@@ -16,6 +16,7 @@ final class CaptureLoop<M: Mac> {
         mac: M,
         spool: any SpoolAppender,
         images: any ImageStore,
+        recognize: @escaping @Sendable (URL) throws -> String,
         counts: CaptureCounts,
         log: @escaping (String) -> Void
     ) {
@@ -53,7 +54,7 @@ final class CaptureLoop<M: Mac> {
                 log: log
             )
             let queue = ScreenshotQueue(
-                recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },
+                recognize: recognize,
                 capBytes: settings.windowText.textCapBytes,
                 timeout: settings.screenshots.recognitionTimeout,
                 spool: spool,
@@ -175,18 +176,19 @@ public final class CaptureStop: @unchecked Sendable {
     }
 }
 
-/// Starts the thread that polls focus and captures through the given Mac until asked to stop.
-public func startCaptureThread<M: Mac>(
+/// Starts the thread that polls focus and captures through the given Mac, saving and reading screenshots with the given store and recognizer, until asked to stop.
+public func startCaptureThread<M: Mac & Sendable>(
     mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
     images: JPEGImageStore,
+    recognize: @escaping @Sendable (URL) throws -> String,
     counts: CaptureCounts,
     stop: CaptureStop,
     log: @escaping @Sendable (String) -> Void
 ) {
     let thread = Thread {
-        let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log)
+        let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, recognize: recognize, counts: counts, log: log)
         loop.run { stop.requestedDeadline == nil }
         stop.finish(dropped: loop.stopScreenshots(by: stop.requestedDeadline ?? .now()))
     }

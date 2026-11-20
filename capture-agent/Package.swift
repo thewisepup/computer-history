@@ -62,8 +62,7 @@ import PackageDescription
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
-///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements, fixture images
-///                           and scripted recognized text
+///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements and fixture images
 ///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool
 ///           |
 ///     ScratchFolderCheck.swift   refuses the agent's real folder, or one that holds a database

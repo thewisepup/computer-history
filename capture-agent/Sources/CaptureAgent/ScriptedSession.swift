@@ -41,8 +41,9 @@ public func runScriptedSession(
         mac: mac,
         texts: player.recognizedTexts
     )
-    mac.recognizedText = images.recognizedText(inImageAt:)
-    let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log)
+    let loop = CaptureLoop(
+        settings: settings, mac: mac, spool: spool, images: images, recognize: images.recognizedText(inImageAt:), counts: counts, log: log
+    )
     var nextFinish = AgentLifecycle.spoolFinishInterval
     var failure: (any Error)?
     loop.run {

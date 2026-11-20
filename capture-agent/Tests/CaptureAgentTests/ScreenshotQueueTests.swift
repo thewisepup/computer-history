@@ -29,7 +29,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func aSlowRecognitionNeverHoldsUpTheCaptureRecords() throws {
     let fixture = LoopFixture()
     let recognizer = HeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     fixture.run(for: 100, waitingForScreenshots: false)
     let captures = try fixture.kinds()
     #expect(captures.count >= 3)
@@ -42,7 +42,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func screenshotRecordsReachTheSpoolInCaptureOrderWithTheirCaptureTimes() throws {
     let fixture = LoopFixture()
     let recognizer = HeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     let app = fixture.mac.apps[plainApp.processIdentifier]!
     fixture.run(for: 2, waitingForScreenshots: false)
     app.focusedElement = fixture.mac.node("password", role: "AXTextField", ["AXSubrole": "AXSecureTextField"])
@@ -69,7 +69,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func duplicatesQueuedWhileTheirKeptScreenshotIsRecognizedCopyItsFinishedText() throws {
     let fixture = LoopFixture()
     let recognizer = HeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     fixture.run(for: 100, waitingForScreenshots: false)
     recognizer.letGo()
     fixture.waitForScreenshots()
@@ -88,7 +88,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func recognizedTextIsCutAtTheWindowTextCapAndDuplicatesCopyTheCut() throws {
     let fixture = LoopFixture()
     fixture.windowText = WindowTextSettings(textCapBytes: 8)
-    fixture.mac.recognizedText = { _ in "héllo wörld" }
+    fixture.recognizedText = { _ in "héllo wörld" }
     fixture.run(for: 40)
     let shots = try fixture.screenshotRecords()
     #expect(try fixture.statuses() == ["kept", "duplicate"])
@@ -102,7 +102,7 @@ final class HeldRecognizer: @unchecked Sendable {
 
 @Test func aFailedRecognitionKeepsTheImageWithEmptyTextAndIsCounted() throws {
     let fixture = LoopFixture()
-    fixture.mac.recognizedText = { _ in throw RecognitionError() }
+    fixture.recognizedText = { _ in throw RecognitionError() }
     fixture.run(for: 2)
     let shots = try fixture.screenshotRecords()
     #expect(try fixture.statuses() == ["kept"])
@@ -117,7 +117,7 @@ final class HeldRecognizer: @unchecked Sendable {
 
 @Test func aKeptRecordTheSpoolRefusesKeepsItsImageAndItsDuplicatesStillPointAtIt() throws {
     let fixture = LoopFixture()
-    fixture.mac.recognizedText = { _ in "notes" }
+    fixture.recognizedText = { _ in "notes" }
     fixture.screenshotGate.refusals = 1
     fixture.run(for: 70)
     #expect(try fixture.statuses() == ["duplicate", "duplicate"])
@@ -132,7 +132,7 @@ final class HeldRecognizer: @unchecked Sendable {
 
 @Test func eachKindOfFailureKeepsItsOwnLastError() throws {
     let fixture = LoopFixture()
-    fixture.mac.recognizedText = { _ in throw RecognitionError() }
+    fixture.recognizedText = { _ in throw RecognitionError() }
     fixture.screenshotGate.refusals = 1
     fixture.run(for: 2)
     #expect(fixture.counts.take().description.hasSuffix(
@@ -144,7 +144,7 @@ final class HeldRecognizer: @unchecked Sendable {
     let fixture = LoopFixture()
     fixture.screenshots.recognitionTimeout = 0.05
     let recognizer = HeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     var seed = 1
     fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
     fixture.run(for: 2)
@@ -169,7 +169,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func theMinuteLineSaysHowManyScreenshotRecordsAreQueued() throws {
     let fixture = LoopFixture()
     let recognizer = HeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     fixture.run(for: 100, waitingForScreenshots: false)
     let captures = try fixture.kinds().count
     #expect(fixture.counts.take().description.contains(", \(captures) screenshot records queued"))
@@ -181,7 +181,7 @@ final class HeldRecognizer: @unchecked Sendable {
 @Test func aWindowWhoseKeptScreenshotGotNoTextKeepsItsNextScreenshotAndReadsIt() throws {
     let fixture = LoopFixture()
     let failing = LockedFlag(true)
-    fixture.mac.recognizedText = { image in
+    fixture.recognizedText = { image in
         if failing.value { throw RecognitionError() }
         return "text of \(image.deletingPathExtension().lastPathComponent)"
     }
@@ -199,7 +199,7 @@ func aStaticWindowWhoseTextIsNeverReadKeepsTwoImagesInTheKeepAfterLimitAndDuplic
     let fixture = LoopFixture()
     fixture.screenshots.recognitionTimeout = 0.05
     let held = HeldRecognizer()
-    fixture.mac.recognizedText = hung ? held.text : { _ in throw RecognitionError() }
+    fixture.recognizedText = hung ? held.text : { _ in throw RecognitionError() }
     defer { held.letGo() }
     fixture.run(for: 2)
     fixture.run(for: fixture.screenshots.keepAfter - 2)
@@ -257,7 +257,7 @@ final class FirstThenHeldRecognizer: @unchecked Sendable {
 @Test func stoppingWritesWhatTheDeadlineAllowsAndNothingAfterIt() throws {
     let fixture = LoopFixture()
     let recognizer = FirstThenHeldRecognizer()
-    fixture.mac.recognizedText = recognizer.text
+    fixture.recognizedText = recognizer.text
     var seed = 1
     fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
     for next in 2...4 {

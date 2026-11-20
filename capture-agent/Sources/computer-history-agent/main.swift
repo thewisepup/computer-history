@@ -38,6 +38,7 @@ case .run:
                 images: JPEGImageStore(
                     folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality
                 ),
+                recognize: recognizeText(inImageAt:),
                 counts: counts,
                 stop: captureStop,
                 log: log

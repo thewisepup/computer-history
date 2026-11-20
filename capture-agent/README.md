@@ -360,13 +360,15 @@ that finds the spool held by another agent exits without capturing.
 Everything the capture loop asks of the Mac is one protocol, `Mac`: the
 clocks, presence, the Accessibility grant, the focused app and its
 accessibility tree with each window's frame, a picture of the focused
-window, the text in a saved picture, and posting a notification. `LiveMac` answers from macOS;
+window, and posting a notification. `LiveMac` answers from macOS;
 `ScriptedMac` answers from a script on a virtual clock, with scripted
-accessibility elements, a striped 1600x1000 fixture image for every picture
-and empty recognized text unless a test or the script sets it, so the real
-`CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
-`SpoolWriter` run unchanged on top of it. The unit tests use `ScriptedMac`
-too. `main.swift` is the only place that picks `LiveMac`.
+accessibility elements and a striped 1600x1000 fixture image for every
+picture, so the real `CaptureLoop`, `CaptureDecision`, `AppWatch`,
+`WindowWatch`, `WindowWalk` and `SpoolWriter` run unchanged on top of it. The
+unit tests use `ScriptedMac` too. Text recognition is passed to the capture
+loop beside the image store: `main.swift`, the only place that picks
+`LiveMac`, passes Vision; a scripted session passes `ScriptedImageStore`'s
+scripted text, and the unit tests give empty text unless a test sets it.
 
 ```bash
 COMPUTER_HISTORY_DB=/tmp/scratch/history.db .build/debug/computer-history-agent scripted-session e2e/session.json

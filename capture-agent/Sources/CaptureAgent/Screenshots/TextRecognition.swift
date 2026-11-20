@@ -2,7 +2,7 @@ import Foundation
 import Vision
 
 /// Reads the English text in the picture at the file with Vision's accurate recognizer and language correction. Returns one line per recognized line, in the order Vision reads them.
-func recognizeText(inImageAt file: URL) throws -> String {
+public func recognizeText(inImageAt file: URL) throws -> String {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.recognitionLanguages = ["en-US"]

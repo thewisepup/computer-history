@@ -10,6 +10,7 @@ final class LoopFixture {
     var denylist = Denylist()
     var screenshots = ScreenshotSettings(recognitionTimeout: 120)
     var images: (any ImageStore)?
+    var recognizedText: @Sendable (URL) throws -> String = { _ in "" }
     var logged: [String] = []
     private lazy var writer = spool.writer()
     lazy var screenshotGate = ScreenshotRefusingSpool(writer: writer, refusals: 0)
@@ -32,6 +33,7 @@ final class LoopFixture {
             mac: mac,
             spool: screenshotGate,
             images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
+            recognize: recognizedText,
             counts: counts,
             log: { self.logged.append($0) }
         )
