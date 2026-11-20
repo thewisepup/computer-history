@@ -76,7 +76,7 @@ computer_history/
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
                 # queries), contents (a digest of what the database holds),
-                # costs (query plans, pages and the SQLite build, for the
+                # introspection (query plans, pages and the SQLite build, for the
                 # cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each

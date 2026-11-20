@@ -8,7 +8,6 @@ backfill use the read queries. content_digest hashes what the database holds.
 """
 
 from computer_history.store.contents import content_digest
-from computer_history.store.costs import SqliteBuild, page_counts, scanned_tables, sqlite_build
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
@@ -19,6 +18,12 @@ from computer_history.store.db import (
     schema_version,
     supported_version,
     transaction,
+)
+from computer_history.store.introspection import (
+    SqliteBuild,
+    page_counts,
+    scanned_tables,
+    sqlite_build,
 )
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
