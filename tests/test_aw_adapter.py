@@ -676,15 +676,15 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     import computer_history.sources as sources
     from computer_history.sources import (
         agent_health,
-        ax_text,
         backfill,
+        capture_spool,
         commit,
         contract,
         projection,
         runner,
     )
 
-    modules = (contract, commit, projection, runner, backfill, aw, ax_text, agent_health)
+    modules = (contract, commit, projection, runner, backfill, aw, capture_spool, agent_health)
     assert sources.__all__ == [name for module in modules for name in module.__all__]
     for module in modules:
         for name in module.__all__:

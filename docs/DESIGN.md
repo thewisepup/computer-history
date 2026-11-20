@@ -38,7 +38,7 @@ automation suggestions.
 ```
 ┌─────────────────────────── macOS ───────────────────────────┐
 │                                                              │
-│  ActivityWatch          Capture Agent (Swift) [proposed]     │
+│  ActivityWatch          Capture Agent (Swift)                │
 │  (window, AFK, Chrome)  (AX text, screenshots, OCR)          │
 │        │                        │                            │
 │        ▼                        ▼                            │
@@ -75,9 +75,10 @@ computer_history/
                 # observations (ingest writes, projecting each new row),
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
-                # queries), contents (a digest of what the database holds),
-                # introspection (query plans, pages and the SQLite build, for the
-                # cost meter), timefmt, paths
+                # queries), screenshots (the screenshot records' status
+                # queries, read through their own index), contents (a digest
+                # of what the database holds), introspection (query plans,
+                # pages and the SQLite build, for the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -85,20 +86,23 @@ computer_history/
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
                 # health for status, judged against aw-afk and aw-window),
-                # then one adapter per source: activitywatch/, ax_text/,
-                # screenshots
+                # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for
                 # backfill), afk (stored and newest AFK spans, for status),
                 # frontmost (stored and newest aw-window app spans, for status)
-                # ax_text/: paths (where the spool is), spool (finished files:
+                # capture_spool/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
-                # against format v1), normalize (its projector), adapter
-                # (CaptureSpool: one file per pull); for status, backlog (what
-                # waits in the spool), stored (the stored records' kinds and
-                # apps, the day's counts), coverage (unobserved stretches,
-                # liveness) and agreement (each capture's app against aw-window)
+                # against format v1, and the kinds each stream takes),
+                # normalize (its projectors), adapter (CaptureSpool:
+                # two streams, one file per pull, removed once both stored
+                # it); for status, backlog (what
+                # waits in the spool), window_text (the stored window text
+                # records' kinds and apps, the day's counts), coverage (unobserved stretches,
+                # liveness), agreement (each capture's app against aw-window)
+                # and screenshots (the stored screenshot records' statuses,
+                # kept image bytes and missing permission)
   synthetic/    # synthetic datasets built through the real ingest path:
                 # timeline (+ spans), seeds, persona (+ developer,
                 # content_creator; heavier), days (a persona's ordinary
@@ -106,7 +110,7 @@ computer_history/
                 # timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
                 # buckets served in process), spool (+ captures: when the
-                # agent captures), build, manifest (+ gaps: unobserved
+                # agent captures; screenshots: kept or a duplicate), build, manifest (+ gaps: unobserved
                 # stretches and explained gaps), cache (built datasets per
                 # user, keyed by inputs and code), devdb (a cached dataset
                 # copied out, never into a live folder), operations (what
@@ -171,7 +175,8 @@ observations (
 Content sources projected into one typed table so consumers read one shape.
 Normalization is computation, not just reshaping: domain extraction from URLs,
 text hygiene (capping, whitespace collapse). `ax-text` signals keep the first
-10,000 characters; the raw observation keeps everything.
+10,000 characters, and `screenshot` signals the first 10,000 of the recognized
+text; the raw observation keeps everything.
 
 ```sql
 signals (
@@ -318,8 +323,8 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 ```
 
 - **Progress is opaque and moves only with a batch.** `position` is whatever
-  the source needs to resume (ActivityWatch: a UTC timestamp; the AX-text
-  spool: the time of the latest stored capture, also its `settled_until`,
+  the source needs to resume (ActivityWatch: a UTC timestamp; each spool
+  stream: the time of its latest stored record, also its `settled_until`,
   since finished files are read oldest first and removed once stored). Only
   `insert_observations` writes it, in the same transaction as the batch,
   either advancing it (incremental ingest) or setting it only if the source
@@ -342,7 +347,7 @@ Only adapters know payload dialects; everything downstream reads `signals`.
 
 - An adapter (`sources/contract.py`) is a `Source`: `streams()` names the
   streams it feeds (ActivityWatch: `aw-window`, `aw-afk`, `aw-web`; the
-  AX-text spool: `ax-text`), and `pull_after(stream, position, now=)` returns
+  capture spool: `ax-text` and `screenshot`), and `pull_after(stream, position, now=)` returns
   a `Pull`: settled observations, a held-back count, the new `position`
   (`None` leaves progress as it is) and `settled_until`, plus three fields a
   file-based source needs: `rejected` (records it could not use and skipped),
@@ -399,7 +404,8 @@ Only adapters know payload dialects; everything downstream reads `signals`.
 Separate Swift CLI, login-launched: TCC permissions attach to a stable signed
 binary; AX / ScreenCaptureKit / Vision are native. Deliberately dumb —
 observe, write spool files, repeat; all intelligence stays in Python.
-Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
+The AX and screenshot mechanics are built. The image numbers and the dedup
+settings are provisional until they are measured on real screens (#38).
 
 - Identity: a windowless `.app` at a fixed path, signed with a self-signed
   certificate so the Accessibility grant survives rebuilds; started by its
@@ -417,19 +423,96 @@ Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
 - Denylist: listed apps produce an "excluded" record with no text.
   `pause` / `resume` each write a record. Both make the gap explained, not
   unobserved.
-- Screenshots: ScreenCaptureKit → ~1440px JPEG q60 → perceptual-hash dedup →
-  disk. Vision OCR **in the agent**; only text crosses to Python; screenshots
-  never leave the Mac. Est. ~75–150 MB/day post-dedup.
+- Screenshots: every capture takes one, in the same tick, right after its
+  capture record is written, of the focused window only: a ScreenCaptureKit
+  still of the on-screen window whose frame matches the accessibility frame
+  of the app's focused window (within 2 points; the title breaks ties).
+  Exclusions, pauses, idle, lock and sleep give no capture and so no
+  screenshot; `screenshots: false` in the config writes no screenshot records.
+  Pause, presence, app and title are checked again before the picture.
+- Each capture gets exactly one `screenshot` spool record, naming its capture
+  and carrying the capture's time, with a status: `kept` (a new image saved),
+  `duplicate` (matches its window's last kept image), `secure-field` (the
+  focused element is a password field, by role or subrole; no picture),
+  `no-permission` (ScreenCaptureKit refused for want of the Screen Recording
+  grant) or `failed` (anything else, including a password check with no
+  answer). The system-wide secure-input flag is not used: some apps leave it
+  on.
+- Images: JPEG, long edge 1440 px (never enlarged), quality 60, saved as
+  `screenshots/<local yyyy-MM-dd>/<record id>.jpg` beside the database
+  (folders `0700`, files `0600`) before recognition is queued. Nothing is
+  deleted; an image left without a record by a crash or a refused write is
+  accepted. Budget: 150 MB for a normal day. All three numbers are
+  provisional.
+- Dedup, per window (the ScreenCaptureKit window id plus the title), against
+  the last kept screenshot of each of the 12 most recently seen windows, in
+  memory only. Each screenshot is shrunk to a small grey, box-averaged
+  thumbnail, one pixel per 9x9 points of the window, so a line of text covers
+  about as many thumbnail pixels at any window size. It is a `duplicate` when
+  fewer than a set number of thumbnail pixels (default 6) differ by more than
+  24 grey levels from the window's last kept thumbnail, and that kept
+  screenshot is 0 to the keep-after limit old (default 10 minutes). So a static
+  screen saves at most one image per keep-after limit while its text is read,
+  and at most two while recognition keeps failing (the kept image and one
+  retry), and a typed line still counts as a change. A duplicate saves nothing, points at the kept image and
+  copies its recognized text. Each record's `perceptual_hash` is its own
+  screenshot's 64-bit difference hash, recorded for measurement only.
+- Text recognition **in the agent**: every screenshot record goes through one
+  first-in, first-out queue (`ScreenshotQueue`) with no length limit, on its
+  own thread, so the capture thread never waits and records reach the spool
+  in capture order, after their capture records. A `kept` record's saved JPEG
+  is read by Vision (accurate, English, language correction on, lines in
+  Vision's order, no positions or confidence) and cut at the window-text cap
+  (50 KB) with the same length, hash and cut-off fields. One Vision call runs
+  at a time, with a 10-second timeout per image; while a timed-out call has
+  not returned, later kept images get empty text at once. A `duplicate` waits
+  behind its kept record and copies its finished text. A failed or timed-out
+  recognition still gives `kept`, with empty text, and the window's next
+  screenshot is kept and read again, once: if that retry fails too, the
+  window's screenshots are duplicates of it again, copying its empty text,
+  until the keep-after limit.
+- Stopping: on `SIGTERM` the agent stops taking captures, gives the queue
+  until 5 seconds after the signal to write what it can, then writes no more
+  screenshot records, finishes the open spool file, logs how many it dropped
+  and exits, inside launchd's 20 seconds before `SIGKILL`. Dropped records
+  are lost and their images stay; a crash or `SIGKILL` loses the queue the
+  same way. A torn last line is dropped on the next start.
+- Screen Recording permission: a picture taken is the evidence the grant is
+  held; the system's preflight check is not trusted. Without it window text
+  capture carries on, each capture's record says `no-permission`, and the
+  agent posts one notification whose click opens the Screen Recording
+  settings pane, again at most once every 24 hours while the grant is still
+  missing. The time of the last one posted is kept in a file beside the
+  database, so restarts keep the 24 hours; any picture taken clears it. When
+  notifications cannot be posted, `status` is the only warning. The install
+  script asks for the grant.
+- Only text crosses to Python; images never leave the Mac. The backend reads
+  `screenshot` records from the same spool files as `ax-text` and stores each
+  verbatim. Its signal holds the app, the title, the first 10,000 characters
+  of recognized text, and extras with the image path, image size, status,
+  capture id and hash. `status` reports the screenshots from stored records
+  only, never the folder: the last kept, counts by status today and in
+  total, disk use summed from `kept` records' sizes (an orphaned image is not
+  counted), and a warning when the newest records say `no-permission` and the
+  newest of those is at most 5 minutes old; an older one is shown as plain
+  information, so turning screenshots off or stopping the agent clears it.
+  Coverage is still judged from `ax-text` records.
 - Spool handoff: the agent appends JSONL (one record per line, UUID =
   `source_id`) to one open file and renames it to a finished name every
   minute. The backend reads only finished files, stores them, then deletes
-  them; no offset cursor, since re-reading is idempotent. Unusable lines are
-  skipped and counted; a file with any unusable line, or that cannot be read,
-  is moved into `spool/unreadable/`, never deleted. The filesystem is the
+  them; no offset cursor, since re-reading is idempotent. Both spool streams
+  (`ax-text`, `screenshot`) read every file for their own records, and a file
+  is deleted only once both have stored that same file (told apart from a
+  later file of the same name by device, inode, size and mtime). Unusable lines are
+  skipped and counted against the stream their kind names; a file with any
+  unusable line, or that neither stream can read, is moved into
+  `spool/unreadable/`, never deleted. A file only one stream failed to read is
+  left for it to retry. The filesystem is the
   queue; backend downtime just accumulates files.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
   whether to set the apps' accessibility flag is measured in M2); periodic
-  macOS Screen Recording re-confirmation (surface as coverage warning); TCC
+  macOS Screen Recording re-confirmation (accepted; a lost grant shows as
+  `no-permission` records, the reminder and the `status` warning); TCC
   needs a stable binary path + signature. Front-loaded at M2–M3 deliberately.
 
 ### 4.3 AFK: raw-only, three consumers
@@ -557,10 +640,12 @@ Moved to [milestones.md](milestones.md).
 
 ## 10. Open items needing a decision
 
-1. **Capture agent** (§4.2) — five sub-decisions: screenshot scope (frontmost
-   window / active display / all displays), heartbeat cadence (30s vs 60s),
-   image budget (~1440px JPEG q60), secure-input skip, same-tick AX +
-   screenshot capture.
+1. **Screenshot numbers** (§4.2): image size (1440 px long edge), JPEG
+   quality (60), the 150 MB daily budget and the dedup settings (6 changed
+   thumbnail pixels at 9x9 points each, a tolerance of 24 grey levels, a
+   10-minute keep-after limit) are provisional until measured on real
+   screens (#38). Scope (focused window), cadence (each capture, 30s
+   heartbeat), the password-field skip and same-tick capture are settled.
 2. **Bottleneck numbers** (§7): formula `hours × distinct days`; materiality
    floor ≥2h or ≥30min on 3+ days. (Mechanism decided; values not.)
 3. **Low-confidence threshold** (§5): default 0.5, configurable.
@@ -654,3 +739,28 @@ Context and rationale for decisions live here, not in the sections above.
   byte position or partial-line handling is needed, and unique `source_id`
   makes re-reading harmless. Storage compaction (store-once, compression,
   retention) deferred until real sizes exist.
+- **2026-11-19 — M3 screenshots.** The focused window only, so other windows
+  are never recorded by accident, taken in the capture's own tick so text and
+  picture describe one instant. A separate screenshot record per capture,
+  rather than new capture fields, keeps the capture record and its readers
+  unchanged and lets the record arrive after recognition with the capture's
+  time. Password fields are detected from the focused element, since the
+  system-wide secure-input flag stays on in some apps; a check with no answer
+  takes no picture. Dedup compares thumbnails instead of the 64-bit hash,
+  which could not see a typed line (0 bits differ), and a keep-after limit
+  bounds how stale a window's image and text can get. The window key adds
+  the ScreenCaptureKit window id to the title, because two same-titled
+  windows otherwise swapped images and text. Every screenshot record goes
+  through one FIFO queue so a kept record always reaches the spool before the
+  duplicates that copy its text; a failed recognition stays `kept` so the
+  record still points at its image. The thumbnail is sized by the window's
+  points and the threshold is a pixel count, so a typed line counts as a
+  change on a small window and on a wide display alike. A recognition timeout
+  keeps one hung Vision call from stalling the queue, and the drain on
+  `SIGTERM` fits inside launchd's 20 seconds before `SIGKILL`. Nothing is deleted: orphaned images are
+  accepted rather than adding cleanup to the capture path. The grant is
+  judged from pictures taken, not the preflight check, which can stay stale
+  for the life of the process; the reminder's day starts only once a
+  notification was really posted. Disk use is summed from records, not by
+  measuring the folder, so only text crosses into Python; `status` reads them
+  through a partial index to stay quick at months of records.

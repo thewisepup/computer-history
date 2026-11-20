@@ -13,9 +13,10 @@ from store_answers import stored_gaps
 
 from computer_history.sources import (
     AFK_SOURCE,
-    AX_TEXT_SOURCE,
+    SCREENSHOT_KIND,
     WEB_SOURCE,
     WINDOW_SOURCE,
+    WINDOW_TEXT_SOURCE,
     parse_record,
 )
 from computer_history.store import Gap, connect, payload_values, source_summary
@@ -83,7 +84,7 @@ FAULTY_HOUR_TOTALS = Totals(
     attended_app_seconds={"1Password": 300.0, "Cursor": 1200.0, "Google Chrome": 1200.0},
     afk_seconds=0.0,
 )
-FAULTY_HOUR_COUNTS = {"aw-afk": 2, "aw-web": 2, "aw-window": 4, "ax-text": 84}
+FAULTY_HOUR_COUNTS = {"aw-afk": 2, "aw-web": 2, "aw-window": 4, "ax-text": 84, "screenshot": 72}
 FAULTY_HOUR_CAPTURES = CaptureCounts(
     kinds={"capture": 72, "excluded": 10, "paused": 1, "resumed": 1},
     triggers={"app": 2, "heartbeat": 80},
@@ -91,7 +92,7 @@ FAULTY_HOUR_CAPTURES = CaptureCounts(
 )
 FAULTY_HOUR_UNOBSERVED = {
     AFK_SOURCE: (Gap(at(9, 30), at(9, 40)), Gap(at(9, 55), at(10, 0))),
-    AX_TEXT_SOURCE: (Gap(at(9, 12, 31), at(9, 15)), Gap(at(9, 45, 31), at(9, 49, 1))),
+    WINDOW_TEXT_SOURCE: (Gap(at(9, 12, 31), at(9, 15)), Gap(at(9, 45, 31), at(9, 49, 1))),
     WINDOW_SOURCE: (Gap(at(9, 30), at(9, 40)), Gap(at(9, 55), at(10, 0))),
 }
 FAULTY_HOUR_EXPLAINED = (
@@ -139,7 +140,7 @@ def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
     assert Counter(r.kind for r in records) == FAULTY_HOUR_CAPTURES.kinds
     assert not any(s.afk for s in afk)
     files = {file.name: len(file.lines) for file in dataset.rendered[SpoolRenderer.name].files}
-    assert files["20260105T095000.000Z.jsonl"] == 2
+    assert files["20260105T095000.000Z.jsonl"] == 4
     assert not [name for name in files if "T0945" <= name[8:13] < "T0950"]
 
 
@@ -197,8 +198,8 @@ def test_on_a_messy_day_every_source_reports_the_manifests_gaps_and_none_as_idle
         assert not [s for s in afk if _overlaps((s.start, s.end), span)]
     for fault in agent_out:
         span = (fault.start, fault.end)
-        assert any(_overlaps((g.start, g.end), span) for g in gaps[AX_TEXT_SOURCE])
-    for gap in gaps[AX_TEXT_SOURCE]:
+        assert any(_overlaps((g.start, g.end), span) for g in gaps[WINDOW_TEXT_SOURCE])
+    for gap in gaps[WINDOW_TEXT_SOURCE]:
         assert any(not s.afk and s.start <= gap.start and gap.end <= s.end for s in afk)
 
 
@@ -213,7 +214,7 @@ def test_on_a_messy_day_capture_coverage_explains_the_exclusion_and_the_pause(
     assert sorted(by_kind) == ["excluded", "paused"] and len(explained) == 2
     for gap in explained:
         span = (gap.start, gap.end)
-        assert not any(_overlaps((g.start, g.end), span) for g in gaps[AX_TEXT_SOURCE])
+        assert not any(_overlaps((g.start, g.end), span) for g in gaps[WINDOW_TEXT_SOURCE])
     pause, exclusion = by_kind["paused"], by_kind["excluded"]
     assert [(r.at, r.kind) for r in records if r.kind in ("paused", "resumed")] == [
         (pause.start, "paused"),
@@ -235,7 +236,7 @@ def _triggers(dataset) -> list[str | None]:
     conn = connect(dataset.db_path)
     try:
         rows = payload_values(
-            conn, AX_TEXT_SOURCE, dataset.timeline.start, dataset.timeline.end, ("$.trigger",)
+            conn, WINDOW_TEXT_SOURCE, dataset.timeline.start, dataset.timeline.end, ("$.trigger",)
         )
     finally:
         conn.close()
@@ -293,7 +294,7 @@ def test_a_fault_outside_the_range_is_refused(fault: Fault, error: str) -> None:
 
 def test_a_fault_on_a_stream_its_kind_cannot_reach_is_refused() -> None:
     with pytest.raises(ValueError, match="cannot affect"):
-        Fault(at(9, 5), at(9, 6), FaultKind.AW_DOWN, sources=(AX_TEXT_SOURCE,))
+        Fault(at(9, 5), at(9, 6), FaultKind.AW_DOWN, sources=(WINDOW_TEXT_SOURCE,))
 
 
 def test_a_pause_the_agent_cannot_see_is_refused() -> None:
@@ -311,6 +312,7 @@ def _records(timeline: Timeline) -> list[tuple[datetime, str | None, str, str | 
         (record.captured_at, record.fields["trigger"], record.kind, record.fields["app_name"])
         for file in rendered.files
         for record in map(parse_record, file.lines)
+        if record.kind != SCREENSHOT_KIND
     ]
 
 

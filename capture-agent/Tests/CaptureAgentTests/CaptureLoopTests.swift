@@ -8,14 +8,19 @@ final class LoopFixture {
     let counts = CaptureCounts()
     var windowText = WindowTextSettings()
     var denylist = Denylist()
+    var screenshots = ScreenshotSettings(recognitionTimeout: 120)
+    var images: (any ImageStore)?
+    var recognizedText: @Sendable (URL) throws -> String = { _ in "" }
     var logged: [String] = []
     private lazy var writer = spool.writer()
+    lazy var screenshotGate = ScreenshotRefusingSpool(writer: writer, refusals: 0)
 
     var mac: ScriptedMac { focus.mac }
     var settings: AgentSettings {
         var settings = AgentSettings(folder: spool.directory.appendingPathComponent("folder"), spoolDirectory: spool.directory)
         settings.windowText = windowText
         settings.denylist = denylist
+        settings.screenshots = screenshots
         return settings
     }
     var pause: PauseSwitch { settings.pause }
@@ -23,16 +28,29 @@ final class LoopFixture {
     lazy var loop: CaptureLoop<ScriptedMac> = makeLoop()
 
     func makeLoop() -> CaptureLoop<ScriptedMac> {
-        CaptureLoop(settings: settings, mac: mac, spool: writer, counts: counts, log: { self.logged.append($0) })
+        CaptureLoop(
+            settings: settings,
+            mac: mac,
+            spool: screenshotGate,
+            images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
+            recognize: recognizedText,
+            counts: counts,
+            log: { self.logged.append($0) }
+        )
     }
 
     func restart() {
         loop = makeLoop()
     }
 
-    func run(for seconds: TimeInterval) {
+    func run(for seconds: TimeInterval, waitingForScreenshots: Bool = true) {
         let end = mac.clock + seconds
         loop.run { mac.clock < end }
+        if waitingForScreenshots { waitForScreenshots() }
+    }
+
+    func waitForScreenshots() {
+        loop.waitForScreenshots()
     }
 
     func records() throws -> [[String: Any]] {
@@ -45,18 +63,26 @@ final class LoopFixture {
     }
 
     func triggers() throws -> [String] {
-        try records().map { $0["trigger"] as! String }
+        try withoutScreenshots().map { $0["trigger"] as! String }
     }
 
     func kinds() throws -> [String] {
-        try records().map { $0["kind"] as! String }
+        try withoutScreenshots().map { $0["kind"] as! String }
+    }
+
+    func withoutScreenshots() throws -> [[String: Any]] {
+        try records().filter { $0["kind"] as? String != ScreenshotRecord.kind }
+    }
+
+    func screenshotRecords() throws -> [[String: Any]] {
+        try records().filter { $0["kind"] as? String == ScreenshotRecord.kind }
     }
 }
 
 @Test func writesAHeartbeatCaptureOfTheFocusedWindow() throws {
     let fixture = LoopFixture()
     fixture.run(for: 2)
-    let records = try fixture.records()
+    let records = try fixture.withoutScreenshots()
     #expect(records.count == 1)
     #expect(records[0]["kind"] as? String == "capture")
     #expect(records[0]["trigger"] as? String == "heartbeat")
@@ -75,7 +101,7 @@ final class LoopFixture {
     fixture.run(for: 5)
     fixture.focus.tab.attributes["AXTitle"] = "Pull requests"
     fixture.run(for: 5)
-    let records = try fixture.records()
+    let records = try fixture.withoutScreenshots()
     #expect(try fixture.triggers() == ["heartbeat", "app", "title"])
     #expect(records[1]["app_name"] as? String == "Google Chrome")
     #expect(records[2]["window_title"] as? String == "Pull requests")
@@ -148,7 +174,7 @@ final class LoopFixture {
     fixture.run(for: 3)
     fixture.focus.vault.attributes["AXTitle"] = "Another item"
     fixture.run(for: 60)
-    let records = try fixture.records()
+    let records = try fixture.withoutScreenshots()
     #expect(try fixture.kinds() == ["capture", "excluded", "excluded", "excluded"])
     #expect(try fixture.triggers() == ["heartbeat", "app", "heartbeat", "heartbeat"])
     for excluded in records.dropFirst() {
@@ -186,7 +212,7 @@ final class LoopFixture {
     #expect(fixture.mac.calls.count == callsWhilePaused)
     #expect(try fixture.kinds() == ["capture", "paused"])
     #expect(try fixture.resumeAndRun(for: 2) == ["capture", "paused", "resumed", "capture"])
-    #expect(try fixture.records().last?["trigger"] as? String == "app")
+    #expect(try fixture.withoutScreenshots().last?["trigger"] as? String == "app")
     #expect(fixture.logged == ["silent: paused", "capturing again"])
 }
 

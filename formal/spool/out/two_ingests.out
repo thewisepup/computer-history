@@ -1,16 +1,20 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 117 and seed 686895926239856760 with 18 workers on 18 cores with 8192MB heap and 64MB offheap memory [pid: 31815] (Mac OS X 26.6.2 aarch64, Eclipse Adoptium 21.0.13.1 x86_64, MSBDiskFPSet, DiskStateQueue).
-Parsing file /Users/brandon/workspace/computer-history/formal/spool/SpoolHandoff.tla
+Running breadth-first search Model-Checking with fp 115 and seed 4304637122043199412 with 18 workers on 18 cores with 8192MB heap and 64MB offheap memory [pid: 12842] (Mac OS X 26.6.2 aarch64, Eclipse Adoptium 21.0.13.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/brandon/.t3/worktrees/computer-history/t3-a1846c4a-eee61e7c488c8a5a/formal/spool/SpoolHandoff.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/Naturals.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/FiniteSets.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/Sequences.tla
+Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/TLC.tla
 Semantic processing of module Naturals
 Semantic processing of module Sequences
 Semantic processing of module FiniteSets
+Semantic processing of module TLC
 Semantic processing of module SpoolHandoff
-Starting... (2026-11-19 14:02:04)
+Starting... (2026-11-19 17:23:01)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-19 14:02:04.
+Finished computing initial states: 1 distinct state generated at 2026-11-19 17:23:01.
+Progress(18) at 2026-11-19 17:23:04: 6,420,207 states generated (6,420,207 s/min), 1,601,121 distinct states found (1,601,121 ds/min), 671,011 states left on queue.
+Progress(26) at 2026-11-19 17:24:04: 156,837,016 states generated (150,416,809 s/min), 33,048,172 distinct states found (31,447,051 ds/min), 8,149,683 states left on queue.
 Error: Invariant NoLoss is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -23,371 +27,699 @@ State 1: <Initial predicate>
 /\ clock = 1
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
 /\ agentUp = FALSE
 /\ used = {}
 /\ openPart = {}
 /\ agentCrashes = 0
 /\ acked = {}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
 /\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 0, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 2: <AgentStarts line 95, col 5 to line 98, col 102 of module SpoolHandoff>
+State 2: <ClockTicks line 164, col 5 to line 167, col 47 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
 /\ unwritten = {r1, r2}
 /\ readRecs = (i1 :> {} @@ i2 :> {})
 /\ content = <<{}, {}, {}, {}, {}, {}, {}>>
 /\ aside = {}
 /\ present = {}
-/\ clock = 1
+/\ clock = 2
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {}
+/\ openPart = {}
+/\ agentCrashes = 0
+/\ acked = {}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
+/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 0, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
+
+State 3: <AgentStarts line 112, col 5 to line 116, col 35 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r1, r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "idle")
+/\ db = {}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
 /\ agentUp = TRUE
 /\ used = {}
 /\ openPart = {}
 /\ agentCrashes = 0
 /\ acked = {}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
 /\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 0, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 3: <AgentAppends line 104, col 5 to line 109, col 97 of module SpoolHandoff>
+State 4: <AgentAppends line 122, col 5 to line 127, col 97 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
+/\ unwritten = {r2}
 /\ readRecs = (i1 :> {} @@ i2 :> {})
 /\ content = <<{}, {}, {}, {}, {}, {}, {}>>
 /\ aside = {}
 /\ present = {}
-/\ clock = 1
-/\ pc = (i1 :> "idle" @@ i2 :> "idle")
-/\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = TRUE
-/\ used = {}
-/\ openPart = {r2}
-/\ agentCrashes = 0
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 4: <AgentFinishes line 117, col 5 to line 128, col 90 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {1}
-/\ clock = 1
-/\ pc = (i1 :> "idle" @@ i2 :> "idle")
-/\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
-/\ lastFinished = 1
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = TRUE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 0
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 5: <AgentCrashes line 135, col 5 to line 141, col 81 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {1}
 /\ clock = 2
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = TRUE
+/\ used = {}
+/\ openPart = {r1}
+/\ agentCrashes = 0
+/\ acked = {r1}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
 /\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 0, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 6: <ClockStepsBackward line 150, col 5 to line 154, col 47 of module SpoolHandoff>
+State 5: <AgentFinishes line 135, col 5 to line 148, col 23 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
+/\ unwritten = {r2}
 /\ readRecs = (i1 :> {} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
 /\ aside = {}
-/\ present = {1}
-/\ clock = 1
+/\ present = {2}
+/\ clock = 2
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
-/\ lastFinished = 0
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 2
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = TRUE
+/\ used = {2}
 /\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
+/\ agentCrashes = 0
+/\ acked = {r1}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
 /\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 7: <IngestLists line 162, col 5 to line 167, col 38 of module SpoolHandoff>
+State 6: <AgentCrashes line 155, col 5 to line 161, col 81 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
+/\ unwritten = {r2}
 /\ readRecs = (i1 :> {} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
 /\ aside = {}
-/\ present = {1}
-/\ clock = 1
+/\ present = {2}
+/\ clock = 3
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
 /\ agentUp = FALSE
-/\ used = {1}
+/\ used = {2}
 /\ openPart = {}
 /\ agentCrashes = 1
-/\ acked = {r2}
+/\ acked = {r1}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
 /\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 8: <IngestReads line 172, col 5 to line 180, col 69 of module SpoolHandoff>
+State 7: <ClockStepsBackward line 170, col 5 to line 174, col 47 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
 /\ aside = {}
-/\ present = {1}
-/\ clock = 1
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "idle")
+/\ db = {}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
+/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
+
+State 8: <IngestLists line 183, col 5 to line 189, col 52 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "idle")
+/\ db = {}
+/\ listed = ( i1 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 0 @@ i2 :> 0)
+/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
+
+State 9: <IngestReads line 195, col 5 to line 207, col 77 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {r1} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
 /\ pc = (i1 :> "read" @@ i2 :> "idle")
 /\ db = {}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
+/\ listed = ( i1 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
 /\ agentUp = FALSE
-/\ used = {1}
+/\ used = {2}
 /\ openPart = {}
 /\ agentCrashes = 1
-/\ acked = {r2}
+/\ acked = {r1}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 9: <IngestCommits line 185, col 5 to line 189, col 34 of module SpoolHandoff>
+State 10: <IngestCommits line 212, col 5 to line 216, col 58 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {r1} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
 /\ aside = {}
-/\ present = {1}
-/\ clock = 1
+/\ present = {2}
+/\ clock = 2
 /\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
 /\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
 /\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {})
 /\ agentUp = FALSE
-/\ used = {1}
+/\ used = {2}
 /\ openPart = {}
 /\ agentCrashes = 1
-/\ acked = {r2}
+/\ acked = {r1}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
 
-State 10: <IngestLists line 162, col 5 to line 167, col 38 of module SpoolHandoff>
+State 11: <IngestFinishes line 224, col 5 to line 251, col 38 of module SpoolHandoff>
 /\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {r1} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
 /\ aside = {}
-/\ present = {1}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<1>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 11: <IngestReads line 172, col 5 to line 180, col 69 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {1}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "read")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<1>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 12: <IngestCommits line 185, col 5 to line 189, col 34 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {1}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "committed")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<1>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 13: <IngestFinishes line 195, col 5 to line 210, col 93 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = FALSE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 14: <AgentStarts line 95, col 5 to line 98, col 102 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {r1}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = TRUE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 15: <AgentAppends line 104, col 5 to line 109, col 97 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r2}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
-/\ lastFinished = 0
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {}
-/\ agentUp = TRUE
-/\ used = {1}
-/\ openPart = {r1}
-/\ agentCrashes = 1
-/\ acked = {r1, r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 16: <AgentFinishes line 117, col 5 to line 128, col 90 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r1}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {1}
-/\ clock = 1
-/\ pc = (i1 :> "committed" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<1>> @@ i2 :> <<>>)
-/\ lastFinished = 1
-/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {1}
-/\ agentUp = TRUE
-/\ used = {1}
-/\ openPart = {}
-/\ agentCrashes = 1
-/\ acked = {r1, r2}
-/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
-
-State 17: <IngestFinishes line 195, col 5 to line 210, col 93 of module SpoolHandoff>
-/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
-/\ unwritten = {}
-/\ readRecs = (i1 :> {r2} @@ i2 :> {r2})
-/\ content = <<{r1}, {}, {}, {}, {}, {}, {}>>
-/\ aside = {}
-/\ present = {}
-/\ clock = 1
+/\ present = {2}
+/\ clock = 2
 /\ pc = (i1 :> "idle" @@ i2 :> "idle")
-/\ db = {r2}
-/\ listed = (i1 :> <<>> @@ i2 :> <<>>)
-/\ lastFinished = 1
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
 /\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
-/\ unusable = {1}
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
+
+State 12: <IngestLists line 183, col 5 to line 189, col 52 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {r1} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "ax-text" @@ i2 :> "ax-text")
+
+State 13: <IngestReads line 195, col 5 to line 207, col 77 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "read" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 14: <IngestCommits line 212, col 5 to line 216, col 58 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 15: <IngestLists line 183, col 5 to line 189, col 52 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 0)
+/\ readPath = (i1 :> 2 @@ i2 :> 1)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 16: <IngestReads line 195, col 5 to line 207, col 77 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {r1})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 17: <IngestCommits line 212, col 5 to line 216, col 58 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {r1})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "committed")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<2>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 18: <IngestFinishes line 224, col 5 to line 251, col 38 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {r1})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 19: <IngestLists line 183, col 5 to line 189, col 52 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {r1})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "ax-text")
+
+State 20: <IngestReads line 195, col 5 to line 207, col 77 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "committed" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {<<2, 1, "ax-text">>} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+State 21: <IngestFinishes line 224, col 5 to line 251, col 38 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = FALSE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+State 22: <AgentStarts line 112, col 5 to line 116, col 35 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {r2}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {<<2, 1, "ax-text">>})
 /\ agentUp = TRUE
-/\ used = {1}
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+State 23: <AgentAppends line 122, col 5 to line 127, col 97 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r1}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 0
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {}
+/\ stored = (i1 :> {} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = TRUE
+/\ used = {2}
+/\ openPart = {r2}
+/\ agentCrashes = 1
+/\ acked = {r1, r2}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 1, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+State 24: <AgentFinishes line 135, col 5 to line 148, col 23 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r2}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "read")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 2
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {2}
+/\ stored = (i1 :> {} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = TRUE
+/\ used = {2}
 /\ openPart = {}
 /\ agentCrashes = 1
 /\ acked = {r1, r2}
 /\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
-/\ readPath = (i1 :> 1 @@ i2 :> 1)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 2, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
 
-1768746 states generated, 449703 distinct states found, 127777 states left on queue.
-The depth of the complete state graph search is 18.
-The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 9 and the 95th percentile is 3).
-Finished in 00s at (2026-11-19 14:02:05)
+State 25: <IngestCommits line 212, col 5 to line 216, col 58 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r2}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {2}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "committed")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<2>>) )
+/\ lastFinished = 2
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {2}
+/\ stored = (i1 :> {} @@ i2 :> {<<2, 1, "ax-text">>})
+/\ agentUp = TRUE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1, r2}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 2, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+State 26: <IngestFinishes line 224, col 5 to line 251, col 38 of module SpoolHandoff>
+/\ ingestCrashes = (i1 :> 0 @@ i2 :> 0)
+/\ unwritten = {}
+/\ readRecs = (i1 :> {} @@ i2 :> {})
+/\ content = <<{}, {r2}, {}, {}, {}, {}, {}>>
+/\ aside = {}
+/\ present = {}
+/\ clock = 2
+/\ pc = (i1 :> "idle" @@ i2 :> "idle")
+/\ db = {r1}
+/\ listed = ( i1 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) @@
+  i2 :> ("ax-text" :> <<>> @@ "screenshot" :> <<>>) )
+/\ lastFinished = 2
+/\ readGone = (i1 :> FALSE @@ i2 :> FALSE)
+/\ unusable = {2}
+/\ stored = (i1 :> {} @@ i2 :> {})
+/\ agentUp = TRUE
+/\ used = {2}
+/\ openPart = {}
+/\ agentCrashes = 1
+/\ acked = {r1, r2}
+/\ readUnusable = (i1 :> FALSE @@ i2 :> FALSE)
+/\ readGen = (i1 :> 1 @@ i2 :> 1)
+/\ readPath = (i1 :> 2 @@ i2 :> 2)
+/\ gen = <<0, 2, 0, 0, 0, 0, 0>>
+/\ readStream = (i1 :> "screenshot" @@ i2 :> "screenshot")
+
+189849409 states generated, 39668005 distinct states found, 9393836 states left on queue.
+The depth of the complete state graph search is 27.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 10 and the 95th percentile is 3).
+Finished in 01min 16s at (2026-11-19 17:24:17)

@@ -10,9 +10,9 @@ from zoneinfo import ZoneInfo
 
 from computer_history.sources import (
     AFK_SOURCE,
-    AX_TEXT_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
+    WINDOW_TEXT_SOURCE,
     capture_coverage,
     extract_domain,
     stored_afk_spans,
@@ -100,4 +100,4 @@ def stored_gaps(dataset: Dataset) -> tuple[dict[str, tuple[Gap, ...]], list, lis
         paused_at_start=False,
         min_gap_seconds=1,
     )
-    return {**gaps, AX_TEXT_SOURCE: coverage.unobserved}, records, afk
+    return {**gaps, WINDOW_TEXT_SOURCE: coverage.unobserved}, records, afk

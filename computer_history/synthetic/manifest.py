@@ -16,6 +16,11 @@ from computer_history.synthetic.captures import Capture, agent_captures
 from computer_history.synthetic.gaps import ExplainedGap, explained, unobserved
 from computer_history.synthetic.generate import DatasetInputs
 from computer_history.synthetic.renderer import RenderedSource
+from computer_history.synthetic.screenshots import (
+    ScreenshotCounts,
+    agent_screenshots,
+    screenshot_counts,
+)
 from computer_history.synthetic.timeline import (
     PRECISION,
     Timeline,
@@ -24,7 +29,7 @@ from computer_history.synthetic.timeline import (
 )
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 4
+GENERATOR_VERSION = 5
 
 Piece = tuple[datetime, datetime, str]
 
@@ -64,6 +69,7 @@ class Manifest:
     total: Totals
     observations: Mapping[str, int]
     captures: CaptureCounts
+    screenshots: ScreenshotCounts
     unobserved: Mapping[str, tuple[Gap, ...]]
     explained: tuple[ExplainedGap, ...]
     content_digest: str
@@ -107,6 +113,7 @@ def true_answers(
         total=_totals(*total),
         observations=dict(sorted(counts.items())),
         captures=_captures(records),
+        screenshots=screenshot_counts(agent_screenshots(records)),
         unobserved=unobserved(timeline, afk, records),
         explained=explained(timeline),
         content_digest=content_digest,

@@ -3,8 +3,8 @@
     activitywatch/   an adapter: names its streams, pulls settled raw observations,
           |          says where each stream's progress now stands, and supplies
           |          a projector (stored payload -> signal) for each stream
-    ax_text/         the same for the capture spool: one finished file per pull,
-          |          removed after its commit
+    capture_spool/   the same for the capture spool's ax-text and screenshot streams:
+          |          one finished file per pull, removed once both streams committed it
       contract.py    what an adapter implements: Source (projectors, streams + pull
           |          after a position), HistorySource (adds history facts + range pulls)
           |
@@ -27,8 +27,8 @@
 from computer_history.sources import (
     activitywatch,
     agent_health,
-    ax_text,
     backfill,
+    capture_spool,
     commit,
     contract,
     projection,
@@ -36,8 +36,8 @@ from computer_history.sources import (
 )
 from computer_history.sources.activitywatch import *  # noqa: F403
 from computer_history.sources.agent_health import *  # noqa: F403
-from computer_history.sources.ax_text import *  # noqa: F403
 from computer_history.sources.backfill import *  # noqa: F403
+from computer_history.sources.capture_spool import *  # noqa: F403
 from computer_history.sources.commit import *  # noqa: F403
 from computer_history.sources.contract import *  # noqa: F403
 from computer_history.sources.projection import *  # noqa: F403
@@ -50,6 +50,6 @@ __all__ = [
     *runner.__all__,
     *backfill.__all__,
     *activitywatch.__all__,
-    *ax_text.__all__,
+    *capture_spool.__all__,
     *agent_health.__all__,
 ]

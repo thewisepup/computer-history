@@ -15,8 +15,8 @@ import pytest
 from aw_http import aw_server, served_over_http
 
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     DEFAULT_AW_URL,
+    WINDOW_TEXT_SOURCE,
     AWClient,
     AWError,
 )
@@ -25,6 +25,8 @@ from computer_history.synthetic import SCENARIOS, Dataset, DatasetInputs, build_
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.aw_api import ServedAW
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
+
+pytestmark = pytest.mark.dataset
 
 REPO = Path(__file__).resolve().parent.parent
 CLI = Path(sys.executable).with_name("computer-history")
@@ -51,7 +53,7 @@ def test_the_real_cli_over_http_stores_what_the_in_process_build_stores(
     in_process, cli = connect(dataset.db_path), connect(db_path)
     try:
         assert content_digest(cli, progress=False) == content_digest(in_process, progress=False)
-        assert _progress(cli, AX_TEXT_SOURCE) == _progress(in_process, AX_TEXT_SOURCE)
+        assert _progress(cli, WINDOW_TEXT_SOURCE) == _progress(in_process, WINDOW_TEXT_SOURCE)
         for stream in ActivityWatchRenderer.streams:
             assert _progress(in_process, stream) == (utc_iso(dataset.now), dataset.now)
             position, settled = _progress(cli, stream)

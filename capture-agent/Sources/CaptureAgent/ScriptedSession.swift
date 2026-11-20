@@ -30,12 +30,20 @@ public func runScriptedSession(
         spool: spool,
         counts: counts,
         startCapturing: {},
+        stopCapturing: { _ in 0 },
         log: log
     )
     guard agent.start() == .started else {
         return CommandOutcome(exitCode: 1, message: "another agent is writing to \(spool.directory.path)")
     }
-    let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log)
+    let images = ScriptedImageStore(
+        images: JPEGImageStore(folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality),
+        mac: mac,
+        texts: player.recognizedTexts
+    )
+    let loop = CaptureLoop(
+        settings: settings, mac: mac, spool: spool, images: images, recognize: images.recognizedText(inImageAt:), counts: counts, log: log
+    )
     var nextFinish = AgentLifecycle.spoolFinishInterval
     var failure: (any Error)?
     loop.run {
@@ -50,6 +58,7 @@ public func runScriptedSession(
             return false
         }
     }
+    loop.waitForScreenshots()
     if let failure {
         return CommandOutcome(exitCode: 1, message: "the script failed at \(mac.clock)s: \(failure)")
     }

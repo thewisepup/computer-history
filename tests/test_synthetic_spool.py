@@ -8,24 +8,28 @@ import subprocess
 import sys
 from bisect import bisect_right
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 
 import pytest
 from store_answers import DATASET_FILES
 
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
-    RECORD_FIELDS,
+    SCREENSHOT_KIND,
+    SCREENSHOT_RECORD_FIELDS,
+    WINDOW_TEXT_RECORD_FIELDS,
+    WINDOW_TEXT_SOURCE,
     day_counts,
     parse_record,
+    screenshot_health,
     stored_records,
 )
-from computer_history.sources.ax_text.record import KINDS
-from computer_history.sources.ax_text.spool import FINISHED_NAME_FORMAT
+from computer_history.sources.capture_spool.record import WINDOW_TEXT_KINDS
+from computer_history.sources.capture_spool.spool import FINISHED_NAME_FORMAT
 from computer_history.store import connect, content_digest, payload_values, source_summary
 from computer_history.synthetic import (
     CaptureCounts,
@@ -50,6 +54,8 @@ from computer_history.synthetic.spool import (
     SpoolRenderer,
 )
 from computer_history.synthetic.timeline import PRECISION
+
+pytestmark = pytest.mark.dataset
 
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/computer-history/pulls"
@@ -84,6 +90,7 @@ SPOOL_HAND_WORKED_CAPTURES = CaptureCounts(
     triggers={"app": 1, "heartbeat": 9, "title": 1},
     apps={"Cursor": 5, "Google Chrome": 6},
 )
+SPOOL_HAND_WORKED_SCREENSHOTS = {"duplicate": 8, "kept": 3}
 SPOOL_HAND_WORKED_TIMES = [
     (at(9, 0, 1), "Cursor"),
     (at(9, 0, 31), "Cursor"),
@@ -98,11 +105,11 @@ SPOOL_HAND_WORKED_TIMES = [
     (at(9, 4, 31), "Google Chrome"),
 ]
 SPOOL_HAND_WORKED_FILES = {
-    "20260105T090100.000Z.jsonl": 2,
-    "20260105T090200.000Z.jsonl": 3,
-    "20260105T090300.000Z.jsonl": 2,
-    "20260105T090400.000Z.jsonl": 2,
-    "20260105T090500.000Z.jsonl": 2,
+    "20260105T090100.000Z.jsonl": 4,
+    "20260105T090200.000Z.jsonl": 6,
+    "20260105T090300.000Z.jsonl": 4,
+    "20260105T090400.000Z.jsonl": 4,
+    "20260105T090500.000Z.jsonl": 4,
 }
 
 
@@ -124,12 +131,13 @@ def test_a_hand_worked_capture_session_reports_the_records_worked_out_by_hand(
         records = stored_records(conn, SPOOL_HAND_WORKED.start, SPOOL_HAND_WORKED.end)
         values = payload_values(
             conn,
-            AX_TEXT_SOURCE,
+            WINDOW_TEXT_SOURCE,
             SPOOL_HAND_WORKED.start,
             SPOOL_HAND_WORKED.end,
             ("$.trigger", "$.full_text_bytes", "$.text"),
         )
         counts = {row.source: row.observation_count for row in source_summary(conn)}
+        shots = screenshot_health(conn, day_start=DAY, now=SPOOL_HAND_WORKED.end)
     finally:
         conn.close()
     files = sorted((dataset.db_path.parent / RENDERED_SPOOL_FOLDER).iterdir())
@@ -140,7 +148,11 @@ def test_a_hand_worked_capture_session_reports_the_records_worked_out_by_hand(
         "aw-web": 1,
         "aw-window": 3,
         "ax-text": 11,
+        "screenshot": 11,
     }
+    assert dataset.manifest.screenshots.statuses == SPOOL_HAND_WORKED_SCREENSHOTS
+    assert {k: v for k, v in shots.total.statuses.items() if v} == SPOOL_HAND_WORKED_SCREENSHOTS
+    assert shots.total.image_bytes == dataset.manifest.screenshots.image_bytes > 0
     assert counts == dataset.manifest.observations
     assert [(r.at, r.app) for r in records] == SPOOL_HAND_WORKED_TIMES
     assert Counter(row.values[0] for row in values) == SPOOL_HAND_WORKED_CAPTURES.triggers
@@ -171,6 +183,14 @@ def _spool_lines(folder: Path) -> list[tuple[Path, str]]:
     ]
 
 
+def _shape(fields: Mapping[str, Any]) -> tuple[str, str | None]:
+    return fields["kind"], fields.get("status")
+
+
+def _fields(kind: str) -> tuple[str, ...]:
+    return SCREENSHOT_RECORD_FIELDS if kind == SCREENSHOT_KIND else WINDOW_TEXT_RECORD_FIELDS
+
+
 def _encoded_like_the_agent(line: str) -> str:
     return json.dumps(json.loads(line), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
@@ -180,24 +200,29 @@ def test_every_rendered_line_parses_and_matches_the_fixture_format(
     tmp_path: Path, scenario: str
 ) -> None:
     dataset = build_dataset(replace(DEVELOPER_DAY, scenario=scenario), tmp_path / "day")
-    fixture = {parse_record(line).kind: json.loads(line) for line in _fixture_lines()}
+    fixture = {_shape(json.loads(line)): json.loads(line) for line in _fixture_lines()}
     lines = _spool_lines(dataset.db_path.parent / RENDERED_SPOOL_FOLDER)
 
     assert all(_encoded_like_the_agent(line) == line for line in _fixture_lines())
-    assert all(set(like) == set(RECORD_FIELDS) for like in fixture.values())
-    assert len(lines) == dataset.manifest.observations["ax-text"] > 0
+    assert all(set(like) == set(_fields(kind)) for (kind, _), like in fixture.items())
+    assert len(lines) == sum(dataset.manifest.observations[s] for s in SpoolRenderer.streams) > 0
     kinds: Counter[str] = Counter()
+    statuses: Counter[str] = Counter()
     previous = None
     for path, line in lines:
         record = parse_record(line)
         finished = datetime.strptime(path.stem, FINISHED_NAME_FORMAT).replace(tzinfo=UTC)
         assert AGENT_NAME.fullmatch(path.name), path.name
-        like = fixture[record.kind]
+        like = fixture[_shape(record.fields)]
         nulls = {key for key, value in record.fields.items() if value is None}
         assert set(record.fields) == set(like), line[:200]
         assert nulls - {"bundle_id"} == {k for k, v in like.items() if v is None} - {"bundle_id"}
         assert _encoded_like_the_agent(line) == line, line[:200]
         assert record.captured_at < finished, (path.name, line[:200])
+        if record.kind == SCREENSHOT_KIND:
+            assert record.captured_at == previous, line[:200]
+            statuses[record.fields["status"]] += 1
+            continue
         assert previous is None or record.captured_at > previous
         previous = record.captured_at
         kinds[record.kind] += 1
@@ -206,6 +231,7 @@ def test_every_rendered_line_parses_and_matches_the_fixture_format(
             assert record.fields["text_sha256"] == sha256(text).hexdigest()
             assert len(record.fields["text"].encode()) <= TEXT_CAP_BYTES
     assert kinds == dataset.manifest.captures.kinds
+    assert statuses == dataset.manifest.screenshots.statuses
 
 
 def _stretch_at(timeline: Timeline, moment: datetime) -> Stretch:
@@ -221,7 +247,9 @@ def test_stored_captures_equal_the_manifest_and_fall_in_their_apps_stretches(
     conn = connect(dataset.db_path)
     try:
         records = stored_records(conn, start, end)
-        values = payload_values(conn, AX_TEXT_SOURCE, start, end, ("$.trigger", "$.window_title"))
+        values = payload_values(
+            conn, WINDOW_TEXT_SOURCE, start, end, ("$.trigger", "$.window_title")
+        )
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
@@ -278,6 +306,7 @@ def _render(*stretches: Stretch) -> list[tuple[datetime, str, str, str]]:
         )
         for file in rendered.files
         for record in map(parse_record, file.lines)
+        if record.kind != SCREENSHOT_KIND
     ]
 
 
@@ -350,9 +379,9 @@ def test_nothing_is_captured_asleep_and_waking_captures_a_second_later() -> None
 
 def test_a_minute_that_ends_asleep_is_finished_on_waking() -> None:
     assert _files(*SLEEPY) == {
-        "20260105T100520.000Z.jsonl": 2,
-        "20260105T100600.000Z.jsonl": 2,
-        "20260105T100800.000Z.jsonl": 2,
+        "20260105T100520.000Z.jsonl": 4,
+        "20260105T100600.000Z.jsonl": 4,
+        "20260105T100800.000Z.jsonl": 4,
     }
 
 
@@ -398,7 +427,7 @@ def test_a_developer_day_stores_hostile_titles_and_text_as_captured(tmp_path: Pa
     conn = connect(dataset.db_path)
     try:
         rows = payload_values(
-            conn, AX_TEXT_SOURCE, start, end, ("$.window_title", "$.text", "$.text_cut_off")
+            conn, WINDOW_TEXT_SOURCE, start, end, ("$.window_title", "$.text", "$.text_cut_off")
         )
     finally:
         conn.close()
@@ -414,6 +443,7 @@ def test_a_developer_day_stores_hostile_titles_and_text_as_captured(tmp_path: Pa
 SPOOL_IN_A_NEW_PROCESS = """
 import sys
 from pathlib import Path
+from typing import Any
 from computer_history.synthetic import DatasetInputs, build_dataset
 inputs = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 dataset = build_dataset(inputs, Path(sys.argv[1]))
@@ -541,6 +571,7 @@ def _records(lines: Iterable[str]) -> list[tuple]:
             *(r.fields[k] for k in ("trigger", "app_name", "bundle_id", "window_title")),
         )
         for r in map(parse_record, lines)
+        if r.kind != SCREENSHOT_KIND
     ]
 
 
@@ -550,7 +581,7 @@ def _records(lines: Iterable[str]) -> list[tuple]:
 )
 @pytest.mark.parametrize(
     ("scenario", "kinds"),
-    [("typical", {"capture"}), ("messy", set(KINDS))],
+    [("typical", {"capture"}), ("messy", set(WINDOW_TEXT_KINDS))],
 )
 def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(
     tmp_path: Path, scenario: str, kinds: set[str]
@@ -561,6 +592,8 @@ def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(
     env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
     env["COMPUTER_HISTORY_DB"] = str(tmp_path / "agent" / "history.db")
     (tmp_path / "agent").mkdir()
+    config = {"screenshots": False}
+    (tmp_path / "agent" / "agent-config.json").write_text(json.dumps(config), encoding="utf-8")
     run = subprocess.run(
         [os.environ[AGENT_ENV_VAR], "scripted-session", str(script)],
         env=env,

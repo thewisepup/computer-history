@@ -25,8 +25,11 @@ summaries.
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
-- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
-  `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
+- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest).
+  `formal/check.sh` is run by hand only, and agents never run it on their own.
+  When a diff touches the handoff files listed in
+  `.claude/skills/verify-spool-handoff`, say so in the PR under "Not proven
+  here" and leave the run to Brandon, who runs it by hand or asks for it.
 - `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
   matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
   says when to run it and which tests to keep.
@@ -44,10 +47,14 @@ git config core.hooksPath .githooks
 ```
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
-computer_history tests` must pass; the pre-commit hook runs both after a
-gitleaks scan of the staged changes. CI runs them, the POC suite
-(`python -m unittest`) and gitleaks on every pull request and push to `main`,
-and `main` only merges pull requests whose checks pass. In a
+computer_history tests` must pass. The pre-commit hook runs a gitleaks scan of
+the staged changes, ruff, and pytest without the `dataset` tests (those that
+build synthetic datasets or run `dev perf` and `dev bench`), within the
+budget `docs/agents/checks.md` sets. CI runs the full pytest, the POC suite (`python -m unittest`) and
+gitleaks on every pull request and push to `main`, and `main` only merges pull
+requests whose required checks pass (`docs/agents/checks.md` lists them). `docs/agents/checks.md` says where a new check
+belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
+which CI enforces. In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
 own `.venv` on first use (about a minute), since the main checkout's venv
 imports the main checkout's source.
@@ -73,11 +80,10 @@ checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
 on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
 every pull.
 
-Swift never runs in CI. Two local commands cover the capture agent. The
-pre-commit hook runs the Swift tests when a commit touches the agent, the spool
-contract or the end-to-end test, and the end-to-end check also when it touches
-`computer_history/`, `pyproject.toml` or `tests/test_synthetic_spool.py`; without `swift` it skips both and says
-so (see the agent's README):
+Two commands cover the capture agent, and neither runs in the pre-commit hook.
+CI runs both on macOS on every pull request: `macos-capture-agent-tests` and
+`macos-capture-agent-e2e`. Run them yourself after changing
+the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests

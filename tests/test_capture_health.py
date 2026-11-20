@@ -18,13 +18,13 @@ from computer_history.sources import (
     AFK_SOURCE,
     AGENT_ALIVE_WITHIN,
     APP_TOLERANCE,
-    AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
     HEARTBEAT_SECONDS,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
     WINDOW_SOURCE,
+    WINDOW_TEXT_SOURCE,
     StoredRecord,
     app_agreement,
     capture_coverage,
@@ -345,10 +345,12 @@ def store_records(conn: sqlite3.Connection, lines: list[str]) -> None:
     for line in lines:
         data = json.loads(line)
         observations.append(
-            Observation(AX_TEXT_SOURCE, data["id"], data["captured_at"], data["captured_at"], line)
+            Observation(
+                WINDOW_TEXT_SOURCE, data["id"], data["captured_at"], data["captured_at"], line
+            )
         )
     latest = max(json.loads(line)["captured_at"] for line in lines)
-    progress = ProgressUpdate(AX_TEXT_SOURCE, latest, settled_until=latest)
+    progress = ProgressUpdate(WINDOW_TEXT_SOURCE, latest, settled_until=latest)
     insert_observations(conn, observations, project=AW, progress=progress)
 
 

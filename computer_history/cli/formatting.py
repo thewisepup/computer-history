@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 
@@ -36,6 +36,11 @@ def ago(value: datetime | None, now: datetime) -> str:
     return f"{when(value)} ({duration(seconds)} ago)"
 
 
+def local_midnight(now: datetime) -> datetime:
+    """The start of now's local day, with the offset in force at that midnight."""
+    return datetime.combine(now.astimezone().date(), time()).astimezone()
+
+
 def when(value: datetime | None) -> str:
     """Local wall-clock time, to the minute. A dash when missing."""
     return "-" if value is None else value.astimezone().strftime("%Y-%m-%d %H:%M")
@@ -43,7 +48,12 @@ def when(value: datetime | None) -> str:
 
 def app_name(value: str | None) -> str:
     """An app name with unprintable characters dropped, or a placeholder when missing."""
-    return "(no name)" if value is None else "".join(c for c in value if c.isprintable())
+    return "(no name)" if value is None else printable(value)
+
+
+def printable(value: str) -> str:
+    """The text with unprintable characters, such as terminal escapes, dropped."""
+    return "".join(c for c in value if c.isprintable())
 
 
 def db_size(path: Path) -> str:

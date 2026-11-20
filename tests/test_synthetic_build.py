@@ -36,6 +36,8 @@ from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.renderer import Feed
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
+pytestmark = pytest.mark.dataset
+
 REPO = Path(__file__).resolve().parent.parent
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
@@ -157,7 +159,7 @@ HAND_WORKED_TOTALS = Totals(
     afk_seconds=179.999,
 )
 
-HAND_WORKED_COUNTS = {"aw-afk": 3, "aw-web": 1, "aw-window": 2, "ax-text": 60}
+HAND_WORKED_COUNTS = {"aw-afk": 3, "aw-web": 1, "aw-window": 2, "ax-text": 60, "screenshot": 60}
 
 
 def test_a_hand_worked_morning_reports_the_numbers_worked_out_by_hand(tmp_path: Path) -> None:

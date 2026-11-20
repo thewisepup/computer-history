@@ -488,12 +488,12 @@ def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_pat
     now = datetime.now(UTC)
     obs = [
         Observation(
-            "screenshot", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), ""
+            "transcript", f"c/{i}", now + timedelta(minutes=a), now + timedelta(minutes=b), ""
         )
         for i, (a, b) in enumerate([(-60, -50), (-20, -10)])
     ]
     opaque = ProgressUpdate(
-        "screenshot", "shots/2026-11-18T10:0042", settled_until=now - timedelta(minutes=8)
+        "transcript", "shots/2026-11-18T10:0042", settled_until=now - timedelta(minutes=8)
     )
     conn = connect(db_path)
     insert_observations(conn, obs, progress=opaque, project=no_signal)
@@ -502,9 +502,9 @@ def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_pat
     use_aw(FakeAW({}))
     code, out, _ = run(capsys, "--db-path", str(db_path), "status")
     assert code == 0
-    assert re.search(r"screenshot\s+2 observations .* until .* \(8m( \d+s)? behind now\)", out)
+    assert re.search(r"transcript\s+2 observations .* until .* \(8m( \d+s)? behind now\)", out)
     assert re.search(r"ocr\s+0 observations .* until - \(progress moved \d+s ago\)", out)
-    assert re.findall(r"warning: no screenshot coverage from .+ to .+ \((.+)\)", out) == ["30m"]
+    assert re.findall(r"warning: no transcript coverage from .+ to .+ \((.+)\)", out) == ["30m"]
     assert "ocr: no observations yet" in out
 
 

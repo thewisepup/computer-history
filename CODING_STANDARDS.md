@@ -76,6 +76,13 @@ Review findings ratchet into rules:
 - **A7** A path's resolution rule (flag, then `$ENV`, then default) lives in one
   function beside what owns the path (`resolve_db_path`, `cache_root`); other
   code calls it and never reads that variable itself.
+- **A8** A module takes only the settings it reads: pass it the fields it
+  uses, not a whole settings struct it reads part of.
+- **A9** In-memory state keeps typed values; text from the spool or the wire
+  is parsed once, where it comes in.
+- **A10** A factory parameter that every production caller fills with a
+  placeholder is removed, and the value is set once, where it becomes known.
+- **A11** A Bool flag that picks between two counters becomes two methods.
 
 ## Hygiene
 
@@ -105,3 +112,12 @@ Review findings ratchet into rules:
   exemption in that test giving the reason.
 - **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
   in the same commit.
+- **H10** When a function already does something, call it rather than writing
+  it again, and name a test after the code path it actually runs.
+- **H11** Identifiers and docstrings use the GLOSSARY term, never a word in its
+  _Avoid_ list; values already persisted are exempt.
+- **H12** A change to a domain concept updates its glossary entry in the same
+  change.
+- **H13** **[checked]** in `tests/test_standards.py`: `docs/agents/checks.md`
+  names every CI and nightly job, and the pre-commit hook leaves out exactly the
+  markers the hook's budget in `tests/conftest.py` leaves out.

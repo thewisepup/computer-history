@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 struct ScriptError: Error, Equatable, CustomStringConvertible {
@@ -13,11 +14,14 @@ struct ScriptPlayer {
         let application: FocusedApplication
         let element: ScriptedElement
         let windows: [String: ScriptedElement]
+        let elements: [String: [String: ScriptedElement]]
     }
 
     let mac: ScriptedMac
     let pause: PauseSwitch
+    let recognizedTexts: [CGWindowID: String]
     private let apps: [String: App]
+    private let picture: (FocusedWindow, Int) -> WindowImage
     private var pending: [CaptureScript.Step]
     private(set) var ending: Ending?
 
@@ -25,6 +29,7 @@ struct ScriptPlayer {
         self.mac = mac
         self.pause = pause
         var apps: [String: App] = [:]
+        var recognizedTexts: [CGWindowID: String] = [:]
         for (index, id) in script.apps.keys.sorted().enumerated() {
             guard id.wholeMatch(of: /[A-Za-z0-9_-]+/) != nil else {
                 throw ScriptError(description: "app id \(id) may hold only letters, digits, - and _")
@@ -35,17 +40,24 @@ struct ScriptPlayer {
             )
             let element = mac.node(id, role: "AXApplication")
             var windows: [String: ScriptedElement] = [:]
+            var elements: [String: [String: ScriptedElement]] = [:]
             for (windowID, node) in spec.windows {
-                windows[windowID] = Self.build(node, name: "\(id)/\(windowID)", on: mac)
+                var ids: [String: ScriptedElement] = [:]
+                let window = try Self.build(node, name: "\(id)/\(windowID)", on: mac, ids: &ids)
+                windows[windowID] = window
+                elements[windowID] = ids
+                recognizedTexts[window.windowID] = node.recognizedText
             }
             if let focused = spec.focusedWindow {
                 guard let window = windows[focused] else { throw ScriptError(description: "app \(id) has no window \(focused)") }
                 element.focusedWindow = window
             }
             mac.apps[application.processIdentifier] = element
-            apps[id] = App(application: application, element: element, windows: windows)
+            apps[id] = App(application: application, element: element, windows: windows, elements: elements)
         }
         self.apps = apps
+        self.recognizedTexts = recognizedTexts
+        picture = mac.windowImage
         pending = script.steps
         guard zip(pending, pending.dropFirst()).allSatisfy({ $0.at <= $1.at }) else {
             throw ScriptError(description: "steps must be in time order")
@@ -78,6 +90,15 @@ struct ScriptPlayer {
             apps[ref.app]!.element.focusedWindow = apps[ref.app]!.windows[ref.window]!
         case .setTitle(let change):
             apps[change.app]!.windows[change.window]!.attributes["AXTitle"] = change.title
+        case .focusElement(let ref):
+            let app = apps[ref.app]!
+            app.element.focusedElement = ref.window.flatMap { window in ref.element.flatMap { app.elements[window]![$0] } }
+        case .windowImage(let answer):
+            mac.windowImage = switch answer {
+            case .picture: picture
+            case .noPermission: { _, _ in .noPermission }
+            case .failed: { _, _ in .failed }
+            }
         case .presence(let presence):
             mac.presence = presence
         case .pause:
@@ -101,14 +122,32 @@ struct ScriptPlayer {
             guard apps[change.app]?.windows[change.window] != nil else {
                 throw ScriptError(description: "no window \(change.app)/\(change.window)")
             }
-        case .presence, .pause, .resume, .end, .crash:
+        case .focusElement(let ref):
+            guard let app = apps[ref.app] else { throw ScriptError(description: "no app \(ref.app)") }
+            switch (ref.window, ref.element) {
+            case (nil, nil):
+                return
+            case (let window?, let element?):
+                guard let ids = app.elements[window] else { throw ScriptError(description: "no window \(ref.app)/\(window)") }
+                guard ids[element] != nil else { throw ScriptError(description: "no element \(element) in \(ref.app)/\(window)") }
+            default:
+                throw ScriptError(description: "focus_element needs both window and element, or neither")
+            }
+        case .windowImage, .presence, .pause, .resume, .end, .crash:
             return
         }
     }
 
-    private static func build(_ node: CaptureScript.Node, name: String, on mac: ScriptedMac) -> ScriptedElement {
-        let element = mac.node(name, role: node.role, node.attributes, children: node.children.map { build($0, name: name, on: mac) })
+    private static func build(
+        _ node: CaptureScript.Node, name: String, on mac: ScriptedMac, ids: inout [String: ScriptedElement]
+    ) throws -> ScriptedElement {
+        let children = try node.children.map { try build($0, name: name, on: mac, ids: &ids) }
+        let element = mac.node(name, role: node.role, node.attributes, children: children)
         element.hangs = Set(node.hangs)
+        if let id = node.id {
+            guard ids[id] == nil else { throw ScriptError(description: "\(name) has two elements with id \(id)") }
+            ids[id] = element
+        }
         return element
     }
 }

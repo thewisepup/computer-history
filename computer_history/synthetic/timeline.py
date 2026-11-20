@@ -10,7 +10,7 @@ from enum import Enum
 from itertools import groupby
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import AFK_SOURCE, AX_TEXT_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE, WINDOW_TEXT_SOURCE
 
 PRECISION = timedelta(milliseconds=1)
 
@@ -53,10 +53,10 @@ class FaultKind(Enum):
 
 AFFECTED_STREAMS: dict[FaultKind, tuple[str, ...]] = {
     FaultKind.AW_DOWN: (WINDOW_SOURCE, AFK_SOURCE, WEB_SOURCE),
-    FaultKind.AGENT_DOWN: (AX_TEXT_SOURCE,),
-    FaultKind.PERMISSION_LOST: (AX_TEXT_SOURCE,),
-    FaultKind.PAUSED: (AX_TEXT_SOURCE,),
-    FaultKind.EXCLUDED: (AX_TEXT_SOURCE,),
+    FaultKind.AGENT_DOWN: (WINDOW_TEXT_SOURCE,),
+    FaultKind.PERMISSION_LOST: (WINDOW_TEXT_SOURCE,),
+    FaultKind.PAUSED: (WINDOW_TEXT_SOURCE,),
+    FaultKind.EXCLUDED: (WINDOW_TEXT_SOURCE,),
 }
 
 
