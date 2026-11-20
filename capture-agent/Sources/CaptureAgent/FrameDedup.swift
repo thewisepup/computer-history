@@ -11,13 +11,11 @@ struct FrameDedup {
         let title: String?
     }
 
-    /// A kept screenshot as the memory holds it: its record id, image path, hash and recognized text.
-    struct KeptFrame: Equatable {
-        let recordID: UUID
+    /// A kept screenshot as the memory holds it: its image path, hash and recognized text once known.
+    struct KeptFrame {
         let imagePath: String
         let hash: FrameHash
-        let text: String
-        let fullTextBytes: Int
+        let text: KeptText
     }
 
     let threshold: Int
@@ -37,22 +35,13 @@ struct FrameDedup {
 
     /// Makes the frame the window's last kept one, forgetting the least recently seen window past the limit.
     mutating func remember(_ kept: KeptFrame, for window: Window) {
-        let replaced = seen.first { $0.window == window }?.kept
         seen.removeAll { $0.window == window }
-        seen.append(Entry(window: window, kept: kept, replaced: replaced))
+        seen.append(Entry(window: window, kept: kept))
         if seen.count > Self.windows { seen.removeFirst() }
-    }
-
-    /// Forgets a kept frame whose image is gone, giving its window back the kept frame it replaced.
-    mutating func forget(_ recordID: UUID) {
-        guard let index = seen.firstIndex(where: { $0.kept.recordID == recordID }) else { return }
-        let entry = seen.remove(at: index)
-        if let replaced = entry.replaced { seen.insert(Entry(window: entry.window, kept: replaced, replaced: nil), at: index) }
     }
 
     private struct Entry {
         let window: Window
         let kept: KeptFrame
-        let replaced: KeptFrame?
     }
 }

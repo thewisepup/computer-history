@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron and a picture of the focused window.
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, a picture of the focused window and the text in a saved picture.
 public protocol Mac: Sendable {
     associatedtype Element: AccessibilityElement
 
@@ -14,6 +14,7 @@ public protocol Mac: Sendable {
     func applicationElement(_ processIdentifier: pid_t) -> Element
     func hasElectronFramework(_ bundle: URL) -> Bool
     func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage
+    func recognizeText(inImageAt file: URL) throws -> String
 }
 
 /// The real Mac: system uptime and time, presence from macOS, and the live accessibility API.
@@ -44,4 +45,6 @@ public struct LiveMac: Mac, Sendable {
     public func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
         screenshots.run(timeout: 2) { captureFocusedWindow(window, longEdge: longEdge, answer: $0) }
     }
+
+    public func recognizeText(inImageAt file: URL) throws -> String { try CaptureAgent.recognizeText(inImageAt: file) }
 }

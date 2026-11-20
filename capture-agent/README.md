@@ -199,9 +199,10 @@ written; `excluded` records still are, since they touch no window.
 
 ## Screenshots
 
-Right after each `capture` record is written, the capture thread writes one
-`screenshot` record for it. `excluded`, `paused` and `resumed` records get
-none, and a capture record that could not be written gets none.
+Right after each `capture` record is written, the capture thread takes its
+screenshot and queues one `screenshot` record for it (see Text recognition).
+`excluded`, `paused` and `resumed` records get none, and a capture record that
+could not be written gets none.
 
 Before the picture it checks again that capture is not paused, the user is
 not idle, locked or asleep, and the same app and window title are still in
@@ -233,9 +234,9 @@ is outstanding at a time: while one has not answered, later captures get
 
 The image is encoded as JPEG at `screenshot_jpeg_quality` and saved as
 `screenshots/<local yyyy-MM-dd>/<record id>.jpg` in the folder. The folders
-are `0700`, set again on every save, and the images `0600`. An image whose
-record cannot be written to the spool is deleted; otherwise nothing is ever
-deleted, and an image whose record a crash cut off stays.
+are `0700`, set again on every save, and the images `0600`. Nothing is ever
+deleted: an image whose record the spool refuses, or whose record a crash or
+a stop cut off, stays.
 
 Each picture's perceptual hash is a 64-bit difference hash: each bit says
 whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
@@ -248,9 +249,36 @@ in memory only, so a restart starts over. A window whose title changes is a
 new window: its first picture is kept, and the old title is still remembered
 until it ages out. A `duplicate` record carries the kept record's image path and
 recognized text, its own picture's hash, and no image size. A kept image
-whose record the spool refuses is forgotten as well as deleted.
+whose record the spool refuses is still remembered, so its duplicates point
+at it.
 
-For now every `kept` record has empty recognized text.
+### Text recognition
+
+Screenshot records go through one first-in, first-out queue with no length
+limit, on a thread of its own, so the capture thread never waits for
+recognition. The image is saved before its record is queued; the queue holds
+the record and the image's path, never the picture. Every screenshot record
+goes through it, whatever its status, so a capture's screenshot record reaches
+the spool after its capture record, in capture order, with the capture's time,
+possibly after later `capture`, `paused` or `resumed` records.
+
+For a `kept` record the queue reads the text in the saved JPEG with Vision:
+accurate mode, English (`en-US`), language correction on, one line per
+recognized line in the order Vision returns them, no positions or confidence.
+The text is cut like window text, at `WindowTextSettings.textCapBytes` (50 KB),
+with `full_text_bytes`, `text_cut_off` and `text_sha256`. A `duplicate` record
+waits its turn behind its kept record and copies that record's finished text;
+no recognition runs for it. If Vision fails, the record is still `kept`, with
+empty text (`full_text_bytes` 0) and its image, its duplicates copy the empty
+text, and the minute log line counts the failure.
+
+On a stop (the login item's `SIGTERM`, a crash, a forced quit) the queued
+records that have not been written are lost and their images stay. A record is
+written as one line, and a torn last line is dropped on the next start (see
+Spool), so a stop cannot leave a broken record for the backend. `pause` stops
+new captures but not the queue: records of captures taken before the pause
+are still written, after the `paused` record. The scripted session waits for
+the queue to empty before it ends, with or without a crash.
 
 The agent does not ask for the Screen Recording grant itself, but its first
 ScreenCaptureKit call without the grant may make macOS show the Screen
@@ -266,10 +294,11 @@ that finds the spool held by another agent exits without capturing.
 
 Everything the capture loop asks of the Mac is one protocol, `Mac`: the
 clocks, presence, the Accessibility grant, the focused app and its
-accessibility tree with each window's frame, and a picture of the focused
-window. `LiveMac` answers from macOS; `ScriptedMac` answers from a
-script on a virtual clock, with scripted accessibility elements and a striped
-1600x1000 fixture image for every picture, so the real
+accessibility tree with each window's frame, a picture of the focused
+window and the text in a saved picture. `LiveMac` answers from macOS;
+`ScriptedMac` answers from a script on a virtual clock, with scripted
+accessibility elements, a striped 1600x1000 fixture image for every picture
+and empty recognized text unless a test scripts it per image file, so the real
 `CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
 `SpoolWriter` run unchanged on top of it. The unit tests use `ScriptedMac`
 too. `main.swift` is the only place that picks `LiveMac`.
@@ -330,8 +359,9 @@ found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
 excluded, 1 timed out, 0 cut off, slowest read 0.42s`, with `, 2 failed to
-write, 1 screenshot records failed to write (last: <error>)` appended when
-writes fail (each part only when its count is not zero). `silent: paused`, `silent:
+write, 1 screenshot records failed to write, 1 text recognitions failed (last:
+<error>)` appended when writes or recognitions fail (each part only when its
+count is not zero). `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
 changing and ending. The log never holds window titles or text. After a crash,
 start also logs `spool finished leftover file <name>`.

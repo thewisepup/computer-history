@@ -15,7 +15,7 @@ public struct ScreenshotSettings: Equatable, Sendable {
     }
 }
 
-/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record.
+/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, queued for its text.
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
@@ -24,48 +24,43 @@ struct CaptureScreenshot<M: Mac> {
     let idleThreshold: TimeInterval
     var dedup: FrameDedup
 
-    mutating func take(for capture: SpoolRecord, of application: FocusedApplication) -> ScreenshotRecord {
+    mutating func take(for capture: SpoolRecord, of application: FocusedApplication) -> QueuedScreenshot {
         guard !pause.isPaused, mac.samplePresence().silence(idleThreshold: idleThreshold).isEmpty,
               mac.focusedApplication()?.processIdentifier == application.processIdentifier
-        else { return .failed(of: capture) }
+        else { return .ready(.failed(of: capture)) }
         let app = mac.applicationElement(application.processIdentifier)
         switch focusedField(in: app) {
-        case .password: return .secureField(of: capture)
-        case .unknown: return .failed(of: capture)
+        case .password: return .ready(.secureField(of: capture))
+        case .unknown: return .ready(.failed(of: capture))
         case .other: break
         }
         guard case .value(let window) = app.element("AXFocusedWindow"), has(window, title: capture.windowTitle),
               case .value(let frame) = window.frame()
-        else { return .failed(of: capture) }
+        else { return .ready(.failed(of: capture)) }
         let focused = FocusedWindow(processIdentifier: application.processIdentifier, title: capture.windowTitle, frame: frame)
         switch mac.focusedWindowImage(focused, longEdge: longEdge) {
         case .noPermission:
-            return .noPermission(of: capture)
+            return .ready(.noPermission(of: capture))
         case .failed:
-            return .failed(of: capture)
+            return .ready(.failed(of: capture))
         case .image(let image, let windowID):
-            guard let hash = differenceHash(image) else { return .failed(of: capture) }
+            guard let hash = differenceHash(image) else { return .ready(.failed(of: capture)) }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(hash, in: window) {
-                return .duplicate(
-                    of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: kept.text,
-                    fullTextBytes: kept.fullTextBytes
+                let duplicate = ScreenshotRecord.duplicate(
+                    of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: "", fullTextBytes: 0
                 )
+                return .copy(duplicate, from: kept.text)
             }
             let id = UUID()
-            guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .failed(of: capture) }
-            dedup.remember(FrameDedup.KeptFrame(recordID: id, imagePath: saved.path, hash: hash, text: "", fullTextBytes: 0), for: window)
-            return .kept(
+            guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
+            let text = KeptText()
+            dedup.remember(FrameDedup.KeptFrame(imagePath: saved.path, hash: hash, text: text), for: window)
+            let kept = ScreenshotRecord.kept(
                 id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
             )
+            return .recognize(kept, image: saved.file, into: text)
         }
-    }
-
-    /// Deletes the image a kept record names and forgets it, for a record that never reached the spool.
-    mutating func discard(_ record: ScreenshotRecord) {
-        guard record.status == .kept, let path = record.imagePath else { return }
-        images.remove(path)
-        dedup.forget(record.id)
     }
 
     private func has(_ window: M.Element, title: String?) -> Bool {

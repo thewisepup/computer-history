@@ -9,6 +9,7 @@ public final class CaptureCounts: @unchecked Sendable {
         public var cutOff = 0
         public var failed = 0
         public var screenshotsFailed = 0
+        public var recognitionsFailed = 0
         public var slowestRead: TimeInterval = 0
         public var lastError: String?
 
@@ -17,6 +18,7 @@ public final class CaptureCounts: @unchecked Sendable {
                 + "slowest read \(String(format: "%.2f", slowestRead))s"
             let failures = (failed > 0 ? ["\(failed) failed to write"] : [])
                 + (screenshotsFailed > 0 ? ["\(screenshotsFailed) screenshot records failed to write"] : [])
+                + (recognitionsFailed > 0 ? ["\(recognitionsFailed) text recognitions failed"] : [])
             if !failures.isEmpty { line += ", " + failures.joined(separator: ", ") + " (last: \(lastError ?? "unknown"))" }
             return line
         }
@@ -49,6 +51,13 @@ public final class CaptureCounts: @unchecked Sendable {
 
     func recordExcluded() {
         lock.withLock { current.excluded += 1 }
+    }
+
+    func recordRecognitionFailed(_ error: any Error) {
+        lock.withLock {
+            current.recognitionsFailed += 1
+            current.lastError = String(describing: error)
+        }
     }
 
     func recordFailed(_ error: any Error, screenshot: Bool = false) {

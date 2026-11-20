@@ -60,8 +60,6 @@ struct RefusingImageStore: ImageStore {
     func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
         throw ImageStoreError(description: "disk full")
     }
-
-    func remove(_ path: String) {}
 }
 
 final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
@@ -215,12 +213,12 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
     #expect(fixture.mac.windowImageRequests.isEmpty)
 }
 
-@Test func aKeptImageWhoseRecordCannotBeWrittenIsRemovedAndCountedApart() throws {
+@Test func aKeptImageWhoseRecordCannotBeWrittenStaysAndIsCountedApart() throws {
     let fixture = LoopFixture()
     fixture.screenshotGate.refusals = .max
     fixture.run(for: 2)
     #expect(try fixture.records().map { $0["kind"] as? String } == ["capture"])
-    #expect(savedImages(in: fixture.settings.folder).isEmpty)
+    #expect(savedImages(in: fixture.settings.folder).count == 1)
     let summary = fixture.counts.take()
     #expect(summary.written == 1)
     #expect(summary.failed == 0)
