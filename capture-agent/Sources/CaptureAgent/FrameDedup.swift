@@ -1,19 +1,14 @@
+import CoreGraphics
 import Foundation
 
 /// Remembers the last kept frame of each of the most recently seen windows.
 struct FrameDedup {
     static let windows = 12
 
+    /// A window as the memory tells windows apart: the ScreenCaptureKit id of the window photographed, and its title.
     struct Window: Equatable {
-        let appName: String?
-        let bundleID: String?
+        let id: CGWindowID
         let title: String?
-
-        init(of capture: SpoolRecord) {
-            appName = capture.appName
-            bundleID = capture.bundleID
-            title = capture.windowTitle
-        }
     }
 
     /// A kept screenshot as the memory holds it: its record id, image path, hash and recognized text.

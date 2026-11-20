@@ -240,13 +240,15 @@ deleted, and an image whose record a crash cut off stays.
 Each picture's perceptual hash is a 64-bit difference hash: each bit says
 whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
 It is compared with the last kept picture of the same window, a window being
-the app name, bundle id and window title. The agent remembers the last kept
-picture of the 12 most recently seen windows, in memory only, so a restart
-starts over. A window whose title changes is a new window: its first picture
-is kept, and the old title is still remembered until it ages out. A
-`duplicate` record carries the kept record's image path, hash and recognized
-text, and no image size. A kept image whose record the spool refuses is
-forgotten as well as deleted.
+the ScreenCaptureKit window id of the window photographed plus its title, so
+two windows of one app with the same title are told apart and each browser
+tab or editor file still counts on its own. The agent remembers the last kept
+picture of a fixed number of most recently seen windows (`FrameDedup.windows`),
+in memory only, so a restart starts over. A window whose title changes is a
+new window: its first picture is kept, and the old title is still remembered
+until it ages out. A `duplicate` record carries the kept record's image path,
+hash and recognized text, and no image size. A kept image
+whose record the spool refuses is forgotten as well as deleted.
 
 For now every `kept` record has empty recognized text.
 

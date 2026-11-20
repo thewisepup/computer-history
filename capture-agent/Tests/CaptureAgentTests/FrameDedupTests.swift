@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import CaptureAgent
@@ -34,7 +35,9 @@ extension LoopFixture {
 
 @Test func flippingBetweenTwoWindowsKeepsOneImagePerWindow() throws {
     let fixture = LoopFixture()
-    fixture.mac.windowImage = { window, _ in .image(fixtureImage(width: 1600, height: 1000, seed: Int(window.processIdentifier))) }
+    fixture.mac.windowImage = { window, _ in
+        .image(fixtureImage(width: 1600, height: 1000, seed: Int(window.processIdentifier)), windowID: CGWindowID(window.processIdentifier))
+    }
     for _ in 0..<3 {
         fixture.mac.focused = plainApp
         fixture.run(for: 3)
@@ -50,10 +53,25 @@ extension LoopFixture {
     }
 }
 
+@Test func twoWindowsOfOneAppWithTheSameTitleEachKeepTheirOwnImage() throws {
+    let fixture = LoopFixture()
+    let app = fixture.mac.apps[plainApp.processIdentifier]!
+    let other = fixture.mac.window("Notes", children: [fixture.mac.text("other")])
+    for window in [fixture.focus.notes, other, fixture.focus.notes, other] {
+        app.focusedWindow = window
+        fixture.run(for: 3)
+    }
+    #expect(try fixture.statuses() == ["kept", "kept", "duplicate", "duplicate"])
+    let shots = try fixture.screenshotRecords()
+    #expect(shots[0]["image_path"] as? String != shots[1]["image_path"] as? String)
+    #expect(shots[2]["image_path"] as? String == shots[0]["image_path"] as? String)
+    #expect(shots[3]["image_path"] as? String == shots[1]["image_path"] as? String)
+}
+
 @Test func aChangedFrameIsKeptAndLaterFramesAreComparedWithIt() throws {
     let fixture = LoopFixture()
     var seed = 1
-    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed)) }
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
     fixture.run(for: 40)
     seed = 2
     fixture.run(for: 60)
@@ -105,22 +123,19 @@ func keptFrame(hash: FrameHash, text: String = "", fullTextBytes: Int = 0) -> Fr
 @Test(arguments: [(2, 2, true), (2, 3, false), (0, 0, true), (0, 1, false), (32, 32, true)])
 func aFrameIsADuplicateWhenAtMostTheThresholdOfItsBitsDiffer(threshold: Int, differing: Int, duplicate: Bool) throws {
     var dedup = FrameDedup(threshold: threshold)
-    let window = FrameDedup.Window(of: captureRecord(text: "", fullTextBytes: 0))
+    let window = FrameDedup.Window(id: 1, title: "Notes")
     dedup.remember(keptFrame(hash: FrameHash(bits: 0)), for: window)
     let match = dedup.see(FrameHash(bits: (1 << UInt64(differing)) - 1), in: window)
     #expect((match != nil) == duplicate)
 }
 
-@Test func anotherAppWithTheSameTitleIsAnotherWindow() throws {
+@Test func aWindowIsItsWindowIDAndItsTitle() throws {
     var dedup = FrameDedup(threshold: 0)
-    let notes = captureRecord(text: "", fullTextBytes: 0)
-    dedup.remember(keptFrame(hash: FrameHash(bits: 7)), for: FrameDedup.Window(of: notes))
-    let other = SpoolRecord.capture(
-        at: notes.capturedAt, trigger: .app, appName: "TextEdit", bundleID: "com.apple.TextEdit", windowTitle: notes.windowTitle,
-        text: "", fullTextBytes: 0, timedOut: false
-    )
-    let otherMatch = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(of: other))
-    let notesMatch = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(of: notes))
-    #expect(otherMatch == nil)
-    #expect(notesMatch != nil)
+    dedup.remember(keptFrame(hash: FrameHash(bits: 7)), for: FrameDedup.Window(id: 1, title: "Notes"))
+    let otherWindow = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(id: 2, title: "Notes"))
+    let otherTitle = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(id: 1, title: "Inbox"))
+    let same = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(id: 1, title: "Notes"))
+    #expect(otherWindow == nil)
+    #expect(otherTitle == nil)
+    #expect(same != nil)
 }

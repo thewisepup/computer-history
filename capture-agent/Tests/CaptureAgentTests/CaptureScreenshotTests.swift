@@ -11,7 +11,7 @@ func savedImages(in folder: URL) -> [String] {
 
 @Test func everyCaptureIsFollowedByOneKeptScreenshotRecordWhoseImageIsSaved() throws {
     let fixture = LoopFixture()
-    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 2880, height: 1800)) }
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 2880, height: 1800), windowID: 1) }
     fixture.run(for: 2)
     let records = try fixture.records()
     try #require(records.map { $0["kind"] as? String } == ["capture", "screenshot"])

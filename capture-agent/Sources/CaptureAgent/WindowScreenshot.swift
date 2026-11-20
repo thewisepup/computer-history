@@ -2,9 +2,9 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
-/// What asking for a picture of the focused window came to.
+/// What asking for a picture of the focused window came to: the picture with the ScreenCaptureKit id of the window it shows, or the reason there is none.
 public enum WindowImage: Sendable {
-    case image(CGImage)
+    case image(CGImage, windowID: CGWindowID)
     case noPermission
     case failed
 }
@@ -82,7 +82,7 @@ func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, answer: @esca
         configuration.height = size.height
         configuration.showsCursor = false
         SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
-            answer(image.map(WindowImage.image) ?? error.map(windowImage(for:)) ?? .failed)
+            answer(image.map { .image($0, windowID: id) } ?? error.map(windowImage(for:)) ?? .failed)
         }
     }
 }

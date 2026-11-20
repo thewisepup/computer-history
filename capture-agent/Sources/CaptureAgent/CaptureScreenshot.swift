@@ -43,9 +43,9 @@ struct CaptureScreenshot<M: Mac> {
             return .noPermission(of: capture)
         case .failed:
             return .failed(of: capture)
-        case .image(let image):
+        case .image(let image, let windowID):
             guard let hash = differenceHash(image) else { return .failed(of: capture) }
-            let window = FrameDedup.Window(of: capture)
+            let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(hash, in: window) {
                 return .duplicate(
                     of: capture, imagePath: kept.imagePath, perceptualHash: kept.hash.hex, text: kept.text,

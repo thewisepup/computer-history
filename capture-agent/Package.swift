@@ -17,7 +17,7 @@ import PackageDescription
 ///           |               and after each capture its screenshot record
 ///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, duplicate
 ///           |                   check, image saved, and the screenshot record that names the capture
-///     FrameDedup.swift      the last kept screenshot of each of the 12 most recently seen windows
+///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
@@ -36,6 +36,7 @@ import PackageDescription
 ///     SecureField.swift     whether the focused element is a password field, or no answer
 ///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
 ///                                window's frame, one request at a time, as a WindowImage
+///                                that carries the window's id
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
 ///     FrameHash.swift       the 64-bit difference hash of a screenshot, and the bits two hashes differ by
