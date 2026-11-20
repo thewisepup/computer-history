@@ -99,3 +99,34 @@ def test_pages_count_the_whole_database_and_each_table(stored: sqlite3.Connectio
     assert costs.pages == stored.execute("PRAGMA page_count").fetchone()[0]
     assert costs.table_pages["observations"] >= 1
     assert sum(costs.table_pages.values()) <= costs.pages
+
+
+def test_a_scan_of_a_table_under_an_alias_counts_as_that_table(stored: sqlite3.Connection) -> None:
+    costs = measure(
+        stored,
+        lambda: stored.execute(
+            "SELECT o.id FROM observations AS o JOIN signals s ON s.observation_id = o.id"
+            " WHERE o.payload LIKE '%Cursor%'"
+        ).fetchall(),
+    )
+
+    assert [scan.table for scan in costs.full_scans] == ["observations"]
+
+
+def test_a_read_too_long_to_expand_still_has_its_plan_read(stored: sqlite3.Connection) -> None:
+    def read_past_the_length_limit() -> None:
+        limit = stored.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 200)
+        try:
+            stored.execute("SELECT id FROM observations WHERE payload = ?", ("x" * 180,)).fetchall()
+        finally:
+            stored.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, limit)
+
+    costs = measure(stored, read_past_the_length_limit)
+
+    assert [scan.table for scan in costs.full_scans] == ["observations"]
+
+
+def test_pages_are_left_at_zero_when_not_asked_for(stored: sqlite3.Connection) -> None:
+    costs = measure(stored, lambda: _read_apps(stored), pages=False)
+
+    assert (costs.pages, costs.table_pages, costs.statements) == (0, {}, 1)

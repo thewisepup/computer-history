@@ -20,6 +20,7 @@ from computer_history.store.db import (
     transaction,
 )
 from computer_history.store.introspection import (
+    DbstatUnavailable,
     SqliteBuild,
     page_counts,
     scanned_tables,
@@ -38,12 +39,15 @@ from computer_history.store.signals import (
     rebuild_signals,
 )
 from computer_history.store.status import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
     Gap,
     PayloadValues,
     SourceSummary,
     find_gaps,
     latest_payload_value,
     payload_values,
+    recent_span,
     source_summary,
     table_counts,
 )
@@ -52,6 +56,9 @@ from computer_history.store.timefmt import to_utc, utc_iso
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
+    "MIN_GAP_SECONDS",
+    "STATUS_WINDOW",
+    "DbstatUnavailable",
     "Gap",
     "InsertResult",
     "Migration",
@@ -83,6 +90,7 @@ __all__ = [
     "page_counts",
     "payload_values",
     "rebuild_signals",
+    "recent_span",
     "resolve_db_path",
     "scanned_tables",
     "schema_version",

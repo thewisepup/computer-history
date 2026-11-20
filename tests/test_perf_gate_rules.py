@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from computer_history.store import SqliteBuild
 from computer_history.synthetic import (
     OPERATIONS,
     Costs,
+    FindingKind,
     Scan,
     StatementCost,
     compare,
@@ -102,7 +102,7 @@ def test_a_scan_off_the_allowlist_fails_even_when_the_baseline_has_it() -> None:
 
     [finding] = compare(OPERATIONS["status-reads"], "day", scanning, scanning)
 
-    assert finding.counter == "full scan"
+    assert finding.kind is FindingKind.SCAN_NOT_ALLOWED
     assert "observations" in finding.describe() and GAPS in finding.describe()
 
 
@@ -112,13 +112,14 @@ def test_an_allowlisted_scan_passes_but_a_new_one_asks_for_a_baseline_update() -
 
     assert compare(OPERATIONS["status-reads"], "day", counting, counting) == []
     [finding] = compare(OPERATIONS["status-reads"], "day", counting, not_counting)
-    assert finding.counter == "full scans"
+    assert (finding.kind, finding.cheaper) == (FindingKind.SCANS_CHANGED, False)
+    assert "new observations in SELECT COUNT(*)" in finding.describe()
 
 
 def test_a_missing_baseline_asks_for_one() -> None:
     [finding] = compare(OPERATIONS["ingest"], "month", BASE, None)
 
-    assert finding.counter == "baseline"
+    assert finding.kind is FindingKind.NO_BASELINE
     assert "--update-baselines" in finding.describe()
 
 
@@ -131,7 +132,7 @@ def test_a_windowed_read_may_grow_to_twice_its_day_cost_leaving_out_allowlisted_
     assert scaling(reads, "month", (day, 100), (twice, 3_000)) is None
     finding = scaling(reads, "month", (day, 100), (more, 3_000))
     assert finding is not None
-    assert (finding.counter, finding.before, finding.after) == ("scaling", 2_000, 2_001)
+    assert (finding.kind, finding.before, finding.after) == (FindingKind.SCALING, 2_000, 2_001)
 
 
 def test_an_operation_over_all_data_may_grow_half_again_faster_than_its_events() -> None:
@@ -148,14 +149,38 @@ def test_an_operation_over_all_data_may_grow_half_again_faster_than_its_events()
 
 def test_a_baseline_round_trips_through_its_file(tmp_path: Path) -> None:
     path = tmp_path / "baseline.json"
-    build = SqliteBuild("3.54.1", ("ENABLE_DBSTAT_VTAB",))
     scanning = _costs({COUNT: (1, 9)}, scans=(Scan("observations", COUNT),))
 
-    save_baseline(path, build, {("ingest", "day"): BASE, ("status-reads", "day"): scanning})
+    save_baseline(path, "3.54.1", {("ingest", "day"): BASE, ("status-reads", "day"): scanning})
     baseline = load_baseline(path)
 
-    assert baseline.build == build
+    assert baseline.versions == {("ingest", "day"): "3.54.1", ("status-reads", "day"): "3.54.1"}
     assert baseline.costs[("ingest", "day")] == BASE
     assert baseline.costs[("status-reads", "day")] == _costs(
         {COUNT: (1, 9)}, scans=(Scan("observations", COUNT),), pages=0, table_pages={}
     )
+
+
+def test_updating_some_entries_keeps_the_others_and_their_versions(tmp_path: Path) -> None:
+    path = tmp_path / "baseline.json"
+    save_baseline(path, "3.45.1", {("ingest", "day"): BASE, ("ingest", "month"): BASE})
+    cheaper = _costs({INSERT: (100, 9_000), PROGRESS: (10, 1_000)})
+
+    save_baseline(path, "3.54.1", {("ingest", "day"): cheaper}, keep=load_baseline(path))
+    baseline = load_baseline(path)
+
+    assert baseline.costs == {("ingest", "day"): cheaper, ("ingest", "month"): BASE}
+    assert baseline.versions == {("ingest", "day"): "3.54.1", ("ingest", "month"): "3.45.1"}
+
+
+def test_updating_drops_entries_of_operations_that_are_gone(tmp_path: Path) -> None:
+    path = tmp_path / "baseline.json"
+    save_baseline(path, "3.54.1", {("ingest", "day"): BASE})
+    stale = load_baseline(path)
+    stale = type(stale)(
+        {**stale.costs, ("status", "day"): BASE}, {**stale.versions, ("status", "day"): "3.54.1"}
+    )
+
+    save_baseline(path, "3.54.1", {("ingest", "day"): BASE}, keep=stale)
+
+    assert list(load_baseline(path).costs) == [("ingest", "day")]

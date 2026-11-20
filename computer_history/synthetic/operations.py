@@ -7,14 +7,23 @@ import shutil
 import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from computer_history.sources import AX_TEXT_SOURCE, capture_health, reproject_signals
-from computer_history.store import connect, find_gaps, source_summary, table_counts, to_utc
+from computer_history.store import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
+    connect,
+    find_gaps,
+    recent_span,
+    source_summary,
+    table_counts,
+    to_utc,
+)
 from computer_history.synthetic.activitywatch import HOST
 from computer_history.synthetic.build import (
     DATABASE_NAME,
@@ -27,9 +36,6 @@ from computer_history.synthetic.cache import CachedDataset, open_cached
 from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.meter import Costs, measure
 from computer_history.synthetic.timeline import local_midnight
-
-STATUS_WINDOW = timedelta(hours=24)
-MIN_GAP_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -56,10 +62,7 @@ class Session(NamedTuple):
 
 @dataclass(frozen=True)
 class Operation:
-    """One thing the product does: how to start it on a dataset in a scratch folder.
-
-    A fresh one needs a new database for every run, and only one that writes has its pages gated.
-    """
+    """One thing the product does: how to start it on a dataset in a scratch folder."""
 
     name: str
     start: Callable[[GateDataset, Path], Session]
@@ -109,13 +112,9 @@ def _status_reads(dataset: GateDataset, folder: Path) -> Session:
 
     def status_reads() -> None:
         for summary in source_summary(conn):
-            end = summary.settled_until or summary.latest_ended_at
-            first = summary.earliest_started_at
-            if summary.source == AX_TEXT_SOURCE or end is None or first is None:
-                continue
-            start = max(end - STATUS_WINDOW, first)
-            if start < end:
-                find_gaps(conn, summary.source, start, end, min_gap_seconds=MIN_GAP_SECONDS)
+            span = recent_span(summary, STATUS_WINDOW)
+            if summary.source != AX_TEXT_SOURCE and span is not None and span[0] < span[1]:
+                find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
         table_counts(conn)
 
     return Session(conn, status_reads)

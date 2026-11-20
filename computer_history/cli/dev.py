@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import sqlite3
 import sys
 import tempfile
 import typing
@@ -15,10 +16,11 @@ from computer_history.synthetic import (
     DATABASE_NAME,
     GATE_DATASETS,
     MANIFEST_NAME,
-    NIGHTLY_DATASETS,
     OPERATIONS,
+    PERF_DATASETS,
     PERSONAS,
     SCENARIOS,
+    SMALLEST,
     TIERS,
     BuildFailed,
     DatasetInputs,
@@ -41,7 +43,6 @@ PARSERS: Mapping[type, Callable[[str], Any]] = {
     date: date.fromisoformat,
 }
 LABELS = {DATABASE_NAME: "database", MANIFEST_NAME: "manifest"}
-PERF_DATASETS = {**GATE_DATASETS, **NIGHTLY_DATASETS}
 
 
 def add_dev_commands(dev: argparse.ArgumentParser) -> None:
@@ -150,8 +151,8 @@ def cmd_perf(args: argparse.Namespace) -> int:
                 baseline_path=args.baseline,
                 update=args.update_baselines,
             )
-        except (OSError, BuildFailed) as exc:
-            print(f"dev perf failed: {exc}", file=sys.stderr)
+        except (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError) as exc:
+            print(f"dev perf failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
     _print_report(report, args)
     return 0 if report.ok else 1
@@ -161,9 +162,12 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     build = report.build
     print(f"SQLite {build.version}, {len(build.compile_options)} compile options:")
     print(f"  {' '.join(build.compile_options)}")
-    recorded = report.baseline_build
-    if recorded is not None and recorded.version != build.version:
-        print(f"  note: the baseline was recorded on SQLite {recorded.version}")
+    older = sorted(
+        {version for key, version in report.recorded_on.items() if key in report.measured}
+        - {build.version}
+    )
+    if older:
+        print(f"  note: some baseline entries were recorded on SQLite {', '.join(older)}")
     if args.update_baselines:
         print(f"Baseline rewritten: {args.baseline}")
     print()
@@ -171,10 +175,10 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     for (name, label), costs in report.measured.items():
         pages = f"{costs.pages:,}" if OPERATIONS[name].writes else "-"
         print(f"{name:<16} {label:<11} {costs.statements:>11,} {costs.vm_steps:>13,} {pages:>8}")
-    for name, finding in report.expected.items():
-        if finding is None:
-            print(f"scaling of {name}: passes, unexpectedly")
-        else:
+    if not report.scaling_checked:
+        print(f"scaling not checked: it needs {SMALLEST} and a larger dataset")
+    for finding in report.expected.values():
+        if finding is not None:
             print(f"expected to fail, {finding.describe().splitlines()[0]}")
     print()
     if report.ok:
@@ -182,11 +186,13 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
         return
     for finding in report.failures:
         print(finding.describe())
-    for name in report.unexpected_passes:
-        print(f"{name}: the scaling check passes now; take it off EXPECTED_SCALING_FAILURES")
-    print(
-        f"Performance gate failed: {len(report.failures) + len(report.unexpected_passes)} findings."
-    )
+    for name, label in report.unexpected_passes:
+        print(
+            f"{name} on {label}: the scaling check passes now;"
+            " take it off EXPECTED_SCALING_FAILURES"
+        )
+    count = len(report.failures) + len(report.unexpected_passes)
+    print(f"Performance gate failed: {count} findings.")
 
 
 DEV_HANDLERS: Mapping[str, Callable[[argparse.Namespace], int]] = {

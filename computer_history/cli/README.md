@@ -251,7 +251,7 @@ its database or manifest.
 ```bash
 computer-history dev perf                      # day and month, against the committed baseline
 computer-history dev perf --update-baselines   # record a deliberate change of cost
-computer-history dev perf --dataset year       # a nightly dataset (also: heavy-year)
+computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
 ```
 
 ```
@@ -292,6 +292,12 @@ ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
   statements that changed most:
     0 -> 3,674 runs, 0 -> 29,392 VM steps: SELECT id FROM observations WHERE id = ?
 ```
+
+The scaling check needs `day` beside a larger dataset and says so when it is
+missing. The committed baseline holds only day and month, so a nightly dataset
+reports `no baseline yet` until its entries are recorded with
+`--update-baselines`. Each entry keeps the SQLite version it was recorded on,
+and the run notes any that differ from the SQLite it runs on.
 
 `pytest -m perf` runs the same gate; the default `pytest` leaves it out.
 

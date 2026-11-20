@@ -1,35 +1,25 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pytest
 
 from computer_history.synthetic import (
-    CACHE_ENV_VAR,
     EXPECTED_SCALING_FAILURES,
     GATE_DATASETS,
     OPERATIONS,
+    SMALLEST,
     GateReport,
     cache_root,
     run_gate,
 )
 
 pytestmark = pytest.mark.perf
-USER_CACHE = os.environ.get(CACHE_ENV_VAR)
-LARGER = [label for label in GATE_DATASETS if label != "day"]
-
-
-@pytest.fixture(autouse=True)
-def dataset_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    if USER_CACHE is not None:
-        monkeypatch.setenv(CACHE_ENV_VAR, USER_CACHE)
+USER_CACHE = cache_root()
+LARGER = [label for label in GATE_DATASETS if label != SMALLEST]
 
 
 @pytest.fixture(scope="module")
 def report(tmp_path_factory: pytest.TempPathFactory) -> GateReport:
-    cache = Path(USER_CACHE) if USER_CACHE else cache_root()
-    return run_gate(GATE_DATASETS, cache=cache, scratch=tmp_path_factory.mktemp("perf"))
+    return run_gate(GATE_DATASETS, cache=USER_CACHE, scratch=tmp_path_factory.mktemp("perf"))
 
 
 @pytest.mark.parametrize("dataset", list(GATE_DATASETS))
@@ -56,7 +46,7 @@ def _scaling_case(operation: str, label: str) -> object:
 def test_the_operation_grows_no_faster_than_the_scaling_check_allows(
     report: GateReport, operation: str, dataset: str
 ) -> None:
-    finding = report.expected.get(f"{operation} on {dataset}")
+    finding = report.expected.get((operation, dataset))
     finding = finding or next(
         (f for f in report.scaling if (f.operation, f.dataset) == (operation, dataset)), None
     )

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 
 from computer_history.store import SqliteBuild, sqlite_build
+from computer_history.synthetic.baseline import (
+    BASELINE_PATH,
+    Key,
+    load_baseline,
+    recorded,
+    save_baseline,
+)
 from computer_history.synthetic.cache import cached_dataset, open_cached
 from computer_history.synthetic.generate import HEAVY, DatasetInputs
 from computer_history.synthetic.meter import Costs, Scan, StatementCost
@@ -21,7 +28,6 @@ from computer_history.synthetic.operations import (
     measure_operation,
 )
 
-BASELINE_PATH = Path(__file__).with_name("perf_baseline.json")
 UPDATE_HINT = "run `computer-history dev perf --update-baselines` and say why in the pull request"
 VM_STEP_TOLERANCE = 0.02
 WINDOWED_GROWTH = 2.0
@@ -40,6 +46,7 @@ GATE_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
 NIGHTLY_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
     {"year": _inputs("year"), "heavy-year": _inputs("year", HEAVY)}
 )
+PERF_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType({**GATE_DATASETS, **NIGHTLY_DATASETS})
 
 SCAN_ALLOWLIST: Mapping[re.Pattern[str], str] = MappingProxyType(
     {
@@ -67,43 +74,54 @@ EXPECTED_SCALING_FAILURES: Mapping[str, str] = MappingProxyType(
 )
 
 
+class FindingKind(Enum):
+    COUNTER = "counter"
+    NO_BASELINE = "no baseline"
+    STALE_BASELINE = "stale baseline"
+    SCAN_NOT_ALLOWED = "scan not allowed"
+    SCANS_CHANGED = "scans changed"
+    SCALING = "scaling"
+
+
 @dataclass(frozen=True)
 class Finding:
     """One way an operation's costs on a dataset differ from what the gate allows."""
 
+    kind: FindingKind
     operation: str
     dataset: str
-    counter: str
-    before: object
-    after: object
+    counter: str = ""
+    before: object = None
+    after: object = None
     cheaper: bool = False
     grew: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """The finding as lines a person reads in a failed check."""
-        head = (
-            f"{self.operation} on {self.dataset}: {self.counter} {_change(self.before, self.after)}"
-        )
-        if self.counter == "baseline":
-            lines = [f"{self.operation} on {self.dataset}: no baseline yet: {UPDATE_HINT}"]
-        elif self.counter == "full scans":
+        where = f"{self.operation} on {self.dataset}:"
+        if self.kind is FindingKind.NO_BASELINE:
+            lines = [f"{where} no baseline yet: {UPDATE_HINT}"]
+        elif self.kind is FindingKind.STALE_BASELINE:
+            lines = [f"{where} the baseline has costs for an operation that is gone: {UPDATE_HINT}"]
+        elif self.kind is FindingKind.SCAN_NOT_ALLOWED:
+            lines = [f"{where} {self.after} is not on the scan allowlist"]
+        elif self.kind is FindingKind.SCANS_CHANGED:
             lines = [
-                f"{self.operation} on {self.dataset}: full scans differ from the baseline:"
+                f"{where} full scans differ from the baseline:"
                 f" new {self.after}, gone {self.before}: {UPDATE_HINT}"
             ]
-        elif self.counter == "full scan":
+        elif self.kind is FindingKind.SCALING:
             lines = [
-                f"{self.operation} on {self.dataset}: {self.after} is not on the scan allowlist"
+                f"{where} {self.after:,} VM steps, over the {self.before:,} the day tier allows"
             ]
-        elif self.counter == "scaling":
-            lines = [
-                f"{self.operation} on {self.dataset}: {self.after:,} VM steps, over the"
-                f" {self.before:,} the day tier allows"
-            ]
-        elif self.cheaper:
-            lines = [f"{head}, cheaper than the baseline: {UPDATE_HINT}"]
         else:
-            lines = [f"{head}, worse than the baseline"]
+            change = f"{where} {self.counter} {_change(self.before, self.after)}"
+            verdict = (
+                f"cheaper than the baseline: {UPDATE_HINT}"
+                if self.cheaper
+                else "worse than the baseline"
+            )
+            lines = [f"{change}, {verdict}"]
         if self.grew:
             lines.append("  statements that changed most:")
             lines += [f"    {line}" for line in self.grew]
@@ -122,65 +140,62 @@ def allowed(statement: str) -> bool:
     return any(pattern.match(statement) for pattern in SCAN_ALLOWLIST)
 
 
-def recorded(operation: Operation, costs: Costs) -> Costs:
-    """The costs the gate keeps for the operation: pages only for one that writes."""
-    return costs if operation.writes else replace(costs, pages=0, table_pages={})
-
-
 def compare(
     operation: Operation, dataset: str, measured: Costs, baseline: Costs | None
 ) -> list[Finding]:
     """Every way the costs differ from the baseline past tolerance, and every scan not allowed."""
+    name = operation.name
     found = [
         Finding(
-            operation.name, dataset, "full scan", None, f"SCAN {scan.table} in {scan.statement}"
+            FindingKind.SCAN_NOT_ALLOWED,
+            name,
+            dataset,
+            after=f"SCAN {scan.table} in {scan.statement}",
         )
         for scan in measured.full_scans
         if not allowed(scan.statement)
     ]
     if baseline is None:
-        return [*found, Finding(operation.name, dataset, "baseline", None, "missing")]
+        return [*found, Finding(FindingKind.NO_BASELINE, name, dataset)]
     measured, baseline = recorded(operation, measured), recorded(operation, baseline)
     grew = _grew(baseline.by_statement, measured.by_statement)
     if measured.statements != baseline.statements:
         found.append(
-            _finding(
-                operation, dataset, "statements", baseline.statements, measured.statements, grew
-            )
+            _counter(name, dataset, "statements", baseline.statements, measured.statements, grew)
         )
     if abs(measured.vm_steps - baseline.vm_steps) > VM_STEP_TOLERANCE * baseline.vm_steps:
         found.append(
-            _finding(operation, dataset, "vm_steps", baseline.vm_steps, measured.vm_steps, grew)
+            _counter(name, dataset, "vm_steps", baseline.vm_steps, measured.vm_steps, grew)
         )
-    if set(measured.full_scans) != set(baseline.full_scans):
+    gone = set(baseline.full_scans) - set(measured.full_scans)
+    new = set(measured.full_scans) - set(baseline.full_scans)
+    if gone or new:
         found.append(
             Finding(
-                operation.name,
+                FindingKind.SCANS_CHANGED,
+                name,
                 dataset,
                 "full scans",
-                _scans(set(baseline.full_scans) - set(measured.full_scans)),
-                _scans(set(measured.full_scans) - set(baseline.full_scans)),
-                cheaper=len(measured.full_scans) < len(baseline.full_scans),
+                _scans(gone),
+                _scans(new),
+                cheaper=not new,
             )
         )
     if measured.pages != baseline.pages:
-        found.append(_finding(operation, dataset, "pages", baseline.pages, measured.pages))
-    for name in sorted(measured.table_pages.keys() | baseline.table_pages.keys()):
-        before, after = baseline.table_pages.get(name, 0), measured.table_pages.get(name, 0)
+        found.append(_counter(name, dataset, "pages", baseline.pages, measured.pages))
+    for table in sorted(measured.table_pages.keys() | baseline.table_pages.keys()):
+        before, after = baseline.table_pages.get(table, 0), measured.table_pages.get(table, 0)
         if before != after:
-            found.append(_finding(operation, dataset, f"pages of {name}", before, after))
+            found.append(_counter(name, dataset, f"pages of {table}", before, after))
     return found
 
 
-def _finding(
-    operation: Operation,
-    dataset: str,
-    counter: str,
-    before: int,
-    after: int,
-    grew: tuple[str, ...] = (),
+def _counter(
+    operation: str, dataset: str, counter: str, before: int, after: int, grew: tuple[str, ...] = ()
 ) -> Finding:
-    return Finding(operation.name, dataset, counter, before, after, after < before, grew)
+    return Finding(
+        FindingKind.COUNTER, operation, dataset, counter, before, after, after < before, grew
+    )
 
 
 def _scans(scans: Iterable[Scan]) -> str:
@@ -210,10 +225,7 @@ def scaling(
     smallest: tuple[Costs, int],
     larger: tuple[Costs, int],
 ) -> Finding | None:
-    """A finding if the operation's VM steps grow faster from the day tier than the gate allows.
-
-    A windowed read may cost twice its day cost without allowed scans, others grow with events.
-    """
+    """A finding if the operation's VM steps grow faster from the day tier than the gate allows."""
     (small, small_events), (large, large_events) = smallest, larger
     before, after = _scaled(operation, small), _scaled(operation, large)
     steps = sum(cost.vm_steps for cost in before.values())
@@ -225,7 +237,13 @@ def scaling(
     if measured <= limit:
         return None
     return Finding(
-        operation.name, dataset, "scaling", round(limit), measured, grew=_grew(before, after)
+        FindingKind.SCALING,
+        operation.name,
+        dataset,
+        "vm_steps",
+        round(limit),
+        measured,
+        grew=_grew(before, after),
     )
 
 
@@ -236,74 +254,16 @@ def _scaled(operation: Operation, costs: Costs) -> Mapping[str, StatementCost]:
 
 
 @dataclass(frozen=True)
-class Baseline:
-    """The committed costs, by operation and dataset, and the SQLite build they were recorded on."""
-
-    build: SqliteBuild | None
-    costs: Mapping[tuple[str, str], Costs]
-
-
-def load_baseline(path: Path) -> Baseline:
-    """The baseline in the file, or an empty one if there is no file."""
-    if not path.exists():
-        return Baseline(None, {})
-    data = json.loads(path.read_text(encoding="utf-8"))
-    costs = {
-        (operation, dataset): Costs(
-            statements=entry["statements"],
-            vm_steps=entry["vm_steps"],
-            full_scans=tuple(Scan(*scan) for scan in entry["full_scans"]),
-            pages=entry["pages"],
-            table_pages=entry["table_pages"],
-            by_statement={
-                text: StatementCost(*cost) for text, cost in entry["by_statement"].items()
-            },
-        )
-        for operation, datasets in data["operations"].items()
-        for dataset, entry in datasets.items()
-    }
-    build = SqliteBuild(data["sqlite_version"], tuple(data["compile_options"]))
-    return Baseline(build, costs)
-
-
-def save_baseline(
-    path: Path,
-    build: SqliteBuild,
-    costs: Mapping[tuple[str, str], Costs],
-    keep: Baseline | None = None,
-) -> None:
-    """Write the costs to the file over the kept baseline's other entries, with the build."""
-    merged = {**(keep.costs if keep is not None else {}), **costs}
-    operations: dict[str, dict[str, object]] = {}
-    for (name, dataset), measured in sorted(merged.items()):
-        entry = recorded(OPERATIONS[name], measured)
-        operations.setdefault(name, {})[dataset] = {
-            "statements": entry.statements,
-            "vm_steps": entry.vm_steps,
-            "full_scans": sorted(list(scan) for scan in entry.full_scans),
-            "pages": entry.pages,
-            "table_pages": dict(sorted(entry.table_pages.items())),
-            "by_statement": {text: list(cost) for text, cost in sorted(entry.by_statement.items())},
-        }
-    data = {
-        "sqlite_version": build.version,
-        "compile_options": list(build.compile_options),
-        "operations": operations,
-    }
-    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
-
-
-@dataclass(frozen=True)
 class GateReport:
     """What one gate run measured, on which SQLite, and every finding against the baseline."""
 
     build: SqliteBuild
-    baseline_build: SqliteBuild | None
-    measured: Mapping[tuple[str, str], Costs]
-    events: Mapping[str, int]
+    recorded_on: Mapping[Key, str]
+    measured: Mapping[Key, Costs]
     findings: tuple[Finding, ...]
     scaling: tuple[Finding, ...]
-    expected: Mapping[str, Finding | None]
+    expected: Mapping[Key, Finding | None]
+    scaling_checked: bool
 
     @property
     def failures(self) -> tuple[Finding, ...]:
@@ -311,9 +271,9 @@ class GateReport:
         return self.findings + self.scaling
 
     @property
-    def unexpected_passes(self) -> tuple[str, ...]:
-        """Operations expected to fail the scaling check that passed it."""
-        return tuple(name for name, finding in self.expected.items() if finding is None)
+    def unexpected_passes(self) -> tuple[Key, ...]:
+        """Operations and datasets expected to fail the scaling check that passed it."""
+        return tuple(key for key, finding in self.expected.items() if finding is None)
 
     @property
     def ok(self) -> bool:
@@ -344,30 +304,42 @@ def run_gate(
     }
     baseline = load_baseline(baseline_path)
     if update:
-        save_baseline(baseline_path, build, measured, keep=baseline)
+        save_baseline(baseline_path, build.version, measured, keep=baseline)
         baseline = load_baseline(baseline_path)
-    findings = tuple(
+    findings = [
         finding
         for (name, label), costs in measured.items()
         for finding in compare(OPERATIONS[name], label, costs, baseline.costs.get((name, label)))
-    )
-    events = {label: dataset.observations for label, dataset in gated.items()}
+    ]
+    findings += [
+        Finding(FindingKind.STALE_BASELINE, name, label)
+        for name, label in baseline.costs
+        if name not in OPERATIONS
+    ]
     scaled: list[Finding] = []
-    expected: dict[str, Finding | None] = {}
-    if SMALLEST in gated:
-        for label in sorted(gated.keys() - {SMALLEST}):
-            for name, operation in OPERATIONS.items():
-                finding = scaling(
-                    operation,
-                    label,
-                    (measured[(name, SMALLEST)], events[SMALLEST]),
-                    (measured[(name, label)], events[label]),
-                )
-                if name in EXPECTED_SCALING_FAILURES:
-                    expected[f"{name} on {label}"] = finding
-                elif finding is not None:
-                    scaled.append(finding)
-    return GateReport(build, baseline.build, measured, events, findings, tuple(scaled), expected)
+    expected: dict[Key, Finding | None] = {}
+    larger = sorted(gated.keys() - {SMALLEST}) if SMALLEST in gated else []
+    for label in larger:
+        for name, operation in OPERATIONS.items():
+            finding = scaling(
+                operation,
+                label,
+                (measured[(name, SMALLEST)], gated[SMALLEST].observations),
+                (measured[(name, label)], gated[label].observations),
+            )
+            if name in EXPECTED_SCALING_FAILURES:
+                expected[(name, label)] = finding
+            elif finding is not None:
+                scaled.append(finding)
+    return GateReport(
+        build,
+        baseline.versions,
+        measured,
+        tuple(findings),
+        tuple(scaled),
+        expected,
+        scaling_checked=bool(larger),
+    )
 
 
 def _build(dataset: GateDataset) -> SqliteBuild:

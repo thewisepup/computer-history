@@ -27,8 +27,15 @@
       operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
       meter.py          the statements, VM steps, full scans and pages one operation costs
       gate.py           those costs per operation and dataset against the committed baseline
+          |             baseline.py: the committed costs and the SQLite they were recorded on
 """
 
+from computer_history.synthetic.baseline import (
+    BASELINE_PATH,
+    Baseline,
+    load_baseline,
+    save_baseline,
+)
 from computer_history.synthetic.build import (
     DATABASE_NAME,
     MANIFEST_NAME,
@@ -58,18 +65,17 @@ from computer_history.synthetic.devdb import (
 )
 from computer_history.synthetic.gaps import ExplainedGap
 from computer_history.synthetic.gate import (
-    BASELINE_PATH,
     EXPECTED_SCALING_FAILURES,
     GATE_DATASETS,
     NIGHTLY_DATASETS,
+    PERF_DATASETS,
     SCAN_ALLOWLIST,
-    Baseline,
+    SMALLEST,
     Finding,
+    FindingKind,
     GateReport,
     compare,
-    load_baseline,
     run_gate,
-    save_baseline,
     scaling,
 )
 from computer_history.synthetic.generate import (
@@ -107,10 +113,12 @@ __all__ = [
     "MANIFEST_NAME",
     "NIGHTLY_DATASETS",
     "OPERATIONS",
+    "PERF_DATASETS",
     "PERSONAS",
     "RENDERERS",
     "SCAN_ALLOWLIST",
     "SCENARIOS",
+    "SMALLEST",
     "TIERS",
     "Baseline",
     "BuildFailed",
@@ -124,6 +132,7 @@ __all__ = [
     "Fault",
     "FaultKind",
     "Finding",
+    "FindingKind",
     "GateDataset",
     "GateReport",
     "LiveDatabaseRefused",

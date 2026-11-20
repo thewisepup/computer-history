@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, NamedTuple
 
 from computer_history.store.timefmt import to_utc, utc_iso
+
+STATUS_WINDOW = timedelta(hours=24)
+MIN_GAP_SECONDS = 300
 
 
 class SourceSummary(NamedTuple):
@@ -58,6 +61,20 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
         )
     ]
     return {name: conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] for name in names}
+
+
+def recent_span(
+    summary: SourceSummary, window: timedelta = STATUS_WINDOW
+) -> tuple[datetime, datetime] | None:
+    """The window status checks: up to the source's settled time, else its latest end.
+
+    It starts no earlier than the source's first observation, and is None without one.
+    """
+    end = summary.settled_until or summary.latest_ended_at
+    first = summary.earliest_started_at
+    if end is None or first is None:
+        return None
+    return max(end - window, first), end
 
 
 def find_gaps(

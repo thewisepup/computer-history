@@ -6,9 +6,7 @@ from pathlib import Path
 import pytest
 
 from computer_history import cli
-from computer_history.cli import status
-from computer_history.synthetic import CACHE_ENV_VAR, OPERATIONS
-from computer_history.synthetic import operations as gate_operations
+from computer_history.synthetic import CACHE_ENV_VAR, OPERATIONS, SMALLEST
 
 
 @pytest.fixture(scope="module")
@@ -23,7 +21,7 @@ def dataset_cache(monkeypatch: pytest.MonkeyPatch, shared_cache: Path) -> Path:
 
 
 def perf(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str]:
-    code = cli.main(["dev", "perf", "--dataset", "day", *argv])
+    code = cli.main(["dev", "perf", "--dataset", SMALLEST, *argv])
     captured = capsys.readouterr()
     return code, captured.out + captured.err
 
@@ -38,8 +36,8 @@ def test_updating_writes_a_baseline_that_the_next_run_passes(
 
     assert (updated, code) == (0, 0)
     recorded = json.loads(baseline.read_text())
-    assert sorted(recorded["operations"]) == sorted(OPERATIONS)
-    assert all(list(datasets) == ["day"] for datasets in recorded["operations"].values())
+    assert sorted(recorded) == sorted(OPERATIONS)
+    assert all(list(datasets) == [SMALLEST] for datasets in recorded.values())
     assert "SQLite " in printed and "passed" in printed
     for name in OPERATIONS:
         assert name in printed
@@ -51,14 +49,14 @@ def test_a_costlier_run_fails_naming_the_operation_counter_and_numbers(
     baseline = tmp_path / "baseline.json"
     perf(capsys, "--baseline", str(baseline), "--update-baselines")
     recorded = json.loads(baseline.read_text())
-    entry = recorded["operations"]["status-reads"]["day"]
+    entry = recorded["status-reads"][SMALLEST]
     entry["statements"] -= 1
     baseline.write_text(json.dumps(recorded))
 
     code, printed = perf(capsys, "--baseline", str(baseline))
 
     assert code == 1
-    expected = f"status-reads on day: statements {entry['statements']:,} -> "
+    expected = f"status-reads on {SMALLEST}: statements {entry['statements']:,} -> "
     assert expected in printed and "worse than the baseline" in printed
 
 
@@ -68,9 +66,4 @@ def test_a_missing_baseline_fails_and_says_how_to_record_one(
     code, printed = perf(capsys, "--baseline", str(tmp_path / "none.json"))
 
     assert code == 1
-    assert "ingest on day: no baseline yet" in printed and "--update-baselines" in printed
-
-
-def test_the_status_reads_use_the_window_and_gap_length_status_prints() -> None:
-    assert gate_operations.STATUS_WINDOW == status.STATUS_WINDOW
-    assert gate_operations.MIN_GAP_SECONDS == status.MIN_GAP_SECONDS
+    assert f"ingest on {SMALLEST}: no baseline yet" in printed and "--update-baselines" in printed

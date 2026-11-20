@@ -111,7 +111,8 @@ computer_history/
                 # user, keyed by inputs and code), devdb (a cached dataset
                 # copied out, never into a live folder), operations (what
                 # the product does, on a cached dataset), meter (the cost
-                # meter), gate (costs against the committed baseline)
+                # meter), gate (costs against the committed baseline,
+                # + baseline: the file and the SQLite that recorded it)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

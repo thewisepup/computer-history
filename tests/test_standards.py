@@ -169,6 +169,35 @@ def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
     assert not calls, f"{_rel(path)}: take these as parameters instead: {calls}"
 
 
+def _constants(path: Path) -> dict[str, str]:
+    found = {}
+    for node in _tree(path).body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id.isupper() and node.value is not None:
+                found[target.id] = ast.dump(node.value)
+    return found
+
+
+def test_the_cli_defines_no_constant_a_lower_layer_also_defines() -> None:
+    cli = {
+        name: (path, value)
+        for path in SOURCES
+        if _layer(path) == "cli"
+        for name, value in _constants(path).items()
+    }
+    copies = [
+        f"{name}: {_rel(cli[name][0])} and {_rel(path)}"
+        for path in SOURCES
+        if _layer(path) != "cli"
+        for name, value in _constants(path).items()
+        if name in cli and cli[name][1] == value
+    ]
+    assert not copies, f"import these from the lower layer instead of copying them: {copies}"
+
+
 DIAGRAMMED_PACKAGES = [
     init.parent
     for init in sorted(PACKAGE.rglob("__init__.py"))

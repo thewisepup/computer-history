@@ -28,7 +28,10 @@ class Scan(NamedTuple):
 
 @dataclass(frozen=True)
 class Costs:
-    """What one measured run did: statements by text, VM steps, full scans and database pages."""
+    """What one measured run did: statements by text, VM steps, full scans and database pages.
+
+    Each statement is charged the VM steps run from its start until the next statement starts.
+    """
 
     statements: int
     vm_steps: int
@@ -44,10 +47,10 @@ def statement_text(sql: str) -> str:
     return _SPACE.sub(" ", text).strip().rstrip(";").rstrip()
 
 
-def measure(conn: sqlite3.Connection, action: Callable[[], object]) -> Costs:
+def measure(conn: sqlite3.Connection, action: Callable[[], object], *, pages: bool = True) -> Costs:
     """Run the action once, counting every statement and VM instruction it runs on the connection.
 
-    The plans of the reads it ran and the database's pages are read afterwards, uncounted.
+    Without pages, the database's pages are left at zero.
     """
     counts: dict[str, int] = {}
     steps: dict[str, int] = {}
@@ -77,7 +80,7 @@ def measure(conn: sqlite3.Connection, action: Callable[[], object]) -> Costs:
         if _READ.match(sql.lstrip())
         for table in scanned_tables(conn, sql)
     )
-    pages, table_pages = page_counts(conn)
+    total, table_pages = page_counts(conn) if pages else (0, {})
     by_statement = {
         text: StatementCost(counts.get(text, 0), steps.get(text, 0))
         for text in sorted(counts.keys() | steps.keys())
@@ -86,7 +89,7 @@ def measure(conn: sqlite3.Connection, action: Callable[[], object]) -> Costs:
         statements=sum(counts.values()),
         vm_steps=sum(steps.values()),
         full_scans=scans,
-        pages=pages,
+        pages=total,
         table_pages=table_pages,
         by_statement=by_statement,
     )
