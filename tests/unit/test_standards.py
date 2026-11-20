@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 PACKAGE = REPO / "computer_history"
 SOURCES = sorted(PACKAGE.rglob("*.py"))
-TESTS = sorted(Path(__file__).resolve().parent.rglob("*.py"))
+TESTS = sorted((REPO / "tests").rglob("*.py"))
 COMMENTED = SOURCES + TESTS
 
 BANNED_MODULE_NAMES = {"utils", "helpers", "misc", "common", "shared", "types", "reads", "writes"}
@@ -267,3 +267,15 @@ def test_the_checks_doc_names_every_ci_job(workflow: Path) -> None:
     assert _jobs(workflow)
     assert [job for job in _jobs(workflow) if f"`{job}`" not in doc] == []
 
+
+TEST_FOLDERS = ("unit", "data", "perf", "e2e")
+
+
+def test_every_test_file_sits_in_a_test_folder() -> None:
+    stray = [
+        _rel(path)
+        for path in TESTS
+        if (path.name.startswith("test_") or path.name.endswith("_test.py"))
+        and path.relative_to(REPO / "tests").parts[0] not in TEST_FOLDERS
+    ]
+    assert stray == [], f"move these into one of tests/{{{','.join(TEST_FOLDERS)}}}: {stray}"
