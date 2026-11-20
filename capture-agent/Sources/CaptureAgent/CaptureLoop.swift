@@ -7,7 +7,7 @@ final class CaptureLoop<M: Mac> {
     private let pollInterval: TimeInterval
     private let reader: WindowTextReader<M.Element>
     private let spool: any SpoolAppender
-    private let screenshot: CaptureScreenshot<M>?
+    private var screenshot: CaptureScreenshot<M>?
     private let counts: CaptureCounts
     private let log: (String) -> Void
 
@@ -46,7 +46,8 @@ final class CaptureLoop<M: Mac> {
             images: images,
             longEdge: settings.screenshots.longEdge,
             pause: settings.pause,
-            idleThreshold: settings.capture.idleThreshold
+            idleThreshold: settings.capture.idleThreshold,
+            dedup: FrameDedup(threshold: settings.screenshots.duplicateThreshold)
         )
         self.screenshot = settings.screenshots.enabled ? screenshot : nil
         self.counts = counts
@@ -100,9 +101,8 @@ final class CaptureLoop<M: Mac> {
         )
         guard write(record) else { return }
         counts.recordWritten(record)
-        guard let screenshot else { return }
-        let shot = screenshot.take(for: record, of: application)
-        if !write(shot) { screenshot.discard(shot) }
+        guard let shot = screenshot?.take(for: record, of: application) else { return }
+        if !write(shot) { screenshot?.discard(shot) }
     }
 
     private func write(_ record: some SpoolLine) -> Bool {

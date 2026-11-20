@@ -78,6 +78,7 @@ shell that sets them act on that other folder.
 | `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
 | `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
+| `screenshot_duplicate_threshold_bits` | `2` | whole number, 0 to 32: a picture whose 64-bit hash differs from its window's last kept one in at most this many bits is a `duplicate`; `0` drops only identical hashes |
 
 ```json
 {
@@ -212,6 +213,7 @@ is taken.
 |---|---|
 | `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
 | `kept` | the picture was taken and saved |
+| `duplicate` | the picture's hash is within `screenshot_duplicate_threshold_bits` of its window's last kept picture; nothing is saved |
 | `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
 | `failed` | anything else: focus or presence changed during the read, the password-field check got no answer, the window's frame could not be read or matched, another ScreenCaptureKit error, no answer within 2 seconds, an earlier request still unanswered, or the image could not be saved |
 
@@ -235,8 +237,18 @@ are `0700`, set again on every save, and the images `0600`. An image whose
 record cannot be written to the spool is deleted; otherwise nothing is ever
 deleted, and an image whose record a crash cut off stays.
 
-For now every `kept` record has empty recognized text, its perceptual hash is
-a 64-bit difference hash, and `duplicate` is never written.
+Each picture's perceptual hash is a 64-bit difference hash: each bit says
+whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
+It is compared with the last kept picture of the same window, a window being
+the app name, bundle id and window title. The agent remembers the last kept
+picture of the 12 most recently seen windows, in memory only, so a restart
+starts over. A window whose title changes is a new window: its first picture
+is kept, and the old title is still remembered until it ages out. A
+`duplicate` record carries the kept record's image path, hash and recognized
+text, and no image size. A kept image whose record the spool refuses is
+forgotten as well as deleted.
+
+For now every `kept` record has empty recognized text.
 
 The agent does not ask for the Screen Recording grant itself, but its first
 ScreenCaptureKit call without the grant may make macOS show the Screen
@@ -383,7 +395,7 @@ every key below, sorted, with `null` where a key does not apply:
 | `app_name`, `bundle_id`, `window_title` | the capture's |
 | `image_path` | `kept` and `duplicate`: the JPEG's path relative to the folder (for `duplicate`, the kept image it matched) |
 | `image_bytes` | `kept` only: the JPEG's size |
-| `perceptual_hash` | `kept` and `duplicate`: the frame's hash |
+| `perceptual_hash` | `kept` and `duplicate`: the frame's hash (for `duplicate`, the kept record's) |
 | `text` | `kept` and `duplicate`: the recognized text, possibly cut off (for `duplicate`, the kept record's) |
 | `text_sha256`, `full_text_bytes`, `text_cut_off` | as for a capture, of the recognized text |
 

@@ -15,8 +15,9 @@ import PackageDescription
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture its screenshot record
-///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, image saved,
-///           |                   and the screenshot record that names the capture
+///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, duplicate
+///           |                   check, image saved, and the screenshot record that names the capture
+///     FrameDedup.swift      the last kept screenshot of each of the 12 most recently seen windows
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's

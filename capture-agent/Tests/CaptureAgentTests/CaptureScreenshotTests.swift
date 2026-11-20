@@ -132,7 +132,8 @@ final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
     for (index, record) in records.enumerated() where record["kind"] as? String == "screenshot" {
         #expect(record["capture_id"] as? String == records[index - 1]["id"] as? String)
     }
-    #expect(Set(savedImages(in: fixture.settings.folder)) == Set(try fixture.screenshotRecords().map { "\($0["id"] as! String).jpg" }))
+    let kept = try fixture.screenshotRecords().filter { $0["status"] as? String == "kept" }
+    #expect(Set(savedImages(in: fixture.settings.folder)) == Set(kept.map { "\($0["id"] as! String).jpg" }))
     #expect(fixture.mac.windowImageRequests == [plainApp.processIdentifier, chrome.processIdentifier, chrome.processIdentifier])
 }
 

@@ -291,26 +291,49 @@ def test_status_reports_the_capture_agent(session: Session) -> None:
     assert "last capture" in session.status.stdout
 
 
-def test_every_capture_keeps_one_screenshot_saved_beside_the_database(session: Session) -> None:
+def _by_status(shots: list[dict], status: str) -> list[dict]:
+    return [s for s in shots if s["status"] == status]
+
+
+def test_every_capture_gets_one_screenshot_kept_beside_the_database_or_marked_duplicate(
+    session: Session,
+) -> None:
     captures = [r for r in session.records() if r["kind"] == "capture"]
     screenshots = session.screenshots()
     assert sorted(s["capture_id"] for s in screenshots) == sorted(r["id"] for r in captures)
-    for shot in screenshots:
-        assert shot["status"] == "kept"
+    kept, duplicates = _by_status(screenshots, "kept"), _by_status(screenshots, "duplicate")
+    assert kept and duplicates
+    assert len(kept) + len(duplicates) == len(screenshots)
+    for shot in kept:
         image = session.folder / shot["image_path"]
         assert shot["image_path"] == f"screenshots/{image.parent.name}/{shot['id']}.jpg"
         assert image.stat().st_size == shot["image_bytes"]
         assert image.read_bytes()[:3] == b"\xff\xd8\xff"
         assert stat.S_IMODE(image.stat().st_mode) == 0o600
     on_disk = {p.name for p in (session.folder / "screenshots").rglob("*.jpg")}
-    assert on_disk == {f"{s['id']}.jpg" for s in screenshots}
+    assert on_disk == {f"{s['id']}.jpg" for s in kept}
 
 
-def test_status_reports_the_kept_screenshots_and_their_size(session: Session) -> None:
+def test_a_duplicate_points_at_its_windows_kept_image_and_copies_its_hash_and_text(
+    session: Session,
+) -> None:
+    screenshots = session.screenshots()
+    kept = {s["image_path"]: s for s in _by_status(screenshots, "kept")}
+    for shot in _by_status(screenshots, "duplicate"):
+        original = kept[shot["image_path"]]
+        window = ("app_name", "bundle_id", "window_title")
+        assert [shot[k] for k in window] == [original[k] for k in window]
+        assert shot["image_bytes"] is None
+        copied = ("perceptual_hash", "text", "text_sha256", "full_text_bytes", "text_cut_off")
+        assert [shot[k] for k in copied] == [original[k] for k in copied]
+
+
+def test_status_reports_the_kept_and_duplicate_screenshots_and_their_size(session: Session) -> None:
     shots = session.screenshots()
+    kept, duplicates = _by_status(shots, "kept"), _by_status(shots, "duplicate")
     out = session.status.stdout
-    assert f"  all stored    {len(shots)} kept, 0 duplicate, 0 secure-field," in out
-    total = human_size(sum(s["image_bytes"] for s in shots))
+    assert f"  all stored    {len(kept)} kept, {len(duplicates)} duplicate, 0 secure-field," in out
+    total = human_size(sum(s["image_bytes"] for s in kept))
     assert f"  disk          {total} in total," in out
 
 

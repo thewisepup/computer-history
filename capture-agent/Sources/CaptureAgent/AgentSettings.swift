@@ -98,6 +98,10 @@ public struct AgentSettings: Equatable, Sendable {
                 screenshots.longEdge = wholeNumber(value, key: key, range: 256...8_192, default: screenshots.longEdge)
             case .screenshotJPEGQuality:
                 screenshots.quality = wholeNumber(value, key: key, range: 1...100, default: screenshots.quality)
+            case .screenshotDuplicateThresholdBits:
+                screenshots.duplicateThreshold = wholeNumber(
+                    value, key: key, range: 0...32, default: screenshots.duplicateThreshold
+                )
             }
         }
     }
@@ -166,6 +170,7 @@ private enum ConfigKey: String, CaseIterable {
     case screenshots
     case screenshotLongEdgePixels = "screenshot_long_edge_pixels"
     case screenshotJPEGQuality = "screenshot_jpeg_quality"
+    case screenshotDuplicateThresholdBits = "screenshot_duplicate_threshold_bits"
 }
 
 /// Prints where the settings came from, every problem in the config file, and the settings in effect.
@@ -182,7 +187,7 @@ public func checkConfig(_ settings: AgentSettings) -> CommandOutcome {
         "call timeout: \(formatted(settings.windowText.callTimeout))s",
         "window timeout: \(formatted(settings.windowText.windowTimeout))s",
         "screenshots: \(settings.screenshots.enabled ? "on" : "off"), long edge \(settings.screenshots.longEdge) px, "
-            + "JPEG quality \(settings.screenshots.quality)",
+            + "JPEG quality \(settings.screenshots.quality), duplicate within \(settings.screenshots.duplicateThreshold) of 64 hash bits",
     ]
     return CommandOutcome(exitCode: settings.problems.isEmpty ? 0 : 1, message: lines.joined(separator: "\n"))
 }
