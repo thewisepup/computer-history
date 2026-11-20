@@ -12,6 +12,8 @@
       activitywatch.py  window, AFK and web buckets as the watchers leave them
           |             afk.py: the AFK spans aw-watcher-afk reports
           |             aw_api.py: the buckets served in process, as the real API
+      spool.py          the capture agent's records, in finished one-minute spool files
+          |             captures.py: when the agent captures, by its schedule
           |
       build.py          render, backfill and poll into a new database, at a fixed now
       manifest.py       the true answers, from the timeline and never the database
@@ -32,7 +34,7 @@ from computer_history.synthetic.generate import (
     DatasetInputs,
     generate_timeline,
 )
-from computer_history.synthetic.manifest import GENERATOR_VERSION, Manifest, Totals
+from computer_history.synthetic.manifest import GENERATOR_VERSION, Captures, Manifest, Totals
 from computer_history.synthetic.scenarios import SCENARIOS
 from computer_history.synthetic.timeline import Fault, FaultKind, Stretch, StretchKind, Timeline
 
@@ -43,6 +45,7 @@ __all__ = [
     "SCENARIOS",
     "TIERS",
     "BuildFailed",
+    "Captures",
     "Dataset",
     "DatasetInputs",
     "Fault",

@@ -20,9 +20,10 @@ from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.manifest import Manifest, true_answers
 from computer_history.synthetic.renderer import Feed, RenderedSource, Renderer
 from computer_history.synthetic.seeds import part_random
+from computer_history.synthetic.spool import SpoolRenderer
 from computer_history.synthetic.timeline import Timeline
 
-RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(),)
+RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(), SpoolRenderer())
 SETTLE_AFTER = timedelta(seconds=STABILITY_MARGIN_SECONDS + 60)
 DATABASE_NAME = "history.db"
 MANIFEST_NAME = "manifest.json"
