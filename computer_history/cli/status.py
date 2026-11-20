@@ -6,17 +6,31 @@ from pathlib import Path
 from socket import gethostname
 
 from computer_history.cli.db import outdated_note, store_unavailable
-from computer_history.cli.formatting import ago, app_name, db_size, duration, lag, when
+from computer_history.cli.formatting import (
+    ago,
+    app_name,
+    db_size,
+    duration,
+    human_size,
+    lag,
+    local_midnight,
+    printable,
+    when,
+)
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
+    SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
+    WINDOW_TEXT_SOURCE,
     ActivityWatch,
     AWClient,
     CaptureHealth,
+    ScreenshotHealth,
+    ScreenshotTally,
     SourceUnavailable,
     capture_health,
     resolve_spool_path,
+    screenshot_health,
 )
 from computer_history.store import (
     MIN_GAP_SECONDS,
@@ -37,10 +51,15 @@ MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     spool_path = resolve_spool_path(args.spool_path, db_path)
-    now = datetime.now(UTC)
+    now = utc_now()
+    day_start = local_midnight(now)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
@@ -84,16 +103,18 @@ def cmd_status(args: argparse.Namespace) -> int:
             window=STATUS_WINDOW,
             hostname=gethostname(),
             min_gap_seconds=MIN_GAP_SECONDS,
+            day_start=day_start,
         )
-        reads = status_reads(
-            store.conn, summaries, skip={AX_TEXT_SOURCE} if health.reported else ()
-        )
+        skip = {SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE} if health.reported else {SCREENSHOT_SOURCE}
+        reads = status_reads(store.conn, summaries, skip=skip)
         print()
         _print_sources(summaries, now)
         print()
         _print_gaps(summaries, reads.coverage, health)
         print()
         _print_agent(health, spool_path, now)
+        print()
+        _print_screenshots(screenshot_health(store.conn, day_start=day_start, now=now), now)
         print()
         _print_counts(reads.counts)
     return 0
@@ -138,8 +159,15 @@ def _print_gaps(
         print("  nothing to check yet")
     by_source = {source.summary.source: source for source in coverage}
     for s in summaries:
-        if s.source == AX_TEXT_SOURCE and health.reported:
+        if s.source == WINDOW_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
+            continue
+        if s.source == SCREENSHOT_SOURCE:
+            if health.coverage is not None:
+                print(
+                    f"  {s.source}: not checked"
+                    f" (coverage is judged from {WINDOW_TEXT_SOURCE} records)"
+                )
             continue
         checked = by_source[s.source]
         if checked.coverage is Coverage.NO_OBSERVATIONS:
@@ -164,10 +192,10 @@ def _print_gaps(
 def _print_capture_gaps(health: CaptureHealth) -> None:
     coverage = health.coverage
     if coverage is None:
-        print(f"  {AX_TEXT_SOURCE}: no settled span to check yet")
+        print(f"  {WINDOW_TEXT_SOURCE}: no settled span to check yet")
         return
     print(
-        f"  {AX_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
+        f"  {WINDOW_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
         " not paused):"
     )
@@ -176,19 +204,19 @@ def _print_capture_gaps(health: CaptureHealth) -> None:
         + [(gap, "cannot be judged: no aw-afk data") for gap in coverage.unjudged]
     )
     if not warnings:
-        print(f"  {AX_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
+        print(f"  {WINDOW_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
     for gap, why in warnings[:MAX_GAPS_SHOWN]:
         print(
-            f"  warning: no {AX_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
+            f"  warning: no {WINDOW_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
             f" ({duration(gap.seconds)}), {why}"
         )
     if len(warnings) > MAX_GAPS_SHOWN:
-        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {AX_TEXT_SOURCE} gaps")
+        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {WINDOW_TEXT_SOURCE} gaps")
 
 
 def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None:
     if not health.reported:
-        print(f"Capture agent: has not reported yet (no {AX_TEXT_SOURCE} records stored)")
+        print(f"Capture agent: has not reported yet (no {WINDOW_TEXT_SOURCE} records stored)")
         print(f"  spool         {_spool(health, spool_path, now)}")
         return
     print("Capture agent:")
@@ -248,6 +276,44 @@ def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:
         oldest = duration(age) if age >= 0 else f"{duration(-age)} ahead of now"
         waiting += f" (oldest {oldest})"
     return f"{waiting}, {spool.unreadable:,} in {UNREADABLE_FOLDER}/  ({spool_path})"
+
+
+def _print_screenshots(shots: ScreenshotHealth, now: datetime) -> None:
+    if not shots.reported:
+        print(f"Screenshots: none stored yet (no {SCREENSHOT_SOURCE} records)")
+        return
+    print("Screenshots:")
+    kept = shots.last_kept
+    if kept is None:
+        print("  last kept     none yet")
+    else:
+        path = "(no path)" if kept.image_path is None else printable(kept.image_path)
+        print(f"  last kept     {ago(kept.at, now)}, {app_name(kept.app)}, {path}")
+    print(f"  today         {_statuses(shots.today)}")
+    print(f"  all stored    {_statuses(shots.total)}")
+    print(
+        f"  disk          {human_size(shots.total.image_bytes)} in total,"
+        f" {human_size(shots.today.image_bytes)} today (from kept records)"
+    )
+    missing = shots.no_permission
+    if missing is None:
+        return
+    if missing.current:
+        print(
+            "  warning: Screen Recording permission is missing since"
+            f" {ago(missing.since, now)} (records say no-permission, and no"
+            " screenshot was taken since). Grant it in System Settings > Privacy & Security"
+            " > Screen Recording."
+        )
+    else:
+        print(
+            f"  permission    last recorded missing {ago(missing.last, now)}, missing since"
+            f" {ago(missing.since, now)}; no screenshot record since says whether it is held"
+        )
+
+
+def _statuses(tally: ScreenshotTally) -> str:
+    return ", ".join(f"{n:,} {status}" for status, n in tally.statuses.items())
 
 
 def _print_counts(counts: dict[str, int]) -> None:

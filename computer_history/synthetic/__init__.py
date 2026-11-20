@@ -16,6 +16,7 @@
           |             aw_api.py: the buckets served in process, as the real API
       spool.py          the capture agent's records, in finished one-minute spool files
           |             captures.py: the records the agent writes, by its schedule
+          |             screenshots.py: the screenshot each capture takes, kept or a duplicate
           |
       build.py          render, backfill and poll into a new database, at a fixed now
       manifest.py       the true answers, from the timeline and never the database

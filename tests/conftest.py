@@ -25,6 +25,42 @@ settings.register_profile(
 )
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "deterministic"))
 
+HOOK_BUDGET_ENV_VAR = "COMPUTER_HISTORY_HOOK_BUDGET"
+HOOK_TEST_SECONDS = 3.0
+HOOK_TOTAL_SECONDS = 15.0
+HOOK_LEAVES_OUT = ("perf", "dataset")
+_hook_seconds: dict[str, float] = {}
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    if not os.environ.get(HOOK_BUDGET_ENV_VAR) or report.when == "teardown":
+        return
+    if any(marker in report.keywords for marker in HOOK_LEAVES_OUT):
+        return
+    _hook_seconds[report.nodeid] = _hook_seconds.get(report.nodeid, 0.0) + report.duration
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if not os.environ.get(HOOK_BUDGET_ENV_VAR):
+        return
+    slow = sorted(
+        ((seconds, test) for test, seconds in _hook_seconds.items() if seconds > HOOK_TEST_SECONDS),
+        reverse=True,
+    )
+    total = sum(_hook_seconds.values())
+    if not slow and total <= HOOK_TOTAL_SECONDS:
+        return
+    write = session.config.get_terminal_writer().line
+    write("")
+    write(
+        f"The pre-commit hook's tests took {total:.1f}s (budget {HOOK_TOTAL_SECONDS:g}s);"
+        f" {len(slow)} took over {HOOK_TEST_SECONDS:g}s. Make each faster, or give its file"
+        " `pytestmark = pytest.mark.dataset` so only CI runs it (docs/agents/checks.md):"
+    )
+    for seconds, test in slow:
+        write(f"  {seconds:.1f}s  {test}")
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
 
 @pytest.fixture(autouse=True)
 def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:

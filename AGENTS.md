@@ -25,8 +25,11 @@ summaries.
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
-- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
-  `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
+- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest).
+  `formal/check.sh` is run by hand only, and agents never run it on their own.
+  When a diff touches the handoff files listed in
+  `.claude/skills/verify-spool-handoff`, say so in the PR under "Not proven
+  here" and leave the run to Brandon, who runs it by hand or asks for it.
 - `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
   matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
   says when to run it and which tests to keep.
@@ -43,18 +46,24 @@ brew install gitleaks
 git config core.hooksPath .githooks
 ```
 
-`.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check
-computer_history tests` and pyright must pass; the pre-commit hook runs all
-three after a gitleaks scan of the staged changes. CI runs them, the POC suite
-(`python -m unittest`) and gitleaks on every pull request and push to `main`,
-and `main` only merges pull requests whose checks pass. A
-worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+`.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
+computer_history tests` must pass. The pre-commit hook runs a gitleaks scan of
+the staged changes, ruff, pytest without the `dataset` tests, and pyright (those that
+build synthetic datasets or run `dev perf` and `dev bench`), in about ten
+seconds. CI runs the full pytest, the POC suite (`python -m unittest`) and
+gitleaks on every pull request and push to `main`, and `main` only merges pull
+requests whose checks pass. `docs/agents/checks.md` says where a new check
+belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
+which CI enforces. In a
+worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
+own `.venv` on first use (about a minute), since the main checkout's venv
+imports the main checkout's source.
 Pyright type-checks `computer_history` in strict mode and `tests` in standard
 mode (`[tool.pyright]` in `pyproject.toml`), with zero errors:
 `.venv/bin/python -m pyright --pythonpath .venv/bin/python`. Without
 `--pythonpath` it resolves imports against whatever `python` is first on
-`PATH`. It must pass locally, where the pre-commit hook runs it. CI runs it
-as the `typecheck` job, which is not yet a required status check on `main`.
+`PATH`. CI runs it as the `typecheck` job, which is not yet a required status
+check on `main`.
 The performance gate's tests carry the `perf` marker, which the default run
 leaves out: run them with `.venv/bin/python -m pytest -m perf` or
 `computer-history dev perf` (see `computer_history/cli/README.md`). CI's `perf`
@@ -71,11 +80,10 @@ checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
 on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
 every pull.
 
-Swift never runs in CI. Two local commands cover the capture agent. The
-pre-commit hook runs the Swift tests when a commit touches the agent, the spool
-contract or the end-to-end test, and the end-to-end check also when it touches
-`computer_history/`, `pyproject.toml` or `tests/test_synthetic_spool.py`; without `swift` it skips both and says
-so (see the agent's README):
+Two commands cover the capture agent, and neither runs in the pre-commit hook.
+CI's `agent` job runs the Swift tests on macOS on every pull request; the
+nightly workflow runs the end-to-end check. Run them yourself after changing
+the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests

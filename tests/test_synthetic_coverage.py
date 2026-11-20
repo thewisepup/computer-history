@@ -36,6 +36,8 @@ from computer_history.synthetic import (
 from computer_history.synthetic.build import render_sources
 from computer_history.synthetic.manifest import true_answers
 
+pytestmark = pytest.mark.dataset
+
 TABLE_EXEMPTIONS: Mapping[str, str] = {
     "projects": "classification (M5) proposes projects; nothing fills it until M5 defines them",
     "work_types": "classification (M5) picks from the active work types; nothing fills it until M5",
@@ -55,6 +57,10 @@ STORE_EXEMPTIONS: Mapping[str, str] = {
     "page_counts": "the cost meter's own measurement of database pages",
     "scanned_tables": "the cost meter's own reading of query plans",
     "sqlite_build": "the cost meter's record of the SQLite it ran on",
+    "first_screenshot_at": (
+        "runs only once records say no-permission, and the synthetic agent always holds"
+        " the Screen Recording grant; it is one seek in the screenshot status index"
+    ),
 }
 PROBES: Mapping[tuple[type, str], object] = {
     (Fault, "sources"): (WINDOW_SOURCE,),

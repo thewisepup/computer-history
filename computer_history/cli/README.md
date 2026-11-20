@@ -11,7 +11,7 @@ app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop)
-  +-- status.py    freshness, coverage gaps, the capture agent, row counts
+  +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
@@ -38,6 +38,7 @@ Ingested from http://127.0.0.1:5600/api/0 and .../ComputerHistory/spool into ...
   aw-web     inserted     62  skipped      1  held back   0
   aw-window  inserted    271  skipped      1  held back   1
   ax-text    inserted    412  skipped      0  held back   0  rejected 1
+  screenshot inserted    410  skipped      0  held back   0
 ```
 
 `inserted` is new rows, `skipped` is rows already stored (re-reads are
@@ -49,14 +50,20 @@ project is reported (`error on aw-window: no source adapter projects
 observations from 'aw-window'`, exit 1) while the other streams are still
 ingested.
 
-`ax-text` is the capture agent's spool, read in the same poll. Each finished
-`*.jsonl` file is stored in one commit, oldest first, then deleted; the
-agent's `open.part` and `agent.lock` are never touched. `rejected` counts
-lines that are not usable records (malformed, failing validation, or an
-unknown format version): they are skipped and logged, and the rest of the
-file is stored. A file with any unusable line, or one that cannot be read, is
-moved into `spool/unreadable/` instead of being deleted. A file that cannot be
-removed is reported and not read again until the next `ingest` run. A missing
+`ax-text` and `screenshot` are the capture agent's spool, read in the same
+poll. Each stream stores its own records from each finished `*.jsonl` file in
+one commit, oldest first; the file is deleted once both streams have stored
+it. The agent's `open.part` and `agent.lock` are never touched. A stream's
+`rejected` counts lines of its own kinds that are not usable records (failing
+validation, or an unknown format version); a line whose kind cannot be read
+(not JSON, or a kind this backend does not know) belongs to neither stream and
+is counted in the warning when the file is set aside. Unusable lines are skipped
+and logged, and the rest of the file is stored. A file with any unusable line
+is moved into `spool/unreadable/` instead of being deleted, once both streams
+stored its usable lines. A file one stream cannot read is left for that stream
+to retry on the next poll; only a file neither stream can read is moved aside.
+A file that cannot be removed is reported as `error on the spool` and not read
+again until the next `ingest` run. A missing
 spool folder is nothing to ingest. ActivityWatch being down does not stop the
 spool, and the reverse: the other source's rows are stored, and the run exits
 1.
@@ -69,7 +76,7 @@ computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 ```
 
 ```
-Database:      .../ComputerHistory/history.db (5.2 MB, schema v3)
+Database:      .../ComputerHistory/history.db (5.2 MB, schema v5)
 ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
 
 Sources:
@@ -81,6 +88,7 @@ Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused):
   warning: no ax-text coverage from 2026-11-18 08:02 to 2026-11-18 08:40 (38m), while you were active
   warning: no ax-text coverage from 2026-11-18 09:15 to 2026-11-18 09:27 (12m), cannot be judged: no aw-afk data
+  screenshot: not checked (coverage is judged from ax-text records)
 
 Capture agent:
   last capture  2026-11-18 10:09 (40s ago)
@@ -92,6 +100,12 @@ Capture agent:
                 5 x Discord -> Google Chrome
                 3 x Google Chrome -> Discord
                 2 x Zoom -> Discord
+
+Screenshots:
+  last kept     2026-11-18 10:09 (45s ago), Cursor, screenshots/2026-11-18/6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e11.jpg
+  today         402 kept, 377 duplicate, 6 secure-field, 0 no-permission, 1 failed
+  all stored    6,904 kept, 7,311 duplicate, 85 secure-field, 12 no-permission, 9 failed
+  disk          1.1 GB in total, 71.2 MB today (from kept records)
 
 Rows:
   ...
@@ -152,6 +166,50 @@ Capture agent: has not reported yet (no ax-text records stored)
   spool         3 finished files waiting (oldest 2m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
 ```
 
+The screenshots section reads only stored `screenshot` records, never the
+screenshots folder, through an index on their status, capture time and image
+size, so it stays quick at months of records. Every stored record counts, by
+its own capture time, including one dated after now when the agent's clock
+runs ahead:
+
+- **last kept**: the newest `kept` record, its app and the image path it
+  names (relative to the data folder).
+- **today** and **all stored**: records by status, since local midnight (the
+  midnight's own offset, so a daylight saving changeover day starts on time)
+  and in total. Records still in the spool count once ingested.
+- **disk**: the `image_bytes` of the `kept` records, in total and today. An
+  image left without a record is not counted.
+- **warning**: printed when a `no-permission` record is newer than every
+  `kept` and `duplicate` record and the newest `no-permission` record is at
+  most 5 minutes old (the window in which the capture agent counts as alive),
+  with the time of the first `no-permission` record after the last screenshot
+  taken. `secure-field` and `failed` records neither raise nor clear it.
+- **permission**: printed instead of the warning once that newest
+  `no-permission` record is older, as when screenshots were turned off or the
+  agent stopped: when the records last said the grant was missing, and since
+  when. It is information, not a warning.
+
+After the end-to-end check's scripted session, whose last two captures lost
+the grant, run a day later so the records are old (real output):
+
+```
+Screenshots:
+  last kept     2026-11-18 01:05 (1d 20h ago), Calculator, screenshots/2026-11-18/44261db4-595d-49ef-ae79-3b034eced225.jpg
+  today         0 kept, 0 duplicate, 0 secure-field, 0 no-permission, 0 failed
+  all stored    4 kept, 1 duplicate, 1 secure-field, 2 no-permission, 1 failed
+  disk          299.3 KB in total, 0 B today (from kept records)
+  permission    last recorded missing 2026-11-18 01:09 (1d 20h ago), missing since 2026-11-18 01:07 (1d 20h ago); no screenshot record since says whether it is held
+```
+
+`screenshot` coverage is not checked: coverage is judged from `ax-text`
+records, so the coverage gaps list says `screenshot: not checked` after the
+`ax-text` check, and says nothing about screenshots when that check has
+nothing to judge. With no screenshot records stored, the section is one line:
+
+```
+Screenshots: none stored yet (no screenshot records)
+```
+
 ## backfill — one-time history import
 
 ```bash
@@ -191,7 +249,7 @@ Rebuilt signals in .../history.db from stored observations
 
 Wipes `signals` and re-projects every stored observation through its source
 adapter's projector, the same one ingest used. Needed only after changing a
-projector (`activitywatch/normalize.py`, `ax_text/normalize.py`) or
+projector (`activitywatch/normalize.py`, `capture_spool/normalize.py`) or
 `text.py`. Aborts (and rolls back) if too many rows fail to project or the
 result would shrink suspiciously. It also aborts, without counting them as
 malformed, when observations come from a source this version has no adapter
@@ -370,15 +428,15 @@ reports medians only.
 Every command opens the store the same way and refuses, with exit code 1 and
 no traceback, when the database is:
 
-- **newer** than this CLI (`cannot use ...: schema v4 is newer than this CLI
-  understands (v3); upgrade computer-history`). Nothing is read or written.
+- **newer** than this CLI (`cannot use ...: schema v6 is newer than this CLI
+  understands (v5); upgrade computer-history`). Nothing is read or written.
 - **busy** while opening for write, e.g. another process is migrating
   (`cannot open ...: database is locked` plus a try-again hint).
 - **not a database** (`cannot open ...: file is not a database`).
 
 An **outdated** schema is migrated by `ingest`, `backfill` and
 `rebuild-signals`. `status` and `backfill --dry-run` never migrate: status
-prints `note: this CLI uses schema v3; computer-history ingest will migrate
+prints `note: this CLI uses schema v5; computer-history ingest will migrate
 the database` and stops there, and a dry run refuses. A **missing** database
 is created by `ingest` and `backfill` (only once planning succeeds), shown as
 "not created yet" by `status`, and refused by `rebuild-signals`.

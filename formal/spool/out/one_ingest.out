@@ -1,22 +1,25 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 96 and seed -4264101164969956510 with 18 workers on 18 cores with 8192MB heap and 64MB offheap memory [pid: 31750] (Mac OS X 26.6.2 aarch64, Eclipse Adoptium 21.0.13.1 x86_64, MSBDiskFPSet, DiskStateQueue).
-Parsing file /Users/brandon/workspace/computer-history/formal/spool/SpoolHandoff.tla
+Running breadth-first search Model-Checking with fp 36 and seed 5211677753838522764 with 18 workers on 18 cores with 8192MB heap and 64MB offheap memory [pid: 11377] (Mac OS X 26.6.2 aarch64, Eclipse Adoptium 21.0.13.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/brandon/.t3/worktrees/computer-history/t3-a1846c4a-eee61e7c488c8a5a/formal/spool/SpoolHandoff.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/Naturals.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/FiniteSets.tla
 Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/Sequences.tla
+Parsing file /private/var/folders/m6/nn63_2r968vd6qwl2h011b2m0000gn/T/TLC.tla
 Semantic processing of module Naturals
 Semantic processing of module Sequences
 Semantic processing of module FiniteSets
+Semantic processing of module TLC
 Semantic processing of module SpoolHandoff
-Starting... (2026-11-19 14:02:02)
+Starting... (2026-11-19 17:22:11)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-19 14:02:02.
+Finished computing initial states: 1 distinct state generated at 2026-11-19 17:22:11.
+Progress(19) at 2026-11-19 17:22:14: 6,252,755 states generated (6,252,755 s/min), 1,866,965 distinct states found (1,866,965 ds/min), 596,590 states left on queue.
 Model checking completed. No error has been found.
   Estimates of the probability that TLC did not check all reachable states
   because two distinct states had the same fingerprint:
-  calculated (optimistic):  val = 1.0E-7
-  based on the actual fingerprints:  val = 8.1E-8
-3156922 states generated, 801344 distinct states found, 0 states left on queue.
-The depth of the complete state graph search is 33.
-The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 8 and the 95th percentile is 3).
-Finished in 01s at (2026-11-19 14:02:04)
+  calculated (optimistic):  val = 1.3E-4
+  based on the actual fingerprints:  val = 2.0E-5
+116169689 states generated, 27618324 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 51.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 9 and the 95th percentile is 2).
+Finished in 49s at (2026-11-19 17:23:01)

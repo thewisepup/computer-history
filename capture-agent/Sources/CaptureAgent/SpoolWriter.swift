@@ -1,8 +1,21 @@
 import Darwin
 import Foundation
 
+/// A record the spool holds as one line of JSON.
+public protocol SpoolLine {
+    func jsonLine() throws -> Data
+}
+
+extension SpoolRecord: SpoolLine {}
+extension ScreenshotRecord: SpoolLine {}
+
+/// Where the capture loop appends its records.
+public protocol SpoolAppender: AnyObject, Sendable {
+    func append(_ record: some SpoolLine) throws
+}
+
 /// Appends records to the spool's open file and renames it to a finished file the backend may collect.
-public final class SpoolWriter: @unchecked Sendable {
+public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
     public static let openFileName = "open.part"
     public static let lockFileName = "agent.lock"
     public static let finishedSuffix = ".jsonl"
@@ -42,7 +55,7 @@ public final class SpoolWriter: @unchecked Sendable {
     }
 
     /// Appends the record to the open file as one line, opening a new file if none is open.
-    public func append(_ record: SpoolRecord) throws {
+    public func append(_ record: some SpoolLine) throws {
         var line = try record.jsonLine()
         line.append(UInt8(ascii: "\n"))
         try lock.withLock {

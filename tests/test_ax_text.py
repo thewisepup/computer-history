@@ -16,12 +16,14 @@ from fake_aw import FakeAW
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
-    AX_TEXT_SOURCE,
-    MAX_AX_TEXT_LENGTH,
     MAX_TEXT_LENGTH,
+    MAX_WINDOW_TEXT_LENGTH,
+    SCREENSHOT_KIND,
+    SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
+    WINDOW_TEXT_SOURCE,
     ActivityWatch,
     AWError,
     CaptureSpool,
@@ -37,11 +39,15 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
-from computer_history.sources.ax_text import adapter as spool_adapter
+from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import connect, get_progress, table_counts, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
-FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()
+FIXTURE_LINES = [
+    line
+    for line in FIXTURE.read_text(encoding="utf-8").splitlines()
+    if json.loads(line)["kind"] != SCREENSHOT_KIND
+]
 FIXTURE_CAPTURES = sum(json.loads(line)["kind"] == "capture" for line in FIXTURE_LINES)
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
@@ -83,7 +89,7 @@ def observations(conn: sqlite3.Connection) -> list[tuple[str, str, str, str]]:
     rows = conn.execute(
         "SELECT source_id, started_at, ended_at, payload FROM observations"
         " WHERE source = ? ORDER BY id",
-        (AX_TEXT_SOURCE,),
+        (WINDOW_TEXT_SOURCE,),
     )
     return [tuple(row) for row in rows]
 
@@ -115,7 +121,10 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
 
     latest = datetime(2026, 11, 18, 9, 15, 42, 999000, tzinfo=UTC)
     assert summary.ok
-    assert summary.outcomes == {AX_TEXT_SOURCE: IngestOutcome(len(FIXTURE_LINES), 0, 0, latest)}
+    assert summary.outcomes == {
+        WINDOW_TEXT_SOURCE: IngestOutcome(len(FIXTURE_LINES), 0, 0, latest),
+        SCREENSHOT_SOURCE: IngestOutcome(0, 0, 0, None),
+    }
     records = [json.loads(line) for line in FIXTURE_LINES]
     assert observations(conn) == [
         (r["id"], utc_iso(r["captured_at"]), utc_iso(r["captured_at"]), line)
@@ -146,7 +155,7 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
         source_id, source, started, ended, app, domain, url, title, stored_text, extras = row
         assert (source_id, source, started, ended) == (
             r["id"],
-            AX_TEXT_SOURCE,
+            WINDOW_TEXT_SOURCE,
             utc_iso(r["captured_at"]),
             utc_iso(r["captured_at"]),
         )
@@ -158,7 +167,7 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
             text,
         )
         assert json.loads(extras) == {key: r[key] for key in extra_keys}
-    progress = stored_progress(conn, AX_TEXT_SOURCE)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
     assert progress.position == utc_iso(latest)
     assert progress.settled_until == latest
     assert not spooled.exists()
@@ -168,8 +177,8 @@ def test_excluded_paused_and_resumed_records_have_no_signal() -> None:
     project = projector_for([CaptureSpool])
     kinds = {json.loads(line)["kind"]: line for line in FIXTURE_LINES}
     for kind in ("excluded", "paused", "resumed"):
-        assert project(AX_TEXT_SOURCE, kinds[kind]) is None
-    assert project(AX_TEXT_SOURCE, kinds["capture"]) is not None
+        assert project(WINDOW_TEXT_SOURCE, kinds[kind]) is None
+    assert project(WINDOW_TEXT_SOURCE, kinds["capture"]) is not None
 
 
 def test_rebuild_reprojects_the_spool_to_identical_signals(
@@ -193,11 +202,11 @@ def test_a_crash_between_commit_and_removal_re_reads_nothing_new(
 ) -> None:
     spooled = write_file(spool_dir, file_name(1), FIXTURE_LINES)
     spool = CaptureSpool(spool_dir)
-    pulled = spool.pull_after(AX_TEXT_SOURCE, None, now=NOW)
+    pulled = spool.pull_after(WINDOW_TEXT_SOURCE, None, now=NOW)
     crashed = replace(pulled, after_commit=None)
     commit_pull(
         conn,
-        AX_TEXT_SOURCE,
+        WINDOW_TEXT_SOURCE,
         crashed,
         project=projector_for([spool]),
         now=NOW,
@@ -208,9 +217,9 @@ def test_a_crash_between_commit_and_removal_re_reads_nothing_new(
 
     summary = poll(conn, [spool], now=NOW + timedelta(minutes=1))
 
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(0, len(FIXTURE_LINES), 0, None)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(0, len(FIXTURE_LINES), 0, None)
     assert observations(conn) == stored and signals(conn) == projected
-    assert get_progress(conn, AX_TEXT_SOURCE) == progress
+    assert get_progress(conn, WINDOW_TEXT_SOURCE) == progress
     assert not spooled.exists()
 
 
@@ -229,7 +238,7 @@ def test_open_part_agent_lock_and_other_entries_are_ignored_and_left_in_place(
     assert finished_files(spool_dir) == [spool_dir / file_name(1)]
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert summary.outcomes[AX_TEXT_SOURCE].inserted == 1
+    assert summary.outcomes[WINDOW_TEXT_SOURCE].inserted == 1
     assert all(path.exists() for path in kept) and (spool_dir / "folder.jsonl").is_dir()
     assert sorted(p.name for p in spool_dir.iterdir()) == sorted(
         [*(p.name for p in kept), "folder.jsonl"]
@@ -242,8 +251,11 @@ def test_a_missing_spool_folder_is_nothing_to_ingest(
     summary = poll(conn, [CaptureSpool(tmp_path / "no-such-spool")], now=NOW)
 
     assert summary.ok
-    assert summary.outcomes == {AX_TEXT_SOURCE: IngestOutcome(0, 0, 0, None)}
-    assert get_progress(conn, AX_TEXT_SOURCE) is None
+    assert summary.outcomes == {
+        WINDOW_TEXT_SOURCE: IngestOutcome(0, 0, 0, None),
+        SCREENSHOT_SOURCE: IngestOutcome(0, 0, 0, None),
+    }
+    assert get_progress(conn, WINDOW_TEXT_SOURCE) is None
     assert not (tmp_path / "no-such-spool").exists()
 
 
@@ -260,9 +272,9 @@ def test_a_large_backlog_is_ingested_oldest_first_in_one_poll(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     last = T0 + timedelta(minutes=299, seconds=1)
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(600, 0, 0, last)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(600, 0, 0, last)
     assert [row[0] for row in observations(conn)] == expected
-    progress = stored_progress(conn, AX_TEXT_SOURCE)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
     assert progress.position == utc_iso(last)
     assert list(spool_dir.iterdir()) == []
 
@@ -276,8 +288,8 @@ def test_progress_never_moves_back_to_an_older_capture(
 
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(1, 0, 0, None)
-    progress = stored_progress(conn, AX_TEXT_SOURCE)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(1, 0, 0, None)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
     assert progress.position == utc_iso(T0 + timedelta(minutes=5))
 
 
@@ -297,12 +309,12 @@ def test_a_file_that_cannot_be_removed_fails_once_and_does_not_block_later_files
     finally:
         spool_dir.chmod(0o755)
 
-    assert [(f.stream, f.kind) for f in failed.failures] == [(AX_TEXT_SOURCE, FailureKind.SOURCE)]
+    assert [f.kind for f in failed.failures] == [FailureKind.SOURCE]
     assert "cannot remove stored spool file" in failed.failures[0].error
     assert "spool/" + file_name(2) in again.failures[0].error
     assert len(observations(conn)) == 2 and first.exists() and second.exists()
     drained = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
-    assert drained.outcomes[AX_TEXT_SOURCE] == IngestOutcome(0, 2, 0, None)
+    assert drained.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(0, 2, 0, None)
     assert finished_files(spool_dir) == []
 
 
@@ -313,7 +325,7 @@ def test_a_capture_dated_after_now_is_stored_but_does_not_move_progress(
     write_file(spool_dir, file_name(1), [record(1, T0), record(2, future)])
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
     assert len(observations(conn)) == 2
-    progress = stored_progress(conn, AX_TEXT_SOURCE)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
     assert progress.position == utc_iso(T0)
 
     write_file(spool_dir, file_name(2), [record(3, future)])
@@ -322,7 +334,7 @@ def test_a_capture_dated_after_now_is_stored_but_does_not_move_progress(
     write_file(spool_dir, file_name(3), [record(4, T0 + timedelta(minutes=3))])
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    progress = stored_progress(conn, AX_TEXT_SOURCE)
+    progress = stored_progress(conn, WINDOW_TEXT_SOURCE)
     assert progress.position == utc_iso(T0 + timedelta(minutes=3))
 
 
@@ -341,10 +353,10 @@ def test_a_backlog_is_listed_once_per_drain(
     monkeypatch.setattr(spool_adapter, "finished_files", counted)
     spool = CaptureSpool(spool_dir)
 
-    assert poll(conn, [spool], now=NOW).outcomes[AX_TEXT_SOURCE].inserted == 20
-    assert listings == [20]
+    assert poll(conn, [spool], now=NOW).outcomes[WINDOW_TEXT_SOURCE].inserted == 20
+    assert listings == [20, 20]
     poll(conn, [spool], now=NOW)
-    assert listings == [20, 0]
+    assert listings == [20, 20, 0, 0]
 
 
 def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
@@ -374,13 +386,15 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.ok
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(
-        2, 0, 0, T0 + timedelta(seconds=1), rejected=11
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(
+        2, 0, 0, T0 + timedelta(seconds=1), rejected=7
     )
     assert [row[3] for row in observations(conn)] == good
     assert not path.exists()
     assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
-    assert "skipped 11 unusable record(s)" in caplog.text and "line 2: not JSON" in caplog.text
+    assert "skipped 7 unusable record(s)" in caplog.text
+    assert "line 3: unknown version 2" in caplog.text
+    assert "it has 11 unusable line(s), 4 of no readable kind" in caplog.text
     assert "its usable lines are stored" in caplog.text
 
 
@@ -412,7 +426,7 @@ def test_a_file_with_no_usable_record_is_moved_aside_not_deleted(
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.ok
-    assert summary.outcomes[AX_TEXT_SOURCE] == IngestOutcome(1, 0, 0, T0, rejected=2)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(1, 0, 0, T0)
     aside = spool_dir / UNREADABLE_FOLDER / file_name(1)
     assert aside.read_bytes() == junk
     assert finished_files(spool_dir) == []
@@ -444,7 +458,7 @@ def test_an_unreadable_file_is_moved_aside_and_the_rest_ingested(
 
     aside = spool_dir / UNREADABLE_FOLDER / file_name(1)
     aside.chmod(0o644)
-    assert summary.ok and summary.outcomes[AX_TEXT_SOURCE].inserted == 1
+    assert summary.ok and summary.outcomes[WINDOW_TEXT_SOURCE].inserted == 1
     assert aside.read_text(encoding="utf-8") == record(1, T0) + "\n"
     assert finished_files(spool_dir) == []
     assert f"moved spool file {file_name(1)}" in caplog.text and "cannot read it" in caplog.text
@@ -459,8 +473,8 @@ def test_text_is_capped_at_ten_thousand_characters_and_titles_keep_theirs(
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     stored_text, stored_title = conn.execute("SELECT text, title FROM signals").fetchone()
-    assert MAX_AX_TEXT_LENGTH == 10_000
-    assert stored_text == "a" * MAX_AX_TEXT_LENGTH
+    assert MAX_WINDOW_TEXT_LENGTH == 10_000
+    assert stored_text == "a" * MAX_WINDOW_TEXT_LENGTH
     assert stored_title == "t" * MAX_TEXT_LENGTH
     assert json.loads(observations(conn)[0][3])["text"] == text
 
@@ -473,7 +487,7 @@ def test_activitywatch_down_does_not_stop_the_spool(
     summary = poll(conn, [ActivityWatch(down_aw()), CaptureSpool(spool_dir)], now=NOW)
 
     assert [(f.stream, f.kind) for f in summary.failures] == [(None, FailureKind.SOURCE)]
-    assert summary.outcomes[AX_TEXT_SOURCE].inserted == len(FIXTURE_LINES)
+    assert summary.outcomes[WINDOW_TEXT_SOURCE].inserted == len(FIXTURE_LINES)
 
 
 def test_an_unlistable_spool_does_not_stop_activitywatch(
@@ -484,7 +498,8 @@ def test_an_unlistable_spool_does_not_stop_activitywatch(
 
     summary = poll(conn, [CaptureSpool(not_a_folder), ActivityWatch(healthy_aw())], now=NOW)
 
-    assert [(f.stream, f.kind) for f in summary.failures] == [(AX_TEXT_SOURCE, FailureKind.SOURCE)]
+    failures = [(f.stream, f.kind) for f in summary.failures]
+    assert failures == [(WINDOW_TEXT_SOURCE, FailureKind.SOURCE)]
     assert "cannot list the spool" in summary.failures[0].error
     assert summary.outcomes["aw-window"].inserted == 1
 
@@ -568,18 +583,22 @@ def test_cli_ingest_reads_the_spool_beside_the_database(
 
 
 def test_cli_ingest_honors_the_spool_flag_and_prints_rejected_records(
-    capsys: pytest.CaptureFixture[str], cli_aw, tmp_path: Path
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    cli_aw,
+    tmp_path: Path,
 ) -> None:
     cli_aw(healthy_aw(datetime.now(UTC)))
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    write_file(elsewhere, file_name(1), [record(1, T0), "{broken"])
+    write_file(elsewhere, file_name(1), [record(1, T0), record(2, T0, timed_out="no"), "{broken"])
 
     code = cli.main(["--db-path", str(tmp_path / "h.db"), "ingest", "--spool-path", str(elsewhere)])
     out = capsys.readouterr().out
 
     assert code == 0
     assert re.search(r"ax-text\s+inserted\s+1\s+skipped\s+0\s+held back\s+0\s+rejected 1", out)
+    assert "it has 2 unusable line(s), 1 of no readable kind" in caplog.text
     assert finished_files(elsewhere) == []
 
 
@@ -609,5 +628,5 @@ def test_cli_ingest_with_an_unlistable_spool_gives_the_spool_hint(
 
     assert code == 1
     assert re.search(r"aw-window\s+inserted\s+1", out)
-    assert "error on ax-text: cannot list the spool" in err
+    assert "error on the spool: cannot list the spool" in err
     assert "spool folder" in err and "Is ActivityWatch running?" not in err
