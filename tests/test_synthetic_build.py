@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import random
 import sqlite3
@@ -217,8 +218,8 @@ def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_d
             text=True,
             check=True,
         )
-        manifests.append(built.stdout)
-    here = build_dataset(DEVELOPER_DAY, tmp_path / "here").manifest_path.read_text()
+        manifests.append(json.loads(built.stdout))
+    here = json.loads(build_dataset(DEVELOPER_DAY, tmp_path / "here").manifest_path.read_text())
 
     assert manifests[0] == manifests[1] == here
 
