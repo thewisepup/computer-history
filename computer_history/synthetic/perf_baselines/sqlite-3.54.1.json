@@ -26,6 +26,32 @@
     ]
    }
   },
+  "heavy-month": {
+   "sqlite_version": "3.54.1",
+   "statements": 6,
+   "vm_steps": 1104591,
+   "full_scans": [],
+   "pages": 0,
+   "table_pages": {},
+   "by_statement": {
+    "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END = ? ORDER BY started_at DESC, id DESC LIMIT ?": [
+     1,
+     35
+    ],
+    "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? ORDER BY started_at DESC, id DESC LIMIT ?": [
+     2,
+     52
+    ],
+    "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
+     2,
+     553254
+    ],
+    "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
+     1,
+     551250
+    ]
+   }
+  },
   "month": {
    "sqlite_version": "3.54.1",
    "statements": 6,
@@ -49,6 +75,32 @@
     "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
      1,
      269471
+    ]
+   }
+  },
+  "year": {
+   "sqlite_version": "3.54.1",
+   "statements": 6,
+   "vm_steps": 4989700,
+   "full_scans": [],
+   "pages": 0,
+   "table_pages": {},
+   "by_statement": {
+    "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END = ? ORDER BY started_at DESC, id DESC LIMIT ?": [
+     1,
+     35
+    ],
+    "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? ORDER BY started_at DESC, id DESC LIMIT ?": [
+     2,
+     52
+    ],
+    "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
+     2,
+     2385214
+    ],
+    "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
+     1,
+     2604399
     ]
    }
   }
@@ -112,6 +164,64 @@
     ]
    }
   },
+  "heavy-month": {
+   "sqlite_version": "3.54.1",
+   "statements": 590994,
+   "vm_steps": 19807817,
+   "full_scans": [],
+   "pages": 275279,
+   "table_pages": {
+    "block_tags": 1,
+    "blocks": 1,
+    "blocks_started_at": 1,
+    "classification_runs": 1,
+    "ingest_progress": 1,
+    "observations": 164760,
+    "observations_source_started_at": 4958,
+    "projects": 1,
+    "reviews": 1,
+    "signals": 96717,
+    "signals_started_at": 2626,
+    "sqlite_autoindex_block_tags_1": 1,
+    "sqlite_autoindex_ingest_progress_1": 1,
+    "sqlite_autoindex_observations_1": 6201,
+    "sqlite_autoindex_projects_1": 1,
+    "sqlite_autoindex_work_types_1": 1,
+    "sqlite_schema": 3,
+    "suggestions": 1,
+    "work_types": 1
+   },
+   "by_statement": {
+    "BEGIN IMMEDIATE": [
+     13934,
+     69670
+    ],
+    "COMMIT": [
+     13934,
+     41802
+    ],
+    "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO NOTHING": [
+     3,
+     63
+    ],
+    "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO UPDATE SET position = excluded.position, settled_until = excluded.settled_until, advanced_at = excluded.advanced_at WHERE position IS NOT excluded.position OR settled_until IS NOT excluded.settled_until": [
+     13919,
+     487127
+    ],
+    "INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at) VALUES (?, ...) ON CONFLICT (source, source_id) DO NOTHING": [
+     268363,
+     9124342
+    ],
+    "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
+     266919,
+     9876003
+    ],
+    "SELECT position, settled_until, advanced_at FROM ingest_progress WHERE source = ?": [
+     13922,
+     208810
+    ]
+   }
+  },
   "month": {
    "sqlite_version": "3.54.1",
    "statements": 251848,
@@ -167,6 +277,64 @@
     "SELECT position, settled_until, advanced_at FROM ingest_progress WHERE source = ?": [
      10122,
      151810
+    ]
+   }
+  },
+  "year": {
+   "sqlite_version": "3.54.1",
+   "statements": 3073354,
+   "vm_steps": 98889480,
+   "full_scans": [],
+   "pages": 1326271,
+   "table_pages": {
+    "block_tags": 1,
+    "blocks": 1,
+    "blocks_started_at": 1,
+    "classification_runs": 1,
+    "ingest_progress": 1,
+    "observations": 889367,
+    "observations_source_started_at": 23203,
+    "projects": 1,
+    "reviews": 1,
+    "signals": 371724,
+    "signals_started_at": 12634,
+    "sqlite_autoindex_block_tags_1": 1,
+    "sqlite_autoindex_ingest_progress_1": 1,
+    "sqlite_autoindex_observations_1": 29326,
+    "sqlite_autoindex_projects_1": 1,
+    "sqlite_autoindex_work_types_1": 1,
+    "sqlite_schema": 3,
+    "suggestions": 1,
+    "work_types": 1
+   },
+   "by_statement": {
+    "BEGIN IMMEDIATE": [
+     121413,
+     607065
+    ],
+    "COMMIT": [
+     121413,
+     364239
+    ],
+    "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO NOTHING": [
+     3,
+     63
+    ],
+    "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO UPDATE SET position = excluded.position, settled_until = excluded.settled_until, advanced_at = excluded.advanced_at WHERE position IS NOT excluded.position OR settled_until IS NOT excluded.settled_until": [
+     121254,
+     4243852
+    ],
+    "INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at) VALUES (?, ...) ON CONFLICT (source, source_id) DO NOTHING": [
+     1300364,
+     44212376
+    ],
+    "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
+     1287650,
+     47643050
+    ],
+    "SELECT position, settled_until, advanced_at FROM ingest_progress WHERE source = ?": [
+     121257,
+     1818835
     ]
    }
   }
@@ -251,6 +419,85 @@
     ]
    }
   },
+  "heavy-month": {
+   "sqlite_version": "3.54.1",
+   "statements": 266926,
+   "vm_steps": 17101698,
+   "full_scans": [
+    [
+     "observations",
+     "SELECT COUNT(*) FROM observations"
+    ],
+    [
+     "observations",
+     "SELECT DISTINCT source FROM observations ORDER BY source"
+    ],
+    [
+     "observations",
+     "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id"
+    ],
+    [
+     "signals",
+     "SELECT COUNT(*) FROM signals"
+    ]
+   ],
+   "pages": 275279,
+   "table_pages": {
+    "block_tags": 1,
+    "blocks": 1,
+    "blocks_started_at": 1,
+    "classification_runs": 1,
+    "ingest_progress": 1,
+    "observations": 164760,
+    "observations_source_started_at": 4958,
+    "projects": 1,
+    "reviews": 1,
+    "signals": 96717,
+    "signals_started_at": 2626,
+    "sqlite_autoindex_block_tags_1": 1,
+    "sqlite_autoindex_ingest_progress_1": 1,
+    "sqlite_autoindex_observations_1": 6201,
+    "sqlite_autoindex_projects_1": 1,
+    "sqlite_autoindex_work_types_1": 1,
+    "sqlite_schema": 3,
+    "suggestions": 1,
+    "work_types": 1
+   },
+   "by_statement": {
+    "BEGIN IMMEDIATE": [
+     1,
+     5
+    ],
+    "COMMIT": [
+     1,
+     3
+    ],
+    "DELETE FROM signals": [
+     1,
+     3736876
+    ],
+    "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
+     266919,
+     11737585
+    ],
+    "SELECT COUNT(*) FROM observations": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM signals": [
+     1,
+     9
+    ],
+    "SELECT DISTINCT source FROM observations ORDER BY source": [
+     1,
+     1610245
+    ],
+    "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id": [
+     1,
+     16966
+    ]
+   }
+  },
   "month": {
    "sqlite_version": "3.54.1",
    "statements": 105115,
@@ -327,6 +574,85 @@
     "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id": [
      1,
      14698
+    ]
+   }
+  },
+  "year": {
+   "sqlite_version": "3.54.1",
+   "statements": 1287657,
+   "vm_steps": 82574992,
+   "full_scans": [
+    [
+     "observations",
+     "SELECT COUNT(*) FROM observations"
+    ],
+    [
+     "observations",
+     "SELECT DISTINCT source FROM observations ORDER BY source"
+    ],
+    [
+     "observations",
+     "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id"
+    ],
+    [
+     "signals",
+     "SELECT COUNT(*) FROM signals"
+    ]
+   ],
+   "pages": 1326271,
+   "table_pages": {
+    "block_tags": 1,
+    "blocks": 1,
+    "blocks_started_at": 1,
+    "classification_runs": 1,
+    "ingest_progress": 1,
+    "observations": 889367,
+    "observations_source_started_at": 23203,
+    "projects": 1,
+    "reviews": 1,
+    "signals": 371724,
+    "signals_started_at": 12634,
+    "sqlite_autoindex_block_tags_1": 1,
+    "sqlite_autoindex_ingest_progress_1": 1,
+    "sqlite_autoindex_observations_1": 29326,
+    "sqlite_autoindex_projects_1": 1,
+    "sqlite_autoindex_work_types_1": 1,
+    "sqlite_schema": 3,
+    "suggestions": 1,
+    "work_types": 1
+   },
+   "by_statement": {
+    "BEGIN IMMEDIATE": [
+     1,
+     5
+    ],
+    "COMMIT": [
+     1,
+     3
+    ],
+    "DELETE FROM signals": [
+     1,
+     18027110
+    ],
+    "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
+     1287650,
+     56649749
+    ],
+    "SELECT COUNT(*) FROM observations": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM signals": [
+     1,
+     9
+    ],
+    "SELECT DISTINCT source FROM observations ORDER BY source": [
+     1,
+     7802251
+    ],
+    "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id": [
+     1,
+     95856
     ]
    }
   }
@@ -447,6 +773,121 @@
     ]
    }
   },
+  "heavy-month": {
+   "sqlite_version": "3.54.1",
+   "statements": 15,
+   "vm_steps": 4933310,
+   "full_scans": [
+    [
+     "block_tags",
+     "SELECT COUNT(*) FROM \"block_tags\""
+    ],
+    [
+     "blocks",
+     "SELECT COUNT(*) FROM \"blocks\""
+    ],
+    [
+     "classification_runs",
+     "SELECT COUNT(*) FROM \"classification_runs\""
+    ],
+    [
+     "ingest_progress",
+     "SELECT COUNT(*) FROM \"ingest_progress\""
+    ],
+    [
+     "ingest_progress",
+     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source"
+    ],
+    [
+     "observations",
+     "SELECT COUNT(*) FROM \"observations\""
+    ],
+    [
+     "observations",
+     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source"
+    ],
+    [
+     "projects",
+     "SELECT COUNT(*) FROM \"projects\""
+    ],
+    [
+     "reviews",
+     "SELECT COUNT(*) FROM \"reviews\""
+    ],
+    [
+     "signals",
+     "SELECT COUNT(*) FROM \"signals\""
+    ],
+    [
+     "sqlite_master",
+     "SELECT name FROM sqlite_master WHERE type = ? AND name NOT LIKE ? ORDER BY name"
+    ],
+    [
+     "suggestions",
+     "SELECT COUNT(*) FROM \"suggestions\""
+    ],
+    [
+     "work_types",
+     "SELECT COUNT(*) FROM \"work_types\""
+    ]
+   ],
+   "pages": 0,
+   "table_pages": {},
+   "by_statement": {
+    "SELECT COUNT(*) FROM \"block_tags\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"blocks\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"classification_runs\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"ingest_progress\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"observations\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"projects\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"reviews\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"signals\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"suggestions\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"work_types\"": [
+     1,
+     9
+    ],
+    "SELECT name FROM sqlite_master WHERE type = ? AND name NOT LIKE ? ORDER BY name": [
+     1,
+     174
+    ],
+    "SELECT started_at, ended_at FROM observations WHERE source = ? AND started_at < ? AND ended_at > ? AND ended_at > started_at ORDER BY started_at": [
+     3,
+     907218
+    ],
+    "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source": [
+     1,
+     4025828
+    ]
+   }
+  },
   "month": {
    "sqlite_version": "3.54.1",
    "statements": 15,
@@ -559,6 +1000,121 @@
     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source": [
      1,
      1593803
+    ]
+   }
+  },
+  "year": {
+   "sqlite_version": "3.54.1",
+   "statements": 15,
+   "vm_steps": 23476517,
+   "full_scans": [
+    [
+     "block_tags",
+     "SELECT COUNT(*) FROM \"block_tags\""
+    ],
+    [
+     "blocks",
+     "SELECT COUNT(*) FROM \"blocks\""
+    ],
+    [
+     "classification_runs",
+     "SELECT COUNT(*) FROM \"classification_runs\""
+    ],
+    [
+     "ingest_progress",
+     "SELECT COUNT(*) FROM \"ingest_progress\""
+    ],
+    [
+     "ingest_progress",
+     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source"
+    ],
+    [
+     "observations",
+     "SELECT COUNT(*) FROM \"observations\""
+    ],
+    [
+     "observations",
+     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source"
+    ],
+    [
+     "projects",
+     "SELECT COUNT(*) FROM \"projects\""
+    ],
+    [
+     "reviews",
+     "SELECT COUNT(*) FROM \"reviews\""
+    ],
+    [
+     "signals",
+     "SELECT COUNT(*) FROM \"signals\""
+    ],
+    [
+     "sqlite_master",
+     "SELECT name FROM sqlite_master WHERE type = ? AND name NOT LIKE ? ORDER BY name"
+    ],
+    [
+     "suggestions",
+     "SELECT COUNT(*) FROM \"suggestions\""
+    ],
+    [
+     "work_types",
+     "SELECT COUNT(*) FROM \"work_types\""
+    ]
+   ],
+   "pages": 0,
+   "table_pages": {},
+   "by_statement": {
+    "SELECT COUNT(*) FROM \"block_tags\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"blocks\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"classification_runs\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"ingest_progress\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"observations\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"projects\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"reviews\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"signals\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"suggestions\"": [
+     1,
+     9
+    ],
+    "SELECT COUNT(*) FROM \"work_types\"": [
+     1,
+     9
+    ],
+    "SELECT name FROM sqlite_master WHERE type = ? AND name NOT LIKE ? ORDER BY name": [
+     1,
+     174
+    ],
+    "SELECT started_at, ended_at FROM observations WHERE source = ? AND started_at < ? AND ended_at > ? AND ended_at > started_at ORDER BY started_at": [
+     3,
+     3970410
+    ],
+    "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source": [
+     1,
+     19505843
     ]
    }
   }
