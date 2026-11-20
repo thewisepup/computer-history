@@ -19,7 +19,14 @@ public struct ScreenshotSettings: Equatable, Sendable {
     }
 }
 
-/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, queued for its text.
+/// A screenshot record waiting for the spool: ready as it is, waiting on its own image's text, or copying a kept screenshot's text.
+enum QueuedScreenshot: Sendable {
+    case ready(ScreenshotRecord)
+    case recognize(ScreenshotRecord, image: URL, into: KeptText)
+    case copy(ScreenshotRecord, from: KeptText)
+}
+
+/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record.
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore

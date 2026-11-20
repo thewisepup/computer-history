@@ -6,13 +6,6 @@ final class KeptText: @unchecked Sendable {
     fileprivate var fullTextBytes = 0
 }
 
-/// A screenshot record waiting for the spool: ready as it is, waiting on its own image's text, or copying a kept screenshot's text.
-enum QueuedScreenshot: Sendable {
-    case ready(ScreenshotRecord)
-    case recognize(ScreenshotRecord, image: URL, into: KeptText)
-    case copy(ScreenshotRecord, from: KeptText)
-}
-
 /// Writes screenshot records to the spool on its own thread in the order they were added, reading the text in each kept image first.
 final class ScreenshotQueue: Sendable {
     private let queue = DispatchQueue(label: "screenshots", qos: .utility)
