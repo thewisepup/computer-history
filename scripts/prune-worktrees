@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Removes worktrees whose work has landed on origin/main. A worktree is dead
+# only when git status shows nothing (no changes, no untracked files) and
+# either its branch tip is in origin/main and was pushed or merged through a
+# PR, or a merged PR's head is exactly that tip (a squash merge). A branch
+# never pushed is kept, since a fresh agent worktree looks merged.
+# --dry-run lists what would go.
+set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE
+dry_run=false
+[ "${1:-}" = "--dry-run" ] && dry_run=true
+
+main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+here="$(git rev-parse --show-toplevel)"
+git -C "$main" fetch -q origin main || { echo "prune-worktrees: cannot fetch origin; nothing removed" >&2; exit 0; }
+
+merged_pr_head() {
+  command -v gh >/dev/null 2>&1 || return 0
+  (cd "$main" && gh pr list --head "$1" --state merged --json headRefOid --jq '.[].headRefOid' 2>/dev/null) || true
+}
+
+# Prints "merged" (tip is in origin/main) or "squashed" (a merged PR's head is the tip).
+landed() {
+  local branch="$1" tip
+  tip="$(git -C "$main" rev-parse "refs/heads/$branch")"
+  if git -C "$main" merge-base --is-ancestor "$tip" origin/main; then
+    if git -C "$main" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null ||
+      [ -n "$(merged_pr_head "$branch")" ]; then
+      echo merged
+    fi
+  elif merged_pr_head "$branch" | grep -qx "$tip"; then
+    echo squashed
+  fi
+}
+
+git -C "$main" worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} /^branch /{print w "\t" substr($0,19)}' |
+while IFS="$(printf '\t')" read -r path branch; do
+  [ "$path" = "$main" ] || [ "$path" = "$here" ] && continue
+  [ -d "$path" ] || continue
+  if [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]; then
+    echo "keep    $branch ($path): has changes or untracked files"
+    continue
+  fi
+  how="$(landed "$branch")"
+  [ -n "$how" ] || continue
+  if $dry_run; then
+    echo "would remove $branch ($path)"
+  else
+    delete=-d
+    [ "$how" = squashed ] && delete=-D
+    git -C "$main" worktree remove "$path" && git -C "$main" branch "$delete" -q "$branch" &&
+      echo "removed $branch ($path)"
+  fi
+done
+git -C "$main" worktree prune

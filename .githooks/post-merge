@@ -1,0 +1,3 @@
+#!/bin/sh
+# After a pull, remove worktrees whose work has landed; never fail the pull.
+"$(git rev-parse --show-toplevel)/scripts/prune-worktrees" || true
