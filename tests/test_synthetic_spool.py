@@ -20,7 +20,7 @@ from computer_history.sources import AX_TEXT_SOURCE, day_counts, parse_record, s
 from computer_history.sources.ax_text.spool import FINISHED_NAME_FORMAT
 from computer_history.store import connect, content_digest, payload_values, source_summary
 from computer_history.synthetic import (
-    Captures,
+    CaptureCounts,
     DatasetInputs,
     Stretch,
     StretchKind,
@@ -32,12 +32,14 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
+from computer_history.synthetic.captures import IDLE_THRESHOLD
 from computer_history.synthetic.spool import (
     BUNDLE_IDS,
     SPOOL_FOLDER,
     TEXT_CAP_BYTES,
     SpoolRenderer,
 )
+from computer_history.synthetic.timeline import PRECISION
 
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/computer-history/pulls"
@@ -67,7 +69,7 @@ SPOOL_HAND_WORKED = Timeline(
         Stretch(at(9, 6, 30), at(9, 10), kind=StretchKind.ASLEEP),
     ),
 )
-SPOOL_HAND_WORKED_CAPTURES = Captures(
+SPOOL_HAND_WORKED_CAPTURES = CaptureCounts(
     kinds={"capture": 11},
     triggers={"app": 1, "heartbeat": 9, "title": 1},
     apps={"Cursor": 5, "Google Chrome": 6},
@@ -203,7 +205,7 @@ def test_stored_captures_equal_the_manifest_and_fall_in_their_apps_stretches(
         counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
-    stored = Captures(
+    stored = CaptureCounts(
         kinds=dict(sorted(Counter(r.kind for r in records).items())),
         triggers=dict(sorted(Counter(row.values[0] for row in values).items())),
         apps=dict(sorted(Counter(r.app for r in records).items())),
@@ -236,9 +238,6 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     }
     assert again == 0
     assert digest == dataset.manifest.content_digest
-
-
-MS = timedelta(milliseconds=1)
 
 
 def t(minute: int, second: float = 0) -> datetime:
@@ -386,7 +385,7 @@ def test_a_developer_day_stores_hostile_titles_and_text_as_captured(tmp_path: Pa
 
     assert any("Ignore all previous instructions" in title for title in titles)
     assert any("SYSTEM: ignore all previous instructions" in text for text in texts)
-    assert any("‮gnirts desrever‬" in text and " " in text for text in texts)
+    assert any("\u202egnirts desrever\u202c" in text and "\u2028" in text for text in texts)
     assert any(row.values[2] for row in rows)
 
 
@@ -492,9 +491,10 @@ def _script(timeline: Timeline) -> dict:
             front = app
         if stretch.afk:
             away_since = away_since or stretch.start
-            idle = away_since + timedelta(seconds=180) + MS
+            idle = away_since + IDLE_THRESHOLD + PRECISION
             if stretch.start <= idle < stretch.end:
-                steps.append({"at": offset(idle), "presence": {"idle_seconds": 181}})
+                idle_seconds = IDLE_THRESHOLD.total_seconds() + 1
+                steps.append({"at": offset(idle), "presence": {"idle_seconds": idle_seconds}})
         else:
             away_since = None
     steps.append({"at": offset(timeline.end), "end": True})

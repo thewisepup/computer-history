@@ -46,6 +46,8 @@ Review findings ratchet into rules:
   modules that exist.
 - **S5** Types live next to their producer (`BucketPull` beside `pull_bucket`).
 - **S6** **[checked]** No module imports another module's `_private` names.
+- **S7** A type that summarises other values is named for what it counts
+  (`CaptureCounts`), never as the plural of an item type in the same package.
 
 ## Architecture
 
@@ -69,9 +71,16 @@ Review findings ratchet into rules:
   rename detection keeps the file's history.
 - **H2** Re-exports keep callers and tests untouched; tests monkeypatch the
   submodule that owns the name.
-- **H3** `docs/DESIGN.md`'s package layout and any package README change in the
-  same commit as the layout.
+- **H3** **[checked]** `docs/DESIGN.md`'s package layout and any package README change in the
+  same commit as the layout. The check covers the module names in the `store/`,
+  `sources/` and `synthetic/` entries.
 - **H4** Tests derive versions and counts from the code (`len(load_migrations())`),
   never hard-code them.
 - **H5** A change to the pre-commit hook or CI updates every doc that describes
   the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H6** **[checked]** Invisible and combining characters in source (Unicode
+  categories Cf, Mn, Zl, Zp: bidi controls, zero-width marks, combining accents,
+  line separators) are written as `\u` escapes, never raw.
+- **H7** A capture-agent contract value the backend already defines (the
+  heartbeat, the format version, the record kinds) is imported from `sources/`
+  by `synthetic/`, never restated.

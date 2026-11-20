@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from computer_history.sources import CAPTURE_KIND
 from computer_history.synthetic.afk import reported_afk
 from computer_history.synthetic.captures import agent_captures
 from computer_history.synthetic.generate import DatasetInputs
@@ -32,7 +33,7 @@ class Totals:
 
 
 @dataclass(frozen=True)
-class Captures:
+class CaptureCounts:
     """The capture agent's records by kind, its captures by trigger, and its captures by app."""
 
     kinds: Mapping[str, int]
@@ -52,7 +53,7 @@ class Manifest:
     days: Mapping[str, Totals]
     total: Totals
     observations: Mapping[str, int]
-    captures: Captures
+    captures: CaptureCounts
     content_digest: str
 
     def to_json(self) -> str:
@@ -96,12 +97,12 @@ def true_answers(
     )
 
 
-def _captures(timeline: Timeline) -> Captures:
+def _captures(timeline: Timeline) -> CaptureCounts:
     captures = agent_captures(timeline)
-    kinds = Counter("capture" for _ in captures)
+    kinds = Counter(CAPTURE_KIND for _ in captures)
     triggers = Counter(capture.trigger for capture in captures)
     apps = Counter(capture.stretch.app for capture in captures)
-    return Captures(*(dict(sorted(found.items())) for found in (kinds, triggers, apps)))
+    return CaptureCounts(*(dict(sorted(found.items())) for found in (kinds, triggers, apps)))
 
 
 def _totals(

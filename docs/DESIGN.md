@@ -102,7 +102,8 @@ computer_history/
                 # timeline, seeds, persona (+ developer), days (a persona's
                 # ordinary days), scenarios, generate (inputs -> timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
-                # buckets served in process), build, manifest
+                # buckets served in process), spool (+ captures: when the
+                # agent captures), build, manifest
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

@@ -6,9 +6,10 @@ from collections.abc import Iterator
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
+from computer_history.sources import HEARTBEAT_SECONDS
 from computer_history.synthetic.timeline import PRECISION, Stretch, Timeline
 
-HEARTBEAT = timedelta(seconds=30)
+HEARTBEAT = timedelta(seconds=HEARTBEAT_SECONDS)
 SETTLE = timedelta(seconds=1)
 MINIMUM_GAP = timedelta(seconds=1)
 IDLE_THRESHOLD = timedelta(seconds=180)
