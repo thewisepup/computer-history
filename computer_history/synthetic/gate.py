@@ -46,11 +46,9 @@ GATE_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
     {"day": _inputs("day"), "month": _inputs("month")}
 )
 NIGHTLY_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
-    {"year": _inputs("year"), "heavy-month": _inputs("month", HEAVY)}
+    {"year": _inputs("year"), "heavy-year": _inputs("year", HEAVY)}
 )
-PERF_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
-    {**GATE_DATASETS, **NIGHTLY_DATASETS, "heavy-year": _inputs("year", HEAVY)}
-)
+PERF_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType({**GATE_DATASETS, **NIGHTLY_DATASETS})
 
 def perf_datasets(labels: Sequence[str] | None) -> dict[str, DatasetInputs]:
     """The datasets named, each once in the order given, or the pull-request gate's by default."""

@@ -8,7 +8,7 @@ on:
 jobs:
   perf:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     env:
       COMPUTER_HISTORY_DATASET_CACHE: /home/runner/.cache/computer-history/datasets
     steps:
@@ -25,7 +25,7 @@ jobs:
         run: |
           set -o pipefail
           /usr/bin/time -v -o nightly-time.txt \
-            computer-history dev perf --dataset day --dataset year --dataset heavy-month \
+            computer-history dev perf --dataset day --dataset year --dataset heavy-year \
             --counters nightly-counters.json | tee nightly-gate.txt
       - name: Wall-clock benchmark
         if: always()

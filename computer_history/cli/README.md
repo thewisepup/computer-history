@@ -252,7 +252,7 @@ its database or manifest.
 ```bash
 computer-history dev perf                      # day and month, against the committed baseline
 computer-history dev perf --update-baselines   # record a deliberate change of cost
-computer-history dev perf --dataset day --dataset year   # nightly: year, heavy-month (also: heavy-year)
+computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
 computer-history dev perf --counters costs.json          # also write what an update would write
 ```
 
@@ -315,8 +315,9 @@ gh run download <run-id> -n perf-counters -D /tmp/perf
 cp /tmp/perf/perf-counters.json computer_history/synthetic/perf_baselines/sqlite-<CI version>.json
 ```
 
-The `heavy-year` dataset (12.5 GB, about 16 GB of memory to build) doesn't fit
-a CI runner, so the nightly run measures a heavy month instead.
+The nightly run measures day, year and heavy-year on `ubuntu-24.04` in about
+two hours; heavy-year peaks near 12 GB of memory, and at 17 GB it is built
+afresh each night rather than cached.
 
 `pytest -m perf` runs the same gate; the default `pytest` leaves it out.
 

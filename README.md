@@ -268,5 +268,5 @@ pytest. CI runs all three and gitleaks on every pull request and push to
 runs the performance gate (`computer-history dev perf`, see
 `computer_history/cli/README.md`) on synthetic day and month datasets, against
 the baseline for CI's SQLite, and fails on any change of cost. A nightly
-workflow runs the gate on a year and a heavy month, and the wall-clock
+workflow runs the gate on a year and a heavy year, and the wall-clock
 benchmark; it reports and never blocks a merge.
