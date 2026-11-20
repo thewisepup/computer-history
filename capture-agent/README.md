@@ -243,8 +243,11 @@ plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
 a temporary database, with a stand-in ActivityWatch that has no buckets, and
 checks the stored records and signals against the scripts. It also checks
 that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder.
-Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
+and spool for a scratch home folder. It also runs `tests/test_synthetic_spool.py`,
+which plays a synthetic developer day through `scripted-session` and checks the
+synthetic spool renderer writes the same captures (time, trigger, app, bundle
+id and title) as the agent.
+Plain `pytest` skips both agent tests unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs
 

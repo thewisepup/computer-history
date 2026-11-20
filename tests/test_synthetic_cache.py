@@ -159,7 +159,7 @@ def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouche
     finally:
         conn.close()
 
-    assert _listing(entry.folder) == before == ["history.db", "manifest.json"]
+    assert _listing(entry.folder) == before == ["history.db", "manifest.json", "spool"]
 
 
 def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
@@ -174,7 +174,7 @@ def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
     finally:
         conn.close()
 
-    assert [path.name for path in copied] == ["history.db", "manifest.json"]
+    assert [path.name for path in copied] == ["history.db", "manifest.json", "spool"]
     assert changed != json.loads(entry.manifest_path.read_text())["content_digest"]
     _assert_complete(entry)
 

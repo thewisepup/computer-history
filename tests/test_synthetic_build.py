@@ -126,6 +126,8 @@ HAND_WORKED_TOTALS = Totals(
     afk_seconds=179.999,
 )
 
+HAND_WORKED_COUNTS = {"aw-afk": 3, "aw-web": 1, "aw-window": 2, "ax-text": 60}
+
 
 def test_a_hand_worked_morning_reports_the_numbers_worked_out_by_hand(tmp_path: Path) -> None:
     dataset = build_timeline(HAND_WORKED, tmp_path / "morning", seed=1)
@@ -139,8 +141,8 @@ def test_a_hand_worked_morning_reports_the_numbers_worked_out_by_hand(tmp_path: 
     assert dataset.manifest.total == HAND_WORKED_TOTALS
     assert dataset.manifest.days == {"2026-01-05": HAND_WORKED_TOTALS}
     assert stored == HAND_WORKED_TOTALS
-    assert dataset.manifest.observations == {"aw-afk": 3, "aw-web": 1, "aw-window": 2}
-    assert counts == {"aw-afk": 3, "aw-web": 1, "aw-window": 2}
+    assert dataset.manifest.observations == HAND_WORKED_COUNTS
+    assert counts == HAND_WORKED_COUNTS
 
 
 BUILD_IN_A_NEW_PROCESS = """

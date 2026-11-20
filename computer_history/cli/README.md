@@ -212,6 +212,7 @@ Dataset persona=developer, scenario=typical, tier=day, seed=1, start=2026-01-05,
   built: ~/Library/Caches/ComputerHistory/datasets/69b4a3a750a56e1dd6c2543276a92ee8
   database   /tmp/dev/history.db
   manifest   /tmp/dev/manifest.json
+  spool/     /tmp/dev/spool
 ```
 
 Builds a synthetic dataset through the real backfill and poll, or reuses the
