@@ -29,10 +29,13 @@ T0 = datetime(2026, 11, 17, 9, 0, tzinfo=UTC)
 
 
 class HeartbeatAW(FakeAW):
-    """The fake ActivityWatch API, taking heartbeats the way aw-server-rust merges them."""
+    """The fake ActivityWatch API, taking heartbeats the way aw-server-rust merges them.
+
+    It starts with no buckets: each watcher creates its own when it starts.
+    """
 
     def __init__(self) -> None:
-        super().__init__({WINDOW_BUCKET: "currentwindow", AFK_BUCKET: "afkstatus"}, t0=T0)
+        super().__init__({}, t0=T0)
 
     def heartbeat(
         self,
@@ -71,6 +74,7 @@ class WindowWatcher:
         self.aw = aw
 
     def tick(self, now: datetime, app: str) -> None:
+        self.aw.create_bucket(WINDOW_BUCKET, "currentwindow", now)
         data = {"app": app, "title": app}
         self.aw.heartbeat(WINDOW_BUCKET, now, data, pulsetime=WINDOW_PULSETIME)
 
@@ -85,6 +89,7 @@ class AfkWatcher:
         self.not_afk_start: datetime | None = None
 
     def tick(self, now: datetime, last_input: datetime) -> None:
+        self.aw.create_bucket(AFK_BUCKET, "afkstatus", now)
         since = (now - last_input).total_seconds()
         if self.not_afk_start is not None and last_input < self.not_afk_start:
             last_input = self.not_afk_start
@@ -165,7 +170,7 @@ def bucket_events(aw: HeartbeatAW, bucket_id: str) -> dict[str, tuple[str, float
     """Each event ActivityWatch holds, by its source id: when it starts and how long it lasts."""
     return {
         f"{bucket_id}/{raw['id']}": (raw["timestamp"], raw["duration"])
-        for raw in aw.events[bucket_id]
+        for raw in aw.events.get(bucket_id, [])
     }
 
 

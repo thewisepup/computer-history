@@ -43,6 +43,10 @@ gitleaks scan of the staged changes. CI runs them, the POC suite
 (`python -m unittest`) and gitleaks on every pull request and push to `main`,
 and `main` only merges pull requests whose checks pass. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+Hypothesis tests run derandomized with no example database, so a run never
+passes or fails by chance. To hunt for new failures, run them with random seeds
+and 5,000 examples each, and pin anything found as an `@example`:
+`HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/test_aw_ingest_properties.py`.
 
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool
