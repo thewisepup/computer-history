@@ -62,6 +62,6 @@ let package = Package(
     targets: [
         .target(name: "CaptureAgent"),
         .executableTarget(name: "computer-history-agent", dependencies: ["CaptureAgent"]),
-        .testTarget(name: "CaptureAgentTests", dependencies: ["CaptureAgent"]),
+        .testTarget(name: "CaptureAgentTests", dependencies: ["CaptureAgent"], resources: [.copy("Fixtures/recognized-text.jpg")]),
     ]
 )
