@@ -36,6 +36,8 @@ from computer_history.synthetic import (
 from computer_history.synthetic.build import render_sources
 from computer_history.synthetic.manifest import true_answers
 
+pytestmark = pytest.mark.dataset
+
 TABLE_EXEMPTIONS: Mapping[str, str] = {
     "projects": "classification (M5) proposes projects; nothing fills it until M5 defines them",
     "work_types": "classification (M5) picks from the active work types; nothing fills it until M5",

@@ -37,6 +37,8 @@ from computer_history.synthetic.days import live
 from computer_history.synthetic.seeds import part_random
 from computer_history.text import extract_domain
 
+pytestmark = pytest.mark.dataset
+
 TARGET_EVENTS = 5000
 TARGET_MIX = {WINDOW_SOURCE: 0.53, WEB_SOURCE: 0.36, WINDOW_TEXT_SOURCE: 0.12, AFK_SOURCE: 0.01}
 ACTIVITYWATCH = (WINDOW_SOURCE, WEB_SOURCE, AFK_SOURCE)

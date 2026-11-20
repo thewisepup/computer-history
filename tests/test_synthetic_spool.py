@@ -55,6 +55,8 @@ from computer_history.synthetic.spool import (
 )
 from computer_history.synthetic.timeline import PRECISION
 
+pytestmark = pytest.mark.dataset
+
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/computer-history/pulls"
 LONG_PAGE = "x" * 60_000

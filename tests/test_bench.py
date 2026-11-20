@@ -21,6 +21,8 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic.operations import Session
 
+pytestmark = pytest.mark.dataset
+
 
 def test_more_than_a_quarter_slower_than_the_baseline_is_flagged() -> None:
     assert not Timing("ingest", "day", median=1.25, baseline=1.0).slower
