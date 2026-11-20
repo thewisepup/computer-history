@@ -37,7 +37,7 @@ import PackageDescription
 ///                                window's frame, one request at a time, as a WindowImage
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
-///     FrameHash.swift       the 64-bit difference hash of a screenshot
+///     FrameHash.swift       the 64-bit difference hash of a screenshot, and the bits two hashes differ by
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
 ///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements and fixture images
 ///     ScriptedSession.swift the scripted-session command: plays a script through the real loop and spool

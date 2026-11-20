@@ -46,7 +46,7 @@ struct CaptureScreenshot<M: Mac> {
                 return .failed(of: capture)
             }
             return .kept(
-                id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash, text: "", fullTextBytes: 0
+                id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
             )
         }
     }
