@@ -9,9 +9,6 @@ struct FrameHash: Equatable, Sendable {
     }
 
     var hex: String { String(format: "%016llx", bits) }
-
-    /// How many of the 64 bits differ between the two hashes.
-    func distance(to other: FrameHash) -> Int { (bits ^ other.bits).nonzeroBitCount }
 }
 
 /// The difference hash of the image: each bit says whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.

@@ -1,17 +1,21 @@
 import Foundation
 
-/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, and how many hash bits a duplicate may differ by.
+/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, the percent of thumbnail pixels that must change for a new image, and the seconds after which an unchanged window gets one anyway.
 public struct ScreenshotSettings: Equatable, Sendable {
     public var enabled: Bool
     public var longEdge: Int
     public var quality: Int
-    public var duplicateThreshold: Int
+    public var changePercent: Double
+    public var keepAfter: TimeInterval
 
-    public init(enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, duplicateThreshold: Int = 2) {
+    public init(
+        enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, changePercent: Double = 0.05, keepAfter: TimeInterval = 600
+    ) {
         self.enabled = enabled
         self.longEdge = longEdge
         self.quality = quality
-        self.duplicateThreshold = duplicateThreshold
+        self.changePercent = changePercent
+        self.keepAfter = keepAfter
     }
 }
 
@@ -44,9 +48,9 @@ struct CaptureScreenshot<M: Mac> {
         case .failed:
             return .failed(of: capture)
         case .image(let image, let windowID):
-            guard let hash = differenceHash(image) else { return .failed(of: capture) }
+            guard let hash = differenceHash(image), let frame = FrameThumbnail(image) else { return .failed(of: capture) }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
-            if let kept = dedup.see(hash, in: window) {
+            if let kept = dedup.see(frame, in: window, at: capture.capturedAt) {
                 return .duplicate(
                     of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: kept.text,
                     fullTextBytes: kept.fullTextBytes
@@ -54,7 +58,10 @@ struct CaptureScreenshot<M: Mac> {
             }
             let id = UUID()
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .failed(of: capture) }
-            dedup.remember(FrameDedup.KeptFrame(recordID: id, imagePath: saved.path, hash: hash, text: "", fullTextBytes: 0), for: window)
+            let kept = FrameDedup.KeptFrame(
+                recordID: id, imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: "", fullTextBytes: 0
+            )
+            dedup.remember(kept, for: window)
             return .kept(
                 id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
             )

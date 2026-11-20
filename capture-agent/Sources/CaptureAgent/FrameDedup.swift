@@ -4,6 +4,7 @@ import Foundation
 /// Remembers the last kept frame of each of the most recently seen windows.
 struct FrameDedup {
     static let windows = 12
+    static let pixelTolerance = 24
 
     /// A window as the memory tells windows apart: the ScreenCaptureKit id of the window photographed, and its title.
     struct Window: Equatable {
@@ -11,28 +12,35 @@ struct FrameDedup {
         let title: String?
     }
 
-    /// A kept screenshot as the memory holds it: its record id, image path, hash and recognized text.
+    /// A kept screenshot as the memory holds it: its record id, image path, thumbnail, capture time and recognized text.
     struct KeptFrame: Equatable {
         let recordID: UUID
         let imagePath: String
-        let hash: FrameHash
+        let thumbnail: FrameThumbnail
+        let keptAt: Date
         let text: String
         let fullTextBytes: Int
     }
 
-    let threshold: Int
+    let changePercent: Double
+    let keepAfter: TimeInterval
     private var seen: [Entry] = []
 
-    init(threshold: Int) {
-        self.threshold = threshold
+    init(changePercent: Double, keepAfter: TimeInterval) {
+        self.changePercent = changePercent
+        self.keepAfter = keepAfter
     }
 
-    /// Marks the window as just seen and returns its last kept frame if at most the threshold of its bits differ from the hash.
-    mutating func see(_ hash: FrameHash, in window: Window) -> KeptFrame? {
+    /// Marks the window as just seen and returns its last kept frame if that is recent enough and the frame changed fewer pixels than the threshold.
+    mutating func see(_ frame: FrameThumbnail, in window: Window, at time: Date) -> KeptFrame? {
         guard let index = seen.firstIndex(where: { $0.window == window }) else { return nil }
         let entry = seen.remove(at: index)
         seen.append(entry)
-        return entry.kept.hash.distance(to: hash) <= threshold ? entry.kept : nil
+        guard time.timeIntervalSince(entry.kept.keptAt) <= keepAfter,
+              let changed = frame.changedPixels(from: entry.kept.thumbnail, tolerance: Self.pixelTolerance),
+              Double(changed) * 100 < changePercent * Double(frame.pixels.count)
+        else { return nil }
+        return entry.kept
     }
 
     /// Makes the frame the window's last kept one, forgetting the least recently seen window past the limit.

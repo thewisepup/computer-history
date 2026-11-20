@@ -98,9 +98,13 @@ public struct AgentSettings: Equatable, Sendable {
                 screenshots.longEdge = wholeNumber(value, key: key, range: 256...8_192, default: screenshots.longEdge)
             case .screenshotJPEGQuality:
                 screenshots.quality = wholeNumber(value, key: key, range: 1...100, default: screenshots.quality)
-            case .screenshotDuplicateThresholdBits:
-                screenshots.duplicateThreshold = wholeNumber(
-                    value, key: key, range: 0...10, default: screenshots.duplicateThreshold
+            case .screenshotChangePercent:
+                screenshots.changePercent = decimal(
+                    value, key: key, unit: "percent", range: 0...10, default: screenshots.changePercent
+                )
+            case .screenshotKeepAfterMinutes:
+                screenshots.keepAfter = TimeInterval(
+                    wholeNumber(value, key: key, range: 1...1_440, default: Int(screenshots.keepAfter / 60)) * 60
                 )
             }
         }
@@ -125,8 +129,14 @@ public struct AgentSettings: Equatable, Sendable {
     private mutating func seconds(
         _ value: Any, key: ConfigKey, range: ClosedRange<Double>, default fallback: TimeInterval
     ) -> TimeInterval {
+        decimal(value, key: key, unit: "seconds", range: range, default: fallback)
+    }
+
+    private mutating func decimal(
+        _ value: Any, key: ConfigKey, unit: String, range: ClosedRange<Double>, default fallback: Double
+    ) -> Double {
         guard let number = number(value) else {
-            problems.append("\(key.rawValue) must be a number of seconds, using \(formatted(fallback))")
+            problems.append("\(key.rawValue) must be a number of \(unit), using \(formatted(fallback))")
             return fallback
         }
         guard range.contains(number) else {
@@ -170,7 +180,8 @@ private enum ConfigKey: String, CaseIterable {
     case screenshots
     case screenshotLongEdgePixels = "screenshot_long_edge_pixels"
     case screenshotJPEGQuality = "screenshot_jpeg_quality"
-    case screenshotDuplicateThresholdBits = "screenshot_duplicate_threshold_bits"
+    case screenshotChangePercent = "screenshot_change_percent"
+    case screenshotKeepAfterMinutes = "screenshot_keep_after_minutes"
 }
 
 /// Prints where the settings came from, every problem in the config file, and the settings in effect.
@@ -187,7 +198,8 @@ public func checkConfig(_ settings: AgentSettings) -> CommandOutcome {
         "call timeout: \(formatted(settings.windowText.callTimeout))s",
         "window timeout: \(formatted(settings.windowText.windowTimeout))s",
         "screenshots: \(settings.screenshots.enabled ? "on" : "off"), long edge \(settings.screenshots.longEdge) px, "
-            + "JPEG quality \(settings.screenshots.quality), duplicate within \(settings.screenshots.duplicateThreshold) of 64 hash bits",
+            + "JPEG quality \(settings.screenshots.quality), duplicate when under \(formatted(settings.screenshots.changePercent))% "
+            + "of thumbnail pixels changed, a new kept image after \(formatted(settings.screenshots.keepAfter / 60)) min",
     ]
     return CommandOutcome(exitCode: settings.problems.isEmpty ? 0 : 1, message: lines.joined(separator: "\n"))
 }
