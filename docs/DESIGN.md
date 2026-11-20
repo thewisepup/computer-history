@@ -99,8 +99,9 @@ computer_history/
                 # apps, the day's counts), coverage (unobserved stretches,
                 # liveness) and agreement (each capture's app against aw-window)
   synthetic/    # synthetic datasets built through the real ingest path:
-                # timeline, seeds, persona (+ developer), days (a persona's
-                # ordinary days), scenarios, generate (inputs -> timeline),
+                # timeline, seeds, persona (+ developer, content_creator;
+                # heavier), days (a persona's ordinary days), scenarios,
+                # generate (inputs, tiers and heavy -> timeline),
                 # renderer (the contract), activitywatch (+ afk, aw_api: the
                 # buckets served in process), build, manifest
   text.py       # text/URL normalization shared by every source

@@ -15,7 +15,7 @@ from computer_history.synthetic.renderer import RenderedSource
 from computer_history.synthetic.timeline import PRECISION, Timeline, local_midnight
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 Piece = tuple[datetime, datetime, str]
 
