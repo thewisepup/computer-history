@@ -63,6 +63,9 @@ Review findings ratchet into rules:
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
   one function below, format, exit code.
+- **A7** A path's resolution rule (flag, then `$ENV`, then default) lives in one
+  function beside what owns the path (`resolve_db_path`, `cache_root`); other
+  code calls it and never reads that variable itself.
 
 ## Hygiene
 
