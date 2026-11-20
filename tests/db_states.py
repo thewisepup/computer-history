@@ -30,6 +30,12 @@ def newer_db(path: Path) -> Path:
     return path
 
 
+def corrupt_payloads(conn: sqlite3.Connection, where: str, params: tuple[object, ...]) -> None:
+    """Break the JSON of matching observations, as damage from outside the app would."""
+    conn.execute("DROP TRIGGER IF EXISTS observations_no_update")
+    conn.execute(f"UPDATE observations SET payload = '{{not json' WHERE {where}", params)
+
+
 def user_version(path: Path) -> int:
     conn = sqlite3.connect(path)
     try:

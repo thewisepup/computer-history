@@ -75,7 +75,8 @@ computer_history/
                 # observations (ingest writes, projecting each new row),
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
-                # queries), timefmt, paths
+                # queries), screenshots (the screenshot records' status
+                # queries, read through their own index), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -145,7 +146,8 @@ observations (
 )
 ```
 
-- Strictly insert-only: no updates, deletes, or upsert carve-outs.
+- Strictly insert-only: no updates, deletes, or upsert carve-outs. Triggers
+  reject any `UPDATE` or `DELETE` on the table.
 - **Settled-events rule:** an event is ingested only once closed (superseded,
   or older than a stability margin). Handles AW growing the current event in
   place; the minutes of lag are invisible at hourly classification.

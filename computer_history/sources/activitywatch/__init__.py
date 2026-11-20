@@ -21,6 +21,8 @@
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.
+An event written late that reaches back past where a poll resumes (aw-watcher-afk
+dates a new AFK event from the last input, even across a sleep) is refetched whole.
 """
 
 from computer_history.sources.activitywatch.adapter import ActivityWatch

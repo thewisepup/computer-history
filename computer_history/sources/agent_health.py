@@ -66,8 +66,8 @@ def capture_health(
     now: datetime,
     window: timedelta,
     hostname: str,
+    day_start: datetime,
     min_gap_seconds: float = 0,
-    day_start: datetime | None = None,
 ) -> CaptureHealth:
     """Report on the agent from its stored records, its spool, aw-afk and aw-window, as of now.
 
@@ -87,8 +87,6 @@ def capture_health(
     newest = unstored if unstored is not None and unstored[0] > stored[0] else stored
     end = stored[0] if spool is None or spool.unstored else now
     start = max(end - window, summary.earliest_started_at)
-    if day_start is None:
-        day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     day_start = to_utc(day_start)
     read_from = min(start - CAPTURE_TOLERANCE, day_start)
 
