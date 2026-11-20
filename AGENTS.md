@@ -48,7 +48,10 @@ and `main` only merges pull requests whose checks pass. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
 The performance gate's tests carry the `perf` marker, which the default run
 leaves out: run them with `.venv/bin/python -m pytest -m perf` or
-`computer-history dev perf` (see `computer_history/cli/README.md`).
+`computer-history dev perf` (see `computer_history/cli/README.md`). CI's `perf`
+job runs the gate on every pull request against the baseline for its SQLite;
+a nightly workflow adds a year, a heavy year and `computer-history dev bench`,
+and never blocks a merge.
 Hypothesis tests run derandomized with no example database, so a run never
 passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:

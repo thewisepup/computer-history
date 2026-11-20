@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
+from typing import cast
 
 from computer_history.synthetic import (
     OPERATIONS,
     Costs,
     FindingKind,
+    GateDataset,
+    Operation,
     Scan,
     StatementCost,
+    baseline_file,
     compare,
+    compared_baseline,
     load_baseline,
+    measure_operation,
     save_baseline,
     scaling,
 )
+from computer_history.synthetic.operations import Session
 
 INSERT = "INSERT INTO observations (source) VALUES (?)"
 PROGRESS = "SELECT position FROM ingest_progress WHERE source = ?"
@@ -184,3 +192,35 @@ def test_updating_drops_entries_of_operations_that_are_gone(tmp_path: Path) -> N
     save_baseline(path, "3.54.1", {("ingest", "day"): BASE}, keep=stale)
 
     assert list(load_baseline(path).costs) == [("ingest", "day")]
+
+
+def test_the_gate_compares_with_its_own_sqlites_baseline_else_the_newest(tmp_path: Path) -> None:
+    for version in ("3.9.2", "3.10.0", "3.45.1"):
+        save_baseline(baseline_file(version, tmp_path), version, {("ingest", "day"): BASE})
+
+    assert compared_baseline("3.10.0", tmp_path) == tmp_path / "sqlite-3.10.0.json"
+    assert compared_baseline("3.54.1", tmp_path) == tmp_path / "sqlite-3.45.1.json"
+    assert compared_baseline("3.54.1", tmp_path / "none") == tmp_path / "none/sqlite-3.54.1.json"
+    (tmp_path / "sqlite-3.45.1.json").unlink()
+    assert compared_baseline("3.2.0", tmp_path) == tmp_path / "sqlite-3.10.0.json"
+
+
+def _scratch_operation(fresh: bool, seen: list[list[str]]) -> Operation:
+    def start(dataset: GateDataset, folder: Path) -> Session:
+        folder.mkdir(parents=True)
+        seen.append(sorted(path.name for path in folder.parent.iterdir() if path != folder))
+        (folder / "copy.db").write_bytes(b"x" * 1024)
+        return Session(sqlite3.connect(":memory:"), lambda: None)
+
+    return Operation("scratch", start, fresh=fresh)
+
+
+def test_an_operation_leaves_no_scratch_and_keeps_one_copy_at_a_time(tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+    dataset = cast(GateDataset, None)
+
+    measure_operation(_scratch_operation(True, seen), dataset, tmp_path / "fresh")
+    measure_operation(_scratch_operation(False, seen), dataset, tmp_path / "reused")
+
+    assert seen == [[], [], []]
+    assert list(tmp_path.iterdir()) == []

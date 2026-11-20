@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -11,8 +11,10 @@ from types import MappingProxyType
 
 from computer_history.store import SqliteBuild, sqlite_build
 from computer_history.synthetic.baseline import (
-    BASELINE_PATH,
+    BASELINE_DIR,
     Key,
+    baseline_file,
+    compared_baseline,
     load_baseline,
     recorded,
     save_baseline,
@@ -47,6 +49,11 @@ NIGHTLY_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType(
     {"year": _inputs("year"), "heavy-year": _inputs("year", HEAVY)}
 )
 PERF_DATASETS: Mapping[str, DatasetInputs] = MappingProxyType({**GATE_DATASETS, **NIGHTLY_DATASETS})
+
+def perf_datasets(labels: Sequence[str] | None) -> dict[str, DatasetInputs]:
+    """The datasets named, each once in the order given, or the pull-request gate's by default."""
+    return {label: PERF_DATASETS[label] for label in dict.fromkeys(labels or GATE_DATASETS)}
+
 
 SCAN_ALLOWLIST: Mapping[re.Pattern[str], str] = MappingProxyType(
     {
@@ -258,6 +265,8 @@ class GateReport:
     """What one gate run measured, on which SQLite, and every finding against the baseline."""
 
     build: SqliteBuild
+    baseline: Path
+    own_baseline: Path
     recorded_on: Mapping[Key, str]
     measured: Mapping[Key, Costs]
     findings: tuple[Finding, ...]
@@ -285,12 +294,13 @@ def run_gate(
     *,
     cache: Path,
     scratch: Path,
-    baseline_path: Path = BASELINE_PATH,
+    baselines: Path = BASELINE_DIR,
     update: bool = False,
+    counters: Path | None = None,
 ) -> GateReport:
-    """Measure every operation on every dataset against the baseline, rewriting it first if asked.
+    """Measure every operation on every dataset against the running SQLite's baseline.
 
-    Datasets come from the cache, which builds any that are missing.
+    Updating rewrites that baseline first; counters get the file an update would write.
     """
     gated = {
         label: gate_dataset(inputs, cached_dataset(inputs, cache))
@@ -302,10 +312,13 @@ def run_gate(
         for label, dataset in gated.items()
         for name, operation in OPERATIONS.items()
     }
-    baseline = load_baseline(baseline_path)
+    own = baseline_file(build.version, baselines)
+    if counters is not None:
+        save_baseline(counters, build.version, measured, keep=load_baseline(own))
     if update:
-        save_baseline(baseline_path, build.version, measured, keep=baseline)
-        baseline = load_baseline(baseline_path)
+        save_baseline(own, build.version, measured, keep=load_baseline(own))
+    compared = compared_baseline(build.version, baselines)
+    baseline = load_baseline(compared)
     findings = [
         finding
         for (name, label), costs in measured.items()
@@ -333,6 +346,8 @@ def run_gate(
                 scaled.append(finding)
     return GateReport(
         build,
+        compared,
+        own,
         baseline.versions,
         measured,
         tuple(findings),
