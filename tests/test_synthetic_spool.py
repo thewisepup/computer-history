@@ -269,14 +269,14 @@ def _files(*stretches: Stretch) -> dict[str, int]:
 def test_a_burst_of_switches_captures_the_final_state_once_with_the_strongest_trigger() -> None:
     assert _render(
         Stretch(t(0), t(0, 40), app="Cursor", title="a.py"),
-        Stretch(t(0, 40), t(0, 40.5), app="Terminal", title="zsh"),
-        Stretch(t(0, 40.5), t(2), app="Cursor", title="b.py"),
+        Stretch(t(0, 40), t(0, 40.5), app="Cursor", title="b.py"),
+        Stretch(t(0, 40.5), t(2), app="Terminal", title="zsh"),
     ) == [
         (t(0, 1), "heartbeat", "Cursor", "a.py"),
         (t(0, 31), "heartbeat", "Cursor", "a.py"),
-        (t(0, 41.5), "app", "Cursor", "b.py"),
-        (t(1, 11.5), "heartbeat", "Cursor", "b.py"),
-        (t(1, 41.5), "heartbeat", "Cursor", "b.py"),
+        (t(0, 41.5), "app", "Terminal", "zsh"),
+        (t(1, 11.5), "heartbeat", "Terminal", "zsh"),
+        (t(1, 41.5), "heartbeat", "Terminal", "zsh"),
     ]
 
 
@@ -337,14 +337,14 @@ def test_a_minute_that_ends_asleep_is_finished_on_waking() -> None:
 
 def test_captures_stop_once_the_user_is_idle_and_resume_a_second_after_they_return() -> None:
     captured = _render(
-        Stretch(t(0), t(1), app="Terminal", title="zsh"),
-        Stretch(t(1), t(3), app="Terminal", title="zsh", afk=True),
+        Stretch(t(0), t(1, 1), app="Terminal", title="zsh"),
+        Stretch(t(1, 1), t(3), app="Terminal", title="zsh", afk=True),
         Stretch(t(3), t(6), app="Terminal", title="zsh", afk=True),
         Stretch(t(6), t(7), app="Terminal", title="zsh"),
     )
 
     assert [moment for moment, *_ in captured] == [
-        *(t(0, 1) + k * timedelta(seconds=30) for k in range(8)),
+        *(t(0, 1) + k * timedelta(seconds=30) for k in range(9)),
         t(6, 1),
         t(6, 31),
     ]
