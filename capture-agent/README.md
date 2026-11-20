@@ -202,28 +202,47 @@ Right after each `capture` record is written, the capture thread writes one
 `screenshot` record for it. `excluded`, `paused` and `resumed` records get
 none, and a capture record that could not be written gets none.
 
+Before the picture it checks again that capture is not paused, the user is
+not idle, locked or asleep, and the same app and window title are still in
+front; the window-text read can take up to the window timeout. If anything
+changed, or a check gets no answer, the record says `failed` and no picture
+is taken.
+
 | Status | When |
 |---|---|
 | `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
 | `kept` | the picture was taken and saved |
 | `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
-| `failed` | anything else: no matching window, another ScreenCaptureKit error, no answer within 2 seconds, or the image could not be saved |
+| `failed` | anything else: focus or presence changed during the read, the password-field check got no answer, the window's frame could not be read or matched, another ScreenCaptureKit error, no answer within 2 seconds, an earlier request still unanswered, or the image could not be saved |
 
-The picture is a ScreenCaptureKit still of one window: of the focused app's
-on-screen windows in the normal layer, the one whose title matches the
-capture's window title, else the frontmost. It is scaled down so its long edge
-is at most `screenshot_long_edge_pixels`, encoded as JPEG at
-`screenshot_jpeg_quality`, and saved as
+The password-field check fails closed: a timeout reading the focused element,
+its role or its subrole, or a focused element with no role, gives `failed`.
+An app that reports no focused element at all is photographed.
+
+The picture is a ScreenCaptureKit still of one window: the on-screen window of
+the focused app whose frame matches the accessibility frame of its focused
+window (within 2 points), so a focused floating panel is photographed rather
+than the main window behind it. The title only chooses among windows with the
+same frame; when no single window matches, nothing is taken. ScreenCaptureKit
+is asked for the window scaled so its long edge is at most
+`screenshot_long_edge_pixels`, never above its native size. Only one request
+is outstanding at a time: while one has not answered, later captures get
+`failed` at once instead of waiting.
+
+The image is encoded as JPEG at `screenshot_jpeg_quality` and saved as
 `screenshots/<local yyyy-MM-dd>/<record id>.jpg` in the folder. The folders
-are `0700` and the images `0600`. Nothing is ever deleted.
+are `0700`, set again on every save, and the images `0600`. An image whose
+record cannot be written to the spool is deleted; otherwise nothing is ever
+deleted, and an image whose record a crash cut off stays.
 
 For now every `kept` record has empty recognized text, its perceptual hash is
 a 64-bit difference hash, and `duplicate` is never written.
 
-The Screen Recording grant is not requested yet. Turn on Computer History
-Agent in System Settings > Privacy & Security > Screen Recording; until then
-every screenshot record says `no-permission` and window text capture carries
-on.
+The agent does not ask for the Screen Recording grant itself, but its first
+ScreenCaptureKit call without the grant may make macOS show the Screen
+Recording prompt. Turn on Computer History Agent in System Settings > Privacy
+& Security > Screen Recording. Until then every screenshot record says
+`no-permission` and window text capture carries on.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
@@ -233,8 +252,8 @@ that finds the spool held by another agent exits without capturing.
 
 Everything the capture loop asks of the Mac is one protocol, `Mac`: the
 clocks, presence, the Accessibility grant, the focused app and its
-accessibility tree, whether a password field is focused, and a picture of the
-focused window. `LiveMac` answers from macOS; `ScriptedMac` answers from a
+accessibility tree with each window's frame, and a picture of the focused
+window. `LiveMac` answers from macOS; `ScriptedMac` answers from a
 script on a virtual clock, with scripted accessibility elements and a striped
 1600x1000 fixture image for every picture, so the real
 `CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
@@ -297,7 +316,8 @@ found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
 excluded, 1 timed out, 0 cut off, slowest read 0.42s`, with `, 2 failed to
-write (last: <error>)` appended when writes fail. `silent: paused`, `silent:
+write, 1 screenshot records failed to write (last: <error>)` appended when
+writes fail (each part only when its count is not zero). `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
 changing and ending. The log never holds window titles or text. After a crash,
 start also logs `spool finished leftover file <name>`.

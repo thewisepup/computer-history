@@ -32,8 +32,9 @@ import PackageDescription
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form
 ///     AccessibilityFlag.swift     which apps get the Chromium and Electron accessibility flags
 ///     Accessibility.swift   whether this process holds the Accessibility grant
-///     SecureField.swift     whether the focused element is a password field
-///     WindowScreenshot.swift     a ScreenCaptureKit still of the focused window, as a WindowImage
+///     SecureField.swift     whether the focused element is a password field, or no answer
+///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
+///                                window's frame, one request at a time, as a WindowImage
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
 ///     FrameHash.swift       the 64-bit difference hash of a screenshot

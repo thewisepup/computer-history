@@ -60,6 +60,8 @@ Review findings ratchet into rules:
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
   one function below, format, exit code.
+- **A7** A module takes only the settings it reads: pass it the fields it
+  uses, not a whole settings struct it reads part of.
 
 ## Hygiene
 
