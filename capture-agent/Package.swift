@@ -20,7 +20,9 @@ import PackageDescription
 ///     RecognitionQueue.swift    the recognition thread: writes screenshot records in capture order,
 ///           |                   reading the text of each kept image, duplicates copying it
 ///     TextRecognition.swift     the text in a saved picture, read by Vision
-///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows
+///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
+///           |               and whether a new one changed enough or is old enough to keep
+///     FrameThumbnail.swift  the small grey copy of a screenshot that dedup compares, pixel by pixel
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
@@ -42,7 +44,7 @@ import PackageDescription
 ///                                that carries the window's id
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
-///     FrameHash.swift       the 64-bit difference hash of a screenshot, and the bits two hashes differ by
+///     FrameHash.swift       the 64-bit difference hash each screenshot record carries
 ///     Mac.swift             everything the loop asks of the Mac, and LiveMac, which asks macOS
 ///     ScriptedMac.swift     a Mac on a virtual clock with scripted accessibility elements, fixture images
 ///                           and scripted recognized text

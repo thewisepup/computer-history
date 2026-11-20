@@ -78,7 +78,8 @@ shell that sets them act on that other folder.
 | `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
 | `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
-| `screenshot_duplicate_threshold_bits` | `2` | whole number, 0 to 10: a picture whose 64-bit hash differs from its window's last kept one in at most this many bits is a `duplicate`; `0` still drops identical hashes, and a typed line often leaves the hash unchanged, so `0` does not turn dedup off |
+| `screenshot_change_percent` | `0.05` | 0 to 10: a picture is a `duplicate` when under this percent of its thumbnail's pixels changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
+| `screenshot_keep_after_minutes` | `10` | whole number, 1 to 1440: an unchanged window gets a new `kept` picture once its last one is older than this |
 
 ```json
 {
@@ -214,7 +215,7 @@ is taken.
 |---|---|
 | `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
 | `kept` | the picture was taken and saved |
-| `duplicate` | the picture's hash is within `screenshot_duplicate_threshold_bits` of its window's last kept picture; nothing is saved |
+| `duplicate` | under `screenshot_change_percent` of the picture's thumbnail pixels changed from its window's last kept picture, which is at most `screenshot_keep_after_minutes` old; nothing is saved |
 | `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
 | `failed` | anything else: focus or presence changed during the read, the password-field check got no answer, the window's frame could not be read or matched, another ScreenCaptureKit error, no answer within 2 seconds, an earlier request still unanswered, or the image could not be saved |
 
@@ -238,9 +239,15 @@ are `0700`, set again on every save, and the images `0600`. Nothing is ever
 deleted: an image whose record the spool refuses, or whose record a crash or
 a stop cut off, stays.
 
-Each picture's perceptual hash is a 64-bit difference hash: each bit says
-whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
-It is compared with the last kept picture of the same window, a window being
+Each picture is shrunk to a grey thumbnail at most 160 pixels on its long
+edge, keeping its aspect ratio and never enlarged, each thumbnail pixel the
+average brightness of the block it covers. It is compared with the thumbnail
+of the last kept picture of the same window: a pixel has changed when its
+brightness differs by more than 24 of 255, which absorbs JPEG and scaling
+noise, and the picture has changed when at least `screenshot_change_percent`
+of its pixels have, which lets a blinking caret through but not a typed line.
+A thumbnail of another size (a resized window) is a change, and so is a match
+whose kept picture is older than `screenshot_keep_after_minutes`. A window is
 the ScreenCaptureKit window id of the window photographed plus its title, so
 two windows of one app with the same title are told apart and each browser
 tab or editor file still counts on its own. The agent remembers the last kept
@@ -251,6 +258,10 @@ until it ages out. A `duplicate` record carries the kept record's image path and
 recognized text, its own picture's hash, and no image size. A kept image
 whose record the spool refuses is still remembered, so its duplicates point
 at it.
+
+Each picture's `perceptual_hash` is a 64-bit difference hash: each bit says
+whether a pixel of a 9x8 grey thumbnail is brighter than its right neighbour.
+It is recorded for later measurement and decides nothing.
 
 ### Text recognition
 
