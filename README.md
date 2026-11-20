@@ -30,6 +30,7 @@ You need Python 3.11+ and a running ActivityWatch server
 `/opt/homebrew/bin/python3.12`. The system `python3` there is too old.
 
 ```sh
+brew install gitleaks
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
 git config core.hooksPath .githooks
@@ -261,5 +262,6 @@ authentication and explicit trusted-host configuration.
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
 ```
 
-The pre-commit hook runs ruff and pytest. CI runs all three on pushes to
-`main`.
+The pre-commit hook scans the staged changes with gitleaks, then runs ruff and
+pytest. CI runs all three and gitleaks on every pull request and push to
+`main`, and `main` only merges pull requests whose checks pass.

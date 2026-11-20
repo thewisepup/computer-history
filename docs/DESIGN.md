@@ -145,7 +145,8 @@ observations (
 )
 ```
 
-- Strictly insert-only: no updates, deletes, or upsert carve-outs.
+- Strictly insert-only: no updates, deletes, or upsert carve-outs. Triggers
+  reject any `UPDATE` or `DELETE` on the table.
 - **Settled-events rule:** an event is ingested only once closed (superseded,
   or older than a stability margin). Handles AW growing the current event in
   place; the minutes of lag are invisible at hourly classification.
