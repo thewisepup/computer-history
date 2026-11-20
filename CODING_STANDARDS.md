@@ -118,3 +118,6 @@ Review findings ratchet into rules:
   _Avoid_ list; values already persisted are exempt.
 - **H12** A change to a domain concept updates its glossary entry in the same
   change.
+- **H13** **[checked]** in `tests/test_standards.py`: `docs/agents/checks.md`
+  names every CI and nightly job, and the pre-commit hook leaves out exactly the
+  markers the hook's budget in `tests/conftest.py` leaves out.

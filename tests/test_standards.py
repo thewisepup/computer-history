@@ -8,8 +8,10 @@ import unicodedata
 from pathlib import Path
 
 import pytest
+from conftest import HOOK_LEAVES_OUT
 
-PACKAGE = Path(__file__).resolve().parent.parent / "computer_history"
+REPO = Path(__file__).resolve().parent.parent
+PACKAGE = REPO / "computer_history"
 SOURCES = sorted(PACKAGE.rglob("*.py"))
 TESTS = sorted(Path(__file__).resolve().parent.rglob("*.py"))
 COMMENTED = SOURCES + TESTS
@@ -243,3 +245,27 @@ def test_invisible_characters_are_written_as_escapes(path: Path) -> None:
         if unicodedata.category(char) in ("Cf", "Mn", "Zl", "Zp")
     ]
     assert not raw, f"{_rel(path)}: write these as \\u escapes: {raw}"
+
+
+WORKFLOWS = REPO / ".github" / "workflows"
+CHECKS_DOC = REPO / "docs" / "agents" / "checks.md"
+
+
+def _jobs(workflow: Path) -> list[str]:
+    text = workflow.read_text(encoding="utf-8")
+    jobs = text[text.index("\njobs:\n") :]
+    return re.findall(r"^  ([a-z][a-z0-9-]*):$", jobs, re.MULTILINE)
+
+
+@pytest.mark.parametrize("workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
+def test_the_checks_doc_names_every_ci_job(workflow: Path) -> None:
+    doc = CHECKS_DOC.read_text(encoding="utf-8")
+
+    assert _jobs(workflow)
+    assert [job for job in _jobs(workflow) if f"`{job}`" not in doc] == []
+
+
+def test_the_hook_leaves_out_the_markers_its_budget_leaves_out() -> None:
+    hook = (REPO / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+
+    assert f'-m "{" and ".join(f"not {m}" for m in HOOK_LEAVES_OUT)}"' in hook
