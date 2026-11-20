@@ -18,10 +18,8 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e .
-      - name: Make room for a year
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h / /mnt
+      - run: |
+          df -h /
           free -h
       - name: Performance gate on the nightly datasets
         run: |
@@ -38,7 +36,7 @@ jobs:
       - if: always()
         run: |
           grep -E "Elapsed|Maximum resident" nightly-time.txt || true
-          df -h / /mnt
+          df -h /
           du -sh "$COMPUTER_HISTORY_DATASET_CACHE"/* || true
       - if: always()
         uses: actions/upload-artifact@v4
