@@ -46,7 +46,8 @@ brew install gitleaks
 git config core.hooksPath .githooks
 ```
 
-`.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
+`.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check
+computer_history tests` and `.venv/bin/python -m ruff format --check
 computer_history tests` must pass. Tests sit in four folders, and the folder
 decides where a test runs:
 
