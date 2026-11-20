@@ -6,3 +6,4 @@ output/
 formal/spool/out/
 .hypothesis/
 .claude/worktrees/
+mutants/

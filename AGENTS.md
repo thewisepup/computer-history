@@ -27,6 +27,9 @@ summaries.
   When a diff touches the handoff files listed in
   `.claude/skills/verify-spool-handoff`, say so in the PR under "Not proven
   here" and leave the run to Brandon, who runs it by hand or asks for it.
+- `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
+  matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
+  says when to run it and which tests to keep.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
 - `CODING_STANDARDS.md` — the review checklist the standards reviewer
   enforces.
@@ -50,6 +53,11 @@ Hypothesis tests run derandomized with no example database, so a run never
 passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/test_aw_ingest_properties.py`.
+
+Agents that edit code work in their own git worktree, never in the main
+checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
+on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
+every pull.
 
 Swift never runs in CI. Two local commands cover the capture agent. The
 pre-commit hook runs the Swift tests when a commit touches the agent, the spool
