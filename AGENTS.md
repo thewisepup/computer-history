@@ -24,6 +24,9 @@ summaries.
   MCP until M6 replaces it; `README.md` is its API reference.
 - `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
   `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
+- `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
+  matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
+  says when to run it and which tests to keep.
 - `.scratch/<effort>/` — wayfinder maps and ticket decisions per milestone.
 - `CODING_STANDARDS.md` — the review checklist the standards reviewer
   enforces.
