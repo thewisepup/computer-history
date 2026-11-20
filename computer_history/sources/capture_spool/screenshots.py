@@ -81,7 +81,7 @@ def screenshot_health(
 
 def _tally(conn: sqlite3.Connection, since: datetime | None = None) -> ScreenshotTally:
     totals = screenshot_totals(conn, since=since)
-    statuses = {s: totals[s].count if s in totals else 0 for s in SCREENSHOT_STATUSES}
+    statuses = {s: totals[s].records if s in totals else 0 for s in SCREENSHOT_STATUSES}
     kept = totals.get(KEPT_STATUS)
     return ScreenshotTally(statuses, 0 if kept is None else kept.image_bytes)
 

@@ -14,7 +14,7 @@ _IMAGE_BYTES = "json_extract(payload, '$.image_bytes')"
 
 
 class StatusTotal(NamedTuple):
-    count: int
+    records: int
     image_bytes: int
 
 
