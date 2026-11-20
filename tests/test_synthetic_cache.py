@@ -76,7 +76,7 @@ def test_changing_a_source_file_or_migration_of_the_package_changes_the_key(
     assert len({before, after_module, after_migration}) == 3
 
 
-def test_the_key_names_the_schema_and_sqlite_versions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_newer_sqlite_changes_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     before = dataset_key(DEVELOPER_DAY)
     monkeypatch.setattr(sqlite3, "sqlite_version", "0.0.1")
 
