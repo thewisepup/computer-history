@@ -47,8 +47,10 @@ git config core.hooksPath .githooks
 computer_history tests` must pass; the pre-commit hook runs both after a
 gitleaks scan of the staged changes. CI runs them, the POC suite
 (`python -m unittest`) and gitleaks on every pull request and push to `main`,
-and `main` only merges pull requests whose checks pass. A
-worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+and `main` only merges pull requests whose checks pass. In a
+worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
+own `.venv` on first use (about a minute), since the main checkout's venv
+imports the main checkout's source.
 Pyright type-checks `computer_history` and `tests` in standard mode
 (`[tool.pyright]` in `pyproject.toml`): `.venv/bin/python -m pyright
 --pythonpath .venv/bin/python`. Without `--pythonpath` it resolves imports

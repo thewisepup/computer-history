@@ -1,4 +1,8 @@
 #!/bin/sh
+# Prints this checkout's venv interpreter, creating .venv first when it is
+# missing. Never falls back to another checkout's venv: its editable install
+# imports that checkout's source, so console scripts and anything run from
+# another folder would test the wrong code.
 set -eu
 unset GIT_DIR GIT_WORK_TREE
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -6,11 +10,22 @@ if [ -x "$root/.venv/bin/python" ]; then
   echo "$root/.venv/bin/python"
   exit 0
 fi
-main="$(git -C "$root" worktree list --porcelain | sed -n '1s/^worktree //p')"
-if [ -x "$main/.venv/bin/python" ]; then
-  echo "venv-python: no .venv here; using the main checkout's $main/.venv" >&2
-  echo "$main/.venv/bin/python"
-  exit 0
+base=""
+for candidate in /opt/homebrew/bin/python3.12 python3.12; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    base="$candidate"
+    break
+  fi
+done
+if [ -z "$base" ]; then
+  echo "venv-python: no .venv in $root and no python3.12 to create one (see Setup and checks in AGENTS.md)" >&2
+  exit 1
 fi
-echo "venv-python: no .venv in $root or $main; create it first (see Setup and checks in AGENTS.md)" >&2
-exit 1
+echo "venv-python: no .venv in $root; creating one with $base" >&2
+"$base" -m venv "$root/.venv" >&2
+if ! "$root/.venv/bin/python" -m pip install -q -e "$root[test,dev]" >&2; then
+  rm -rf "$root/.venv"
+  echo "venv-python: installing into $root/.venv failed; removed it" >&2
+  exit 1
+fi
+echo "$root/.venv/bin/python"
