@@ -52,7 +52,7 @@ the staged changes, ruff, and pytest without the `dataset` tests (those that
 build synthetic datasets or run `dev perf` and `dev bench`), within the
 budget `docs/agents/checks.md` sets. CI runs the full pytest, the POC suite (`python -m unittest`) and
 gitleaks on every pull request and push to `main`, and `main` only merges pull
-requests whose required checks (`check`, `secrets`, `capture-agent-tests`) pass. `docs/agents/checks.md` says where a new check
+requests whose required checks pass (`docs/agents/checks.md` lists them). `docs/agents/checks.md` says where a new check
 belongs (pre-commit, pull request CI or nightly) and the hook's time budget,
 which CI enforces. In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
@@ -81,8 +81,8 @@ on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
 every pull.
 
 Two commands cover the capture agent, and neither runs in the pre-commit hook.
-CI's `capture-agent-tests` job runs the Swift tests on macOS on every pull request; the
-nightly workflow runs the end-to-end check. Run them yourself after changing
+CI runs both on macOS on every pull request: `macos-capture-agent-tests` and
+`macos-capture-agent-e2e`. Run them yourself after changing
 the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash

@@ -6,10 +6,10 @@ earliest stage it fits; move it later when it outgrows that stage.
 | Stage | Runs | Budget | Holds |
 |---|---|---|---|
 | Pre-commit hook (`.githooks/pre-commit`) | on every commit, on your machine | about 15 s in total; no test over 3 s | gitleaks on the staged changes, ruff, pytest without the `perf` and `dataset` markers |
-| Pull request CI (`.github/workflows/ci.yml`) | on every pull request and push to `main` | about 20 min per job | `check`: ruff, the full pytest with the hook's budget, the POC suite. `secrets`: gitleaks on the history. `typecheck`: pyright, not yet required (#76). `perf`: the performance gate on day and month datasets. `capture-agent-tests`: on macOS, the Swift tests and a release build of the app bundle, signed ad hoc |
-| Nightly (`.github/workflows/nightly.yml`) | once a day, and on demand | hours | `perf`: the gate on year and heavy-year datasets, and wall-clock benchmarks. `capture-agent-e2e`: on macOS, the end-to-end check through the real agent |
+| Pull request CI (`.github/workflows/ci.yml`) | on every pull request and push to `main` | about 20 min per job | `check`: ruff, the full pytest with the hook's budget, the POC suite. `secrets`: gitleaks on the history. `typecheck`: pyright, not yet required (#76). `perf`: the performance gate on day and month datasets. `macos-capture-agent-tests`: the Swift tests and a release build of the app bundle, signed ad hoc. `macos-capture-agent-e2e`: the end-to-end check through the real agent |
+| Nightly (`.github/workflows/nightly.yml`) | once a day, and on demand | hours | `perf`: the gate on year and heavy-year datasets, and wall-clock benchmarks. |
 
-`main` requires `check`, `secrets` and `capture-agent-tests` to pass before a merge.
+`main` requires `check`, `secrets`, `macos-capture-agent-tests` and `macos-capture-agent-e2e` to pass before a merge.
 Push to `main` reruns pull request CI; there is no separate main-only stage.
 Installing the agent (`install.sh`) needs a login session and your signing
 certificate, so it stays a step you run by hand.

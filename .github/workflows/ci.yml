@@ -84,7 +84,7 @@ jobs:
             perf-gate.txt
           if-no-files-found: ignore
 
-  capture-agent-tests:
+  macos-capture-agent-tests:
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -93,6 +93,20 @@ jobs:
       - run: capture-agent/scripts/test.sh
       - name: Release build of the signed app bundle, signed ad hoc
         run: CODESIGN_IDENTITY=- capture-agent/scripts/build.sh
+
+  macos-capture-agent-e2e:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e '.[test,dev]'
+      - run: capture-agent/scripts/e2e.sh
 
   secrets:
     runs-on: ubuntu-24.04
