@@ -182,8 +182,9 @@ runs ahead:
   neither raise nor clear it.
 
 `screenshot` coverage is not checked: coverage is judged from `ax-text`
-records, so the coverage gaps list says `screenshot: not checked`. With no
-screenshot records stored, the section is one line:
+records, so the coverage gaps list says `screenshot: not checked` after the
+`ax-text` check, and says nothing about screenshots when that check has
+nothing to judge. With no screenshot records stored, the section is one line:
 
 ```
 Screenshots: none stored yet (no screenshot records)

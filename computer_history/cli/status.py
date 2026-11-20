@@ -159,7 +159,10 @@ def _print_gaps(
             _print_capture_gaps(health)
             continue
         if s.source == SCREENSHOT_SOURCE:
-            print(f"  {s.source}: not checked (coverage is judged from {AX_TEXT_SOURCE} records)")
+            if health.coverage is not None:
+                print(
+                    f"  {s.source}: not checked (coverage is judged from {AX_TEXT_SOURCE} records)"
+                )
             continue
         end = s.settled_until or s.latest_ended_at
         first = s.earliest_started_at

@@ -347,9 +347,20 @@ def test_status_judges_no_coverage_from_screenshot_records(
 ) -> None:
     conn = connect(db_path)
     store_shots(conn, [shot(1, CLI_NOW - timedelta(hours=3), "kept")])
+    store_captures(conn, [CLI_NOW - timedelta(hours=3), CLI_NOW - timedelta(hours=2)])
     conn.close()
     out = run_status(capsys, db_path)
     coverage = out[out.index("Coverage gaps") : out.index("Capture agent")]
     assert "  screenshot: not checked (coverage is judged from ax-text records)\n" in coverage
     assert "no screenshot coverage" not in coverage and "screenshot: no gaps" not in coverage
 
+
+def test_without_an_ax_text_coverage_check_the_screenshot_source_is_not_mentioned_in_coverage(
+    capsys, status_at, db_path: Path
+) -> None:
+    conn = connect(db_path)
+    store_shots(conn, [shot(1, CLI_NOW - timedelta(hours=3), "kept")])
+    conn.close()
+    out = run_status(capsys, db_path)
+    coverage = out[out.index("Coverage gaps") : out.index("Capture agent")]
+    assert "screenshot" not in coverage
