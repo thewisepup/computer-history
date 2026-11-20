@@ -265,10 +265,11 @@ authentication and explicit trusted-host configuration.
 
 The pre-commit hook scans the staged changes with gitleaks, then runs ruff,
 pytest and pyright. CI runs ruff, pytest, the POC suite and gitleaks on every
-pull request and push to `main`, and `main` only merges pull requests whose checks pass. Its `perf` job
-runs the performance gate (`computer-history dev perf`, see
-`computer_history/cli/README.md`) on synthetic day and month datasets, against
-the baseline for CI's SQLite, and fails on any change of cost. A nightly
+pull request and push to `main`, and `main` only merges pull requests whose
+checks pass. Its `perf` job runs the performance gate (`computer-history dev
+perf`, see `computer_history/cli/README.md`) on synthetic day and month
+datasets, against the baseline for CI's SQLite, and fails on any change of cost. A nightly
 workflow runs the gate on a year and a heavy year, and the wall-clock
 benchmark; it reports and never blocks a merge.
-CI also runs pyright as the `typecheck` job.
+Pyright must pass locally, where the pre-commit hook runs it. CI runs it as the
+`typecheck` job, which is not yet a required status check on `main`.

@@ -13,6 +13,7 @@ from urllib.request import urlopen
 
 import pytest
 from aw_http import aw_server, served_over_http
+from db_states import stored_progress
 
 from computer_history.sources import (
     AX_TEXT_SOURCE,
@@ -20,7 +21,7 @@ from computer_history.sources import (
     AWClient,
     AWError,
 )
-from computer_history.store import connect, content_digest, get_progress, utc_iso
+from computer_history.store import connect, content_digest, utc_iso
 from computer_history.synthetic import SCENARIOS, Dataset, DatasetInputs, build_dataset
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer, RenderedActivityWatch
 from computer_history.synthetic.aw_api import ServedAW
@@ -116,8 +117,7 @@ def _served(dataset: Dataset) -> ServedAW:
 
 
 def _progress(conn: sqlite3.Connection, stream: str) -> tuple[str, datetime | None]:
-    progress = get_progress(conn, stream)
-    assert progress is not None, stream
+    progress = stored_progress(conn, stream)
     return progress.position, progress.settled_until
 
 

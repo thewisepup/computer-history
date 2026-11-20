@@ -105,3 +105,5 @@ Review findings ratchet into rules:
   exemption in that test giving the reason.
 - **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
   in the same commit.
+- **H10** A narrowing assert repeated on a store read in tests becomes one helper
+  beside the test fixtures (`stored_progress` in `tests/db_states.py`).

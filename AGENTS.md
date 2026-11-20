@@ -53,7 +53,8 @@ Pyright type-checks `computer_history` in strict mode and `tests` in standard
 mode (`[tool.pyright]` in `pyproject.toml`), with zero errors:
 `.venv/bin/python -m pyright --pythonpath .venv/bin/python`. Without
 `--pythonpath` it resolves imports against whatever `python` is first on
-`PATH`. CI runs it as the `typecheck` job.
+`PATH`. It must pass locally, where the pre-commit hook runs it. CI runs it
+as the `typecheck` job, which is not yet a required status check on `main`.
 The performance gate's tests carry the `perf` marker, which the default run
 leaves out: run them with `.venv/bin/python -m pytest -m perf` or
 `computer-history dev perf` (see `computer_history/cli/README.md`). CI's `perf`
