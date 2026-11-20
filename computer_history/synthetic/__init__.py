@@ -1,18 +1,20 @@
 """Synthetic datasets: believable activity built through the real ingest path.
 
-generate.py       the inputs (persona, scenario, tier, seed) -> one timeline
-      |           persona.py: who the user is, as typed config, living ordinary days
-      |           developer.py: the developer persona
-      |           scenarios.py: what happens, placed on the ordinary timeline
-      |           timeline.py: stretches and faults, fixed time, per-part random
-      |
-  renderer.py     what a renderer is: timeline -> one source family's raw data
-  activitywatch.py  window, AFK and web buckets as the watchers leave them
-      |             afk.py: the AFK spans aw-watcher-afk reports
-      |             aw_api.py: the buckets served in process, as the real API
-      |
-  build.py        render, backfill and poll into a new database, at a fixed now
-  manifest.py     the true answers, from the timeline and never the database
+    generate.py         the inputs (persona, scenario, tier, seed) -> one timeline
+          |             persona.py: who the user is, as typed config
+          |             developer.py: the developer persona
+          |             days.py: the ordinary days a persona lives through
+          |             scenarios.py: what happens, placed on the ordinary timeline
+          |             timeline.py: stretches and faults, in fixed UTC time
+          |             seeds.py: one seeded random generator per part
+          |
+      renderer.py       what a renderer is: timeline -> one source family's raw data
+      activitywatch.py  window, AFK and web buckets as the watchers leave them
+          |             afk.py: the AFK spans aw-watcher-afk reports
+          |             aw_api.py: the buckets served in process, as the real API
+          |
+      build.py          render, backfill and poll into a new database, at a fixed now
+      manifest.py       the true answers, from the timeline and never the database
 """
 
 from computer_history.synthetic.build import (

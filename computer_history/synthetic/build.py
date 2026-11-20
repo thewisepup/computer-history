@@ -19,7 +19,8 @@ from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.manifest import Manifest, true_answers
 from computer_history.synthetic.renderer import Feed, RenderedSource, Renderer
-from computer_history.synthetic.timeline import Timeline, part_random
+from computer_history.synthetic.seeds import part_random
+from computer_history.synthetic.timeline import Timeline
 
 RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(),)
 SETTLE_AFTER = timedelta(seconds=STABILITY_MARGIN_SECONDS + 60)
@@ -33,10 +34,7 @@ class BuildFailed(RuntimeError):
 
 @dataclass(frozen=True)
 class Dataset:
-    """A built dataset: its database and manifest files, and what they were made from.
-
-    The feeds read the rendered data again, as of the fixed now the build ingested at.
-    """
+    """A built dataset: its database and manifest files, and what they were made from."""
 
     db_path: Path
     manifest_path: Path
@@ -50,7 +48,7 @@ class Dataset:
 def build_dataset(inputs: DatasetInputs, folder: Path) -> Dataset:
     """Generate, render and ingest the dataset into a new database in the folder, with its manifest.
 
-    The same inputs always give the same database contents.
+    A build that fails leaves no database behind.
     """
     folder.mkdir(parents=True, exist_ok=True)
     db_path, manifest_path = folder / DATABASE_NAME, folder / MANIFEST_NAME
@@ -63,15 +61,20 @@ def build_dataset(inputs: DatasetInputs, folder: Path) -> Dataset:
     }
     feeds = tuple(source.feed(folder) for source in rendered.values())
     now = timeline.end + SETTLE_AFTER
-    conn = connect(db_path)
     try:
-        backfill_feeds(conn, feeds, start=timeline.start, now=now)
-        poll_feeds(conn, feeds, now=now)
-        digest = content_digest(conn)
-    finally:
-        conn.close()
-    manifest = true_answers(inputs, timeline, rendered.values(), digest)
-    manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+        conn = connect(db_path)
+        try:
+            backfill_feeds(conn, feeds, start=timeline.start, now=now)
+            poll_feeds(conn, feeds, now=now)
+            digest = content_digest(conn)
+        finally:
+            conn.close()
+        manifest = true_answers(inputs, timeline, rendered.values(), digest)
+        manifest_path.write_text(manifest.to_json(), encoding="utf-8")
+    except BaseException:
+        for leftover in (db_path, manifest_path, *_sidecars(db_path)):
+            leftover.unlink(missing_ok=True)
+        raise
     return Dataset(db_path, manifest_path, timeline, rendered, feeds, manifest, now)
 
 
@@ -99,3 +102,7 @@ def poll_feeds(conn: sqlite3.Connection, feeds: Sequence[Feed], *, now: datetime
     if not summary.ok:
         raise BuildFailed(f"polling failed: {summary.failures}")
     return sum(outcome.inserted for outcome in summary.outcomes.values())
+
+
+def _sidecars(db_path: Path) -> tuple[Path, ...]:
+    return tuple(db_path.with_name(db_path.name + suffix) for suffix in ("-wal", "-shm"))

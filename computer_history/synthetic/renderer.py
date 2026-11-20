@@ -12,7 +12,7 @@ from computer_history.synthetic.timeline import Timeline
 
 
 class Feed(NamedTuple):
-    """The adapter ingest reads rendered data through, and the same adapter if it backfills."""
+    """The adapter ingest polls, plus the one it backfills through if the source keeps history."""
 
     source: Source
     history: HistorySource | None = None

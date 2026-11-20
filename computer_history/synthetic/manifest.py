@@ -6,13 +6,13 @@ import json
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from computer_history.synthetic.afk import reported_afk
 from computer_history.synthetic.generate import DatasetInputs
 from computer_history.synthetic.renderer import RenderedSource
-from computer_history.synthetic.timeline import PRECISION, Timeline
+from computer_history.synthetic.timeline import PRECISION, Timeline, local_midnight
 from computer_history.text import extract_domain
 
 GENERATOR_VERSION = 1
@@ -98,14 +98,10 @@ def _local_days(timeline: Timeline) -> list[tuple[str, datetime, datetime]]:
     zone = ZoneInfo(timeline.timezone)
     days = []
     day = timeline.start.astimezone(zone).date()
-    while (start := _midnight(day, zone)) < timeline.end:
-        days.append((day.isoformat(), start, _midnight(day + timedelta(days=1), zone)))
+    while (start := local_midnight(day, zone)) < timeline.end:
+        days.append((day.isoformat(), start, local_midnight(day + timedelta(days=1), zone)))
         day += timedelta(days=1)
     return days
-
-
-def _midnight(day: date, zone: ZoneInfo) -> datetime:
-    return datetime.combine(day, time(), zone).astimezone(UTC)
 
 
 def _by_day(

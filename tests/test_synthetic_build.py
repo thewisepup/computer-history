@@ -13,7 +13,7 @@ from computer_history.sources import (
     stored_afk_spans,
     stored_app_spans,
 )
-from computer_history.store import connect, content_digest, payload_values
+from computer_history.store import connect, content_digest, payload_values, source_summary
 from computer_history.synthetic import (
     DatasetInputs,
     Totals,
@@ -56,11 +56,13 @@ def test_stored_time_equals_the_manifest(tmp_path: Path) -> None:
             day: _stored_totals(conn, lo, hi)
             for day, (lo, hi) in _local_days(manifest.start, manifest.end, manifest.timezone)
         }
+        counts = {row.source: row.observation_count for row in source_summary(conn)}
     finally:
         conn.close()
 
     assert stored == manifest.total
     assert days == manifest.days
+    assert counts == manifest.observations
     assert manifest.total.foreground_app_seconds and manifest.total.afk_seconds > 0
 
 

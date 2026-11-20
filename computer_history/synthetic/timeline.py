@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import random
+from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from enum import Enum
+from itertools import groupby
+from zoneinfo import ZoneInfo
 
-DEFAULT_START = date(2026, 1, 5)
-DEFAULT_TIMEZONE = "America/Los_Angeles"
 PRECISION = timedelta(milliseconds=1)
 
 
 class StretchKind(Enum):
     ACTIVE = "active"  # an app is in front, whether or not the user is there
-    ASLEEP = "asleep"  # the Mac is asleep or locked, so no source records anything
+    ASLEEP = "asleep"  # the Mac is asleep or locked
 
 
 @dataclass(frozen=True)
@@ -82,7 +81,13 @@ class Timeline:
                 raise ValueError(f"{moment!r} is not a UTC time to the millisecond")
 
 
-def part_random(seed: int, part: str) -> random.Random:
-    """A random generator for one part of the generator, fixed by the seed and the part's name."""
-    digest = hashlib.sha256(f"{seed}:{part}".encode()).digest()
-    return random.Random(int.from_bytes(digest[:8], "big"))
+def awake_periods(timeline: Timeline) -> Iterator[list[Stretch]]:
+    """Each run of stretches with the Mac awake, in order."""
+    for active, run in groupby(timeline.stretches, key=lambda stretch: stretch.active):
+        if active:
+            yield list(run)
+
+
+def local_midnight(day: date, zone: ZoneInfo) -> datetime:
+    """The UTC time at which the day begins in the zone."""
+    return datetime.combine(day, time(), zone).astimezone(UTC)

@@ -4,22 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, timedelta
 from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
+from computer_history.synthetic.days import live
 from computer_history.synthetic.developer import DEVELOPER
-from computer_history.synthetic.persona import Persona, live
+from computer_history.synthetic.persona import Persona
 from computer_history.synthetic.scenarios import SCENARIOS
-from computer_history.synthetic.timeline import (
-    DEFAULT_START,
-    DEFAULT_TIMEZONE,
-    Timeline,
-    part_random,
-)
+from computer_history.synthetic.seeds import part_random
+from computer_history.synthetic.timeline import Timeline, local_midnight
 
 PERSONAS: Mapping[str, Persona] = MappingProxyType({DEVELOPER.name: DEVELOPER})
 TIERS: Mapping[str, int] = MappingProxyType({"day": 1})
+DEFAULT_START = date(2026, 1, 5)
+DEFAULT_TIMEZONE = "America/Los_Angeles"
 
 
 @dataclass(frozen=True)
@@ -48,8 +47,8 @@ def generate_timeline(inputs: DatasetInputs) -> Timeline:
     """The persona's ordinary days over the tier's range, with the scenario's happenings placed."""
     days = TIERS[inputs.tier]
     zone = ZoneInfo(inputs.timezone)
-    start = datetime.combine(inputs.start, time(), zone).astimezone(UTC)
-    end = datetime.combine(inputs.start + timedelta(days=days), time(), zone).astimezone(UTC)
+    start = local_midnight(inputs.start, zone)
+    end = local_midnight(inputs.start + timedelta(days=days), zone)
     persona = PERSONAS[inputs.persona]
     rng = part_random(inputs.seed, f"persona:{persona.name}")
     stretches = live(persona, inputs.start, days, inputs.timezone, rng)

@@ -17,10 +17,7 @@ _CONTENTS = (
 
 
 def content_digest(conn: sqlite3.Connection) -> str:
-    """A hash of the observations, signals and ingest progress, each in a fixed order.
-
-    Row ids and the times rows were written are left out, so only the contents count.
-    """
+    """A hash of the observations, signals and ingest progress, each in a fixed order."""
     digest = hashlib.sha256()
     for query in _CONTENTS:
         digest.update(b"\x00table\n")

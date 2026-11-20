@@ -119,7 +119,8 @@ FORBIDDEN_IMPORTS = {
     "sources": ("computer_history.synthetic", "computer_history.cli"),
     "synthetic": ("computer_history.cli",),
 }
-OPENS_ITS_OWN_DATABASES = ("cli", "store", "synthetic")
+OPENERS = ("AWClient", "connect", "connect_readonly", "open_store")
+SCRATCH_DATABASE_LAYERS = ("synthetic",)
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
@@ -152,14 +153,16 @@ def test_only_the_store_runs_sql(path: Path) -> None:
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
 def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
-    if _layer(path) in OPENS_ITS_OWN_DATABASES:
+    if _layer(path) in ("cli", "store"):
         return
+    scratch = _layer(path) in SCRATCH_DATABASE_LAYERS
     calls = [
         f"line {node.lineno}: {node.func.id}()"
         for node in ast.walk(_tree(path))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in ("AWClient", "connect", "connect_readonly", "open_store")
+        and node.func.id in OPENERS
+        and not (scratch and node.func.id == "connect" and node.args)
     ]
     assert not calls, f"{_rel(path)}: take these as parameters instead: {calls}"
 

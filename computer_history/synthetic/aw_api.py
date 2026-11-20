@@ -34,10 +34,7 @@ class AWEvent:
 
 
 class ServedAW:
-    """The ActivityWatch API over rendered buckets: overlap filter, inclusive end, newest first.
-
-    A limit keeps the newest events, and returned events are clipped to the range.
-    """
+    """Serves rendered buckets in process the way the ActivityWatch API does."""
 
     def __init__(
         self,

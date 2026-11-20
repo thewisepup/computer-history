@@ -54,8 +54,8 @@ Review findings ratchet into rules:
   `cli/`; `synthetic/` never imports `cli/`.
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients;
-  everything below takes them as parameters. `synthetic/` may also open the
-  scratch databases it builds, never the live one.
+  everything below takes them as parameters. `synthetic/` may also `connect`
+  to a scratch database it builds, by path, never the live one.
 - **A4** Inject the I/O edges (`conn`, `client`, clock, sleep) and nothing else;
   pure logic takes plain data. Interfaces are Protocols (`AWApi`); transport
   clients stay dumb 1:1 API mirrors, with domain logic in free functions.
