@@ -29,6 +29,7 @@ include = ["computer_history*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see"]
 
 [tool.mutmut]
 source_paths = ["computer_history/"]
