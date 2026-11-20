@@ -14,6 +14,7 @@ from computer_history.cli.formatting import (
     duration,
     human_size,
     lag,
+    local_midnight,
     when,
 )
 from computer_history.sources import (
@@ -49,11 +50,15 @@ MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     spool_path = resolve_spool_path(args.spool_path, db_path)
-    now = datetime.now(UTC)
-    day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    now = utc_now()
+    day_start = local_midnight(now)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
@@ -97,6 +102,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             window=STATUS_WINDOW,
             hostname=gethostname(),
             min_gap_seconds=MIN_GAP_SECONDS,
+            day_start=day_start,
         )
         print()
         _print_sources(summaries, now)

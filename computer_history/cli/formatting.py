@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 
@@ -34,6 +34,11 @@ def ago(value: datetime | None, now: datetime) -> str:
     if seconds < 0:
         return f"{when(value)} ({duration(-seconds)} ahead of now)"
     return f"{when(value)} ({duration(seconds)} ago)"
+
+
+def local_midnight(now: datetime) -> datetime:
+    """The start of now's local day, with the offset in force at that midnight."""
+    return datetime.combine(now.astimezone().date(), time()).astimezone()
 
 
 def when(value: datetime | None) -> str:

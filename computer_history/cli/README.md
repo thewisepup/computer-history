@@ -171,8 +171,9 @@ runs ahead:
 
 - **last kept**: the newest `kept` record, its app and the image path it
   names (relative to the data folder).
-- **today** and **all stored**: records by status, since local midnight and
-  in total. Records still in the spool count once ingested.
+- **today** and **all stored**: records by status, since local midnight (the
+  midnight's own offset, so a daylight saving changeover day starts on time)
+  and in total. Records still in the spool count once ingested.
 - **disk**: the `image_bytes` of the `kept` records, in total and today. An
   image left without a record is not counted.
 - **warning**: printed when a `no-permission` record is newer than every
