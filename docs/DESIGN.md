@@ -75,7 +75,8 @@ computer_history/
                 # observations (ingest writes, projecting each new row),
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
-                # queries), timefmt, paths
+                # queries), contents (a digest of what the database holds),
+                # timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -97,6 +98,11 @@ computer_history/
                 # waits in the spool), stored (the stored records' kinds and
                 # apps, the day's counts), coverage (unobserved stretches,
                 # liveness) and agreement (each capture's app against aw-window)
+  synthetic/    # synthetic datasets built through the real ingest path:
+                # timeline, seeds, persona (+ developer), days (a persona's
+                # ordinary days), scenarios, generate (inputs -> timeline),
+                # renderer (the contract), activitywatch (+ afk, aw_api: the
+                # buckets served in process), build, manifest
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

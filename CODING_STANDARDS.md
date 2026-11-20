@@ -50,10 +50,12 @@ Review findings ratchet into rules:
 ## Architecture
 
 - **A1** **[checked]** Layers depend downward only: `store/` never imports
-  `sources/` or `cli/`; `sources/` never imports `cli/`.
+  `sources/`, `synthetic/` or `cli/`; `sources/` never imports `synthetic/` or
+  `cli/`; `synthetic/` never imports `cli/`.
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients;
-  everything below takes them as parameters.
+  everything below takes them as parameters. `synthetic/` may also `connect`
+  to a scratch database it builds, by path, never the live one.
 - **A4** Inject the I/O edges (`conn`, `client`, clock, sleep) and nothing else;
   pure logic takes plain data. Interfaces are Protocols (`AWApi`); transport
   clients stay dumb 1:1 API mirrors, with domain logic in free functions.
