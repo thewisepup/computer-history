@@ -260,8 +260,11 @@ authentication and explicit trusted-host configuration.
 .venv/bin/python -m pytest                              # the computer_history package (tests/)
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
+.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check, standard mode; not yet required (#76)
 ```
 
 The pre-commit hook scans the staged changes with gitleaks, then runs ruff and
 pytest. CI runs all three and gitleaks on every pull request and push to
-`main`, and `main` only merges pull requests whose checks pass.
+`main`, and `main` only merges pull requests whose checks pass. CI also runs
+pyright as the `typecheck` job, which does not block merges until #76 makes it
+pass.
