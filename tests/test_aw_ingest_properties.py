@@ -25,8 +25,6 @@ from hypothesis import strategies as st
 from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch, poll
 from computer_history.store import connect
 
-pytestmark = pytest.mark.dataset
-
 seconds = st.one_of(st.integers(1, 30), st.integers(100, 240), st.integers(1, 900))
 stretches = st.builds(
     Stretch,
