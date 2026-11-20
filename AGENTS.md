@@ -97,6 +97,17 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
   `~/Library/Application Support/ComputerHistory` raises; `scripts/mutate.sh`
   sandboxes HOME too. Anything else that runs the code on made-up data passes
   its own `--db-path` and `--spool-path`.
+- Coding agents never touch the live data folder either.
+  `.claude/settings.json` runs `.claude/hooks/guard-live-data.py` before
+  every Bash, Edit, Write and NotebookEdit call, and blocks the call when the
+  command, or the file it edits, names
+  `~/Library/Application Support/ComputerHistory/` (by `~`, `$HOME`, an
+  absolute path, a symlink or any case). `ComputerHistory-dev/` and other
+  paths pass, and so does text inside a file being written. It guards against
+  accidents and is not a security boundary: a command that reaches the folder
+  without naming it still runs. It sits beside any global hooks in
+  `~/.claude/settings.json`, and Claude Code runs both. When it blocks a call
+  Brandon asked for, tell him and let him run it himself.
 - Raw observations are immutable; signals are derived and rebuildable.
 - Read-only toward ActivityWatch.
 - Coverage gaps are reported as "unobserved", never assumed idle.
