@@ -76,7 +76,8 @@ computer_history/
                 # signals (the signal row shape and writes, rebuild),
                 # progress (per-source ingest progress), status (read
                 # queries), contents (a digest of what the database holds),
-                # timefmt, paths
+                # introspection (query plans, pages and the SQLite build, for the
+                # cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -108,7 +109,10 @@ computer_history/
                 # agent captures), build, manifest (+ gaps: unobserved
                 # stretches and explained gaps), cache (built datasets per
                 # user, keyed by inputs and code), devdb (a cached dataset
-                # copied out, never into a live folder)
+                # copied out, never into a live folder), operations (what
+                # the product does, on a cached dataset), meter (the cost
+                # meter), gate (costs against the committed baseline,
+                # + baseline: the file and the SQLite that recorded it)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions

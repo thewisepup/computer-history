@@ -14,7 +14,8 @@ app.py         parser + dispatch: one entry per command
   +-- status.py    freshness, coverage gaps, the capture agent, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
-  +-- dev.py       dev build-db: a database of synthetic history from the dataset cache
+  +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
+  |                dev perf: the performance gate against the committed baseline
         |
 db.py and sources.py (unusable database / source messages),
 formatting.py (durations, times, sizes)
@@ -244,6 +245,61 @@ it. A build writes into a temporary folder beside the entry and renames it
 into place; when two builds race, the loser discards its copy. Delete the
 folder at any time: the next request rebuilds, as it does for an entry missing
 its database or manifest.
+
+## dev perf — the performance gate
+
+```bash
+computer-history dev perf                      # day and month, against the committed baseline
+computer-history dev perf --update-baselines   # record a deliberate change of cost
+computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
+```
+
+```
+SQLite 3.54.1, 54 compile options:
+  ATOMIC_INTRINSICS=1 COMPILER=clang-21.0.0 DEFAULT_AUTOVACUUM ...
+
+operation        dataset      statements      VM steps    pages
+ingest           day               8,861       281,335    2,225
+rebuild-signals  day               3,619       232,084    2,225
+status-reads     day                  15        78,718        -
+capture-health   day                   6        71,743        -
+ingest           month           251,848     8,087,820   83,286
+...
+expected to fail, status-reads on month: 340,350 VM steps, over the 45,922 the day tier allows
+expected to fail, capture-health on month: 481,452 VM steps, over the 143,486 the day tier allows
+
+Performance gate passed.
+```
+
+Runs each operation (`ingest` into an empty database, `rebuild-signals`, the
+store reads `status` makes, and the capture agent's health) on the developer
+persona's `messy` datasets from the dataset cache, once untimed and once with
+SQLite's work counted: statements run, VM instructions, full table scans in
+the query plans of the reads it ran, and the pages of a database it writes.
+It compares those with `computer_history/synthetic/perf_baseline.json` and
+exits 1 on any difference: statements, scans and pages exactly, VM steps past
+2%, cheaper ones too, so an improvement is locked in by rerunning with
+`--update-baselines` and saying why in the pull request. A scan fails unless
+its statement is on the gate's short allowlist (the row counts and source
+totals `status` prints, and rebuild's pass over every observation). The
+scaling check fails when a windowed read on month costs more than twice its
+day cost, or another operation grows half again faster than the events; the
+two known failures are tracked in #84. Each failure names the operation,
+counter, before and after, and the statements that changed most:
+
+```
+ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
+  statements that changed most:
+    0 -> 3,674 runs, 0 -> 29,392 VM steps: SELECT id FROM observations WHERE id = ?
+```
+
+The scaling check needs `day` beside a larger dataset and says so when it is
+missing. The committed baseline holds only day and month, so a nightly dataset
+reports `no baseline yet` until its entries are recorded with
+`--update-baselines`. Each entry keeps the SQLite version it was recorded on,
+and the run notes any that differ from the SQLite it runs on.
+
+`pytest -m perf` runs the same gate; the default `pytest` leaves it out.
 
 ## When the database can't be used
 

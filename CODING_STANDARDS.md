@@ -48,6 +48,8 @@ Review findings ratchet into rules:
 - **S6** **[checked]** No module imports another module's `_private` names.
 - **S7** A type that summarises other values is named for what it counts
   (`CaptureCounts`), never as the plural of an item type in the same package.
+- **S8** A value that picks behaviour is an Enum member, never a free string
+  compared in branches (`FindingKind`, not `counter == "full scan"`).
 
 ## Architecture
 
@@ -64,7 +66,8 @@ Review findings ratchet into rules:
   clients stay dumb 1:1 API mirrors, with domain logic in free functions.
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
-  one function below, format, exit code.
+  one function below, format, exit code. **[checked]** in part: no constant in
+  `cli/` repeats one a lower layer defines with the same name and value.
 - **A7** A path's resolution rule (flag, then `$ENV`, then default) lives in one
   function beside what owns the path (`resolve_db_path`, `cache_root`); other
   code calls it and never reads that variable itself.

@@ -19,6 +19,13 @@ from computer_history.store.db import (
     supported_version,
     transaction,
 )
+from computer_history.store.introspection import (
+    DbstatUnavailable,
+    SqliteBuild,
+    page_counts,
+    scanned_tables,
+    sqlite_build,
+)
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
@@ -32,12 +39,15 @@ from computer_history.store.signals import (
     rebuild_signals,
 )
 from computer_history.store.status import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
     Gap,
     PayloadValues,
     SourceSummary,
     find_gaps,
     latest_payload_value,
     payload_values,
+    recent_span,
     source_summary,
     table_counts,
 )
@@ -46,6 +56,9 @@ from computer_history.store.timefmt import to_utc, utc_iso
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
+    "MIN_GAP_SECONDS",
+    "STATUS_WINDOW",
+    "DbstatUnavailable",
     "Gap",
     "InsertResult",
     "Migration",
@@ -60,6 +73,7 @@ __all__ = [
     "RebuildResult",
     "Signal",
     "SourceSummary",
+    "SqliteBuild",
     "StoreState",
     "UnclaimedSource",
     "connect",
@@ -73,12 +87,16 @@ __all__ = [
     "load_migrations",
     "migrate",
     "open_store",
+    "page_counts",
     "payload_values",
     "rebuild_signals",
+    "recent_span",
     "resolve_db_path",
+    "scanned_tables",
     "schema_version",
     "supported_version",
     "source_summary",
+    "sqlite_build",
     "table_counts",
     "to_utc",
     "transaction",

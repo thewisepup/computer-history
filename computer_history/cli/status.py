@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from socket import gethostname
 
@@ -20,18 +20,19 @@ from computer_history.sources import (
     resolve_spool_path,
 )
 from computer_history.store import (
+    MIN_GAP_SECONDS,
+    STATUS_WINDOW,
     Purpose,
     SourceSummary,
     StoreState,
     find_gaps,
     open_store,
+    recent_span,
     resolve_db_path,
     source_summary,
     table_counts,
 )
 
-STATUS_WINDOW = timedelta(hours=24)
-MIN_GAP_SECONDS = 300
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
@@ -137,12 +138,11 @@ def _print_gaps(
         if s.source == AX_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
             continue
-        end = s.settled_until or s.latest_ended_at
-        first = s.earliest_started_at
-        if end is None or first is None:
+        span = recent_span(s, STATUS_WINDOW)
+        if span is None:
             print(f"  {s.source}: no observations yet")
             continue
-        start = max(end - STATUS_WINDOW, first)
+        start, end = span
         if start >= end:
             print(f"  {s.source}: no settled span to check yet")
             continue
