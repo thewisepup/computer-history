@@ -25,10 +25,13 @@ include = ["computer_history*"]
 
 [tool.setuptools.package-data]
 "computer_history.store" = ["migrations/*.sql"]
+"computer_history.synthetic" = ["perf_baseline.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not perf'"
+markers = ["perf: the performance gate, run with -m perf or computer-history dev perf"]
 
 [tool.ruff]
 target-version = "py311"

@@ -23,7 +23,10 @@ COMMANDS = {
         "One-time ingest of existing ActivityWatch history, in bounded chunks"
         " (idempotent: re-running adds nothing)."
     ),
-    "dev": "Developer tools: build-db makes a database of synthetic history.",
+    "dev": (
+        "Developer tools: build-db makes a database of synthetic history, perf runs the"
+        " performance gate."
+    ),
 }
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {

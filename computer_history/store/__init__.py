@@ -8,6 +8,7 @@ backfill use the read queries. content_digest hashes what the database holds.
 """
 
 from computer_history.store.contents import content_digest
+from computer_history.store.costs import SqliteBuild, page_counts, scanned_tables, sqlite_build
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
     Migration,
@@ -60,6 +61,7 @@ __all__ = [
     "RebuildResult",
     "Signal",
     "SourceSummary",
+    "SqliteBuild",
     "StoreState",
     "UnclaimedSource",
     "connect",
@@ -73,12 +75,15 @@ __all__ = [
     "load_migrations",
     "migrate",
     "open_store",
+    "page_counts",
     "payload_values",
     "rebuild_signals",
     "resolve_db_path",
+    "scanned_tables",
     "schema_version",
     "supported_version",
     "source_summary",
+    "sqlite_build",
     "table_counts",
     "to_utc",
     "transaction",

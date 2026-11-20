@@ -46,6 +46,9 @@ gitleaks scan of the staged changes. CI runs them, the POC suite
 (`python -m unittest`) and gitleaks on every pull request and push to `main`,
 and `main` only merges pull requests whose checks pass. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+The performance gate's tests carry the `perf` marker, which the default run
+leaves out: run them with `.venv/bin/python -m pytest -m perf` or
+`computer-history dev perf` (see `computer_history/cli/README.md`).
 Hypothesis tests run derandomized with no example database, so a run never
 passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:

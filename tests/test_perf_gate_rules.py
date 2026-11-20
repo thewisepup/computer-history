@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from computer_history.store import SqliteBuild
+from computer_history.synthetic import (
+    OPERATIONS,
+    Costs,
+    Scan,
+    StatementCost,
+    compare,
+    load_baseline,
+    save_baseline,
+    scaling,
+)
+
+INSERT = "INSERT INTO observations (source) VALUES (?)"
+PROGRESS = "SELECT position FROM ingest_progress WHERE source = ?"
+COUNT = 'SELECT COUNT(*) FROM "observations"'
+GAPS = "SELECT started_at, ended_at FROM observations WHERE source = ? AND started_at < ?"
+
+
+def _costs(
+    statements: dict[str, tuple[int, int]],
+    *,
+    scans: tuple[Scan, ...] = (),
+    pages: int = 100,
+    table_pages: dict[str, int] | None = None,
+) -> Costs:
+    by_statement = {text: StatementCost(*cost) for text, cost in statements.items()}
+    return Costs(
+        statements=sum(cost.count for cost in by_statement.values()),
+        vm_steps=sum(cost.vm_steps for cost in by_statement.values()),
+        full_scans=scans,
+        pages=pages,
+        table_pages={"observations": 60} if table_pages is None else table_pages,
+        by_statement=by_statement,
+    )
+
+
+BASE = _costs({INSERT: (100, 10_000), PROGRESS: (10, 1_000)})
+
+
+def test_matching_costs_pass() -> None:
+    assert compare(OPERATIONS["ingest"], "day", BASE, BASE) == []
+
+
+def test_one_more_statement_fails_and_names_the_statement_that_grew() -> None:
+    worse = _costs({INSERT: (100, 10_000), PROGRESS: (11, 1_000)})
+
+    [finding] = compare(OPERATIONS["ingest"], "day", worse, BASE)
+
+    assert (finding.counter, finding.before, finding.after, finding.cheaper) == (
+        "statements",
+        110,
+        111,
+        False,
+    )
+    assert finding.grew == (f"10 -> 11 runs, 1,000 -> 1,000 VM steps: {PROGRESS}",)
+    assert "ingest on day: statements 110 -> 111 (+0.9%)" in finding.describe()
+
+
+def test_vm_steps_pass_within_two_percent_and_fail_beyond_it_either_way() -> None:
+    def steps(insert_steps: int) -> Costs:
+        return _costs({INSERT: (100, insert_steps), PROGRESS: (10, 1_000)})
+
+    ingest = OPERATIONS["ingest"]
+    assert compare(ingest, "day", steps(10_219), BASE) == []
+    assert compare(ingest, "day", steps(9_781), BASE) == []
+    [worse] = compare(ingest, "day", steps(10_221), BASE)
+    [cheaper] = compare(ingest, "day", steps(9_779), BASE)
+
+    assert (worse.counter, worse.before, worse.after, worse.cheaper) == (
+        "vm_steps",
+        11_000,
+        11_221,
+        False,
+    )
+    assert (cheaper.counter, cheaper.after, cheaper.cheaper) == ("vm_steps", 10_779, True)
+    assert "--update-baselines" in cheaper.describe()
+
+
+def test_pages_are_exact_for_an_operation_that_writes_and_ignored_for_reads() -> None:
+    bigger = _costs(
+        {INSERT: (100, 10_000), PROGRESS: (10, 1_000)},
+        pages=101,
+        table_pages={"observations": 61},
+    )
+
+    found = compare(OPERATIONS["ingest"], "day", bigger, BASE)
+
+    assert [(f.counter, f.before, f.after) for f in found] == [
+        ("pages", 100, 101),
+        ("pages of observations", 60, 61),
+    ]
+    assert compare(OPERATIONS["status-reads"], "day", bigger, BASE) == []
+
+
+def test_a_scan_off_the_allowlist_fails_even_when_the_baseline_has_it() -> None:
+    scan = Scan("observations", GAPS)
+    scanning = _costs({GAPS: (1, 500)}, scans=(scan,))
+
+    [finding] = compare(OPERATIONS["status-reads"], "day", scanning, scanning)
+
+    assert finding.counter == "full scan"
+    assert "observations" in finding.describe() and GAPS in finding.describe()
+
+
+def test_an_allowlisted_scan_passes_but_a_new_one_asks_for_a_baseline_update() -> None:
+    counting = _costs({COUNT: (1, 9)}, scans=(Scan("observations", COUNT),))
+    not_counting = _costs({COUNT: (1, 9)})
+
+    assert compare(OPERATIONS["status-reads"], "day", counting, counting) == []
+    [finding] = compare(OPERATIONS["status-reads"], "day", counting, not_counting)
+    assert finding.counter == "full scans"
+
+
+def test_a_missing_baseline_asks_for_one() -> None:
+    [finding] = compare(OPERATIONS["ingest"], "month", BASE, None)
+
+    assert finding.counter == "baseline"
+    assert "--update-baselines" in finding.describe()
+
+
+def test_a_windowed_read_may_grow_to_twice_its_day_cost_leaving_out_allowlisted_scans() -> None:
+    day = _costs({GAPS: (3, 1_000), COUNT: (1, 50)})
+    twice = _costs({GAPS: (3, 2_000), COUNT: (1, 5_000)})
+    more = _costs({GAPS: (3, 2_001), COUNT: (1, 50)})
+    reads = OPERATIONS["status-reads"]
+
+    assert scaling(reads, "month", (day, 100), (twice, 3_000)) is None
+    finding = scaling(reads, "month", (day, 100), (more, 3_000))
+    assert finding is not None
+    assert (finding.counter, finding.before, finding.after) == ("scaling", 2_000, 2_001)
+
+
+def test_an_operation_over_all_data_may_grow_half_again_faster_than_its_events() -> None:
+    day = _costs({INSERT: (100, 1_000)})
+    in_step = _costs({INSERT: (3_000, 45_000)})
+    faster = _costs({INSERT: (3_000, 45_001)})
+    ingest = OPERATIONS["ingest"]
+
+    assert scaling(ingest, "month", (day, 100), (in_step, 3_000)) is None
+    finding = scaling(ingest, "month", (day, 100), (faster, 3_000))
+    assert finding is not None
+    assert (finding.before, finding.after) == (45_000, 45_001)
+
+
+def test_a_baseline_round_trips_through_its_file(tmp_path: Path) -> None:
+    path = tmp_path / "baseline.json"
+    build = SqliteBuild("3.54.1", ("ENABLE_DBSTAT_VTAB",))
+    scanning = _costs({COUNT: (1, 9)}, scans=(Scan("observations", COUNT),))
+
+    save_baseline(path, build, {("ingest", "day"): BASE, ("status-reads", "day"): scanning})
+    baseline = load_baseline(path)
+
+    assert baseline.build == build
+    assert baseline.costs[("ingest", "day")] == BASE
+    assert baseline.costs[("status-reads", "day")] == _costs(
+        {COUNT: (1, 9)}, scans=(Scan("observations", COUNT),), pages=0, table_pages={}
+    )

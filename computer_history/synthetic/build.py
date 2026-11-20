@@ -63,10 +63,7 @@ def build_timeline(
     db_path, manifest_path = folder / DATABASE_NAME, folder / MANIFEST_NAME
     if db_path.exists():
         raise FileExistsError(f"{db_path} already exists")
-    rendered = {
-        renderer.name: renderer.render(timeline, part_random(seed, renderer.name))
-        for renderer in RENDERERS
-    }
+    rendered = render_sources(timeline, seed)
     feeds = tuple(source.feed(folder) for source in rendered.values())
     now = timeline.end + SETTLE_AFTER
     try:
@@ -86,6 +83,14 @@ def build_timeline(
     finally:
         shutil.rmtree(folder / INGEST_FOLDER, ignore_errors=True)
     return Dataset(db_path, manifest_path, timeline, rendered, feeds, manifest, now)
+
+
+def render_sources(timeline: Timeline, seed: int) -> dict[str, RenderedSource]:
+    """Every renderer's raw data for the timeline, by renderer name."""
+    return {
+        renderer.name: renderer.render(timeline, part_random(seed, renderer.name))
+        for renderer in RENDERERS
+    }
 
 
 def backfill_feeds(
