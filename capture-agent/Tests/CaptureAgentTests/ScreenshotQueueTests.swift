@@ -238,7 +238,6 @@ final class FirstThenHeldRecognizer: @unchecked Sendable {
 
 @Test func stoppingWritesWhatTheDeadlineAllowsAndNothingAfterIt() throws {
     let fixture = LoopFixture()
-    fixture.screenshots.recognitionTimeout = 60
     let recognizer = FirstThenHeldRecognizer()
     fixture.mac.recognizedText = recognizer.text
     var seed = 1
