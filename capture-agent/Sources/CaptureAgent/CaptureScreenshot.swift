@@ -24,7 +24,7 @@ public struct ScreenshotSettings: Equatable, Sendable {
 
 /// A screenshot record waiting for the spool: ready as it is, or built once its own image's text is read or its kept screenshot's text is known.
 enum QueuedScreenshot: Sendable {
-    typealias Record = @Sendable (_ text: String, _ fullTextBytes: Int) -> ScreenshotRecord
+    typealias Record = @Sendable ((text: String, fullTextBytes: Int)) -> ScreenshotRecord
 
     case ready(ScreenshotRecord)
     case recognize(image: URL, into: KeptText, record: Record)
@@ -64,9 +64,11 @@ struct CaptureScreenshot<M: Mac> {
                 return .ready(.failed(of: capture))
             }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
-            if let kept = dedup.see(frame, in: window, at: capture.capturedAt) {
-                return .copy(from: kept.text) { text, fullTextBytes in
-                    .duplicate(of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: text, fullTextBytes: fullTextBytes)
+            if let kept = dedup.see(frame, in: window, at: capture.capturedAt), !kept.text.failed {
+                return .copy(from: kept.text) { read in
+                    .duplicate(
+                        of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: read.text, fullTextBytes: read.fullTextBytes
+                    )
                 }
             }
             let id = UUID()
@@ -75,10 +77,10 @@ struct CaptureScreenshot<M: Mac> {
             dedup.remember(
                 FrameDedup.KeptFrame(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
             )
-            return .recognize(image: saved.file, into: text) { text, fullTextBytes in
+            return .recognize(image: saved.file, into: text) { read in
                 .kept(
-                    id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: text,
-                    fullTextBytes: fullTextBytes
+                    id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: read.text,
+                    fullTextBytes: read.fullTextBytes
                 )
             }
         }

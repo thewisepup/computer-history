@@ -1,9 +1,23 @@
 import Foundation
 
-/// The recognized text of a kept screenshot, set on the screenshot thread once its recognition has run.
+/// The recognized text of a kept screenshot, set on the screenshot thread once its recognition has run, or marked failed.
 final class KeptText: @unchecked Sendable {
-    fileprivate var text = ""
-    fileprivate var fullTextBytes = 0
+    private let lock = NSLock()
+    private var read = (text: "", fullTextBytes: 0)
+    private var didFail = false
+
+    /// Whether reading the kept image's text failed or got no answer in time.
+    var failed: Bool { lock.withLock { didFail } }
+
+    fileprivate var value: (text: String, fullTextBytes: Int) { lock.withLock { read } }
+
+    fileprivate func set(_ text: String, fullTextBytes: Int) {
+        lock.withLock { read = (text, fullTextBytes) }
+    }
+
+    fileprivate func fail() {
+        lock.withLock { didFail = true }
+    }
 }
 
 /// Text recognition that gave no answer in time, or was not started because an earlier one still has not answered.
@@ -53,17 +67,17 @@ final class ScreenshotQueue: Sendable {
         case .ready(let record):
             return record
         case .copy(let kept, let record):
-            return record(kept.text, kept.fullTextBytes)
+            return record(kept.value)
         case .recognize(let image, let kept, let record):
             do {
                 var capped = CappedText(capBytes: capBytes)
                 capped.append(try recognizeInTime(image))
-                kept.text = capped.text
-                kept.fullTextBytes = capped.fullLength
+                kept.set(capped.text, fullTextBytes: capped.fullLength)
             } catch {
+                kept.fail()
                 counts.recordRecognitionFailed(error)
             }
-            return record(kept.text, kept.fullTextBytes)
+            return record(kept.value)
         }
     }
 

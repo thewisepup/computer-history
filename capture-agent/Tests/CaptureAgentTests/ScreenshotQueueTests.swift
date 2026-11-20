@@ -177,3 +177,33 @@ final class HeldRecognizer: @unchecked Sendable {
     fixture.waitForScreenshots()
     #expect(fixture.counts.take().description.contains(", 0 screenshot records queued"))
 }
+
+@Test func aWindowWhoseKeptFrameGotNoTextKeepsItsNextFrameAndReadsIt() throws {
+    let fixture = LoopFixture()
+    let failing = LockedFlag(true)
+    fixture.mac.recognizedText = { image in
+        if failing.value { throw RecognitionError() }
+        return "text of \(image.deletingPathExtension().lastPathComponent)"
+    }
+    fixture.run(for: 2)
+    failing.value = false
+    fixture.run(for: 60)
+    #expect(try fixture.statuses() == ["kept", "kept", "duplicate"])
+    let shots = try fixture.screenshotRecords()
+    let read = "text of \(shots[1]["id"] as! String)"
+    #expect(shots.map { $0["text"] as? String } == ["", read, read])
+}
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Bool
+
+    init(_ value: Bool) {
+        current = value
+    }
+
+    var value: Bool {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
+}

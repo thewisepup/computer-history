@@ -285,7 +285,9 @@ with `full_text_bytes`, `text_cut_off` and `text_sha256`. A `duplicate` record
 waits its turn behind its kept record and copies that record's finished text;
 no recognition runs for it. If Vision fails, the record is still `kept`, with
 empty text (`full_text_bytes` 0) and its image, its duplicates copy the empty
-text, and the minute log line counts the failure.
+text, and the minute log line counts the failure. The window's next picture
+is then kept and read again rather than matched against the image with no
+text; duplicates queued before the failure was known still copy the empty text.
 
 Vision runs on a thread of its own and gets `ScreenshotSettings.recognitionTimeout`
 (10 seconds) per image; with no answer by then the record is `kept` with empty
