@@ -1,12 +1,17 @@
+import atexit
 import os
 from pathlib import Path
 
+import live_data_guard
 import pytest
 from hypothesis import HealthCheck, settings
 
 from computer_history.store import DB_ENV_VAR, connect
 from computer_history.store import db as store_db
 from computer_history.synthetic import CACHE_ENV_VAR
+
+SANDBOX_HOME = live_data_guard.install()
+atexit.register(live_data_guard.remove, SANDBOX_HOME)
 
 settings.register_profile(
     "deterministic",
