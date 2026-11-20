@@ -1,7 +1,7 @@
 import Foundation
 
 /// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron and a picture of the focused window.
-public protocol Mac {
+public protocol Mac: Sendable {
     associatedtype Element: AccessibilityElement
 
     func uptime() -> TimeInterval

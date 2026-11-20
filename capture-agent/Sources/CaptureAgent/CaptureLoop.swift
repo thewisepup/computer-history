@@ -129,7 +129,7 @@ final class CaptureLoop<M: Mac> {
 }
 
 /// Starts the thread that polls focus and captures through the given Mac for the life of the process.
-public func startCaptureThread<M: Mac & Sendable>(
+public func startCaptureThread<M: Mac>(
     mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
