@@ -29,11 +29,10 @@ scripts/uninstall.sh   # unregister the login item, stop the agent, delete the a
 ```
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
-alone it cannot find the `Testing` module, so use `scripts/test.sh`. Swift
-never runs in CI. The pre-commit hook runs `scripts/test.sh` when a commit
-touches this folder, `fixtures/spool/` or `tests/test_capture_e2e.py`, and
-`scripts/e2e.sh` for those and for any change to `computer_history/` or
-`pyproject.toml`. Without `swift` on the path it skips both and says so.
+alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's `agent`
+job runs `scripts/test.sh` on macOS for every pull request, and the nightly
+workflow runs `scripts/e2e.sh`. The pre-commit hook runs neither, so run them
+after changing this folder, `fixtures/spool/` or the end-to-end tests.
 
 The installed binary takes the same commands directly:
 
@@ -243,8 +242,8 @@ plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
 a temporary database, with a stand-in ActivityWatch that has no buckets, and
 checks the stored records and signals against the scripts. It also checks
 that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder. It also runs `tests/test_synthetic_spool.py`,
-which plays a synthetic developer day through `scripted-session` and checks the
+and spool for a scratch home folder. It also runs the agent test in
+`tests/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
 synthetic spool renderer writes the same captures (time, trigger, app, bundle
 id and title) as the agent.
 Plain `pytest` skips both agent tests unless `CAPTURE_AGENT_BINARY` names a built agent.

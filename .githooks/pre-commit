@@ -14,17 +14,4 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
   echo "pre-commit: ruff failed or fixed files; review, re-stage, and commit again" >&2
   exit 1
 fi
-"$PY" -m pytest -q
-swift_paths='^(capture-agent/|fixtures/spool/|tests/test_capture_e2e\.py$)'
-e2e_paths="$swift_paths"'|^(computer_history/|pyproject\.toml$|tests/test_synthetic_spool\.py$)'
-changed="$(git diff --cached --name-only --no-renames)"
-if printf '%s\n' "$changed" | grep -qE "$e2e_paths"; then
-  if ! command -v swift >/dev/null 2>&1; then
-    echo "pre-commit: swift not found; skipping the capture agent's tests and end-to-end check" >&2
-  else
-    if printf '%s\n' "$changed" | grep -qE "$swift_paths"; then
-      capture-agent/scripts/test.sh
-    fi
-    capture-agent/scripts/e2e.sh
-  fi
-fi
+"$PY" -m pytest -q -m "not perf and not dataset"

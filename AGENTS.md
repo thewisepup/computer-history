@@ -44,10 +44,12 @@ git config core.hooksPath .githooks
 ```
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
-computer_history tests` must pass; the pre-commit hook runs both after a
-gitleaks scan of the staged changes. CI runs them, the POC suite
-(`python -m unittest`) and gitleaks on every pull request and push to `main`,
-and `main` only merges pull requests whose checks pass. In a
+computer_history tests` must pass. The pre-commit hook runs a gitleaks scan of
+the staged changes, ruff, and pytest without the `dataset` tests (those that
+build synthetic datasets or run `dev perf` and `dev bench`), in about ten
+seconds. CI runs the full pytest, the POC suite (`python -m unittest`) and
+gitleaks on every pull request and push to `main`, and `main` only merges pull
+requests whose checks pass. In a
 worktree, run them with `"$(scripts/venv-python)"`: it creates the worktree's
 own `.venv` on first use (about a minute), since the main checkout's venv
 imports the main checkout's source.
@@ -73,11 +75,10 @@ checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
 on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
 every pull.
 
-Swift never runs in CI. Two local commands cover the capture agent. The
-pre-commit hook runs the Swift tests when a commit touches the agent, the spool
-contract or the end-to-end test, and the end-to-end check also when it touches
-`computer_history/`, `pyproject.toml` or `tests/test_synthetic_spool.py`; without `swift` it skips both and says
-so (see the agent's README):
+Two commands cover the capture agent, and neither runs in the pre-commit hook.
+CI's `agent` job runs the Swift tests on macOS on every pull request; the
+nightly workflow runs the end-to-end check. Run them yourself after changing
+the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests

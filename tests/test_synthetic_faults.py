@@ -42,6 +42,8 @@ from computer_history.synthetic.persona import Rhythm
 from computer_history.synthetic.spool import SpoolRenderer
 from computer_history.synthetic.timeline import local_midnight
 
+pytestmark = pytest.mark.dataset
+
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/ledger/pull/1"
 

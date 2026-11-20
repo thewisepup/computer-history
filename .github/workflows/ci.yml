@@ -82,6 +82,14 @@ jobs:
             perf-gate.txt
           if-no-files-found: ignore
 
+  agent:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: capture-agent/scripts/test.sh
+
   secrets:
     runs-on: ubuntu-24.04
     steps:

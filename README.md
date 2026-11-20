@@ -264,8 +264,9 @@ authentication and explicit trusted-host configuration.
 ```
 
 The pre-commit hook scans the staged changes with gitleaks, then runs ruff and
-pytest. CI runs all three and gitleaks on every pull request and push to
-`main`, and `main` only merges pull requests whose checks pass. Its `perf` job
+pytest without the `dataset` tests, which build synthetic datasets. CI runs
+ruff, the full pytest, the POC suite and gitleaks on every pull request and
+push to `main`, plus the capture agent's Swift tests on macOS, and `main` only merges pull requests whose checks pass. Its `perf` job
 runs the performance gate (`computer-history dev perf`, see
 `computer_history/cli/README.md`) on synthetic day and month datasets, against
 the baseline for CI's SQLite, and fails on any change of cost. A nightly
