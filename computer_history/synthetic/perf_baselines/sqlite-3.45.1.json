@@ -57,7 +57,7 @@
   "day": {
    "sqlite_version": "3.45.1",
    "statements": 8861,
-   "vm_steps": 288624,
+   "vm_steps": 282000,
    "full_scans": [],
    "pages": 2225,
    "table_pages": {
