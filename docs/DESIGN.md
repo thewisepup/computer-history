@@ -439,17 +439,23 @@ settings are provisional until they are measured on real screens (#38).
   copies its recognized text. Each record's `perceptual_hash` is its own
   screenshot's 64-bit difference hash, recorded for measurement only.
 - Text recognition **in the agent**: every screenshot record goes through one
-  first-in, first-out queue with no length limit, on its own thread, so the
-  capture thread never waits and records reach the spool in capture order,
-  after their capture records. A `kept` record's saved JPEG is read by Vision
-  (accurate, English, language correction on, lines in Vision's order, no
-  positions or confidence) and cut at the window-text cap (50 KB) with the
-  same length, hash and cut-off fields, with one Vision call at a time and a
-  10-second timeout per image. A `duplicate` waits behind its kept record and
-  copies its finished text. A failed or timed-out recognition still gives
-  `kept`, with empty text, and the window's next screenshot is kept and read
-  again. On `SIGTERM` the queue gets 5 seconds to write what it can; records
-  it cannot write are dropped and their images stay.
+  first-in, first-out queue (`ScreenshotQueue`) with no length limit, on its
+  own thread, so the capture thread never waits and records reach the spool
+  in capture order, after their capture records. A `kept` record's saved JPEG
+  is read by Vision (accurate, English, language correction on, lines in
+  Vision's order, no positions or confidence) and cut at the window-text cap
+  (50 KB) with the same length, hash and cut-off fields. One Vision call runs
+  at a time, with a 10-second timeout per image; while a timed-out call has
+  not returned, later kept images get empty text at once. A `duplicate` waits
+  behind its kept record and copies its finished text. A failed or timed-out
+  recognition still gives `kept`, with empty text, and the window's next
+  screenshot is kept and read again.
+- Stopping: on `SIGTERM` the agent stops taking captures, gives the queue
+  until 5 seconds after the signal to write what it can, then writes no more
+  screenshot records, finishes the open spool file, logs how many it dropped
+  and exits, inside launchd's 20 seconds before `SIGKILL`. Dropped records
+  are lost and their images stay; a crash or `SIGKILL` loses the queue the
+  same way. A torn last line is dropped on the next start.
 - Screen Recording permission: a picture taken is the evidence the grant is
   held; the system's preflight check is not trusted. Without it window text
   capture carries on, each capture's record says `no-permission`, and the

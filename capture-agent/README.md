@@ -272,8 +272,8 @@ It is recorded for later measurement and decides nothing.
 
 ### Text recognition
 
-Screenshot records go through one first-in, first-out queue with no length
-limit, on a thread of its own, so the capture thread never waits for
+Screenshot records go through one first-in, first-out queue, `ScreenshotQueue`,
+with no length limit, on a thread of its own, so the capture thread never waits for
 recognition. The image is saved before its record is queued; the queue holds
 the record and the image's path, never the picture. Every screenshot record
 goes through it, whatever its status, so a capture's screenshot record reaches
