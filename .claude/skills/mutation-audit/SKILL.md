@@ -68,7 +68,7 @@ the behavior it pins.
 
 ## Surviving mutants
 
-Triage `store/`, `sources/ax_text/`, `sources/commit.py` and
+Triage `store/`, `sources/capture_spool/`, `sources/commit.py` and
 `sources/activitywatch/` first. Each survivor gets one outcome:
 
 - **Add a test** through the module's public functions only. Never import or

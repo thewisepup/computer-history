@@ -191,6 +191,7 @@ def test_a_missing_permission_is_current_only_while_its_newest_record_is_recent(
     assert health(conn).no_permission == MissingPermission(first, last, current)
 
 
+@pytest.mark.schema_rule
 def test_every_screenshot_query_reads_only_the_screenshot_status_index(conn) -> None:
     store_shots(conn, [shot(1, NOW, "kept"), shot(2, NOW, "no-permission"), shot(3, NOW, "failed")])
     executed: list[str] = []
