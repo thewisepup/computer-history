@@ -15,6 +15,7 @@ from store_answers import stored_days, stored_totals
 from computer_history.sources import Pull, reproject_signals
 from computer_history.store import connect, content_digest, source_summary
 from computer_history.synthetic import (
+    HEAVY,
     DatasetInputs,
     Stretch,
     StretchKind,
@@ -156,7 +157,7 @@ print(build_dataset(inputs, Path(folder)).manifest_path.read_text(), end="")
     "inputs",
     [
         DEVELOPER_DAY,
-        DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1, heavy=2.0),
+        DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1, heavy=HEAVY),
         DatasetInputs(persona="content-creator", scenario="typical", tier="week", seed=1),
     ],
     ids=["developer-day", "heavy-developer-day", "content-creator-week"],

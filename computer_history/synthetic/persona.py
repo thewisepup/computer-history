@@ -87,10 +87,7 @@ class Persona:
 
 
 def heavier(persona: Persona, factor: float) -> Persona:
-    """The same user working factor times as hard: switching more often, with longer text.
-
-    Weekends become workdays, and the apps, sites, projects and workday hours stay the same.
-    """
+    """The same user factor times as busy: switching faster, writing more, and on weekends."""
     if factor < 1:
         raise ValueError(f"a heavy factor must be at least 1, not {factor}")
     if factor == 1:

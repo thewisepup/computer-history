@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from statistics import mean
 from zoneinfo import ZoneInfo
@@ -9,8 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from store_answers import local_days, stored_days, stored_totals
 
-from computer_history.sources import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
-from computer_history.sources.ax_text import AX_TEXT_SOURCE as TEXT_SOURCE
+from computer_history.sources import AFK_SOURCE, AX_TEXT_SOURCE, WEB_SOURCE, WINDOW_SOURCE
 from computer_history.store import connect, source_summary
 from computer_history.synthetic import (
     HEAVY,
@@ -30,9 +30,10 @@ from computer_history.synthetic.seeds import part_random
 from computer_history.text import extract_domain
 
 TARGET_EVENTS = 5000
-TARGET_MIX = {WINDOW_SOURCE: 0.53, WEB_SOURCE: 0.36, TEXT_SOURCE: 0.12, AFK_SOURCE: 0.01}
+TARGET_MIX = {WINDOW_SOURCE: 0.53, WEB_SOURCE: 0.36, AX_TEXT_SOURCE: 0.12, AFK_SOURCE: 0.01}
 ACTIVITYWATCH = (WINDOW_SOURCE, WEB_SOURCE, AFK_SOURCE)
 SEEDS = range(1, 6)
+MONDAY = date(2026, 1, 5)
 
 
 def rendered_counts(inputs: DatasetInputs) -> Counter[str]:
@@ -46,17 +47,16 @@ def rendered_counts(inputs: DatasetInputs) -> Counter[str]:
 
 
 def developer_day(seed: int) -> DatasetInputs:
-    return DatasetInputs(persona="developer", scenario="typical", tier="day", seed=seed)
+    return DatasetInputs("developer", "typical", "day", seed=seed, start=MONDAY)
 
 
 @pytest.mark.parametrize(("tier", "days"), [("day", 1), ("week", 7), ("month", 30), ("year", 365)])
 def test_each_tier_covers_its_number_of_local_days(tier: str, days: int) -> None:
-    timeline = generate_timeline(DatasetInputs("developer", "typical", tier, seed=1))
+    timeline = generate_timeline(DatasetInputs("developer", "typical", tier, seed=1, start=MONDAY))
     covered = [day for day, _ in local_days(timeline.start, timeline.end, timeline.timezone)]
 
     assert TIERS[tier] == days
-    assert len(covered) == days
-    assert covered[0] == "2026-01-05"
+    assert covered == [_day(offset) for offset in range(days)]
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -74,7 +74,7 @@ def test_the_developer_day_makes_its_share_of_activitywatch_events(seed: int) ->
 @pytest.mark.parametrize("seed", SEEDS)
 def test_the_developer_day_makes_about_5000_events_in_the_target_mix(seed: int) -> None:
     rendered = {stream for renderer in RENDERERS for stream in renderer.streams}
-    if TEXT_SOURCE not in rendered:
+    if AX_TEXT_SOURCE not in rendered:
         pytest.skip("captured text arrives with the spool renderer")
     counts = rendered_counts(developer_day(seed))
     events = sum(counts.values())
@@ -87,9 +87,12 @@ def test_the_developer_day_makes_about_5000_events_in_the_target_mix(seed: int) 
 
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 def test_heavy_roughly_doubles_the_events_of_a_workday(persona: str) -> None:
-    ordinary = [rendered_counts(DatasetInputs(persona, "typical", "day", s)) for s in SEEDS]
+    ordinary = [
+        rendered_counts(DatasetInputs(persona, "typical", "day", s, start=MONDAY)) for s in SEEDS
+    ]
     heavy = [
-        rendered_counts(DatasetInputs(persona, "typical", "day", s, heavy=HEAVY)) for s in SEEDS
+        rendered_counts(DatasetInputs(persona, "typical", "day", s, start=MONDAY, heavy=HEAVY))
+        for s in SEEDS
     ]
     ratio = sum(sum(c.values()) for c in heavy) / sum(sum(c.values()) for c in ordinary)
 
@@ -98,16 +101,21 @@ def test_heavy_roughly_doubles_the_events_of_a_workday(persona: str) -> None:
 
 @pytest.mark.parametrize("persona", sorted(PERSONAS))
 def test_heavy_fills_weekends_and_doubles_text_with_the_same_apps_and_sites(persona: str) -> None:
-    ordinary = generate_timeline(DatasetInputs(persona, "typical", "week", seed=1))
-    heavy = generate_timeline(DatasetInputs(persona, "typical", "week", seed=1, heavy=HEAVY))
+    week = DatasetInputs(persona, "typical", "week", seed=1, start=MONDAY)
+    ordinary = generate_timeline(week)
+    heavy = generate_timeline(replace(week, heavy=HEAVY))
     text_ratio = mean(len(s.text) for s in heavy.stretches if s.active) / mean(
         len(s.text) for s in ordinary.stretches if s.active
     )
 
-    assert _active_days(ordinary) == [f"2026-01-{day:02d}" for day in range(5, 10)]
-    assert _active_days(heavy) == [f"2026-01-{day:02d}" for day in range(5, 12)]
+    assert _active_days(ordinary) == [_day(offset) for offset in range(5)]
+    assert _active_days(heavy) == [_day(offset) for offset in range(7)]
     assert 1.7 <= text_ratio <= 2.3, text_ratio
     assert _apps_and_domains(heavy) == _apps_and_domains(ordinary)
+
+
+def _day(offset: int) -> str:
+    return (MONDAY + timedelta(days=offset)).isoformat()
 
 
 def _active_days(timeline: Timeline) -> list[str]:
@@ -123,12 +131,20 @@ def _apps_and_domains(timeline: Timeline) -> tuple[set[str], set[str | None]]:
     return {s.app for s in active}, {extract_domain(s.url) for s in active}
 
 
-def test_a_heavy_factor_below_one_is_refused() -> None:
-    with pytest.raises(ValueError, match="at least 1"):
-        DatasetInputs("developer", "typical", "day", seed=1, heavy=0.5)
+@pytest.mark.parametrize("heavy", [0.5, float("nan"), float("inf"), True])
+def test_a_heavy_factor_that_is_not_a_finite_number_of_at_least_one_is_refused(
+    heavy: float,
+) -> None:
+    with pytest.raises(ValueError, match="finite number >= 1"):
+        DatasetInputs("developer", "typical", "day", seed=1, heavy=heavy)
 
 
-CONTENT_CREATOR_WEEK = DatasetInputs("content-creator", "typical", "week", seed=1)
+def test_a_whole_number_heavy_factor_is_recorded_as_the_same_float() -> None:
+    assert DatasetInputs("developer", "typical", "day", seed=1, heavy=2).heavy == HEAVY
+    assert isinstance(DatasetInputs("developer", "typical", "day", seed=1, heavy=2).heavy, float)
+
+
+CONTENT_CREATOR_WEEK = DatasetInputs("content-creator", "typical", "week", seed=1, start=MONDAY)
 
 
 def test_the_content_creator_week_reports_what_its_manifest_says(tmp_path: Path) -> None:
@@ -145,10 +161,10 @@ def test_the_content_creator_week_reports_what_its_manifest_says(tmp_path: Path)
     assert total == manifest.total
     assert days == manifest.days
     assert counts == manifest.observations
-    assert len(manifest.days) == 7
+    assert list(manifest.days) == [_day(offset) for offset in range(TIERS["week"])]
     assert {"CapCut", "Google Chrome"} <= set(manifest.total.foreground_app_seconds)
     assert "studio.youtube.com" in manifest.total.foreground_domain_seconds
-    assert manifest.days["2026-01-10"].foreground_app_seconds == {}
+    assert manifest.days[_day(5)].foreground_app_seconds == {}
 
 
 def test_the_content_creator_week_builds_the_same_every_time(tmp_path: Path) -> None:

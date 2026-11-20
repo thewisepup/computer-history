@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -29,7 +30,7 @@ DEFAULT_TIMEZONE = "America/Los_Angeles"
 class DatasetInputs:
     """Who the user is, what happens, how many days and the seed, plus where the range starts.
 
-    A heavy factor above 1 makes the persona a heavier user, and HEAVY is the usual one.
+    A heavy factor above 1, usually HEAVY, makes the persona a heavier user.
     """
 
     persona: str
@@ -49,14 +50,13 @@ class DatasetInputs:
             if value not in known:
                 raise ValueError(f"unknown {name} {value!r}: pick one of {sorted(known)}")
         ZoneInfo(self.timezone)
-        heavier(PERSONAS[self.persona], self.heavy)
+        if isinstance(self.heavy, bool) or not 1 <= self.heavy < math.inf:
+            raise ValueError(f"a heavy factor must be a finite number >= 1, not {self.heavy!r}")
+        object.__setattr__(self, "heavy", float(self.heavy))
 
 
 def generate_timeline(inputs: DatasetInputs) -> Timeline:
-    """The persona's ordinary days over the tier's range, with the scenario's happenings placed.
-
-    Heavy scales the persona before it fills the range.
-    """
+    """The persona's ordinary days over the tier's range, with the scenario's happenings placed."""
     days = TIERS[inputs.tier]
     zone = ZoneInfo(inputs.timezone)
     start = local_midnight(inputs.start, zone)

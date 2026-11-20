@@ -46,10 +46,11 @@ class _Life:
     def workday(self, day: date, zone: ZoneInfo) -> None:
         rhythm = self.persona.rhythm
         midnight = local_midnight(day + timedelta(days=1), zone)
-        start = self._at(day, rhythm.workday_start, zone, rhythm.jitter_minutes)
+        start = min(self._at(day, rhythm.workday_start, zone, rhythm.jitter_minutes), midnight)
         end = min(self._at(day, rhythm.workday_end, zone, rhythm.jitter_minutes), midnight)
-        lunch = self._at(day, rhythm.lunch_start, zone, rhythm.jitter_minutes // 2)
+        lunch = min(self._at(day, rhythm.lunch_start, zone, rhythm.jitter_minutes // 2), midnight)
         back = lunch + self._minutes(rhythm.lunch_minutes - 10, rhythm.lunch_minutes + 10)
+        back = min(back, midnight)
         self.sleep_until(start)
         self.focus_end = start
         self.work_with_breaks(lunch)
@@ -57,6 +58,7 @@ class _Life:
         self.work_with_breaks(end)
         if self.rng.random() < rhythm.evening_chance:
             evening = self._at(day, rhythm.evening_start, zone, rhythm.jitter_minutes)
+            evening = min(evening, midnight)
             self.sleep_until(evening)
             self.focus_end = evening
             minutes = rhythm.evening_minutes
