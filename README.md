@@ -263,14 +263,6 @@ authentication and explicit trusted-host configuration.
 .venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check: computer_history strict, tests standard
 ```
 
-The pre-commit hook scans the staged changes with gitleaks, then runs ruff,
-pytest without the `dataset` tests, which build synthetic datasets, and pyright. CI runs
-ruff, the full pytest, the POC suite and gitleaks on every pull request and
-push to `main`, plus the capture agent's Swift tests on macOS, and `main` only merges pull requests whose checks pass. Its `perf` job
-runs the performance gate (`computer-history dev perf`, see
-`computer_history/cli/README.md`) on synthetic day and month datasets, against
-the baseline for CI's SQLite, and fails on any change of cost. A nightly
-workflow runs the gate on a year and a heavy year, and the wall-clock
-benchmark; it reports and never blocks a merge.
-CI also runs pyright as the `typecheck` job (`computer_history` strict, `tests`
-standard, zero errors); it is not yet a required status check on `main`.
+`docs/agents/checks.md` lists every check and where it runs: the pre-commit
+hook, each CI job on pull requests and pushes to `main`, and each nightly job.
+`main` only merges pull requests whose required checks pass.

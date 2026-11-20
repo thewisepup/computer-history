@@ -32,34 +32,60 @@ HOOK_LEAVES_OUT = ("perf", "dataset")
 _hook_seconds: dict[str, float] = {}
 
 
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    if not os.environ.get(HOOK_BUDGET_ENV_VAR) or report.when == "teardown":
-        return
-    if any(marker in report.keywords for marker in HOOK_LEAVES_OUT):
-        return
-    _hook_seconds[report.nodeid] = _hook_seconds.get(report.nodeid, 0.0) + report.duration
+def _runner_factor() -> float:
+    """How much slower than a laptop this machine runs; 0 leaves the budget off."""
+    return float(os.environ.get(HOOK_BUDGET_ENV_VAR) or 0)
+
+
+def _over_budget() -> tuple[float, list[tuple[float, str]]]:
+    factor = _runner_factor()
+    total = sum(_hook_seconds.values())
+    slow = sorted(
+        (
+            (seconds, test)
+            for test, seconds in _hook_seconds.items()
+            if seconds > HOOK_TEST_SECONDS * factor
+        ),
+        reverse=True,
+    )
+    return total, slow
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
+    report = yield
+    hook_runs_it = not any(item.get_closest_marker(name) for name in HOOK_LEAVES_OUT)
+    if _runner_factor() and call.when != "teardown" and hook_runs_it:
+        _hook_seconds[item.nodeid] = _hook_seconds.get(item.nodeid, 0.0) + report.duration
+    return report
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    if not os.environ.get(HOOK_BUDGET_ENV_VAR):
+    factor = _runner_factor()
+    if not factor or session.exitstatus != pytest.ExitCode.OK:
         return
-    slow = sorted(
-        ((seconds, test) for test, seconds in _hook_seconds.items() if seconds > HOOK_TEST_SECONDS),
-        reverse=True,
-    )
-    total = sum(_hook_seconds.values())
-    if not slow and total <= HOOK_TOTAL_SECONDS:
+    total, slow = _over_budget()
+    if slow or total > HOOK_TOTAL_SECONDS * factor:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus: int, config: pytest.Config) -> None:
+    factor = _runner_factor()
+    if not factor:
         return
-    write = session.config.get_terminal_writer().line
-    write("")
-    write(
-        f"The pre-commit hook's tests took {total:.1f}s (budget {HOOK_TOTAL_SECONDS:g}s);"
-        f" {len(slow)} took over {HOOK_TEST_SECONDS:g}s. Make each faster, or give its file"
-        " `pytestmark = pytest.mark.dataset` so only CI runs it (docs/agents/checks.md):"
+    total, slow = _over_budget()
+    if not slow and total <= HOOK_TOTAL_SECONDS * factor:
+        return
+    terminalreporter.section("pre-commit hook budget", red=True)
+    terminalreporter.line(
+        f"The tests the pre-commit hook runs took {total:.1f}s, over"
+        f" {HOOK_TOTAL_SECONDS * factor:g}s, or {len(slow)} took over"
+        f" {HOOK_TEST_SECONDS * factor:g}s each (the laptop budget times {factor:g})."
+        " Make each faster, or give its file `pytestmark = pytest.mark.dataset`"
+        " so only CI runs it (docs/agents/checks.md):"
     )
     for seconds, test in slow:
-        write(f"  {seconds:.1f}s  {test}")
-    session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        terminalreporter.line(f"  {seconds:.1f}s  {test}")
 
 
 @pytest.fixture(autouse=True)
