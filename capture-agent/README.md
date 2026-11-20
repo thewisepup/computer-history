@@ -78,7 +78,7 @@ shell that sets them act on that other folder.
 | `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
 | `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
-| `screenshot_duplicate_threshold_bits` | `2` | whole number, 0 to 32: a picture whose 64-bit hash differs from its window's last kept one in at most this many bits is a `duplicate`; `0` drops only identical hashes |
+| `screenshot_duplicate_threshold_bits` | `2` | whole number, 0 to 10: a picture whose 64-bit hash differs from its window's last kept one in at most this many bits is a `duplicate`; `0` still drops identical hashes, and a typed line often leaves the hash unchanged, so `0` does not turn dedup off |
 
 ```json
 {
@@ -246,8 +246,8 @@ tab or editor file still counts on its own. The agent remembers the last kept
 picture of a fixed number of most recently seen windows (`FrameDedup.windows`),
 in memory only, so a restart starts over. A window whose title changes is a
 new window: its first picture is kept, and the old title is still remembered
-until it ages out. A `duplicate` record carries the kept record's image path,
-hash and recognized text, and no image size. A kept image
+until it ages out. A `duplicate` record carries the kept record's image path and
+recognized text, its own picture's hash, and no image size. A kept image
 whose record the spool refuses is forgotten as well as deleted.
 
 For now every `kept` record has empty recognized text.
@@ -397,7 +397,7 @@ every key below, sorted, with `null` where a key does not apply:
 | `app_name`, `bundle_id`, `window_title` | the capture's |
 | `image_path` | `kept` and `duplicate`: the JPEG's path relative to the folder (for `duplicate`, the kept image it matched) |
 | `image_bytes` | `kept` only: the JPEG's size |
-| `perceptual_hash` | `kept` and `duplicate`: the frame's hash (for `duplicate`, the kept record's) |
+| `perceptual_hash` | `kept` and `duplicate`: the frame's own hash |
 | `text` | `kept` and `duplicate`: the recognized text, possibly cut off (for `duplicate`, the kept record's) |
 | `text_sha256`, `full_text_bytes`, `text_cut_off` | as for a capture, of the recognized text |
 

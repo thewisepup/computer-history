@@ -48,7 +48,7 @@ struct CaptureScreenshot<M: Mac> {
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
             if let kept = dedup.see(hash, in: window) {
                 return .duplicate(
-                    of: capture, imagePath: kept.imagePath, perceptualHash: kept.hash.hex, text: kept.text,
+                    of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: kept.text,
                     fullTextBytes: kept.fullTextBytes
                 )
             }

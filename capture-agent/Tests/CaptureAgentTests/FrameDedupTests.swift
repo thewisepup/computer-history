@@ -14,6 +14,47 @@ extension LoopFixture {
     }
 }
 
+/// A 9x8 grey image whose difference hash is exactly the given bits.
+func imageHashing(to bits: UInt64) -> CGImage {
+    var pixels: [UInt8] = []
+    for row in 0..<8 {
+        var shade: UInt8 = 128
+        pixels.append(shade)
+        for column in 0..<8 {
+            shade = bits >> UInt64(63 - (row * 8 + column)) & 1 == 1 ? shade - 10 : shade + 10
+            pixels.append(shade)
+        }
+    }
+    let provider = CGDataProvider(data: Data(pixels) as CFData)!
+    return CGImage(
+        width: 9, height: 8, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: 9, space: CGColorSpaceCreateDeviceGray(),
+        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: provider, decode: nil,
+        shouldInterpolate: false, intent: .defaultIntent
+    )!
+}
+
+@Test func theTestImagesHashToTheirBits() {
+    for bits: UInt64 in [0, 1, 0b111, 0x8000_0000_0000_0001, 0xffff_0000_ffff_0000] {
+        #expect(differenceHash(imageHashing(to: bits)) == FrameHash(bits: bits))
+    }
+}
+
+@Test func aDuplicateRecordsItsOwnFramesHashAndTheKeptImageAndText() throws {
+    let fixture = LoopFixture()
+    var bits: UInt64 = 0
+    fixture.mac.windowImage = { _, _ in .image(imageHashing(to: bits), windowID: 1) }
+    fixture.run(for: 2)
+    bits = 0b11
+    fixture.run(for: 30)
+    bits = 0b111
+    fixture.run(for: 30)
+    #expect(try fixture.statuses() == ["kept", "duplicate", "kept"])
+    let shots = try fixture.screenshotRecords()
+    #expect(shots.map { $0["perceptual_hash"] as? String } == [0, 0b11, 0b111].map { FrameHash(bits: $0).hex })
+    #expect(shots[1]["image_path"] as? String == shots[0]["image_path"] as? String)
+    #expect(shots[1]["text_sha256"] as? String == shots[0]["text_sha256"] as? String)
+}
+
 @Test func anUnchangedWindowIsKeptOnceThenRecordedAsDuplicatesOfThatImage() throws {
     let fixture = LoopFixture()
     fixture.run(for: 100)
@@ -120,7 +161,7 @@ func keptFrame(hash: FrameHash, text: String = "", fullTextBytes: Int = 0) -> Fr
     FrameDedup.KeptFrame(recordID: UUID(), imagePath: "screenshots/a.jpg", hash: hash, text: text, fullTextBytes: fullTextBytes)
 }
 
-@Test(arguments: [(2, 2, true), (2, 3, false), (0, 0, true), (0, 1, false), (32, 32, true)])
+@Test(arguments: [(2, 2, true), (2, 3, false), (0, 0, true), (0, 1, false), (10, 10, true), (10, 11, false)])
 func aFrameIsADuplicateWhenAtMostTheThresholdOfItsBitsDiffer(threshold: Int, differing: Int, duplicate: Bool) throws {
     var dedup = FrameDedup(threshold: threshold)
     let window = FrameDedup.Window(id: 1, title: "Notes")

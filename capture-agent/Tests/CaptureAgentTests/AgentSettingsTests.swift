@@ -161,8 +161,8 @@ func anInvalidFileIsReportedAndDefaultsAreUsed(config: String, problem: String) 
     (#"{"screenshot_long_edge_pixels": 1440.5}"#, "screenshot_long_edge_pixels must be a whole number, using 1440"),
     (#"{"screenshot_jpeg_quality": 0}"#, "screenshot_jpeg_quality 0 is outside 1–100, using 60"),
     (#"{"screenshot_jpeg_quality": 101}"#, "screenshot_jpeg_quality 101 is outside 1–100, using 60"),
-    (#"{"screenshot_duplicate_threshold_bits": -1}"#, "screenshot_duplicate_threshold_bits -1 is outside 0–32, using 2"),
-    (#"{"screenshot_duplicate_threshold_bits": 33}"#, "screenshot_duplicate_threshold_bits 33 is outside 0–32, using 2"),
+    (#"{"screenshot_duplicate_threshold_bits": -1}"#, "screenshot_duplicate_threshold_bits -1 is outside 0–10, using 2"),
+    (#"{"screenshot_duplicate_threshold_bits": 11}"#, "screenshot_duplicate_threshold_bits 11 is outside 0–10, using 2"),
     (#"{"screenshot_duplicate_threshold_bits": 1.5}"#, "screenshot_duplicate_threshold_bits must be a whole number, using 2"),
 ])
 func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: String) throws {

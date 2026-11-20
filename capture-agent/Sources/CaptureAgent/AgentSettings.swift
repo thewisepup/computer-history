@@ -100,7 +100,7 @@ public struct AgentSettings: Equatable, Sendable {
                 screenshots.quality = wholeNumber(value, key: key, range: 1...100, default: screenshots.quality)
             case .screenshotDuplicateThresholdBits:
                 screenshots.duplicateThreshold = wholeNumber(
-                    value, key: key, range: 0...32, default: screenshots.duplicateThreshold
+                    value, key: key, range: 0...10, default: screenshots.duplicateThreshold
                 )
             }
         }

@@ -44,7 +44,7 @@ public struct ScreenshotRecord: Equatable, Sendable {
         )
     }
 
-    /// The image matched the window's last kept image, whose path and recognized text it carries.
+    /// The image matched the window's last kept image, whose path and recognized text it carries beside its own hash.
     public static func duplicate(
         id: UUID = UUID(), of capture: SpoolRecord, imagePath: String, perceptualHash: String, text: String,
         fullTextBytes: Int
