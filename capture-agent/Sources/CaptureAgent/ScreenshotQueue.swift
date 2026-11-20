@@ -1,6 +1,6 @@
 import Foundation
 
-/// The recognized text of a kept screenshot, set on the recognition thread once its recognition has run.
+/// The recognized text of a kept screenshot, set on the screenshot thread once its recognition has run.
 final class KeptText: @unchecked Sendable {
     fileprivate var text = ""
     fileprivate var fullTextBytes = 0
@@ -14,8 +14,8 @@ enum QueuedScreenshot: Sendable {
 }
 
 /// Writes screenshot records to the spool on its own thread in the order they were added, reading the text in each kept image first.
-final class RecognitionQueue: Sendable {
-    private let queue = DispatchQueue(label: "recognition", qos: .utility)
+final class ScreenshotQueue: Sendable {
+    private let queue = DispatchQueue(label: "screenshots", qos: .utility)
     private let recognize: @Sendable (URL) throws -> String
     private let capBytes: Int
     private let spool: any SpoolAppender

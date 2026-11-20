@@ -17,7 +17,7 @@ import PackageDescription
 ///           |               and after each capture queues its screenshot record
 ///     CaptureScreenshot.swift   the screenshot stage: password-field check, picture, duplicate
 ///           |                   check, image saved, and the screenshot record that names the capture
-///     RecognitionQueue.swift    the recognition thread: writes screenshot records in capture order,
+///     ScreenshotQueue.swift     the screenshot thread: writes screenshot records in capture order,
 ///           |                   reading the text of each kept image, duplicates copying it
 ///     TextRecognition.swift     the text in a saved picture, read by Vision
 ///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
