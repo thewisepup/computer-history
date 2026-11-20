@@ -12,6 +12,7 @@ from computer_history import cli
 from computer_history.synthetic import (
     CACHE_ENV_VAR,
     OPERATIONS,
+    SLOWDOWN_TOLERANCE,
     SMALLEST_DATASET,
     GateDataset,
     Operation,
@@ -96,7 +97,10 @@ def test_a_slowdown_is_flagged_and_still_exits_zero(
     assert code == 0
     flagged = [line for line in printed.splitlines() if line.endswith("SLOWER")]
     assert [line.split()[:2] for line in flagged] == [["status-reads", SMALLEST_DATASET]]
-    assert "1 timing more than 25% slower than this machine's baseline" in printed
+    assert (
+        f"1 timing more than {SLOWDOWN_TOLERANCE:.0%} slower than this machine's baseline"
+        in printed
+    )
 
 
 def test_timings_new_to_the_baseline_are_counted_apart_from_the_compared(
@@ -111,5 +115,21 @@ def test_timings_new_to_the_baseline_are_counted_apart_from_the_compared(
     _, printed = bench(capsys, "--baseline", str(baseline))
 
     compared = len(OPERATIONS) - 1
-    assert f"Nothing more than 25% slower than this machine's baseline, of {compared}" in printed
+    tolerance = f"{SLOWDOWN_TOLERANCE:.0%}"
+    assert (
+        f"Nothing more than {tolerance} slower than this machine's baseline, of {compared}"
+        in printed
+    )
     assert "1 timing had no baseline and was recorded." in printed
+
+
+def test_updating_says_the_baseline_was_rewritten_not_that_there_was_none(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    baseline = tmp_path / "bench.json"
+    bench(capsys, "--baseline", str(baseline))
+
+    _, printed = bench(capsys, "--baseline", str(baseline), "--update-baselines")
+
+    assert "Baseline rewritten from these medians, nothing compared." in printed
+    assert "No baseline" not in printed

@@ -114,13 +114,13 @@ def test_without_its_own_sqlites_baseline_the_gate_uses_the_newest_and_says_so(
     for entry in (entry for datasets in recorded.values() for entry in datasets.values()):
         entry["sqlite_version"] = "9.0.0"
     own_file(tmp_path).unlink()
-    (tmp_path / "sqlite-9.0.0.json").write_text(json.dumps(recorded))
-    (tmp_path / "sqlite-1.0.0.json").write_text("{}")
+    baseline_file("9.0.0", tmp_path).write_text(json.dumps(recorded))
+    baseline_file("1.0.0", tmp_path).write_text("{}")
 
     code, printed = perf(capsys, "--baselines", str(tmp_path))
 
     assert code == 0
-    assert f"Baseline: {tmp_path / 'sqlite-9.0.0.json'}" in printed
+    assert f"Baseline: {baseline_file('9.0.0', tmp_path)}" in printed
     assert "note: entries recorded on SQLite 9.0.0, whose VM steps can differ" in printed
     assert not own_file(tmp_path).exists()
 
@@ -133,7 +133,7 @@ def test_updating_on_a_new_sqlite_keeps_the_compared_files_other_datasets(
     for datasets in recorded.values():
         datasets["year"] = datasets[SMALLEST_DATASET] | {"sqlite_version": "9.0.0"}
     own_file(tmp_path).unlink()
-    (tmp_path / "sqlite-9.0.0.json").write_text(json.dumps(recorded))
+    baseline_file("9.0.0", tmp_path).write_text(json.dumps(recorded))
     counters = tmp_path / "counters.json"
 
     code, _ = perf(

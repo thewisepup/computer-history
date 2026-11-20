@@ -41,6 +41,7 @@ from computer_history.store.signals import (
 from computer_history.store.status import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
+    Coverage,
     Gap,
     PayloadValues,
     SourceCoverage,
@@ -60,6 +61,7 @@ __all__ = [
     "DB_ENV_VAR",
     "MIN_GAP_SECONDS",
     "STATUS_WINDOW",
+    "Coverage",
     "DbstatUnavailable",
     "Gap",
     "InsertResult",

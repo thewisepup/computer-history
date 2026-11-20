@@ -21,6 +21,10 @@ class LiveDatabaseRefused(ValueError):
     """The output would write into the live database's folder or the live spool."""
 
 
+class OutputNotAFolder(NotADirectoryError):
+    """The output path is a file, not a folder."""
+
+
 class OutputExists(FileExistsError):
     """The output folder already holds files the dataset would replace."""
 
@@ -55,7 +59,7 @@ def make_dev_database(
     target = out.expanduser().resolve()
     _refuse_live([target], live)
     if target.exists() and not target.is_dir():
-        raise NotADirectoryError(f"{out} is a file, not a folder")
+        raise OutputNotAFolder(f"{out} is a file, not a folder")
     _refuse_existing(out, _in_the_way(target, KNOWN_NAMES), force)
     dataset = cached_dataset(inputs, cache)
     names = [*(item.name for item in sorted(dataset.folder.iterdir())), *KNOWN_NAMES]

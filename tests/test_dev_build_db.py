@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
+from store_answers import DATASET_FILES
 
 from computer_history import cli
 from computer_history.cli import dev
@@ -21,7 +22,6 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
-OUT_FILES = sorted([DATABASE_NAME, MANIFEST_NAME, RENDERED_SPOOL_FOLDER])
 DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
 
@@ -47,7 +47,7 @@ def test_build_db_copies_the_dataset_out_and_prints_where_it_landed(
 
     assert (code, again) == (0, 0)
     spool = out / RENDERED_SPOOL_FOLDER
-    assert sorted(path.name for path in out.iterdir()) == OUT_FILES
+    assert sorted(path.name for path in out.iterdir()) == DATASET_FILES
     assert re.search(rf"database\s+{re.escape(str(out / DATABASE_NAME))}", printed)
     assert re.search(rf"manifest\s+{re.escape(str(out / MANIFEST_NAME))}", printed)
     assert re.search(rf"{RENDERED_SPOOL_FOLDER}/\s+{re.escape(str(spool))}", printed)
@@ -119,7 +119,7 @@ def test_build_db_refuses_an_existing_output_unless_forced(
     assert kept == "mine\n"
     assert forced == 0
     assert json.loads((out / "manifest.json").read_text())["inputs"]["persona"] == "developer"
-    assert sorted(path.name for path in out.iterdir()) == sorted([*OUT_FILES, "notes.txt"])
+    assert sorted(path.name for path in out.iterdir()) == sorted([*DATASET_FILES, "notes.txt"])
 
 
 def test_build_db_refuses_the_default_live_database_and_its_folder(

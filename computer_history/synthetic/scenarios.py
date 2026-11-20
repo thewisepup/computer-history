@@ -23,6 +23,22 @@ from computer_history.synthetic.timeline import (
 Scenario = Callable[[Timeline, Rhythm, random.Random], Timeline]
 
 EXCLUDED_APP = "1Password"
+AT_THE_MAC_AFTER_START = timedelta(minutes=30)
+AT_THE_MAC_BEFORE_END = timedelta(minutes=30)
+OUTAGE_AFTER_START = timedelta(minutes=45)
+OUTAGE_LENGTH = timedelta(hours=2)
+NAP_AFTER_LUNCH_STARTS = timedelta(minutes=15)
+NAP_LENGTH = timedelta(minutes=20)
+AGENT_DOWN_AFTER_LUNCH = timedelta(minutes=40)
+AGENT_DOWN_LENGTH = timedelta(minutes=30)
+PERMISSION_LOST_AFTER_LUNCH = timedelta(minutes=75)
+PERMISSION_LOST_LENGTH = timedelta(minutes=20)
+PAUSE_AFTER_LUNCH = timedelta(minutes=110)
+PAUSE_LENGTH = timedelta(minutes=20)
+EXCLUDED_BEFORE_END = timedelta(minutes=90)
+EXCLUDED_LENGTH = timedelta(minutes=10)
+ASLEEP_AFTER_EVENING = timedelta(minutes=90)
+AWAKE_BEFORE_START = timedelta(hours=3)
 
 
 def typical(timeline: Timeline, rhythm: Rhythm, rng: random.Random) -> Timeline:
@@ -38,8 +54,9 @@ def messy(timeline: Timeline, rhythm: Rhythm, rng: random.Random) -> Timeline:
     zone = ZoneInfo(timeline.timezone)
     stretches = list(timeline.stretches)
     start, end, lunch = rhythm.workday_start, rhythm.workday_end, rhythm.lunch_start
-    back = _after(lunch, rhythm.lunch_minutes)
-    workdays = _workdays(stretches, timeline, zone, (_after(start, 30), _after(end, -30)))
+    back = _after(lunch, timedelta(minutes=rhythm.lunch_minutes))
+    checks = (_after(start, AT_THE_MAC_AFTER_START), _after(end, -AT_THE_MAC_BEFORE_END))
+    workdays = _workdays(stretches, timeline, zone, checks)
     if not workdays:
         raise ValueError("the messy scenario needs a workday in the range")
 
@@ -47,29 +64,39 @@ def messy(timeline: Timeline, rhythm: Rhythm, rng: random.Random) -> Timeline:
         day = workdays[index % len(workdays)]
         return datetime.combine(day, at, zone).astimezone(UTC)
 
-    overnight = on(0, _after(rhythm.evening_start, rhythm.evening_minutes + 90))
-    stretches = _overnight_afk(stretches, overnight, _after(start, -180), zone)
-    nap = Stretch(on(1, _after(lunch, 15)), on(1, _after(lunch, 35)), kind=StretchKind.ASLEEP)
-    stretches = _replace(stretches, nap)
-    outage = _next_present(stretches, on(0, _after(start, 45)))
-    pause = _next_present(stretches, on(2, _after(back, 110)))
-    resume = _next_present(stretches, pause + timedelta(minutes=20))
-    excluded_from = _next_present(stretches, max(on(3, _after(end, -90)), resume))
-    excluded_to = excluded_from + timedelta(minutes=10)
+    evening_end = timedelta(minutes=rhythm.evening_minutes)
+    overnight = on(0, _after(rhythm.evening_start, evening_end + ASLEEP_AFTER_EVENING))
+    stretches = _overnight_afk(stretches, overnight, _after(start, -AWAKE_BEFORE_START), zone)
+    nap_from = on(1, _after(lunch, NAP_AFTER_LUNCH_STARTS))
+    stretches = _replace(
+        stretches, Stretch(nap_from, nap_from + NAP_LENGTH, kind=StretchKind.ASLEEP)
+    )
+    outage = _next_present(stretches, on(0, _after(start, OUTAGE_AFTER_START)))
+    agent_down = on(1, _after(back, AGENT_DOWN_AFTER_LUNCH))
+    permission_lost = on(2, _after(back, PERMISSION_LOST_AFTER_LUNCH))
+    pause = _next_present(stretches, on(2, _after(back, PAUSE_AFTER_LUNCH)))
+    resume = _next_present(stretches, pause + PAUSE_LENGTH)
+    excluded_from = _next_present(stretches, max(on(3, _after(end, -EXCLUDED_BEFORE_END)), resume))
+    excluded_to = excluded_from + EXCLUDED_LENGTH
     app = Stretch(excluded_from, excluded_to, app=EXCLUDED_APP, title=EXCLUDED_APP)
     stretches = _replace(stretches, app)
     faults = (
-        Fault(outage, _next_present(stretches, outage + timedelta(hours=2)), FaultKind.AW_DOWN),
-        Fault(on(1, _after(back, 40)), on(1, _after(back, 70)), FaultKind.AGENT_DOWN),
-        Fault(on(2, _after(back, 75)), on(2, _after(back, 95)), FaultKind.PERMISSION_LOST),
+        Fault(outage, _next_present(stretches, outage + OUTAGE_LENGTH), FaultKind.AW_DOWN),
+        Fault(agent_down, agent_down + AGENT_DOWN_LENGTH, FaultKind.AGENT_DOWN),
+        Fault(permission_lost, permission_lost + PERMISSION_LOST_LENGTH, FaultKind.PERMISSION_LOST),
         Fault(pause, resume, FaultKind.PAUSED),
         Fault(excluded_from, excluded_to, FaultKind.EXCLUDED),
     )
     return replace(timeline, stretches=tuple(stretches), faults=timeline.faults + faults)
 
 
-def _after(at: time, minutes: int) -> time:
-    return (datetime.combine(date(2000, 1, 2), at) + timedelta(minutes=minutes)).time()
+def _after(at: time, offset: timedelta) -> time:
+    day = date(2000, 1, 2)
+    moment = datetime.combine(day, at) + offset
+    if moment.date() != day:
+        minutes = f"{offset.total_seconds() / 60:+g} min"
+        raise ValueError(f"the messy scenario needs {at:%H:%M} {minutes} to stay within the day")
+    return moment.time()
 
 
 def _workdays(

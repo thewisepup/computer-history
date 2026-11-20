@@ -383,3 +383,13 @@ def test_the_messy_scenario_follows_a_late_persona_s_rhythm() -> None:
     assert time(16, 35) <= _local(faults[FaultKind.PAUSED].start)
     assert time(18, 0) <= _local(faults[FaultKind.EXCLUDED].start) < time(19, 0)
     assert any(_local(s.start) == time(14, 15) and _local(s.end) == time(14, 35) for s in asleep)
+
+
+def test_a_rhythm_that_puts_a_happening_past_midnight_is_refused() -> None:
+    rhythm = Rhythm(evening_start=time(22, 30))
+    persona = replace(PERSONAS["developer"], rhythm=rhythm)
+    start, end = local_midnight(MONDAY, LOCAL), local_midnight(MONDAY + timedelta(days=1), LOCAL)
+    ordinary = Timeline(start, end, LOCAL.key, live(persona, MONDAY, 1, LOCAL.key, Random(1)))
+
+    with pytest.raises(ValueError, match="needs 22:30 \\+150 min to stay within the day"):
+        SCENARIOS["messy"](ordinary, rhythm, Random(1))

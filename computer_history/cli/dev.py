@@ -32,6 +32,7 @@ from computer_history.synthetic import (
     GateReport,
     LiveDatabaseRefused,
     OutputExists,
+    OutputNotAFolder,
     Timing,
     cache_root,
     live_folders,
@@ -54,7 +55,7 @@ PARSERS: Mapping[type, Callable[[str], Any]] = {
 }
 LABELS = {DATABASE_NAME: "database", MANIFEST_NAME: "manifest"}
 BARE_FLAG_VALUES: Mapping[str, object] = {"heavy": HEAVY}
-REFUSALS = (LiveDatabaseRefused, OutputExists, NotADirectoryError)
+REFUSALS = (LiveDatabaseRefused, OutputExists, OutputNotAFolder)
 FAILURES = (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError)
 
 
@@ -242,9 +243,7 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     for finding in report.failures:
         print(finding.describe())
     for name, label in report.unexpected_passes:
-        print(
-            f"{name} on {label}: the scaling check passes now; {UNEXPECTED_PASS_HINT}"
-        )
+        print(f"{name} on {label}: the scaling check passes now; {UNEXPECTED_PASS_HINT}")
     count = len(report.failures) + len(report.unexpected_passes)
     print(f"Performance gate failed: {count} findings.")
 
@@ -273,25 +272,26 @@ def cmd_bench(args: argparse.Namespace) -> int:
 
 
 def _bench_verdict(report: BenchReport) -> str:
-    compared = sum(timing.baseline is not None for timing in report.timings)
-    if not compared:
+    if report.updated:
+        return "Baseline rewritten from these medians, nothing compared."
+    if not report.compared:
         return "No baseline on this machine yet: these medians become it, nothing compared."
-    slower = sum(timing.slower for timing in report.timings)
     tolerance = f"{SLOWDOWN_TOLERANCE:.0%}"
-    if slower:
-        noun = "timing" if slower == 1 else "timings"
+    if report.slower:
+        noun = "timing" if report.slower == 1 else "timings"
         verdict = (
-            f"{slower} {noun} more than {tolerance} slower than this machine's baseline."
+            f"{report.slower} {noun} more than {tolerance} slower than this machine's baseline."
             " A report, not a failure: rerun with --update-baseline once the cost is intended."
         )
     else:
         verdict = (
-            f"Nothing more than {tolerance} slower than this machine's baseline, of {compared}."
+            f"Nothing more than {tolerance} slower than this machine's baseline,"
+            f" of {report.compared}."
         )
-    new = len(report.timings) - compared
-    if new:
-        had = "timing had" if new == 1 else "timings had"
-        verdict += f"\n{new} {had} no baseline and {'was' if new == 1 else 'were'} recorded."
+    if report.recorded == 1:
+        verdict += "\n1 timing had no baseline and was recorded."
+    elif report.recorded:
+        verdict += f"\n{report.recorded} timings had no baseline and were recorded."
     return verdict
 
 

@@ -20,8 +20,11 @@ from computer_history.sources import (
     stored_records,
 )
 from computer_history.store import Gap, connect, find_gaps, payload_values
-from computer_history.synthetic import Dataset, Manifest, Totals
+from computer_history.synthetic import DATABASE_NAME, MANIFEST_NAME, Dataset, Manifest, Totals
 from computer_history.synthetic.activitywatch import HOST
+from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
+
+DATASET_FILES = sorted([DATABASE_NAME, MANIFEST_NAME, RENDERED_SPOOL_FOLDER])
 
 
 def stored_totals(conn: sqlite3.Connection, lo: datetime, hi: datetime) -> Totals:

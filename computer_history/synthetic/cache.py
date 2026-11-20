@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import fcntl
 import hashlib
 import json
 import os
@@ -10,7 +11,8 @@ import shutil
 import sqlite3
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,24 +96,23 @@ def cached_dataset(
 
 
 def _place(staging: Path, entry: Path, aside: Path) -> bool:
-    """Rename the staging folder into place; False if a complete entry is already there.
+    """Rename the staging folder into place under the cache's lock; False if already complete."""
+    with _locked(entry.parent):
+        if _complete(entry):
+            return False
+        _discard(entry, aside)
+        staging.rename(entry)
+        return True
 
-    Only an incomplete entry that blocked the rename is moved aside, never a rival's finished one.
-    """
+
+@contextmanager
+def _locked(folder: Path) -> Iterator[None]:
+    descriptor = os.open(folder, os.O_RDONLY)
     try:
-        staging.rename(entry)
-        return True
-    except OSError:
-        if _complete(entry):
-            return False
-    _discard(entry, aside)
-    try:
-        staging.rename(entry)
-        return True
-    except OSError:
-        if _complete(entry):
-            return False
-        raise
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
 
 
 def _complete(entry: Path) -> bool:
@@ -123,7 +124,10 @@ def _discard(entry: Path, aside: Path) -> None:
         entry.rename(aside)
     except FileNotFoundError:
         return
-    shutil.rmtree(aside, ignore_errors=True)
+    if aside.is_dir() and not aside.is_symlink():
+        shutil.rmtree(aside, ignore_errors=True)
+    else:
+        aside.unlink(missing_ok=True)
 
 
 def open_cached(dataset: CachedDataset) -> sqlite3.Connection:

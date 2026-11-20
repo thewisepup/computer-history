@@ -73,6 +73,7 @@ from computer_history.synthetic.devdb import (
     DevDatabase,
     LiveDatabaseRefused,
     OutputExists,
+    OutputNotAFolder,
     live_folders,
     make_dev_database,
 )
@@ -160,6 +161,7 @@ __all__ = [
     "Manifest",
     "Operation",
     "OutputExists",
+    "OutputNotAFolder",
     "Scan",
     "StatementCost",
     "Stretch",

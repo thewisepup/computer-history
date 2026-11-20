@@ -15,6 +15,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from store_answers import DATASET_FILES
 
 from computer_history.sources import (
     AX_TEXT_SOURCE,
@@ -253,7 +254,7 @@ def test_the_rendered_spool_survives_ingest_and_ingesting_it_again_adds_nothing(
     finally:
         conn.close()
 
-    assert built == ["history.db", "manifest.json", RENDERED_SPOOL_FOLDER]
+    assert built == DATASET_FILES
     assert on_disk == {
         file.name: "".join(f"{line}\n" for line in file.lines).encode() for file in rendered.files
     }

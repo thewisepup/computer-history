@@ -21,6 +21,7 @@ from computer_history.sources import (
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
+    Coverage,
     Purpose,
     SourceCoverage,
     SourceSummary,
@@ -135,19 +136,19 @@ def _print_gaps(
     )
     if not summaries:
         print("  nothing to check yet")
-    checked = {source.summary.source: source for source in coverage}
+    by_source = {source.summary.source: source for source in coverage}
     for s in summaries:
-        if s.source not in checked:
+        if s.source == AX_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
             continue
-        span, gaps = checked[s.source].span, checked[s.source].gaps
-        if span is None:
+        checked = by_source[s.source]
+        if checked.coverage is Coverage.NO_OBSERVATIONS:
             print(f"  {s.source}: no observations yet")
             continue
-        start, end = span
-        if start >= end:
+        if checked.coverage is Coverage.UNSETTLED:
             print(f"  {s.source}: no settled span to check yet")
             continue
+        start, gaps = checked.span[0], checked.gaps
         if not gaps:
             print(f"  {s.source}: no gaps since {when(start)}")
         for gap in gaps[:MAX_GAPS_SHOWN]:

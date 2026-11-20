@@ -45,10 +45,24 @@ class Timing:
 
 @dataclass(frozen=True)
 class BenchReport:
-    """Every timing of one benchmark run, and the baseline file it compared with."""
+    """Every timing of one benchmark run, the baseline file it used, and whether it rewrote it."""
 
     baseline: Path
     timings: tuple[Timing, ...]
+    updated: bool = False
+
+    @property
+    def compared(self) -> int:
+        return sum(timing.baseline is not None for timing in self.timings)
+
+    @property
+    def slower(self) -> int:
+        return sum(timing.slower for timing in self.timings)
+
+    @property
+    def recorded(self) -> int:
+        """Timings with no baseline to compare with, now recorded as it."""
+        return len(self.timings) - self.compared
 
 
 def bench_baseline_path(cache: Path) -> Path:
@@ -100,7 +114,7 @@ def run_bench(
             timings.append(Timing(name, label, median, known))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(baseline, indent=1, sort_keys=True) + "\n", "utf-8")
-    return BenchReport(path, tuple(timings))
+    return BenchReport(path, tuple(timings), updated=update)
 
 
 def _load(path: Path) -> dict[str, dict[str, float]]:

@@ -238,7 +238,8 @@ Paths are compared after resolving symlinks and ignoring letter case, so
 `--out` that already holds any file it would write (`... already holds
 history.db, manifest.json; pass --force to replace them`); `--force` replaces
 just those, plus stale `-wal`/`-shm` files, and leaves the folder's other files
-alone.
+alone. A dataset that can't be built or copied (a cache on a filesystem
+without WAL, say) exits 1 with `dev build-db failed: <error>`.
 
 The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
 `~/Library/Caches/ComputerHistory/datasets/` on macOS (`$XDG_CACHE_HOME`, or
@@ -357,7 +358,8 @@ slowdowns the counters can't see. The baseline is `bench_baseline.json` in the
 dataset cache folder, so it belongs to this machine: a timing it lacks is
 recorded (`recorded`), and one more than 25% slower is marked `SLOWER`. A run
 with no baseline at all says so (`No baseline on this machine yet: these
-medians become it, nothing compared.`) rather than that nothing got slower.
+medians become it, nothing compared.`) rather than that nothing got slower,
+and `--update-baseline` says `Baseline rewritten from these medians`.
 `--update-baselines` is accepted for `--update-baseline`, as `dev perf` spells
 it. It exits 0 either way; only a run that can't happen at all exits 1. The nightly
 CI run keeps no baseline, since each night lands on a different VM, so there it
