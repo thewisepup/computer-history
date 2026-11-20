@@ -72,7 +72,6 @@ from computer_history.synthetic.cache import (
 )
 from computer_history.synthetic.devdb import (
     DevDatabase,
-    LiveDatabaseRefused,
     OutputExists,
     OutputNotAFolder,
     live_folders,
@@ -158,7 +157,6 @@ __all__ = [
     "FindingKind",
     "GateDataset",
     "GateReport",
-    "LiveDatabaseRefused",
     "Manifest",
     "Operation",
     "OutputExists",

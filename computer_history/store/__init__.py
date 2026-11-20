@@ -28,7 +28,14 @@ from computer_history.store.introspection import (
 )
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
-from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
+from computer_history.store.paths import (
+    DB_ENV_VAR,
+    LiveDatabaseRefused,
+    default_db_path,
+    refuse_live,
+    resolve_db_path,
+    within,
+)
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.screenshots import (
     SCREENSHOT_STATUS_INDEX,
@@ -74,6 +81,7 @@ __all__ = [
     "DbstatUnavailable",
     "Gap",
     "InsertResult",
+    "LiveDatabaseRefused",
     "Migration",
     "NewestScreenshot",
     "Observation",
@@ -109,6 +117,7 @@ __all__ = [
     "page_counts",
     "payload_values",
     "rebuild_signals",
+    "refuse_live",
     "resolve_db_path",
     "screenshot_totals",
     "scanned_tables",
@@ -121,4 +130,5 @@ __all__ = [
     "to_utc",
     "transaction",
     "utc_iso",
+    "within",
 ]

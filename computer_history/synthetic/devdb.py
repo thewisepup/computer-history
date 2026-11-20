@@ -9,16 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.sources import resolve_spool_path
-from computer_history.store import default_db_path, resolve_db_path
+from computer_history.store import (
+    default_db_path,
+    refuse_live,
+    resolve_db_path,
+)
 from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME, SIDECARS
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
 from computer_history.synthetic.generate import DatasetInputs
 
 KNOWN_NAMES = (MANIFEST_NAME, DATABASE_NAME, *(DATABASE_NAME + suffix for suffix in SIDECARS))
-
-
-class LiveDatabaseRefused(ValueError):
-    """The output would write into the live database's folder or the live spool."""
 
 
 class OutputNotAFolder(NotADirectoryError):
@@ -57,13 +57,13 @@ def make_dev_database(
     Refuses to write into a live folder, and replaces files already there only when forced.
     """
     target = out.expanduser().resolve()
-    _refuse_live([target], live)
+    refuse_live([target], live)
     if target.exists() and not target.is_dir():
         raise OutputNotAFolder(f"{out} is a file, not a folder")
     _refuse_existing(out, _in_the_way(target, KNOWN_NAMES), force)
     dataset = cached_dataset(inputs, cache)
     names = [*(item.name for item in sorted(dataset.folder.iterdir())), *KNOWN_NAMES]
-    _refuse_live([target / name for name in names], live, replaced=True)
+    refuse_live([target / name for name in names], live, replaced=True)
     in_the_way = _in_the_way(target, names)
     _refuse_existing(out, in_the_way, force)
     for path in in_the_way:
@@ -72,29 +72,6 @@ def make_dev_database(
         else:
             path.unlink()
     return DevDatabase(dataset, copy_dataset(dataset, target))
-
-
-def _refuse_live(paths: Iterable[Path], live: Sequence[Path], *, replaced: bool = False) -> None:
-    for path in paths:
-        for folder in live:
-            if _within(path, folder):
-                raise LiveDatabaseRefused(
-                    f"{path} is in {folder}, which holds the live database or spool"
-                )
-            if replaced and _within(folder, path):
-                raise LiveDatabaseRefused(
-                    f"{path} holds {folder}, the live database's or spool's folder"
-                )
-
-
-def _within(path: Path, folder: Path) -> bool:
-    inner, outer = path.as_posix().casefold(), folder.as_posix().casefold()
-    if inner == outer or inner.startswith(outer.rstrip("/") + "/"):
-        return True
-    return folder.exists() and any(
-        candidate.exists() and os.path.samefile(candidate, folder)
-        for candidate in (path, *path.parents)
-    )
 
 
 def _refuse_existing(out: Path, in_the_way: Sequence[Path], force: bool) -> None:
