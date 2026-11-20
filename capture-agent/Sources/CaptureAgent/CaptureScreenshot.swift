@@ -45,14 +45,19 @@ struct CaptureScreenshot<M: Mac> {
             return .failed(of: capture)
         case .image(let image):
             guard let hash = differenceHash(image) else { return .failed(of: capture) }
-            if let kept = dedup.keptMatch(of: hash, for: capture) { return .duplicate(of: capture, matching: kept) }
+            let window = FrameDedup.Window(of: capture)
+            if let kept = dedup.see(hash, in: window) {
+                return .duplicate(
+                    of: capture, imagePath: kept.imagePath, perceptualHash: kept.hash.hex, text: kept.text,
+                    fullTextBytes: kept.fullTextBytes
+                )
+            }
             let id = UUID()
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .failed(of: capture) }
-            let kept = ScreenshotRecord.kept(
+            dedup.remember(FrameDedup.KeptFrame(recordID: id, imagePath: saved.path, hash: hash, text: "", fullTextBytes: 0), for: window)
+            return .kept(
                 id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
             )
-            dedup.remember(kept)
-            return kept
         }
     }
 
@@ -60,7 +65,7 @@ struct CaptureScreenshot<M: Mac> {
     mutating func discard(_ record: ScreenshotRecord) {
         guard record.status == .kept, let path = record.imagePath else { return }
         images.remove(path)
-        dedup.forget(record)
+        dedup.forget(record.id)
     }
 
     private func has(_ window: M.Element, title: String?) -> Bool {

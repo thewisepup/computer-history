@@ -98,50 +98,29 @@ extension LoopFixture {
     #expect(savedImages(in: fixture.settings.folder) == ["\(kept["id"] as! String).jpg"])
 }
 
+func keptFrame(hash: FrameHash, text: String = "", fullTextBytes: Int = 0) -> FrameDedup.KeptFrame {
+    FrameDedup.KeptFrame(recordID: UUID(), imagePath: "screenshots/a.jpg", hash: hash, text: text, fullTextBytes: fullTextBytes)
+}
+
 @Test(arguments: [(2, 2, true), (2, 3, false), (0, 0, true), (0, 1, false), (32, 32, true)])
 func aFrameIsADuplicateWhenAtMostTheThresholdOfItsBitsDiffer(threshold: Int, differing: Int, duplicate: Bool) throws {
     var dedup = FrameDedup(threshold: threshold)
-    let capture = captureRecord(text: "", fullTextBytes: 0)
-    dedup.remember(.kept(of: capture, imagePath: "screenshots/a.jpg", imageBytes: 10, perceptualHash: FrameHash(bits: 0).hex, text: "", fullTextBytes: 0))
-    let frame = FrameHash(bits: (1 << UInt64(differing)) - 1)
-    let match = dedup.keptMatch(of: frame, for: captureRecord(text: "", fullTextBytes: 0))
+    let window = FrameDedup.Window(of: captureRecord(text: "", fullTextBytes: 0))
+    dedup.remember(keptFrame(hash: FrameHash(bits: 0)), for: window)
+    let match = dedup.see(FrameHash(bits: (1 << UInt64(differing)) - 1), in: window)
     #expect((match != nil) == duplicate)
-}
-
-@Test func aDuplicateCarriesTheKeptRecordsImagePathHashAndRecognizedText() throws {
-    let first = captureRecord(text: "", fullTextBytes: 0)
-    let kept = ScreenshotRecord.kept(
-        of: first, imagePath: "screenshots/2026-11-18/a.jpg", imageBytes: 183_442, perceptualHash: "c3a1f0e2d4b69785",
-        text: "Pull requests\nOpen 3", fullTextBytes: 61_204
-    )
-    var dedup = FrameDedup(threshold: 0)
-    dedup.remember(kept)
-    let later = captureRecord(text: "", fullTextBytes: 0)
-    let found = dedup.keptMatch(of: FrameHash(hex: "c3a1f0e2d4b69785")!, for: later)
-    let match = try #require(found)
-    let duplicate = ScreenshotRecord.duplicate(of: later, matching: match)
-    #expect(duplicate.status == .duplicate)
-    #expect(duplicate.captureID == later.id)
-    #expect(duplicate.id != kept.id)
-    #expect(duplicate.imagePath == kept.imagePath)
-    #expect(duplicate.imageBytes == nil)
-    #expect(duplicate.perceptualHash == kept.perceptualHash)
-    #expect(duplicate.text == kept.text)
-    #expect(duplicate.fullTextBytes == kept.fullTextBytes)
-    #expect(duplicate.textSHA256 == kept.textSHA256)
-    #expect(duplicate.textCutOff == true)
 }
 
 @Test func anotherAppWithTheSameTitleIsAnotherWindow() throws {
     var dedup = FrameDedup(threshold: 0)
     let notes = captureRecord(text: "", fullTextBytes: 0)
-    dedup.remember(.kept(of: notes, imagePath: "screenshots/a.jpg", imageBytes: 10, perceptualHash: FrameHash(bits: 7).hex, text: "", fullTextBytes: 0))
+    dedup.remember(keptFrame(hash: FrameHash(bits: 7)), for: FrameDedup.Window(of: notes))
     let other = SpoolRecord.capture(
         at: notes.capturedAt, trigger: .app, appName: "TextEdit", bundleID: "com.apple.TextEdit", windowTitle: notes.windowTitle,
         text: "", fullTextBytes: 0, timedOut: false
     )
-    let otherMatch = dedup.keptMatch(of: FrameHash(bits: 7), for: other)
-    let notesMatch = dedup.keptMatch(of: FrameHash(bits: 7), for: notes)
+    let otherMatch = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(of: other))
+    let notesMatch = dedup.see(FrameHash(bits: 7), in: FrameDedup.Window(of: notes))
     #expect(otherMatch == nil)
     #expect(notesMatch != nil)
 }

@@ -62,6 +62,8 @@ Review findings ratchet into rules:
   one function below, format, exit code.
 - **A7** A module takes only the settings it reads: pass it the fields it
   uses, not a whole settings struct it reads part of.
+- **A8** In-memory state keeps typed values; text from the spool or the wire
+  is parsed once, where it comes in.
 
 ## Hygiene
 

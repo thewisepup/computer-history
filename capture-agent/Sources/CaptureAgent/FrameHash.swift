@@ -8,11 +8,6 @@ struct FrameHash: Equatable, Sendable {
         self.bits = bits
     }
 
-    init?(hex: String) {
-        guard hex.count == 16, let bits = UInt64(hex, radix: 16) else { return nil }
-        self.bits = bits
-    }
-
     var hex: String { String(format: "%016llx", bits) }
 
     /// How many of the 64 bits differ between the two hashes.

@@ -55,14 +55,6 @@ public struct ScreenshotRecord: Equatable, Sendable {
         )
     }
 
-    /// The image matched a kept record of the same window, whose image path, hash and recognized text it copies.
-    static func duplicate(id: UUID = UUID(), of capture: SpoolRecord, matching kept: ScreenshotRecord) -> ScreenshotRecord {
-        ScreenshotRecord(
-            id: id, capture: capture, status: .duplicate, imagePath: kept.imagePath, perceptualHash: kept.perceptualHash,
-            text: kept.text, fullTextBytes: kept.fullTextBytes
-        )
-    }
-
     /// No screenshot was taken because a password field was focused.
     public static func secureField(id: UUID = UUID(), of capture: SpoolRecord) -> ScreenshotRecord {
         ScreenshotRecord(id: id, capture: capture, status: .secureField)
