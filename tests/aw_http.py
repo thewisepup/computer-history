@@ -6,12 +6,13 @@ import json
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from computer_history.sources import AWApi
+from computer_history.store import to_utc
 
 LOOPBACK = "127.0.0.1"
 
@@ -39,6 +40,14 @@ def served_over_http(api: AWApi) -> Iterator[str]:
 def _handler(api: AWApi) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            try:
+                self._answer()
+            except KeyError:
+                self._send(404, {"message": "no such bucket"})
+            except ValueError as exc:
+                self._send(400, {"message": str(exc)})
+
+        def _answer(self) -> None:
             url = urlparse(self.path)
             parts = [unquote(part) for part in url.path.split("/") if part]
             if parts[:2] != ["api", "0"]:
@@ -48,7 +57,7 @@ def _handler(api: AWApi) -> type[BaseHTTPRequestHandler]:
                     return self._send(200, {"hostname": "aw-http", "testing": True})
                 case ["buckets"]:
                     return self._send(200, api.get_buckets())
-                case ["buckets", bucket, "events"] if bucket in api.get_buckets():
+                case ["buckets", bucket, "events"]:
                     query = parse_qs(url.query)
                     found = api.get_events(
                         bucket,
@@ -57,8 +66,8 @@ def _handler(api: AWApi) -> type[BaseHTTPRequestHandler]:
                         limit=int(query.get("limit", ["-1"])[0]),
                     )
                     return self._send(200, found)
-                case ["buckets", bucket, "events", event_id] if bucket in api.get_buckets():
-                    event = api.get_event(bucket, int(event_id) if event_id.isdigit() else event_id)
+                case ["buckets", bucket, "events", event_id]:
+                    event = api.get_event(bucket, int(event_id))
                     if event is None:
                         return self._send(404, {"message": "no such event"})
                     return self._send(200, event)
@@ -79,4 +88,4 @@ def _handler(api: AWApi) -> type[BaseHTTPRequestHandler]:
 
 
 def _time(values: list[str] | None) -> datetime | None:
-    return datetime.fromisoformat(values[0]).astimezone(UTC) if values else None
+    return to_utc(values[0]) if values else None

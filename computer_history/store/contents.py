@@ -17,10 +17,7 @@ _PROGRESS = "SELECT source, position, settled_until FROM ingest_progress ORDER B
 
 
 def content_digest(conn: sqlite3.Connection, *, progress: bool = True) -> str:
-    """A hash of the observations, signals and ingest progress, each in a fixed order.
-
-    Without progress it skips ingest progress, which a run on the wall clock stamps with its now.
-    """
+    """A hash of the observations, signals and, unless left out, ingest progress, in order."""
     digest = hashlib.sha256()
     for query in (*_STORED, _PROGRESS) if progress else _STORED:
         digest.update(b"\x00table\n")
