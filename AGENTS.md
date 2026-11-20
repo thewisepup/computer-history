@@ -31,15 +31,22 @@ summaries.
 ## Setup and checks
 
 ```bash
+brew install gitleaks
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
 git config core.hooksPath .githooks
 ```
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
-computer_history tests` must pass; the pre-commit hook runs both, and CI runs
-them plus the POC suite (`python -m unittest`) on pushes to `main`. A
+computer_history tests` must pass; the pre-commit hook runs both after a
+gitleaks scan of the staged changes. CI runs them, the POC suite
+(`python -m unittest`) and gitleaks on every pull request and push to `main`,
+and `main` only merges pull requests whose checks pass. A
 worktree with no `.venv` runs them with `"$(scripts/venv-python)"` instead.
+Hypothesis tests run derandomized with no example database, so a run never
+passes or fails by chance. To hunt for new failures, run them with random seeds
+and 5,000 examples each, and pin anything found as an `@example`:
+`HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/test_aw_ingest_properties.py`.
 
 Agents that edit code work in their own git worktree, never in the main
 checkout. `scripts/prune-worktrees` removes worktrees whose work has landed

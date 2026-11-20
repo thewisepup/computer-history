@@ -19,7 +19,7 @@ from aw_watchers import (
     live_through,
     stored_events,
 )
-from hypothesis import HealthCheck, example, given, settings
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch, poll
@@ -39,8 +39,6 @@ days = st.builds(
     afk_phase=st.integers(0, 4),
     extra_polls=st.lists(st.integers(0, 3600), max_size=3).map(tuple),
 )
-
-checked = settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
 @contextmanager
@@ -67,7 +65,6 @@ def missing_and_cut_off(
     return missing, cut_off
 
 
-@checked
 @given(days)
 def test_every_window_event_is_stored_whole(day: Day) -> None:
     with ingest(day) as (aw, conn):
@@ -76,7 +73,27 @@ def test_every_window_event_is_stored_whole(day: Day) -> None:
     assert not cut_off
 
 
-@checked
+IDLE_AFTER_A_TEN_MINUTE_SLEEP = Day(
+    (Stretch("active", 1, "Code"), Stretch("asleep", 600, "Code"), Stretch("idle", 5, "Code")),
+    poll_phase=0,
+    afk_phase=0,
+    extra_polls=(1,),
+)
+A_REGULAR_POLL_RIGHT_AT_WAKE = Day(
+    (Stretch("active", 151, "Code"), Stretch("asleep", 600, "Code"), Stretch("idle", 2, "Code")),
+    poll_phase=31,
+    afk_phase=2,
+)
+A_DAY_STARTING_ASLEEP = Day(
+    (Stretch("asleep", 601, "Code"), Stretch("idle", 100, "Code")),
+    poll_phase=0,
+    afk_phase=1,
+)
+
+
+@example(IDLE_AFTER_A_TEN_MINUTE_SLEEP)
+@example(A_REGULAR_POLL_RIGHT_AT_WAKE)
+@example(A_DAY_STARTING_ASLEEP)
 @given(days)
 def test_every_afk_event_is_stored(day: Day) -> None:
     with ingest(day) as (aw, conn):
@@ -95,7 +112,6 @@ A_PAUSE_OF_TWO_AND_A_HALF_MINUTES = Day(
     strict=True,
     reason="a not-afk event settles after 120s but aw-watcher-afk can still extend it for 185s",
 )
-@checked
 @example(A_PAUSE_OF_TWO_AND_A_HALF_MINUTES)
 @given(days)
 def test_every_afk_event_is_stored_whole(day: Day) -> None:
