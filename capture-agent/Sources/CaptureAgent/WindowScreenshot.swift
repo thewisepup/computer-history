@@ -2,6 +2,13 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
+/// What asking for a picture of the focused window came to.
+public enum WindowImage: Sendable {
+    case image(CGImage)
+    case noPermission
+    case failed
+}
+
 /// Takes a still of the application's focused window through ScreenCaptureKit, giving up after the timeout.
 func captureFocusedWindow(of processIdentifier: pid_t, title: String?, timeout: TimeInterval = 2) -> WindowImage {
     let result = WindowImageResult()

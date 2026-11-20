@@ -3,20 +3,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Whether captures take screenshots, and the long edge in pixels and JPEG quality of the images kept.
-public struct ScreenshotSettings: Equatable, Sendable {
-    public var enabled: Bool
-    public var longEdge: Int
-    public var quality: Int
-
-    public init(enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60) {
-        self.enabled = enabled
-        self.longEdge = longEdge
-        self.quality = quality
-    }
-}
-
-struct SavedImage: Equatable {
+public struct SavedImage: Equatable, Sendable {
     let path: String
     let bytes: Int
 }
@@ -25,16 +12,33 @@ struct ImageStoreError: Error, CustomStringConvertible {
     let description: String
 }
 
+/// Where kept screenshots are saved.
+public protocol ImageStore {
+    func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage
+}
+
 /// Saves screenshots as downscaled JPEGs in a folder per local day under the screenshots folder, one file per record id.
-struct ImageStore {
-    static let folderName = "screenshots"
+public struct JPEGImageStore: ImageStore, Sendable {
+    public static let folderName = "screenshots"
 
     let folder: URL
-    let settings: ScreenshotSettings
+    let longEdge: Int
+    let quality: Int
     var timeZone = TimeZone.current
 
+    public init(folder: URL, longEdge: Int, quality: Int) {
+        self.folder = folder
+        self.longEdge = longEdge
+        self.quality = quality
+    }
+
+    init(folder: URL, longEdge: Int, quality: Int, timeZone: TimeZone) {
+        self.init(folder: folder, longEdge: longEdge, quality: quality)
+        self.timeZone = timeZone
+    }
+
     /// Writes the image and returns its path relative to the folder and its size in bytes.
-    func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
+    public func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
         let data = try jpeg(try downscaled(image))
         let day = dayStamp(date)
         let path = "\(Self.folderName)/\(day)/\(id.uuidString.lowercased()).jpg"
@@ -52,8 +56,8 @@ struct ImageStore {
 
     private func downscaled(_ image: CGImage) throws -> CGImage {
         let longEdge = max(image.width, image.height)
-        guard longEdge > settings.longEdge else { return image }
-        let scale = Double(settings.longEdge) / Double(longEdge)
+        guard longEdge > self.longEdge else { return image }
+        let scale = Double(self.longEdge) / Double(longEdge)
         let width = max(1, Int((Double(image.width) * scale).rounded()))
         let height = max(1, Int((Double(image.height) * scale).rounded()))
         guard let context = CGContext(
@@ -71,7 +75,7 @@ struct ImageStore {
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw ImageStoreError(description: "cannot encode JPEG")
         }
-        let options = [kCGImageDestinationLossyCompressionQuality: Double(settings.quality) / 100] as CFDictionary
+        let options = [kCGImageDestinationLossyCompressionQuality: Double(quality) / 100] as CFDictionary
         CGImageDestinationAddImage(destination, image, options)
         guard CGImageDestinationFinalize(destination) else { throw ImageStoreError(description: "cannot encode JPEG") }
         return data as Data

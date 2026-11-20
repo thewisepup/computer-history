@@ -6,13 +6,19 @@ final class CaptureLoop<M: Mac> {
     private let pause: PauseSwitch
     private let pollInterval: TimeInterval
     private let reader: WindowTextReader<M.Element>
-    private let spool: SpoolWriter
-    private let screenshots: ScreenshotSettings
-    private let images: ImageStore
+    private let spool: any SpoolAppender
+    private let screenshot: CaptureScreenshot<M>?
     private let counts: CaptureCounts
     private let log: (String) -> Void
 
-    init(settings: AgentSettings, mac: M, spool: SpoolWriter, counts: CaptureCounts, log: @escaping (String) -> Void) {
+    init(
+        settings: AgentSettings,
+        mac: M,
+        spool: any SpoolAppender,
+        images: any ImageStore,
+        counts: CaptureCounts,
+        log: @escaping (String) -> Void
+    ) {
         self.decision = CaptureDecision(
             settings: settings.capture,
             denylist: settings.denylist,
@@ -35,8 +41,7 @@ final class CaptureLoop<M: Mac> {
             now: mac.uptime
         )
         self.spool = spool
-        self.screenshots = settings.screenshots
-        self.images = ImageStore(folder: settings.folder, settings: settings.screenshots)
+        self.screenshot = settings.screenshots.enabled ? CaptureScreenshot(mac: mac, images: images) : nil
         self.counts = counts
         self.log = log
     }
@@ -88,25 +93,7 @@ final class CaptureLoop<M: Mac> {
         )
         guard write(record) else { return }
         counts.recordWritten(record)
-        if screenshots.enabled { _ = write(screenshot(of: application, for: record)) }
-    }
-
-    private func screenshot(of application: FocusedApplication, for capture: SpoolRecord) -> ScreenshotRecord {
-        if mac.secureFieldFocused(application) { return .secureField(of: capture) }
-        switch mac.focusedWindowImage(application, title: capture.windowTitle) {
-        case .noPermission:
-            return .noPermission(of: capture)
-        case .failed:
-            return .failed(of: capture)
-        case .image(let image):
-            let id = UUID()
-            guard let hash = differenceHash(image), let saved = try? images.save(image, id: id, at: capture.capturedAt) else {
-                return .failed(of: capture)
-            }
-            return .kept(
-                id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash, text: "", fullTextBytes: 0
-            )
-        }
+        if let screenshot { _ = write(screenshot.take(for: record, of: application)) }
     }
 
     private func write(_ record: some SpoolLine) -> Bool {
@@ -137,11 +124,12 @@ public func startCaptureThread<M: Mac & Sendable>(
     mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
+    images: JPEGImageStore,
     counts: CaptureCounts,
     log: @escaping @Sendable (String) -> Void
 ) {
     let thread = Thread {
-        CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log).run { true }
+        CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log).run { true }
     }
     thread.name = "capture"
     thread.stackSize = 8 << 20

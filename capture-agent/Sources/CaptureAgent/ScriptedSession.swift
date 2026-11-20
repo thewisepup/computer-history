@@ -35,7 +35,8 @@ public func runScriptedSession(
     guard agent.start() == .started else {
         return CommandOutcome(exitCode: 1, message: "another agent is writing to \(spool.directory.path)")
     }
-    let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, counts: counts, log: log)
+    let images = JPEGImageStore(folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality)
+    let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log)
     var nextFinish = AgentLifecycle.spoolFinishInterval
     var failure: (any Error)?
     loop.run {

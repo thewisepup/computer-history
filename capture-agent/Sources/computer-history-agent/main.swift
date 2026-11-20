@@ -30,7 +30,14 @@ case .run:
         counts: counts,
         startCapturing: {
             startCaptureThread(
-                mac: LiveMac(callTimeout: settings.windowText.callTimeout), settings: settings, spool: spool, counts: counts, log: log
+                mac: LiveMac(callTimeout: settings.windowText.callTimeout),
+                settings: settings,
+                spool: spool,
+                images: JPEGImageStore(
+                    folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality
+                ),
+                counts: counts,
+                log: log
             )
         },
         log: log

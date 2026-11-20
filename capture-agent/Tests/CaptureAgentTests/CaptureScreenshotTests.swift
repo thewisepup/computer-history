@@ -1,9 +1,10 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import CaptureAgent
 
 func savedImages(in folder: URL) -> [String] {
-    let root = folder.appendingPathComponent(ImageStore.folderName)
+    let root = folder.appendingPathComponent(JPEGImageStore.folderName)
     let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
     return files.filter { $0.pathExtension == "jpg" }.map(\.lastPathComponent)
 }
@@ -55,10 +56,15 @@ func aMissingGrantOrAFailedPictureIsRecordedAndTheCaptureKeepsItsText(image: Win
     #expect(savedImages(in: fixture.settings.folder).isEmpty)
 }
 
+struct RefusingImageStore: ImageStore {
+    func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
+        throw ImageStoreError(description: "disk full")
+    }
+}
+
 @Test func anImageThatCannotBeSavedIsRecordedAsFailed() throws {
     let fixture = LoopFixture()
-    try FileManager.default.createDirectory(at: fixture.settings.folder, withIntermediateDirectories: true)
-    try Data().write(to: fixture.settings.folder.appendingPathComponent(ImageStore.folderName))
+    fixture.images = RefusingImageStore()
     fixture.run(for: 2)
     let records = try fixture.records()
     #expect(records.map { $0["kind"] as? String } == ["capture", "screenshot"])

@@ -9,8 +9,13 @@ public protocol SpoolLine {
 extension SpoolRecord: SpoolLine {}
 extension ScreenshotRecord: SpoolLine {}
 
+/// Where the capture loop appends its records.
+public protocol SpoolAppender: AnyObject, Sendable {
+    func append(_ record: some SpoolLine) throws
+}
+
 /// Appends records to the spool's open file and renames it to a finished file the backend may collect.
-public final class SpoolWriter: @unchecked Sendable {
+public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
     public static let openFileName = "open.part"
     public static let lockFileName = "agent.lock"
     public static let finishedSuffix = ".jsonl"

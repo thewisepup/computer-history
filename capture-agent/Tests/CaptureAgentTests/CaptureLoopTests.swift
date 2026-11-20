@@ -9,6 +9,7 @@ final class LoopFixture {
     var windowText = WindowTextSettings()
     var denylist = Denylist()
     var screenshots = ScreenshotSettings()
+    var images: (any ImageStore)?
     var logged: [String] = []
     private lazy var writer = spool.writer()
 
@@ -25,7 +26,14 @@ final class LoopFixture {
     lazy var loop: CaptureLoop<ScriptedMac> = makeLoop()
 
     func makeLoop() -> CaptureLoop<ScriptedMac> {
-        CaptureLoop(settings: settings, mac: mac, spool: writer, counts: counts, log: { self.logged.append($0) })
+        CaptureLoop(
+            settings: settings,
+            mac: mac,
+            spool: writer,
+            images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
+            counts: counts,
+            log: { self.logged.append($0) }
+        )
     }
 
     func restart() {

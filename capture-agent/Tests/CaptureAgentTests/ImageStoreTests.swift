@@ -8,12 +8,8 @@ final class TempImageFolder {
 
     deinit { try? FileManager.default.removeItem(at: url) }
 
-    func store(longEdge: Int = 1440, quality: Int = 60, timeZone: String = "America/Los_Angeles") -> ImageStore {
-        ImageStore(
-            folder: url,
-            settings: ScreenshotSettings(longEdge: longEdge, quality: quality),
-            timeZone: TimeZone(identifier: timeZone)!
-        )
+    func store(longEdge: Int = 1440, quality: Int = 60, timeZone: String = "America/Los_Angeles") -> JPEGImageStore {
+        JPEGImageStore(folder: url, longEdge: longEdge, quality: quality, timeZone: TimeZone(identifier: timeZone)!)
     }
 }
 
@@ -74,7 +70,7 @@ func scalesTheLongEdgeDownAndNeverEnlarges(width: Int, height: Int, storedWidth:
     let mode = { (path: String) in
         (try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int) ?? -1
     }
-    #expect(try mode(folder.url.appendingPathComponent(ImageStore.folderName).path) == 0o700)
+    #expect(try mode(folder.url.appendingPathComponent(JPEGImageStore.folderName).path) == 0o700)
     #expect(try mode(folder.url.appendingPathComponent(saved.path).deletingLastPathComponent().path) == 0o700)
     #expect(try mode(folder.url.appendingPathComponent(saved.path).path) == 0o600)
 }
@@ -82,7 +78,7 @@ func scalesTheLongEdgeDownAndNeverEnlarges(width: Int, height: Int, storedWidth:
 @Test func aFolderThatCannotBeWrittenThrows() throws {
     let folder = TempImageFolder()
     try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
-    try Data().write(to: folder.url.appendingPathComponent(ImageStore.folderName))
+    try Data().write(to: folder.url.appendingPathComponent(JPEGImageStore.folderName))
     #expect(throws: (any Error).self) {
         try folder.store().save(fixtureImage(width: 10, height: 10), id: UUID(), at: Date())
     }
