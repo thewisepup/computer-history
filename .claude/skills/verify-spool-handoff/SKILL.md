@@ -38,9 +38,19 @@ not touch it.
 ## Run
 
 ```bash
-formal/check.sh              # all configs, about 6 minutes on 18 cores (one_ingest under 1)
-formal/check.sh one_ingest   # one config
+formal/check.sh              # one_ingest and two_ingests, about 2 minutes on 18 cores
+formal/check.sh --all        # every config, two_ingests_steady_clock too, about 6 minutes
+formal/check.sh one_ingest   # one config, by name (an on-request config runs when named)
 ```
+
+`two_ingests_steady_clock` runs only on request, because it alone takes about
+4 minutes. It is the only config that shows two ingests running at once lose
+nothing while the clock moves forward; `two_ingests` fails on the known
+finding before it can show that. Ask for it (`--all`) when a change touches
+how two ingest processes can interleave: the both-streams gate
+(`CaptureSpool._stored_by`, `_forget_all_but`), removing or setting aside a
+file, listing, `commit_pull`, `insert_observations`, `poll`/`watch`, or
+`cli/ingest.py`. Run it too before moving the coverage record forward.
 
 The first run downloads TLC 1.7.4 and a Temurin 21 JRE, pinned by SHA-256, into
 `~/.cache/computer-history/tla/`. Set `JAVA` to use another Java 11+. TLC's
@@ -53,7 +63,7 @@ The script exits 0 only when every config gives its expected result:
 | Config | Situation | Expected |
 |---|---|---|
 | `one_ingest` | 3 records (`r2` a screenshot record), 1 ingest process, agent crashes up to 2, ingest crash 1, clock may be set back | pass |
-| `two_ingests_steady_clock` | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock only moves forward | pass |
+| `two_ingests_steady_clock` (on request, `--all`) | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock only moves forward | pass |
 | `two_ingests` | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock may be set back | **fail NoLoss**: the known finding below |
 
 Each ingest reads every file once per stream (`ax-text`, `screenshot`), and
@@ -170,7 +180,7 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
 
 ## Coverage record
 
-Last confirmed that the model describes the code at commit `b5c4ede`. Files:
+Last confirmed that the model describes the code at commit `db73dda`, with every config (`formal/check.sh --all`). Files:
 `capture-agent/Sources/CaptureAgent/SpoolWriter.swift`,
 `computer_history/sources/capture_spool/adapter.py`,
 `computer_history/sources/capture_spool/spool.py`,
@@ -178,9 +188,9 @@ Last confirmed that the model describes the code at commit `b5c4ede`. Files:
 `computer_history/sources/runner.py`, `computer_history/cli/ingest.py`.
 
 ```bash
-git diff --stat b5c4ede -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
+git diff --stat db73dda -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
 ```
 
 If that shows changes, re-read them against the table above. Move the commit
 in this section forward only after you have confirmed that the model describes
-the code at the new commit, and the check gives its expected results there.
+the code at the new commit, and `formal/check.sh --all` gives its expected results there.

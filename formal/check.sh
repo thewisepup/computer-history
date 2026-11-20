@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Model-check formal/spool/SpoolHandoff.tla with TLC on each config.
-#   formal/check.sh               every config in formal/spool/
+#   formal/check.sh               every config except the on-request ones (about 2 minutes)
+#   formal/check.sh --all         every config in formal/spool/, on-request ones too (about 6 minutes)
 #   formal/check.sh one_ingest    one config, by name
 # Exit 0 when every config gives its expected result (see EXPECT below).
 # TLC's full output for each config lands in formal/spool/out/<config>.out.
@@ -23,6 +24,9 @@ case "$(uname -s)-$(uname -m)" in
     JRE_SHA=c909674b1c10c261b9a3fb7e9c0efebd303e33f88a4fe84be7135b5e2d711f89 ;;
   *) JRE_URL=""; JRE_SHA="" ;;
 esac
+
+# Configs left out unless named or --all is given.
+ON_REQUEST=" two_ingests_steady_clock "
 
 # Expected result per config: "pass", or "fail <Invariant>" for a known
 # finding that the current code has (see .claude/skills/verify-spool-handoff).
@@ -63,9 +67,17 @@ if [ -z "$java" ]; then
   fi
 fi
 
-configs=("$@")
+all=0
+configs=()
+for arg in "$@"; do
+  if [ "$arg" = "--all" ]; then all=1; else configs+=("$arg"); fi
+done
 if [ ${#configs[@]} -eq 0 ]; then
-  for f in "$spool"/*.cfg; do configs+=("$(basename "$f" .cfg)"); done
+  for f in "$spool"/*.cfg; do
+    name="$(basename "$f" .cfg)"
+    case "$ON_REQUEST" in *" $name "*) [ "$all" = 1 ] || continue ;; esac
+    configs+=("$name")
+  done
 fi
 
 mkdir -p "$spool/out"
