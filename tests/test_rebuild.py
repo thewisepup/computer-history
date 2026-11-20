@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import corrupt_payloads
 from fake_aw import FakeAW, at
 from projectors import AW
 
@@ -89,7 +90,7 @@ def observation_id(conn: sqlite3.Connection, source: str, title: str) -> int:
 
 
 def corrupt_payload(conn: sqlite3.Connection, obs_id: int) -> None:
-    conn.execute("UPDATE observations SET payload = '{not json' WHERE id = ?", (obs_id,))
+    corrupt_payloads(conn, "id = ?", (obs_id,))
 
 
 def run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str]:
