@@ -7,6 +7,8 @@ final class Recorder: @unchecked Sendable {
     private var _lines: [String] = []
     private var _prompts: [Bool] = []
     private var _capturingStarted = 0
+    private var _stopDeadlines: [DispatchTime] = []
+    var dropped: Int? = 0
     let spool = TempSpool()
     let counts = CaptureCounts()
     lazy var settings = AgentSettings.load(environment: [
@@ -16,6 +18,7 @@ final class Recorder: @unchecked Sendable {
     var lines: [String] { lock.withLock { _lines } }
     var prompts: [Bool] { lock.withLock { _prompts } }
     var capturingStarted: Int { lock.withLock { _capturingStarted } }
+    var stopDeadlines: [DispatchTime] { lock.withLock { _stopDeadlines } }
 
     func agent(granted: Bool) -> AgentLifecycle {
         AgentLifecycle(
@@ -28,6 +31,10 @@ final class Recorder: @unchecked Sendable {
             spool: spool.writer(),
             counts: counts,
             startCapturing: { self.lock.withLock { self._capturingStarted += 1 } },
+            stopCapturing: { deadline in
+                self.lock.withLock { self._stopDeadlines.append(deadline) }
+                return self.dropped
+            },
             log: { line in self.lock.withLock { self._lines.append(line) } }
         )
     }
@@ -141,4 +148,43 @@ final class Recorder: @unchecked Sendable {
     try recorder.settings.pause.pause()
     recorder.agent(granted: true).start()
     #expect(recorder.lines.dropFirst(2).first == "capture is paused, run `\(AgentIdentity.executableName) resume` to capture again")
+}
+
+@Test func stoppingGivesTheCaptureThreadAFewSecondsThenFinishesTheSpoolFile() throws {
+    let recorder = Recorder()
+    recorder.dropped = 2
+    let agent = recorder.agent(granted: true)
+    agent.start()
+    try agent.spool.append(captureRecord(text: "written before the stop", fullTextBytes: 23))
+    let before = DispatchTime.now()
+    agent.stop()
+    let deadline = try #require(recorder.stopDeadlines.first)
+    #expect(deadline >= before + AgentLifecycle.stopDrainSeconds)
+    #expect(deadline <= DispatchTime.now() + AgentLifecycle.stopDrainSeconds)
+    #expect(try recorder.spool.finishedNames().count == 1)
+    #expect(recorder.lines.last == "stopping, 2 screenshot records dropped")
+}
+
+@Test func stoppingSaysSoWhenTheCaptureThreadDidNotFinish() {
+    let recorder = Recorder()
+    recorder.dropped = nil
+    recorder.agent(granted: true).stop()
+    #expect(recorder.lines.last == "stopping, the capture thread did not finish in time")
+}
+
+@Test func aCaptureStopWaitsForTheCaptureThreadToFinishAndReturnsWhatItDropped() {
+    let stop = CaptureStop()
+    let thread = Thread {
+        while stop.requestedDeadline == nil { Thread.sleep(forTimeInterval: 0.01) }
+        stop.finish(dropped: 3)
+    }
+    thread.start()
+    #expect(stop.stop(by: .now() + 5) == 3)
+}
+
+@Test func aCaptureStopGivesUpShortlyAfterTheDeadline() {
+    let stop = CaptureStop()
+    let started = Date()
+    #expect(stop.stop(by: .now() + 0.1) == nil)
+    #expect(Date().timeIntervalSince(started) < CaptureStop.grace + 1)
 }

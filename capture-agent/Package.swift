@@ -11,7 +11,8 @@ import PackageDescription
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
 ///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
-///           |               spool recovery, capture thread; then the minute log line and spool finish
+///           |               spool recovery, capture thread; then the minute log line and spool finish;
+///           |               on SIGTERM, stop capturing, drain the screenshot queue briefly, finish, exit
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture queues its screenshot record

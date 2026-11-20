@@ -76,6 +76,11 @@ final class CaptureLoop<M: Mac> {
         screenshots?.queue.waitUntilWritten()
     }
 
+    /// Gives queued screenshot records until the deadline to reach the spool, then writes no more, and returns how many were dropped.
+    func stopScreenshots(by deadline: DispatchTime) -> Int {
+        screenshots?.queue.stop(by: deadline) ?? 0
+    }
+
     func tick() {
         let silenceBefore = decision.silence
         let outcome = decision.tick(
@@ -142,17 +147,46 @@ final class CaptureLoop<M: Mac> {
     }
 }
 
-/// Starts the thread that polls focus and captures through the given Mac for the life of the process.
+/// Asks the capture thread to stop capturing and waits for it to give its screenshot records until a deadline.
+public final class CaptureStop: @unchecked Sendable {
+    public static let grace: TimeInterval = 1
+
+    private let lock = NSLock()
+    private let finished = DispatchSemaphore(value: 0)
+    private var deadline: DispatchTime?
+    private var dropped = 0
+
+    public init() {}
+
+    var requestedDeadline: DispatchTime? { lock.withLock { deadline } }
+
+    /// Stops new captures and returns how many screenshot records were dropped at the deadline, or nil if the capture thread had not finished a second after it.
+    public func stop(by deadline: DispatchTime) -> Int? {
+        lock.withLock { self.deadline = deadline }
+        guard finished.wait(timeout: deadline + Self.grace) == .success else { return nil }
+        return lock.withLock { dropped }
+    }
+
+    func finish(dropped: Int) {
+        lock.withLock { self.dropped = dropped }
+        finished.signal()
+    }
+}
+
+/// Starts the thread that polls focus and captures through the given Mac until asked to stop.
 public func startCaptureThread<M: Mac>(
     mac: M,
     settings: AgentSettings,
     spool: SpoolWriter,
     images: JPEGImageStore,
     counts: CaptureCounts,
+    stop: CaptureStop,
     log: @escaping @Sendable (String) -> Void
 ) {
     let thread = Thread {
-        CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log).run { true }
+        let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, counts: counts, log: log)
+        loop.run { stop.requestedDeadline == nil }
+        stop.finish(dropped: loop.stopScreenshots(by: stop.requestedDeadline ?? .now()))
     }
     thread.name = "capture"
     thread.stackSize = 8 << 20

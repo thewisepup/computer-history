@@ -36,7 +36,7 @@ final class ScreenshotQueue: Sendable {
     private let timeout: TimeInterval
     private let spool: any SpoolAppender
     private let counts: CaptureCounts
-    private let pending = Pending()
+    private let state = QueueState()
 
     init(
         recognize: @escaping @Sendable (URL) throws -> String, capBytes: Int, timeout: TimeInterval, spool: any SpoolAppender,
@@ -50,16 +50,24 @@ final class ScreenshotQueue: Sendable {
     }
 
     func add(_ screenshot: QueuedScreenshot) {
-        counts.recordScreenshotsQueued(pending.add(1))
+        counts.recordScreenshotsQueued(state.added())
         queue.async {
-            self.write(self.finished(screenshot))
-            self.counts.recordScreenshotsQueued(self.pending.add(-1))
+            let record = self.finished(screenshot)
+            self.counts.recordScreenshotsQueued(self.state.done { self.write(record) })
         }
     }
 
     /// Waits until every screenshot added so far has been written or refused.
     func waitUntilWritten() {
         queue.sync {}
+    }
+
+    /// Waits until the deadline at most for the screenshots added so far, then writes no more, and returns how many were left unwritten.
+    func stop(by deadline: DispatchTime) -> Int {
+        let drained = DispatchSemaphore(value: 0)
+        queue.async { drained.signal() }
+        _ = drained.wait(timeout: deadline)
+        return state.close()
     }
 
     private func finished(_ screenshot: QueuedScreenshot) -> ScreenshotRecord {
@@ -97,14 +105,30 @@ final class ScreenshotQueue: Sendable {
     }
 }
 
-private final class Pending: @unchecked Sendable {
+private final class QueueState: @unchecked Sendable {
     private let lock = NSLock()
-    private var count = 0
+    private var pending = 0
+    private var closed = false
 
-    func add(_ change: Int) -> Int {
+    func added() -> Int {
         lock.withLock {
-            count += change
-            return count
+            pending += 1
+            return pending
+        }
+    }
+
+    func done(_ write: () -> Void) -> Int {
+        lock.withLock {
+            if !closed { write() }
+            pending -= 1
+            return pending
+        }
+    }
+
+    func close() -> Int {
+        lock.withLock {
+            closed = true
+            return pending
         }
     }
 }

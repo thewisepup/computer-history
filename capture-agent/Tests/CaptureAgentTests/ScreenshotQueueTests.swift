@@ -207,3 +207,47 @@ final class LockedFlag: @unchecked Sendable {
         set { lock.withLock { current = newValue } }
     }
 }
+
+/// Reads the first image after a tenth of a second, then holds every later one until let go or a minute passes.
+final class SlowThenHeldRecognizer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private let held = HeldRecognizer()
+
+    func text(_ image: URL) -> String {
+        let call = lock.withLock {
+            calls += 1
+            return calls
+        }
+        guard call > 1 else {
+            Thread.sleep(forTimeInterval: 0.1)
+            return "first"
+        }
+        return held.text(image)
+    }
+
+    func letGo() {
+        held.letGo()
+    }
+}
+
+@Test func stoppingWritesWhatTheDeadlineAllowsAndNothingAfterIt() throws {
+    let fixture = LoopFixture()
+    fixture.screenshots.recognitionTimeout = 60
+    let recognizer = SlowThenHeldRecognizer()
+    fixture.mac.recognizedText = recognizer.text
+    var seed = 1
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000, seed: seed), windowID: 1) }
+    for next in 2...4 {
+        fixture.run(for: 30, waitingForScreenshots: false)
+        seed = next
+    }
+    let captures = try fixture.kinds().count
+    let dropped = fixture.loop.stopScreenshots(by: .now() + 1)
+    #expect(try fixture.screenshotRecords().map { $0["text"] as? String } == ["first"])
+    #expect(dropped == captures - 1)
+    recognizer.letGo()
+    fixture.waitForScreenshots()
+    #expect(try fixture.screenshotRecords().count == 1)
+    #expect(fixture.counts.take().description.contains(", 0 screenshot records queued"))
+}

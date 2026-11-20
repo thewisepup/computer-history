@@ -296,10 +296,19 @@ once, not forever. Only one Vision call runs at a time: while a timed-out call
 has still not returned, later kept images get empty text at once, without
 starting another.
 
-On a stop (the login item's `SIGTERM`, a crash, a forced quit) the queued
-records that have not been written are lost and their images stay. A record is
-written as one line, and a torn last line is dropped on the next start (see
-Spool), so a stop cannot leave a broken record for the backend. `pause` stops
+On `SIGTERM` (launchd stops the login item at every logout, and on
+`launchctl` stop or uninstall) the agent stops taking captures, gives the queue
+until 5 seconds after the signal (`AgentLifecycle.stopDrainSeconds`) to write
+what it can, then writes no more screenshot records, finishes the open spool
+file, logs `stopping, N screenshot records dropped` and exits. A capture tick
+still running when the signal comes finishes first and eats into those 5
+seconds; if the capture thread has not finished a second after them, the agent
+logs `stopping, the capture thread did not finish in time` and exits anyway.
+launchd waits 20 seconds before `SIGKILL`. The dropped records are lost and
+their images stay. A crash or `SIGKILL` loses everything queued the same way.
+A record is written as one line under the spool's lock and the queue writes
+nothing once stopped, and a torn last line is dropped on the next start (see
+Spool), so no stop can leave a broken record for the backend. `pause` stops
 new captures but not the queue: records of captures taken before the pause
 are still written, after the `paused` record. The scripted session waits for
 the queue to empty before it ends, with or without a crash.
