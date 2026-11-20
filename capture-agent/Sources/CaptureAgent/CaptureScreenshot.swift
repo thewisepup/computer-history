@@ -1,25 +1,37 @@
 import Foundation
 
-/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, the percent of thumbnail pixels that must change for a new image, and the seconds after which an unchanged window gets one anyway.
+/// Whether captures take screenshots, the long edge in pixels and JPEG quality of the images kept, how many thumbnail pixels must change for a new image, the seconds after which an unchanged window gets one anyway, and how long text recognition may take.
 public struct ScreenshotSettings: Equatable, Sendable {
     public var enabled: Bool
     public var longEdge: Int
     public var quality: Int
-    public var changePercent: Double
+    public var changePixels: Int
     public var keepAfter: TimeInterval
+    public var recognitionTimeout: TimeInterval
 
     public init(
-        enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, changePercent: Double = 0.05, keepAfter: TimeInterval = 600
+        enabled: Bool = true, longEdge: Int = 1440, quality: Int = 60, changePixels: Int = 6, keepAfter: TimeInterval = 600,
+        recognitionTimeout: TimeInterval = 10
     ) {
         self.enabled = enabled
         self.longEdge = longEdge
         self.quality = quality
-        self.changePercent = changePercent
+        self.changePixels = changePixels
         self.keepAfter = keepAfter
+        self.recognitionTimeout = recognitionTimeout
     }
 }
 
-/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, queued for its text, reminding once a day while the Screen Recording grant is missing.
+/// A screenshot record waiting for the spool: ready as it is, or built once its own image's text is read or its kept screenshot's text is known.
+enum QueuedScreenshot: Sendable {
+    typealias Record = @Sendable ((text: String, fullTextBytes: Int)) -> ScreenshotRecord
+
+    case ready(ScreenshotRecord)
+    case recognize(image: URL, into: KeptText, record: Record)
+    case copy(from: KeptText, record: Record)
+}
+
+/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, reminding once a day while the Screen Recording grant is missing.
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
@@ -52,13 +64,16 @@ struct CaptureScreenshot<M: Mac> {
             return .ready(.failed(of: capture))
         case .image(let image, let windowID):
             reminder.grantSeen()
-            guard let hash = differenceHash(image), let frame = FrameThumbnail(image) else { return .ready(.failed(of: capture)) }
+            guard let hash = differenceHash(image), let frame = FrameThumbnail(image, points: focused.frame.size) else {
+                return .ready(.failed(of: capture))
+            }
             let window = FrameDedup.Window(id: windowID, title: capture.windowTitle)
-            if let kept = dedup.see(frame, in: window, at: capture.capturedAt) {
-                let duplicate = ScreenshotRecord.duplicate(
-                    of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: "", fullTextBytes: 0
-                )
-                return .copy(duplicate, from: kept.text)
+            if let kept = dedup.see(frame, in: window, at: capture.capturedAt), !kept.text.failed {
+                return .copy(from: kept.text) { read in
+                    .duplicate(
+                        of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: read.text, fullTextBytes: read.fullTextBytes
+                    )
+                }
             }
             let id = UUID()
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
@@ -66,10 +81,12 @@ struct CaptureScreenshot<M: Mac> {
             dedup.remember(
                 FrameDedup.KeptFrame(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
             )
-            let kept = ScreenshotRecord.kept(
-                id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: "", fullTextBytes: 0
-            )
-            return .recognize(kept, image: saved.file, into: text)
+            return .recognize(image: saved.file, into: text) { read in
+                .kept(
+                    id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash.hex, text: read.text,
+                    fullTextBytes: read.fullTextBytes
+                )
+            }
         }
     }
 

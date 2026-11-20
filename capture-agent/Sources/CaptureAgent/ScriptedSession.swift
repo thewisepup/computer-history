@@ -30,6 +30,7 @@ public func runScriptedSession(
         spool: spool,
         counts: counts,
         startCapturing: {},
+        stopCapturing: { _ in 0 },
         log: log
     )
     guard agent.start() == .started else {

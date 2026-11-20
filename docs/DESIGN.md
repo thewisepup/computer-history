@@ -429,10 +429,11 @@ settings are provisional until they are measured on real screens (#38).
 - Dedup, per window (the ScreenCaptureKit window id plus the title), against
   the last kept screenshot of each of the 12 most recently seen windows, in
   memory only. Each screenshot is shrunk to a small grey, box-averaged
-  thumbnail; it is a `duplicate` when few enough thumbnail pixels (a setting)
-  differ by more than 24 grey levels from the window's last kept thumbnail,
-  and that kept screenshot is at most the keep-after limit old (default 10
-  minutes). So a static
+  thumbnail, one pixel per 9x9 points of the window, so a line of text covers
+  about as many thumbnail pixels at any window size. It is a `duplicate` when
+  fewer than a set number of thumbnail pixels (default 6) differ by more than
+  24 grey levels from the window's last kept thumbnail, and that kept
+  screenshot is 0 to the keep-after limit old (default 10 minutes). So a static
   screen saves at most one image per keep-after limit, and a typed line still
   counts as a change. A duplicate saves nothing, points at the kept image and
   copies its recognized text. Each record's `perceptual_hash` is its own
@@ -443,9 +444,12 @@ settings are provisional until they are measured on real screens (#38).
   after their capture records. A `kept` record's saved JPEG is read by Vision
   (accurate, English, language correction on, lines in Vision's order, no
   positions or confidence) and cut at the window-text cap (50 KB) with the
-  same length, hash and cut-off fields. A `duplicate` waits behind its kept
-  record and copies its finished text. A failed recognition still gives
-  `kept`, with empty text.
+  same length, hash and cut-off fields, with one Vision call at a time and a
+  10-second timeout per image. A `duplicate` waits behind its kept record and
+  copies its finished text. A failed or timed-out recognition still gives
+  `kept`, with empty text, and the window's next screenshot is kept and read
+  again. On `SIGTERM` the queue gets 5 seconds to write what it can; records
+  it cannot write are dropped and their images stay.
 - Screen Recording permission: a picture taken is the evidence the grant is
   held; the system's preflight check is not trusted. Without it window text
   capture carries on, each capture's record says `no-permission`, and the
@@ -608,9 +612,10 @@ Moved to [milestones.md](milestones.md).
 ## 10. Open items needing a decision
 
 1. **Screenshot numbers** (§4.2): image size (1440 px long edge), JPEG
-   quality (60), the 150 MB daily budget and the dedup settings (changed-pixel
-   threshold, 10-minute keep-after limit) are provisional until measured on
-   real screens (#38). Scope (focused window), cadence (each capture, 30s
+   quality (60), the 150 MB daily budget and the dedup settings (6 changed
+   thumbnail pixels at 9x9 points each, a tolerance of 24 grey levels, a
+   10-minute keep-after limit) are provisional until measured on real
+   screens (#38). Scope (focused window), cadence (each capture, 30s
    heartbeat), the password-field skip and same-tick capture are settled.
 2. **Bottleneck numbers** (§7): formula `hours × distinct days`; materiality
    floor ≥2h or ≥30min on 3+ days. (Mechanism decided; values not.)
@@ -719,7 +724,11 @@ Context and rationale for decisions live here, not in the sections above.
   windows otherwise swapped images and text. Every screenshot record goes
   through one FIFO queue so a kept record always reaches the spool before the
   duplicates that copy its text; a failed recognition stays `kept` so the
-  record still points at its image. Nothing is deleted: orphaned images are
+  record still points at its image. The thumbnail is sized by the window's
+  points and the threshold is a pixel count, so a typed line counts as a
+  change on a small window and on a wide display alike. A recognition timeout
+  keeps one hung Vision call from stalling the queue, and the drain on
+  `SIGTERM` fits inside launchd's 20 seconds before `SIGKILL`. Nothing is deleted: orphaned images are
   accepted rather than adding cleanup to the capture path. The grant is
   judged from pictures taken, not the preflight check, which can stay stale
   for the life of the process; the reminder's day starts only once a

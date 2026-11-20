@@ -11,7 +11,8 @@ import PackageDescription
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
 ///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
-///           |               spool recovery, capture thread; then the minute log line and spool finish
+///           |               spool recovery, capture thread; then the minute log line and spool finish;
+///           |               on SIGTERM, stop capturing, drain the screenshot queue briefly, finish, exit
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture queues its screenshot record
@@ -22,12 +23,13 @@ import PackageDescription
 ///           |                   the last posted time kept in screen-recording-reminded
 ///     ScreenRecordingSettings.swift   the settings pane's links, the reminder that opens them, and
 ///           |                         the request-screen-recording command install.sh runs
-///     RecognitionQueue.swift    the recognition thread: writes screenshot records in capture order,
+///     ScreenshotQueue.swift     the screenshot thread: writes screenshot records in capture order,
 ///           |                   reading the text of each kept image, duplicates copying it
 ///     TextRecognition.swift     the text in a saved picture, read by Vision
 ///     FrameDedup.swift      the last kept screenshot of each of the most recently seen windows,
 ///           |               and whether a new one changed enough or is old enough to keep
-///     FrameThumbnail.swift  the small grey copy of a screenshot that dedup compares, pixel by pixel
+///     FrameThumbnail.swift  the small grey copy of a screenshot, one pixel per square of points,
+///                           that dedup compares pixel by pixel
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
 ///     Denylist.swift        the apps never read: the built-in password managers plus the config's
@@ -47,6 +49,7 @@ import PackageDescription
 ///     WindowScreenshot.swift     a ScreenCaptureKit still of the window matching the focused
 ///                                window's frame, one request at a time, as a WindowImage
 ///                                that carries the window's id
+///     OneRequestAtATime.swift    one request outstanding at a time, each waited for up to a timeout
 ///     ImageStore.swift      where kept screenshots go: JPEGImageStore downscales, encodes and saves
 ///                           each in its day's folder
 ///     FrameHash.swift       the 64-bit difference hash each screenshot record carries

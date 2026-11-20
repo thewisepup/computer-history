@@ -23,6 +23,7 @@ case .run:
     let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
+    let captureStop = CaptureStop()
     exit(AgentLifecycle(
         report: settings.report,
         isPaused: { pause.isPaused },
@@ -38,9 +39,11 @@ case .run:
                     folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality
                 ),
                 counts: counts,
+                stop: captureStop,
                 log: log
             )
         },
+        stopCapturing: captureStop.stop(by:),
         log: log
     ).run())
 case .install:

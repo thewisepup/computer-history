@@ -1,9 +1,10 @@
 import Foundation
 
-/// The agent's start-up, then its minute timers on the main run loop: the log line and the spool finish.
+/// The agent's start-up, then its minute timers on the main run loop: the log line and the spool finish; and its stop on SIGTERM.
 public struct AgentLifecycle: Sendable {
     public static let logInterval: TimeInterval = 60
     public static let spoolFinishInterval: TimeInterval = 60
+    public static let stopDrainSeconds: TimeInterval = 5
 
     let report: [String]
     let isPaused: @Sendable () -> Bool
@@ -11,6 +12,7 @@ public struct AgentLifecycle: Sendable {
     let spool: SpoolWriter
     let counts: CaptureCounts
     let startCapturing: @Sendable () -> Void
+    let stopCapturing: @Sendable (_ deadline: DispatchTime) -> Int?
     let log: @Sendable (String) -> Void
 
     public init(
@@ -20,6 +22,7 @@ public struct AgentLifecycle: Sendable {
         spool: SpoolWriter,
         counts: CaptureCounts,
         startCapturing: @escaping @Sendable () -> Void,
+        stopCapturing: @escaping @Sendable (_ deadline: DispatchTime) -> Int?,
         log: @escaping @Sendable (String) -> Void
     ) {
         self.report = report
@@ -28,12 +31,20 @@ public struct AgentLifecycle: Sendable {
         self.spool = spool
         self.counts = counts
         self.startCapturing = startCapturing
+        self.stopCapturing = stopCapturing
         self.log = log
     }
 
-    /// Returns exit status 1 at once if another agent holds the spool; otherwise starts capturing and runs the minute log line and the spool finish on the main run loop forever.
+    /// Returns exit status 1 at once if another agent holds the spool; otherwise starts capturing and runs the minute log line and the spool finish on the main run loop until SIGTERM.
     public func run() -> Int32 {
         guard start() == .started else { return 1 }
+        signal(SIGTERM, SIG_IGN)
+        let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        terminate.setEventHandler {
+            stop()
+            exit(0)
+        }
+        terminate.resume()
         startCapturing()
         Timer.scheduledTimer(withTimeInterval: Self.logInterval, repeats: true) { _ in
             logMinute()
@@ -73,6 +84,13 @@ public struct AgentLifecycle: Sendable {
             log("spool failed to start at \(spool.directory.path): \(error)")
         }
         return .started
+    }
+
+    /// Stops capturing, gives queued screenshot records a few seconds to reach the spool, then finishes the spool's open file.
+    func stop() {
+        let dropped = stopCapturing(.now() + Self.stopDrainSeconds)
+        finishSpoolFile()
+        log(dropped.map { "stopping, \($0) screenshot records dropped" } ?? "stopping, the capture thread did not finish in time")
     }
 
     func finishSpoolFile() {

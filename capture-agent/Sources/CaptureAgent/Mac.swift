@@ -45,7 +45,7 @@ public struct LiveMac: Mac, Sendable {
     public func hasElectronFramework(_ bundle: URL) -> Bool { bundleHasElectronFramework(bundle) }
 
     public func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
-        screenshots.run(timeout: 2) { captureFocusedWindow(window, longEdge: longEdge, answer: $0) }
+        screenshots.run(timeout: 2, otherwise: .failed) { captureFocusedWindow(window, longEdge: longEdge, answer: $0) }
     }
 
     public func recognizeText(inImageAt file: URL) throws -> String { try CaptureAgent.recognizeText(inImageAt: file) }

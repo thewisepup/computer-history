@@ -69,7 +69,7 @@ final class TempFolder {
     #expect(settings.capture == CaptureSettings())
     #expect(settings.windowText == WindowTextSettings())
     #expect(settings.denylist == Denylist())
-    #expect(settings.screenshots == ScreenshotSettings(enabled: true, longEdge: 1440, quality: 60, changePercent: 0.05, keepAfter: 600))
+    #expect(settings.screenshots == ScreenshotSettings(enabled: true, longEdge: 1440, quality: 60, changePixels: 6, keepAfter: 600))
     #expect(Denylist.builtIn == [
         "com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess", "com.apple.Passwords",
     ])
@@ -89,7 +89,7 @@ final class TempFolder {
           "screenshots": false,
           "screenshot_long_edge_pixels": 1024,
           "screenshot_jpeg_quality": 80,
-          "screenshot_change_percent": 0.5,
+          "screenshot_change_pixels": 20,
           "screenshot_keep_after_minutes": 30
         }
         """)
@@ -100,7 +100,7 @@ final class TempFolder {
         textCapBytes: 20_000, callTimeout: 0.5, windowTimeout: 3, flagOffList: ["com.google.Chrome"]
     ))
     #expect(settings.denylist == Denylist(adding: ["com.apple.calculator"]))
-    #expect(settings.screenshots == ScreenshotSettings(enabled: false, longEdge: 1024, quality: 80, changePercent: 0.5, keepAfter: 1800))
+    #expect(settings.screenshots == ScreenshotSettings(enabled: false, longEdge: 1024, quality: 80, changePixels: 20, keepAfter: 1800))
 }
 
 @Test func aUserDenylistExtendsTheDefaultsAndCannotRemoveThem() throws {
@@ -162,9 +162,10 @@ func anInvalidFileIsReportedAndDefaultsAreUsed(config: String, problem: String) 
     (#"{"screenshot_long_edge_pixels": 1440.5}"#, "screenshot_long_edge_pixels must be a whole number, using 1440"),
     (#"{"screenshot_jpeg_quality": 0}"#, "screenshot_jpeg_quality 0 is outside 1–100, using 60"),
     (#"{"screenshot_jpeg_quality": 101}"#, "screenshot_jpeg_quality 101 is outside 1–100, using 60"),
-    (#"{"screenshot_change_percent": -0.01}"#, "screenshot_change_percent -0.01 is outside 0–10, using 0.05"),
-    (#"{"screenshot_change_percent": 11}"#, "screenshot_change_percent 11 is outside 0–10, using 0.05"),
-    (#"{"screenshot_change_percent": "0.1"}"#, "screenshot_change_percent must be a number of percent, using 0.05"),
+    (#"{"screenshot_change_pixels": -1}"#, "screenshot_change_pixels -1 is outside 0–1000, using 6"),
+    (#"{"screenshot_change_pixels": 1001}"#, "screenshot_change_pixels 1001 is outside 0–1000, using 6"),
+    (#"{"screenshot_change_pixels": 7.5}"#, "screenshot_change_pixels must be a whole number, using 6"),
+    (#"{"screenshot_change_percent": 0.05}"#, "unknown key \"screenshot_change_percent\" ignored"),
     (#"{"screenshot_keep_after_minutes": 0}"#, "screenshot_keep_after_minutes 0 is outside 1–1440, using 10"),
     (#"{"screenshot_keep_after_minutes": 2.5}"#, "screenshot_keep_after_minutes must be a whole number, using 10"),
     (#"{"screenshot_duplicate_threshold_bits": 2}"#, "unknown key \"screenshot_duplicate_threshold_bits\" ignored"),
@@ -197,7 +198,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
     #expect(good.message.contains("denylist, built-in plus config: com.1password.1password, com.agilebits.onepassword7, com.apple.keychainaccess, com.apple.passwords"))
     #expect(good.message.contains("idle threshold: 180s"))
     #expect(good.message.contains(
-        "screenshots: on, long edge 1440 px, JPEG quality 60, duplicate when under 0.05% of thumbnail pixels changed, "
+        "screenshots: on, long edge 1440 px, JPEG quality 60, duplicate when under 6 thumbnail pixels (9x9 points each) changed, "
             + "a new kept image after 10 min"
     ))
     let bad = checkConfig(try TempFolder().settings(config: #"{"oops": 1}"#))

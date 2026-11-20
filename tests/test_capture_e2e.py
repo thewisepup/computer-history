@@ -23,6 +23,7 @@ from computer_history.sources.capture_spool import (
     resolve_spool_path,
 )
 from computer_history.store import DB_ENV_VAR, resolve_db_path
+from computer_history.store.timefmt import to_utc
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
 REPO = Path(__file__).resolve().parent.parent
@@ -353,10 +354,6 @@ def _scripted_window(app: str, window: str) -> dict:
     return scripted["apps"][app]["windows"][window]
 
 
-def _spool_time(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
 def test_every_capture_gets_one_screenshot_record_in_the_status_the_scripts_call_for(
     session: Session,
 ) -> None:
@@ -426,10 +423,26 @@ def test_recognized_text_is_stored_raw_and_becomes_the_screenshots_signal(
         assert json.loads(signals[shot["id"]][3])["status"] == shot["status"]
 
 
-def test_a_duplicate_points_at_its_windows_kept_image_and_copies_its_text(
+def _keep_after_seconds(folder: Path) -> int:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["COMPUTER_HISTORY_DB"] = str(folder / "history.db")
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "check-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    found = re.search(r"a new kept image after (\d+) min", run.stdout + run.stderr)
+    assert found, run.stdout + run.stderr
+    return int(found.group(1)) * 60
+
+
+def test_a_duplicate_points_at_its_windows_recent_kept_image_and_copies_its_text(
     session: Session,
 ) -> None:
     shots = session.screenshots()
+    keep_after = _keep_after_seconds(session.folder)
     kept = {s["image_path"]: s for s in _by_status(shots, "kept")}
     signals = session.signals("screenshot")
     duplicates = _by_status(shots, "duplicate")
@@ -438,7 +451,8 @@ def test_a_duplicate_points_at_its_windows_kept_image_and_copies_its_text(
         original = kept[shot["image_path"]]
         window = ("app_name", "bundle_id", "window_title")
         assert [shot[k] for k in window] == [original[k] for k in window]
-        assert _spool_time(original["captured_at"]) < _spool_time(shot["captured_at"])
+        age = to_utc(shot["captured_at"]) - to_utc(original["captured_at"])
+        assert 0 < age.total_seconds() <= keep_after
         assert shot["image_bytes"] is None
         assert re.fullmatch(r"[0-9a-f]{16}", shot["perceptual_hash"])
         copied = ("text", "text_sha256", "full_text_bytes", "text_cut_off")
@@ -451,7 +465,7 @@ def test_a_missing_grant_posts_one_reminder_and_keeps_its_time(session: Session)
     assert REMINDED not in session.crash_run.stdout
     first = _by_status(session.screenshots(), "no-permission")[0]
     reminded = (session.folder / "screen-recording-reminded").read_text("utf-8").strip()
-    gap = _spool_time(reminded) - _spool_time(first["captured_at"]).replace(microsecond=0)
+    gap = to_utc(reminded) - to_utc(first["captured_at"]).replace(microsecond=0)
     assert timedelta(0) <= gap < timedelta(seconds=2)
 
 
@@ -463,7 +477,7 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
     out = session.status.stdout
     statuses = ("kept", "duplicate", "secure-field", "no-permission", "failed")
     midnight = local_midnight(session.status_at)
-    today = [s for s in shots if _spool_time(s["captured_at"]) >= midnight]
+    today = [s for s in shots if to_utc(s["captured_at"]) >= midnight]
 
     def counts(of: list[dict]) -> str:
         return ", ".join(f"{len(_by_status(of, status))} {status}" for status in statuses)
@@ -474,7 +488,7 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
     last = _by_status(shots, "kept")[-1]
     first_missing = _by_status(shots, "no-permission")[0]
     assert re.search(
-        rf"^  last kept     {re.escape(when(_spool_time(last['captured_at'])))} \(.+ ago\),"
+        rf"^  last kept     {re.escape(when(to_utc(last['captured_at'])))} \(.+ ago\),"
         rf" {last['app_name']}, {re.escape(last['image_path'])}$",
         out,
         re.MULTILINE,
@@ -487,7 +501,7 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
     )
     assert (
         "  warning: Screen Recording permission is missing since"
-        f" {when(_spool_time(first_missing['captured_at']))} ("
+        f" {when(to_utc(first_missing['captured_at']))} ("
     ) in out
 
 
