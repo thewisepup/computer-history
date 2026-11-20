@@ -28,8 +28,6 @@ from computer_history.synthetic import (
 from computer_history.synthetic import cache as synthetic_cache
 from computer_history.synthetic.cache import PACKAGE
 
-pytestmark = pytest.mark.dataset
-
 REPO = Path(__file__).resolve().parents[2]
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)

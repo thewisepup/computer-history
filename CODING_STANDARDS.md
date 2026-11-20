@@ -1,7 +1,8 @@
 # Code standards
 
 Rules marked **[checked]** fail automatically in `tests/unit/test_standards.py`,
-or in the test the rule names (run by the pre-commit hook and CI). The
+or in the test the rule names (`tests/unit/` runs in the pre-commit hook and CI's
+`unit` job, `tests/data/` in CI's `data` job only). The
 comment and docstring checks cover `computer_history/` and `tests/`; the rest
 cover `computer_history/` only.
 Unmarked rules are judgement calls the standards reviewer

@@ -13,7 +13,6 @@ from computer_history.synthetic import (
     run_gate,
 )
 
-pytestmark = pytest.mark.perf
 USER_CACHE = cache_root()
 LARGER = [label for label in GATE_DATASETS if label != SMALLEST_DATASET]
 
