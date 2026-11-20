@@ -10,9 +10,9 @@ final class LoopFixture {
     var denylist = Denylist()
     var screenshots = ScreenshotSettings()
     var images: (any ImageStore)?
-    var screenshotsTheSpoolRefuses = 0
     var logged: [String] = []
     private lazy var writer = spool.writer()
+    lazy var screenshotGate = ScreenshotRefusingSpool(writer: writer, refusals: 0)
 
     var mac: ScriptedMac { focus.mac }
     var settings: AgentSettings {
@@ -30,7 +30,7 @@ final class LoopFixture {
         CaptureLoop(
             settings: settings,
             mac: mac,
-            spool: screenshotsTheSpoolRefuses > 0 ? ScreenshotRefusingSpool(writer: writer, refusals: screenshotsTheSpoolRefuses) : writer,
+            spool: screenshotGate,
             images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
             counts: counts,
             log: { self.logged.append($0) }

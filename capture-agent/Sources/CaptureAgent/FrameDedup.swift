@@ -21,7 +21,7 @@ struct FrameDedup {
     }
 
     let threshold: Int
-    private var seen: [(window: Window, kept: KeptFrame)] = []
+    private var seen: [Entry] = []
 
     init(threshold: Int) {
         self.threshold = threshold
@@ -37,13 +37,22 @@ struct FrameDedup {
 
     /// Makes the frame the window's last kept one, forgetting the least recently seen window past the limit.
     mutating func remember(_ kept: KeptFrame, for window: Window) {
+        let replaced = seen.first { $0.window == window }?.kept
         seen.removeAll { $0.window == window }
-        seen.append((window, kept))
+        seen.append(Entry(window: window, kept: kept, replaced: replaced))
         if seen.count > Self.windows { seen.removeFirst() }
     }
 
-    /// Forgets a kept frame whose image is gone.
+    /// Forgets a kept frame whose image is gone, giving its window back the kept frame it replaced.
     mutating func forget(_ recordID: UUID) {
-        seen.removeAll { $0.kept.recordID == recordID }
+        guard let index = seen.firstIndex(where: { $0.kept.recordID == recordID }) else { return }
+        let entry = seen.remove(at: index)
+        if let replaced = entry.replaced { seen.insert(Entry(window: entry.window, kept: replaced, replaced: nil), at: index) }
+    }
+
+    private struct Entry {
+        let window: Window
+        let kept: KeptFrame
+        let replaced: KeptFrame?
     }
 }

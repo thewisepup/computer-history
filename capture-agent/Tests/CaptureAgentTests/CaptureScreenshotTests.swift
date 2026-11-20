@@ -217,7 +217,7 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
 
 @Test func aKeptImageWhoseRecordCannotBeWrittenIsRemovedAndCountedApart() throws {
     let fixture = LoopFixture()
-    fixture.screenshotsTheSpoolRefuses = .max
+    fixture.screenshotGate.refusals = .max
     fixture.run(for: 2)
     #expect(try fixture.records().map { $0["kind"] as? String } == ["capture"])
     #expect(savedImages(in: fixture.settings.folder).isEmpty)

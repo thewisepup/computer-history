@@ -150,7 +150,7 @@ func imageHashing(to bits: UInt64) -> CGImage {
 
 @Test func aKeptImageTheSpoolRefusedIsForgottenSoTheNextFrameIsKeptAgain() throws {
     let fixture = LoopFixture()
-    fixture.screenshotsTheSpoolRefuses = 1
+    fixture.screenshotGate.refusals = 1
     fixture.run(for: 70)
     #expect(try fixture.statuses() == ["kept", "duplicate"])
     let kept = try fixture.screenshotRecords()[0]
@@ -159,6 +159,22 @@ func imageHashing(to bits: UInt64) -> CGImage {
 
 func keptFrame(hash: FrameHash, text: String = "", fullTextBytes: Int = 0) -> FrameDedup.KeptFrame {
     FrameDedup.KeptFrame(recordID: UUID(), imagePath: "screenshots/a.jpg", hash: hash, text: text, fullTextBytes: fullTextBytes)
+}
+
+@Test func aRefusedKeptFrameGivesTheWindowBackItsEarlierKeptFrame() throws {
+    let fixture = LoopFixture()
+    var bits: UInt64 = 0
+    fixture.mac.windowImage = { _, _ in .image(imageHashing(to: bits), windowID: 1) }
+    fixture.run(for: 2)
+    bits = 0b111
+    fixture.screenshotGate.refusals = 1
+    fixture.run(for: 30)
+    bits = 0
+    fixture.run(for: 30)
+    #expect(try fixture.statuses() == ["kept", "duplicate"])
+    let shots = try fixture.screenshotRecords()
+    #expect(shots[1]["image_path"] as? String == shots[0]["image_path"] as? String)
+    #expect(savedImages(in: fixture.settings.folder) == ["\(shots[0]["id"] as! String).jpg"])
 }
 
 @Test(arguments: [(2, 2, true), (2, 3, false), (0, 0, true), (0, 1, false), (10, 10, true), (10, 11, false)])
