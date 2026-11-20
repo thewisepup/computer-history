@@ -6,20 +6,23 @@ import hashlib
 import json
 import sqlite3
 
-_CONTENTS = (
+_STORED = (
     "SELECT source, source_id, started_at, ended_at, payload FROM observations"
     " ORDER BY source, source_id",
     "SELECT o.source, o.source_id, s.source, s.started_at, s.ended_at, s.app, s.domain, s.url,"
     " s.title, s.text, s.extras FROM signals AS s JOIN observations AS o ON o.id = s.observation_id"
     " ORDER BY o.source, o.source_id",
-    "SELECT source, position, settled_until FROM ingest_progress ORDER BY source",
 )
+_PROGRESS = "SELECT source, position, settled_until FROM ingest_progress ORDER BY source"
 
 
-def content_digest(conn: sqlite3.Connection) -> str:
-    """A hash of the observations, signals and ingest progress, each in a fixed order."""
+def content_digest(conn: sqlite3.Connection, *, progress: bool = True) -> str:
+    """A hash of the observations, signals and ingest progress, each in a fixed order.
+
+    Without progress it skips ingest progress, which a run on the wall clock stamps with its now.
+    """
     digest = hashlib.sha256()
-    for query in _CONTENTS:
+    for query in (*_STORED, _PROGRESS) if progress else _STORED:
         digest.update(b"\x00table\n")
         for row in conn.execute(query):
             digest.update(json.dumps(list(row), ensure_ascii=False).encode() + b"\n")
