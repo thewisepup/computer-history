@@ -81,7 +81,7 @@ shell that sets them act on that other folder.
 | `screenshots` | `true` | `true` or `false`; `false` takes no screenshots and writes no `screenshot` records |
 | `screenshot_long_edge_pixels` | `1440` | whole number, 256 to 8192; larger images are scaled down to it, smaller ones kept as they are |
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
-| `screenshot_change_percent` | `0.05` | 0 to 10: a picture is a `duplicate` when under this percent of its thumbnail's pixels changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
+| `screenshot_change_pixels` | `6` | whole number, 0 to 1000: a picture is a `duplicate` when fewer than this many of its thumbnail pixels (each 9x9 points of the window) changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
 | `screenshot_keep_after_minutes` | `10` | whole number, 1 to 1440: an unchanged window gets a new `kept` picture once its last one is older than this |
 
 ```json
@@ -218,7 +218,7 @@ is taken.
 |---|---|
 | `secure-field` | the focused app's `AXFocusedUIElement` has role or subrole `AXSecureTextField`; no picture is taken |
 | `kept` | the picture was taken and saved |
-| `duplicate` | under `screenshot_change_percent` of the picture's thumbnail pixels changed from its window's last kept picture, which is at most `screenshot_keep_after_minutes` old; nothing is saved |
+| `duplicate` | fewer than `screenshot_change_pixels` of the picture's thumbnail pixels changed from its window's last kept picture, which is at most `screenshot_keep_after_minutes` old; nothing is saved |
 | `no-permission` | ScreenCaptureKit refused with `userDeclined`: the Screen Recording grant is missing |
 | `failed` | anything else: focus or presence changed during the read, the password-field check got no answer, the window's frame could not be read or matched, another ScreenCaptureKit error, no answer within 2 seconds, an earlier request still unanswered, or the image could not be saved |
 
@@ -242,15 +242,19 @@ are `0700`, set again on every save, and the images `0600`. Nothing is ever
 deleted: an image whose record the spool refuses, or whose record a crash or
 a stop cut off, stays.
 
-Each picture is shrunk to a grey thumbnail at most 160 pixels on its long
-edge, keeping its aspect ratio and never enlarged, each thumbnail pixel the
-average brightness of the block it covers. It is compared with the thumbnail
-of the last kept picture of the same window: a pixel has changed when its
-brightness differs by more than 24 of 255, which absorbs JPEG and scaling
-noise, and the picture has changed when at least `screenshot_change_percent`
-of its pixels have, which lets a blinking caret through but not a typed line.
-A thumbnail of another size (a resized window) is a change, and so is a match
-whose kept picture is older than `screenshot_keep_after_minutes`. A window is
+Each picture is shrunk to a grey thumbnail with one pixel per 9x9 points of
+the window (the window's frame, not the picture's pixels), so a line of text
+covers about as many thumbnail pixels in a small window as in a maximized one
+on a wide display. The thumbnail is at most 640 pixels on its long edge and
+never has more pixels than the picture; each pixel is the average brightness
+of the block it covers. It is compared with the thumbnail of the last kept
+picture of the same window: a pixel has changed when its brightness differs by
+more than 24 of 255, which absorbs JPEG and scaling noise, and the picture has
+changed when at least `screenshot_change_pixels` pixels have, which lets a
+blinking caret through but not a typed line. A thumbnail of another size (a
+resized window) is a change, and so is a match whose kept picture is older
+than `screenshot_keep_after_minutes`, or dated after the new picture (the
+clock was set back). A window is
 the ScreenCaptureKit window id of the window photographed plus its title, so
 two windows of one app with the same title are told apart and each browser
 tab or editor file still counts on its own. The agent remembers the last kept
@@ -284,12 +288,30 @@ with `full_text_bytes`, `text_cut_off` and `text_sha256`. A `duplicate` record
 waits its turn behind its kept record and copies that record's finished text;
 no recognition runs for it. If Vision fails, the record is still `kept`, with
 empty text (`full_text_bytes` 0) and its image, its duplicates copy the empty
-text, and the minute log line counts the failure.
+text, and the minute log line counts the failure. The window's next picture
+is then kept and read again rather than matched against the image with no
+text; duplicates queued before the failure was known still copy the empty text.
 
-On a stop (the login item's `SIGTERM`, a crash, a forced quit) the queued
-records that have not been written are lost and their images stay. A record is
-written as one line, and a torn last line is dropped on the next start (see
-Spool), so a stop cannot leave a broken record for the backend. `pause` stops
+Vision runs on a thread of its own and gets `ScreenshotSettings.recognitionTimeout`
+(10 seconds) per image; with no answer by then the record is `kept` with empty
+text and counted as a failed recognition, so a hung Vision call delays the queue
+once, not forever. Only one Vision call runs at a time: while a timed-out call
+has still not returned, later kept images get empty text at once, without
+starting another.
+
+On `SIGTERM` (launchd stops the login item at every logout, and on
+`launchctl` stop or uninstall) the agent stops taking captures, gives the queue
+until 5 seconds after the signal (`AgentLifecycle.stopDrainSeconds`) to write
+what it can, then writes no more screenshot records, finishes the open spool
+file, logs `stopping, N screenshot records dropped` and exits. A capture tick
+still running when the signal comes finishes first and eats into those 5
+seconds; if the capture thread has not finished a second after them, the agent
+logs `stopping, the capture thread did not finish in time` and exits anyway.
+launchd waits 20 seconds before `SIGKILL`. The dropped records are lost and
+their images stay. A crash or `SIGKILL` loses everything queued the same way.
+A record is written as one line under the spool's lock and the queue writes
+nothing once stopped, and a torn last line is dropped on the next start (see
+Spool), so no stop can leave a broken record for the backend. `pause` stops
 new captures but not the queue: records of captures taken before the pause
 are still written, after the `paused` record. The scripted session waits for
 the queue to empty before it ends, with or without a crash.
@@ -394,10 +416,12 @@ prompt for it`), `config read from <path>, 4 apps denylisted` (or `config not
 found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
-excluded, 1 timed out, 0 cut off, slowest read 0.42s`, with `, 2 failed to
-write, 1 screenshot records failed to write, 1 text recognitions failed (last:
-<error>)` appended when writes or recognitions fail (each part only when its
-count is not zero). `silent: paused`, `silent:
+excluded, 1 timed out, 0 cut off, slowest read 0.42s, 2 screenshot records
+queued` (records waiting on the queue at that moment), with `, 2 failed to
+write (last: <error>)`, `, 1 screenshot records failed to write (last:
+<error>)` and `, 1 text recognitions failed (last: <error>)` appended when
+writes or recognitions fail, each only when its count is not zero and each
+with the last error of its own kind. `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
 changing and ending. Each reminder try logs one of `screen recording missing,
 posted a reminder`, `..., asked macOS to allow notifications for the

@@ -21,8 +21,8 @@ public struct ScreenshotRecord: Equatable, Sendable {
     public let imagePath: String?
     public let imageBytes: Int?
     public let perceptualHash: String?
-    public private(set) var text: String?
-    public private(set) var fullTextBytes: Int?
+    public let text: String?
+    public let fullTextBytes: Int?
 
     /// The lowercase hex SHA-256 of the recognized text as UTF-8, for records that carry text.
     public var textSHA256: String? { text.map(sha256Hex) }
@@ -86,14 +86,6 @@ public struct ScreenshotRecord: Equatable, Sendable {
         self.perceptualHash = perceptualHash
         self.text = text
         self.fullTextBytes = text.map { max(fullTextBytes ?? 0, $0.utf8.count) }
-    }
-
-    /// The same record carrying the recognized text and the full length recognized.
-    func withText(_ text: String, fullTextBytes: Int) -> ScreenshotRecord {
-        var record = self
-        record.text = text
-        record.fullTextBytes = max(fullTextBytes, text.utf8.count)
-        return record
     }
 
     /// The record as one line of JSON with every key present and sorted, without the trailing newline.

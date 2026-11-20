@@ -7,6 +7,8 @@ func recognizeText(inImageAt file: URL) throws -> String {
     request.recognitionLevel = .accurate
     request.recognitionLanguages = ["en-US"]
     request.usesLanguageCorrection = true
-    try VNImageRequestHandler(url: file).perform([request])
-    return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    return try autoreleasepool {
+        try VNImageRequestHandler(url: file).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    }
 }

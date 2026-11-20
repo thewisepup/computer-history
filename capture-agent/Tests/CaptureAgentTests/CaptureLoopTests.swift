@@ -8,7 +8,7 @@ final class LoopFixture {
     let counts = CaptureCounts()
     var windowText = WindowTextSettings()
     var denylist = Denylist()
-    var screenshots = ScreenshotSettings()
+    var screenshots = ScreenshotSettings(recognitionTimeout: 120)
     var images: (any ImageStore)?
     var logged: [String] = []
     private lazy var writer = spool.writer()

@@ -65,13 +65,13 @@ final class HeldAnswer: @unchecked Sendable {
         held.answer = answer
     }
     let first = Date()
-    guard case .failed = requests.run(timeout: 0.05, hang) else { Issue.record("a hung request must fail"); return }
+    guard case .failed = requests.run(timeout: 0.05, otherwise: WindowImage.failed, hang) else { Issue.record("a hung request must fail"); return }
     #expect(Date().timeIntervalSince(first) >= 0.05)
     let second = Date()
-    guard case .failed = requests.run(timeout: 5, hang) else { Issue.record("a second request must fail"); return }
+    guard case .failed = requests.run(timeout: 5, otherwise: WindowImage.failed, hang) else { Issue.record("a second request must fail"); return }
     #expect(Date().timeIntervalSince(second) < 1)
     #expect(held.starts == 1)
     held.answer?(.noPermission)
-    guard case .noPermission = requests.run(timeout: 5, { $0(.noPermission) }) else { Issue.record("an answered gate must run again"); return }
+    guard case .noPermission = requests.run(timeout: 5, otherwise: WindowImage.failed, { $0(.noPermission) }) else { Issue.record("an answered gate must run again"); return }
     #expect(held.starts == 1)
 }
