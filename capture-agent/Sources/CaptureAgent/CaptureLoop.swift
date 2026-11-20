@@ -41,7 +41,14 @@ final class CaptureLoop<M: Mac> {
             now: mac.uptime
         )
         self.spool = spool
-        self.screenshot = settings.screenshots.enabled ? CaptureScreenshot(mac: mac, images: images, longEdge: settings.screenshots.longEdge) : nil
+        let screenshot = CaptureScreenshot(
+            mac: mac,
+            images: images,
+            longEdge: settings.screenshots.longEdge,
+            pause: settings.pause,
+            idleThreshold: settings.capture.idleThreshold
+        )
+        self.screenshot = settings.screenshots.enabled ? screenshot : nil
         self.counts = counts
         self.log = log
     }

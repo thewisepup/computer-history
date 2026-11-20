@@ -18,17 +18,22 @@ struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
     let longEdge: Int
+    let pause: PauseSwitch
+    let idleThreshold: TimeInterval
 
     func take(for capture: SpoolRecord, of application: FocusedApplication) -> ScreenshotRecord {
+        guard !pause.isPaused, mac.samplePresence().silence(idleThreshold: idleThreshold).isEmpty,
+              mac.focusedApplication()?.processIdentifier == application.processIdentifier
+        else { return .failed(of: capture) }
         let app = mac.applicationElement(application.processIdentifier)
         switch focusedField(in: app) {
         case .password: return .secureField(of: capture)
         case .unknown: return .failed(of: capture)
         case .other: break
         }
-        guard case .value(let window) = app.element("AXFocusedWindow"), case .value(let frame) = window.frame() else {
-            return .failed(of: capture)
-        }
+        guard case .value(let window) = app.element("AXFocusedWindow"), has(window, title: capture.windowTitle),
+              case .value(let frame) = window.frame()
+        else { return .failed(of: capture) }
         let focused = FocusedWindow(processIdentifier: application.processIdentifier, title: capture.windowTitle, frame: frame)
         switch mac.focusedWindowImage(focused, longEdge: longEdge) {
         case .noPermission:
@@ -43,6 +48,14 @@ struct CaptureScreenshot<M: Mac> {
             return .kept(
                 id: id, of: capture, imagePath: saved.path, imageBytes: saved.bytes, perceptualHash: hash, text: "", fullTextBytes: 0
             )
+        }
+    }
+
+    private func has(_ window: M.Element, title: String?) -> Bool {
+        switch window.string("AXTitle") {
+        case .value(let current): current == title
+        case .missing: title == nil
+        case .timedOut: false
         }
     }
 }

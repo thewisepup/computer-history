@@ -14,6 +14,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var calls: [String] = []
     var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000)) }
     var windowImageRequests: [pid_t] = []
+    var onCall: (String) -> Void = { _ in }
 
     init(start: Date = Date(timeIntervalSince1970: 0)) {
         self.start = start
@@ -94,6 +95,7 @@ final class ScriptedElement: AccessibilityElement {
 
     private func perform<Value>(_ attribute: String, _ body: () -> AccessibilityResult<Value>) -> AccessibilityResult<Value> {
         mac.calls.append("\(name).\(attribute)")
+        mac.onCall("\(name).\(attribute)")
         if hangs.contains(attribute) {
             mac.clock += mac.callTimeout
             return .timedOut

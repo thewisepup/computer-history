@@ -169,3 +169,27 @@ func aWindowWhoseFrameCannotBeReadIsNotPhotographed(timesOut: Bool) throws {
     #expect(try fixture.screenshotRecords().map { $0["status"] as? String } == ["failed"])
     #expect(fixture.mac.windowImageRequests.isEmpty)
 }
+
+@Test(arguments: ["pause", "lock", "sleep", "idle", "another app", "another title"])
+func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: String) throws {
+    let fixture = LoopFixture()
+    var changed = false
+    fixture.mac.onCall = { call in
+        guard call == "hello.AXValue", !changed else { return }
+        changed = true
+        switch change {
+        case "pause": _ = try? fixture.pause.pause()
+        case "lock": fixture.mac.presence.locked = true
+        case "sleep": fixture.mac.presence.asleep = true
+        case "idle": fixture.mac.presence.idleSeconds = 600
+        case "another app": fixture.mac.focused = chrome
+        default: fixture.focus.notes.attributes["AXTitle"] = "Renamed"
+        }
+    }
+    fixture.run(for: 1.5)
+    let records = try fixture.records()
+    #expect(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
+    #expect(records.first?["text"] as? String == "hello")
+    #expect(records.last?["status"] as? String == "failed")
+    #expect(fixture.mac.windowImageRequests.isEmpty)
+}
