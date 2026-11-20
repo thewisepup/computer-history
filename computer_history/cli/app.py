@@ -11,6 +11,7 @@ from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
+from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 
 COMMANDS = {
@@ -48,6 +49,14 @@ def build_parser() -> argparse.ArgumentParser:
         "~/Library/Application Support/ComputerHistory/history.db)"
     )
     parser.add_argument("--db-path", help=db_help)
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=LEVEL_NAMES,
+        help="lowest level logged, to stderr and the log file (default:"
+        " $COMPUTER_HISTORY_LOG_LEVEL, else INFO to the file and, except for ingest --watch,"
+        " WARNING to stderr)",
+    )
     db_after_command = argparse.ArgumentParser(add_help=False)
     db_after_command.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
     aw = argparse.ArgumentParser(add_help=False)
@@ -121,10 +130,18 @@ def when_arg(value: str) -> datetime:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    try:
+        level = resolve_level(args.log_level)
+    except ValueError as exc:
+        print(f"computer-history: {exc}", file=sys.stderr)
+        return 2
+    watching = getattr(args, "watch", False)
+    quiet = logging.INFO if watching else logging.WARNING
+    configure(
+        f"{args.command} --watch" if watching else args.command,
+        level=logging.INFO if level is None else level,
+        stderr_level=quiet if level is None else level,
+        log_dir=resolve_log_dir(),
     )
     handler = HANDLERS.get(args.command)
     if handler is None:
