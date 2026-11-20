@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// A small grey copy of a window's frame, each pixel the average brightness of the same square of points whatever the window's size.
-struct FrameThumbnail: Equatable, Sendable {
+struct ScreenshotThumbnail: Equatable, Sendable {
     static let pointsPerPixel = 9.0
     static let maxLongEdge = 640
 
@@ -46,7 +46,7 @@ struct FrameThumbnail: Equatable, Sendable {
     }
 
     /// How many pixels differ in brightness from the other thumbnail's by more than the tolerance, or nil when the sizes differ.
-    func changedPixels(from other: FrameThumbnail, tolerance: Int) -> Int? {
+    func changedPixels(from other: ScreenshotThumbnail, tolerance: Int) -> Int? {
         guard width == other.width, height == other.height else { return nil }
         return zip(pixels, other.pixels).count { abs(Int($0) - Int($1)) > tolerance }
     }

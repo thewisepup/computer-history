@@ -64,11 +64,11 @@ struct CaptureScreenshot<M: Mac> {
             return .ready(.failed(of: capture))
         case .image(let image, let windowID):
             reminder.grantSeen()
-            guard let hash = differenceHash(image), let frame = FrameThumbnail(image, points: focused.frame.size) else {
+            guard let hash = differenceHash(image), let thumbnail = ScreenshotThumbnail(image, points: focused.frame.size) else {
                 return .ready(.failed(of: capture))
             }
             let window = ScreenshotDedup.Window(id: windowID, title: capture.windowTitle)
-            if let kept = dedup.see(frame, in: window, at: capture.capturedAt), !kept.text.failed {
+            if let kept = dedup.see(thumbnail, in: window, at: capture.capturedAt), !kept.text.failed {
                 return .copy(from: kept.text) { read in
                     .duplicate(
                         of: capture, imagePath: kept.imagePath, perceptualHash: hash.hex, text: read.text, fullTextBytes: read.fullTextBytes
@@ -79,7 +79,7 @@ struct CaptureScreenshot<M: Mac> {
             guard let saved = try? images.save(image, id: id, at: capture.capturedAt) else { return .ready(.failed(of: capture)) }
             let text = KeptText()
             dedup.remember(
-                ScreenshotDedup.KeptScreenshot(imagePath: saved.path, thumbnail: frame, keptAt: capture.capturedAt, text: text), for: window
+                ScreenshotDedup.KeptScreenshot(imagePath: saved.path, thumbnail: thumbnail, keptAt: capture.capturedAt, text: text), for: window
             )
             return .recognize(image: saved.file, into: text) { read in
                 .kept(

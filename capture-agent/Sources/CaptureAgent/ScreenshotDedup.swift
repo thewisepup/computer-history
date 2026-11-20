@@ -15,7 +15,7 @@ struct ScreenshotDedup {
     /// A kept screenshot as the memory holds it: its image path, thumbnail, capture time and recognized text once known.
     struct KeptScreenshot {
         let imagePath: String
-        let thumbnail: FrameThumbnail
+        let thumbnail: ScreenshotThumbnail
         let keptAt: Date
         let text: KeptText
     }
@@ -30,12 +30,12 @@ struct ScreenshotDedup {
     }
 
     /// Marks the window as just seen and returns its last kept frame if that was kept in the last keepAfter seconds and the frame changed fewer pixels than the threshold.
-    mutating func see(_ frame: FrameThumbnail, in window: Window, at time: Date) -> KeptScreenshot? {
+    mutating func see(_ thumbnail: ScreenshotThumbnail, in window: Window, at time: Date) -> KeptScreenshot? {
         guard let index = seen.firstIndex(where: { $0.window == window }) else { return nil }
         let entry = seen.remove(at: index)
         seen.append(entry)
         guard (0...keepAfter).contains(time.timeIntervalSince(entry.kept.keptAt)),
-              let changed = frame.changedPixels(from: entry.kept.thumbnail, tolerance: Self.pixelTolerance),
+              let changed = thumbnail.changedPixels(from: entry.kept.thumbnail, tolerance: Self.pixelTolerance),
               changed < changePixels
         else { return nil }
         return entry.kept

@@ -210,11 +210,11 @@ func spoolDate(_ text: String?) -> Date? {
 
 let start = Date(timeIntervalSince1970: 1_000_000)
 
-func thumbnail(_ pixels: [UInt8], width: Int = 160) -> FrameThumbnail {
-    FrameThumbnail(width: width, height: pixels.count / width, pixels: pixels)
+func thumbnail(_ pixels: [UInt8], width: Int = 160) -> ScreenshotThumbnail {
+    ScreenshotThumbnail(width: width, height: pixels.count / width, pixels: pixels)
 }
 
-func keptScreenshot(_ thumbnail: FrameThumbnail, at time: Date = start) -> ScreenshotDedup.KeptScreenshot {
+func keptScreenshot(_ thumbnail: ScreenshotThumbnail, at time: Date = start) -> ScreenshotDedup.KeptScreenshot {
     ScreenshotDedup.KeptScreenshot(imagePath: "screenshots/a.jpg", thumbnail: thumbnail, keptAt: time, text: KeptText())
 }
 
@@ -224,8 +224,8 @@ func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, 
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
     let white = [UInt8](repeating: 255, count: 16_000)
     dedup.remember(keptScreenshot(thumbnail(white)), for: window)
-    let frame = (0..<16_000).map { $0 < changed ? UInt8(255 - ScreenshotDedup.pixelTolerance - 1) : 255 }
-    let match = dedup.see(thumbnail(frame), in: window, at: start)
+    let pixels = (0..<16_000).map { $0 < changed ? UInt8(255 - ScreenshotDedup.pixelTolerance - 1) : 255 }
+    let match = dedup.see(thumbnail(pixels), in: window, at: start)
     #expect((match != nil) == duplicate)
 }
 
@@ -241,18 +241,18 @@ func aFrameIsADuplicateOnlyWhenFewerPixelsChangedThanTheThreshold(changed: Int, 
 func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, duplicate: Bool) throws {
     var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
-    let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptScreenshot(frame), for: window)
-    let match = dedup.see(frame, in: window, at: start.addingTimeInterval(age))
+    let grey = thumbnail([UInt8](repeating: 0, count: 16_000))
+    dedup.remember(keptScreenshot(grey), for: window)
+    let match = dedup.see(grey, in: window, at: start.addingTimeInterval(age))
     #expect((match != nil) == duplicate)
 }
 
 @Test func aThresholdOfZeroCountsEveryFrameAsChanged() throws {
     var dedup = ScreenshotDedup(changePixels: 0, keepAfter: 600)
     let window = ScreenshotDedup.Window(id: 1, title: "Notes")
-    let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptScreenshot(frame), for: window)
-    let match = dedup.see(frame, in: window, at: start)
+    let grey = thumbnail([UInt8](repeating: 0, count: 16_000))
+    dedup.remember(keptScreenshot(grey), for: window)
+    let match = dedup.see(grey, in: window, at: start)
     #expect(match == nil)
 }
 
@@ -266,11 +266,11 @@ func aMatchOlderThanTheLimitOrFromTheFutureIsNoDuplicate(age: TimeInterval, dupl
 
 @Test func aWindowIsItsWindowIDAndItsTitle() throws {
     var dedup = ScreenshotDedup(changePixels: 8, keepAfter: 600)
-    let frame = thumbnail([UInt8](repeating: 0, count: 16_000))
-    dedup.remember(keptScreenshot(frame), for: ScreenshotDedup.Window(id: 1, title: "Notes"))
-    let otherWindow = dedup.see(frame, in: ScreenshotDedup.Window(id: 2, title: "Notes"), at: start)
-    let otherTitle = dedup.see(frame, in: ScreenshotDedup.Window(id: 1, title: "Inbox"), at: start)
-    let same = dedup.see(frame, in: ScreenshotDedup.Window(id: 1, title: "Notes"), at: start)
+    let grey = thumbnail([UInt8](repeating: 0, count: 16_000))
+    dedup.remember(keptScreenshot(grey), for: ScreenshotDedup.Window(id: 1, title: "Notes"))
+    let otherWindow = dedup.see(grey, in: ScreenshotDedup.Window(id: 2, title: "Notes"), at: start)
+    let otherTitle = dedup.see(grey, in: ScreenshotDedup.Window(id: 1, title: "Inbox"), at: start)
+    let same = dedup.see(grey, in: ScreenshotDedup.Window(id: 1, title: "Notes"), at: start)
     #expect(otherWindow == nil)
     #expect(otherTitle == nil)
     #expect(same != nil)
@@ -284,7 +284,7 @@ func aThumbnailPixelCoversNinePointsSquareUpTo640PixelsAndNeverMoreThanTheImage(
     points: Double, pointsHigh: Double, imageWidth: Int, imageHeight: Int, width: Int, height: Int
 ) throws {
     let image = fixtureImage(width: imageWidth, height: imageHeight)
-    let thumb = try #require(FrameThumbnail(image, points: CGSize(width: points, height: pointsHigh)))
+    let thumb = try #require(ScreenshotThumbnail(image, points: CGSize(width: points, height: pointsHigh)))
     #expect(thumb.width == width)
     #expect(thumb.height == height)
     #expect(thumb.pixels.count == width * height)
@@ -293,7 +293,7 @@ func aThumbnailPixelCoversNinePointsSquareUpTo640PixelsAndNeverMoreThanTheImage(
 @Test func aThumbnailPixelIsTheAverageBrightnessOfTheBlockItCovers() throws {
     var pixels = [UInt8](repeating: 0, count: 320 * 2)
     for column in stride(from: 0, to: 320, by: 2) { pixels[column] = 200 }
-    let thumb = try #require(FrameThumbnail(greyImage(pixels, width: 320), points: CGSize(width: 1440, height: 9)))
+    let thumb = try #require(ScreenshotThumbnail(greyImage(pixels, width: 320), points: CGSize(width: 1440, height: 9)))
     #expect(thumb.width == 160)
     #expect(thumb.height == 1)
     #expect(Set(thumb.pixels) == [50])
