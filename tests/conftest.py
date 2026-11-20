@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import live_data_guard  # noqa: F401
 import pytest
 from hypothesis import HealthCheck, settings
 

@@ -91,6 +91,12 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
 
 ## Rules every change keeps
 
+- Tests never reach the live database, spool or agent folder.
+  `tests/live_data_guard.py` points HOME at a throwaway folder for every test
+  run, and any open, connect, delete or rename under the real
+  `~/Library/Application Support/ComputerHistory` raises; `scripts/mutate.sh`
+  sandboxes HOME too. Anything else that runs the code on made-up data passes
+  its own `--db-path` and `--spool-path`.
 - Raw observations are immutable; signals are derived and rebuildable.
 - Read-only toward ActivityWatch.
 - Coverage gaps are reported as "unobserved", never assumed idle.
