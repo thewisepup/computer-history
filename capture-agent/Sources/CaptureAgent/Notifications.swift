@@ -9,11 +9,18 @@ public struct UserNotification: Equatable, Sendable {
     public let opens: [URL]
 }
 
-/// What asking to post a notification came to: posted, waiting on the user to allow notifications, or not possible and why.
+/// What asking to post a notification came to: posted, waiting on the user to allow notifications, no answer within the seconds given, or not possible and why.
 public enum NotificationPosting: Equatable, Sendable {
     case posted
     case awaitingPermission
+    case timedOut(TimeInterval)
     case unavailable(String)
+}
+
+/// Tries each link in turn and returns the one that opened, or nil if none did.
+@discardableResult
+func openFirst(_ links: [URL], using open: (URL) -> Bool) -> URL? {
+    links.first(where: open)
 }
 
 /// Posts through the notification centre and opens a clicked notification's links, when the agent runs from its app bundle.
@@ -44,24 +51,33 @@ final class LiveNotifications: NSObject, UNUserNotificationCenterDelegate, @unch
                 Self.add(notification) { error in answer.finish(error.map { .unavailable($0.localizedDescription) } ?? .posted) }
             }
         }
-        return answer.wait(timeout: timeout) ?? .unavailable("the notification centre did not answer within \(Int(timeout))s")
+        return answer.wait(timeout: timeout) ?? .timedOut(timeout)
     }
 
     private static func add(_ notification: UserNotification, done: @escaping @Sendable ((any Error)?) -> Void) {
         let content = UNMutableNotificationContent()
         content.title = notification.title
         content.body = notification.body
-        content.userInfo = [opensKey: notification.opens.map(\.absoluteString)]
+        content.userInfo = userInfo(for: notification)
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "screen-recording", content: content, trigger: nil), withCompletionHandler: done
         )
     }
 
+    static func userInfo(for notification: UserNotification) -> [AnyHashable: Any] {
+        [opensKey: notification.opens.map(\.absoluteString)]
+    }
+
+    /// Opens the first link of a clicked notification that opens, returning it.
+    @discardableResult
+    static func openLinks(in userInfo: [AnyHashable: Any], using open: (URL) -> Bool) -> URL? {
+        openFirst((userInfo[opensKey] as? [String] ?? []).compactMap(URL.init(string:)), using: open)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void
     ) {
-        let links = response.notification.request.content.userInfo[Self.opensKey] as? [String] ?? []
-        _ = links.compactMap(URL.init(string:)).first(where: NSWorkspace.shared.open)
+        Self.openLinks(in: response.notification.request.content.userInfo, using: NSWorkspace.shared.open)
         done()
     }
 

@@ -27,7 +27,7 @@ scripts/test.sh        # swift test, with the Swift Testing paths Command Line T
 scripts/e2e.sh         # the end-to-end check: a scripted session through the spool into a temp database
 scripts/build.sh       # build, wrap in .build/ComputerHistoryAgent.app, sign, verify
 scripts/install.sh     # build, replace the installed app, register the login item, check it runs,
-                       # then ask for Screen Recording and open its settings pane
+                       # then ask for Screen Recording and open its settings pane unless granted
 scripts/uninstall.sh   # unregister the login item, stop the agent, delete the app
 ```
 
@@ -46,7 +46,7 @@ agent=~/Applications/ComputerHistoryAgent.app/Contents/MacOS/computer-history-ag
 "$agent" pause         # stop capturing until resume, across restarts and reboots
 "$agent" resume
 "$agent" check-config  # where the settings came from, every problem, the settings in effect; exit 1 on problems
-"$agent" request-screen-recording  # ask macOS for Screen Recording, open its settings pane; install.sh runs it
+"$agent" request-screen-recording  # ask macOS for Screen Recording, open its settings pane unless granted; install.sh runs it
 "$agent" uninstall
 "$agent" install       # exit 2 means approval is needed in System Settings > General > Login Items & Extensions
 ```
@@ -299,8 +299,9 @@ the queue to empty before it ends, with or without a crash.
 `scripts/install.sh` asks for the grant once per install: it launches the
 installed app through `open -n -W ... --args request-screen-recording`, so
 macOS asks on behalf of the agent rather than the terminal. That command calls
-`CGRequestScreenCaptureAccess` and opens the Screen Recording settings pane.
-Turn on Computer History Agent there. The agent never trusts
+`CGRequestScreenCaptureAccess` and, unless that reports the grant held, opens
+the Screen Recording settings pane. Turn on Computer History Agent there.
+That answer only decides whether the pane opens. The agent never trusts
 `CGPreflightScreenCaptureAccess`, which can stay stale for the life of the
 process: a picture taken is the evidence the grant is held, and a
 `no-permission` record is the evidence it is missing. Until it is granted,
@@ -310,14 +311,16 @@ When a screenshot comes back `no-permission`, the agent posts one notification
 whose click opens the settings pane, trying
 `x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture`
 first and `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
-if that does not open. While the grant stays missing it posts again at most
-once every 24 hours. The time of the last one is kept in
-`screen-recording-reminded` in the folder, so a restart keeps the 24 hours;
-any picture taken (`kept` or `duplicate`) deletes that file, so a later loss
-reminds at once. The first reminder asks macOS to allow the agent's
-notifications. If they are turned off, or the agent is not running from its
-app bundle, nothing is posted, the agent logs it once per run, and `status` is
-the only warning.
+if that does not open. While the grant stays missing it tries again at most
+once every 24 hours, or at once if the clock was set back by more than that.
+The time of the last notification actually posted is kept in
+`screen-recording-reminded` in the folder, so a restart keeps the 24 hours; a
+try that posted nothing (macOS still asking to allow notifications, a
+notification centre that did not answer within 2 seconds, notifications turned
+off, or the agent not running from its app bundle) waits the 24 hours only
+within that run, and a restart tries again. Any picture taken (`kept` or
+`duplicate`) deletes the file, and a later loss reminds at once. With
+notifications off, `status` is the only warning.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
@@ -396,10 +399,12 @@ write, 1 screenshot records failed to write, 1 text recognitions failed (last:
 <error>)` appended when writes or recognitions fail (each part only when its
 count is not zero). `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
-changing and ending. `screen recording missing, posted a reminder` (or
-`asked macOS to allow notifications for the reminder`) marks a reminder, and
-`screen recording missing, notifications unavailable (<reason>), status is the
-only warning` a reminder that could not be posted, once per run. The log never holds window titles or text. After a crash,
+changing and ending. Each reminder try logs one of `screen recording missing,
+posted a reminder`, `..., asked macOS to allow notifications for the
+reminder`, `..., the notification centre did not answer within 2s`, or, once
+per run, `..., notifications unavailable (<reason>), status is the only
+warning`. `could not save the reminder time to <path> (<error>), a restart may
+remind again` appears at most once per run. The log never holds window titles or text. After a crash,
 start also logs `spool finished leftover file <name>`.
 
 ## Spool
