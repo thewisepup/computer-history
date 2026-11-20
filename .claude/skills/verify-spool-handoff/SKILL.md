@@ -38,7 +38,7 @@ not touch it.
 ## Run
 
 ```bash
-formal/check.sh              # all configs, about 20 minutes on 18 cores (one_ingest about 1)
+formal/check.sh              # all configs, about 6 minutes on 18 cores (one_ingest under 1)
 formal/check.sh one_ingest   # one config
 ```
 
@@ -62,6 +62,12 @@ ingest that has stored it for both streams, and only if both reads saw the
 same file (the model's `gen`, the code's device, inode, size and mtime).
 Without that gate, one stream's removal loses the other stream's records in
 `one_ingest`.
+
+Two reductions keep the run short without narrowing what is checked: `VIEW
+ReadView` treats an idle ingest's read variables as absent (every read sets
+them all before anything uses them), and the two-ingest configs declare
+`SYMMETRY IngestSymmetry`, since the ingests are interchangeable and neither
+invariant names one.
 
 ## Read a result with /statechart
 

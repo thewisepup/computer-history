@@ -15,7 +15,7 @@
 (* bytes do not matter to the property. A file's generation stands for what *)
 (* read_file tells it apart by (device, inode, size, mtime).                *)
 
-EXTENDS Naturals, FiniteSets, Sequences
+EXTENDS Naturals, FiniteSets, Sequences, TLC
 
 CONSTANTS
     Records,          \* record ids the agent will try to capture
@@ -289,6 +289,21 @@ Next ==
     \/ Done
 
 Spec == Init /\ [][Next]_vars
+
+-----------------------------------------------------------------------------
+(* State-space reductions for TLC *)
+
+(* An idle ingest's read variables are stale: IngestReads sets them all    *)
+(* before anything reads them, so states that differ only there are one.   *)
+ReadView ==
+    <<agentVars, folderVars, pc, listed, stored, ingestCrashes, db,
+      [i \in Ingests |-> IF pc[i] = "idle" THEN << >>
+                         ELSE <<readStream[i], readPath[i], readGen[i], readRecs[i],
+                                readGone[i], readUnusable[i]>>]>>
+
+(* The ingest processes are interchangeable, and NoLoss and TypeOK do not   *)
+(* name one.                                                                *)
+IngestSymmetry == Permutations(Ingests)
 
 -----------------------------------------------------------------------------
 (* Properties *)
