@@ -10,7 +10,7 @@ from urllib.parse import quote
 import pytest
 from live_data_guard import GUARDED_ENV_VARS, LIVE_DATA_DIR, LiveDataTouched
 
-from computer_history.sources.ax_text.paths import SPOOL_ENV_VAR
+from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR
 from computer_history.store import DB_ENV_VAR, connect, default_db_path
 from computer_history.store import db as store_db
 from computer_history.store.paths import resolve_db_path
