@@ -178,8 +178,10 @@ def test_the_fixture_stores_every_screenshot_record_verbatim_with_its_signal(
             {"capture_id": f"{capture}4", "status": "no-permission"},
         ),
     ]
-    assert get_progress(conn, SCREENSHOT_SOURCE).position == utc_iso(newest)
-    assert get_progress(conn, SCREENSHOT_SOURCE).settled_until == newest
+    progress = get_progress(conn, SCREENSHOT_SOURCE)
+    assert progress is not None
+    assert progress.position == utc_iso(newest)
+    assert progress.settled_until == newest
     assert not spooled.exists()
 
 
@@ -343,8 +345,11 @@ def test_screenshot_records_never_move_the_window_text_progress(
 
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    assert get_progress(conn, WINDOW_TEXT_SOURCE).position == utc_iso(capture["captured_at"])
-    assert get_progress(conn, SCREENSHOT_SOURCE).position == utc_iso(T0 + timedelta(minutes=9))
+    window_text = get_progress(conn, WINDOW_TEXT_SOURCE)
+    screenshots = get_progress(conn, SCREENSHOT_SOURCE)
+    assert window_text is not None and screenshots is not None
+    assert window_text.position == utc_iso(capture["captured_at"])
+    assert screenshots.position == utc_iso(T0 + timedelta(minutes=9))
 
 
 def test_the_spool_backlog_names_its_newest_capture_agent_record_not_a_screenshot(
