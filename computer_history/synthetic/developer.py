@@ -85,7 +85,7 @@ DEVELOPER = Persona(
         "{project} release checklist: tests, ruff, changelog.",
     ),
     rhythm=Rhythm(breaks_every_minutes=16, break_minutes=(3, 6)),
-    switch_seconds=7.0,
+    switch_seconds=11.0,
     interruptions=("Slack",),
     meeting_app="zoom.us",
 )
