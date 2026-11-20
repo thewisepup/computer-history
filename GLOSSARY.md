@@ -11,19 +11,35 @@ A system outside the backend that reports activity: ActivityWatch or the capture
 _Avoid_: Provider, integration, watcher
 
 **Stream**:
-One kind of activity a source reports, such as focused windows, AFK state, browser tabs or window text.
+One kind of activity a source reports, such as focused windows, AFK state, browser tabs, window text or screenshots.
 _Avoid_: Bucket, feed, source (for this meaning)
 
 **Capture agent**:
-The program on the Mac that reads the focused window's text and leaves it in the spool. It observes and writes; it never interprets.
+The program on the Mac that reads the focused window's text and takes its screenshot, leaving what it read in the spool. It observes and writes; it never interprets.
 _Avoid_: Recorder, daemon, tracker
 
 **Capture**:
 One reading of the focused window at a single instant, taken by the capture agent. It has no duration.
 _Avoid_: Snapshot, sample, event
 
+**Window text**:
+The text the capture agent reads from the focused window through Accessibility.
+_Avoid_: AX text, content
+
+**Screenshot**:
+An image of the focused window taken by the capture agent. It never leaves the Mac.
+_Avoid_: Frame, screen grab, snapshot
+
+**Screenshot record**:
+The spool record that says what became of a capture's screenshot: kept, a duplicate of one kept earlier, or not taken and why, with its recognized text.
+_Avoid_: Frame record, image event
+
+**Recognized text**:
+The text read out of a screenshot by on-device text recognition.
+_Avoid_: OCR text, image text
+
 **Spool record**:
-One entry the capture agent leaves in the spool: a capture, an exclusion, a pause or a resume.
+One entry the capture agent leaves in the spool: a capture, a screenshot record, an exclusion, a pause or a resume.
 _Avoid_: Event, entry, line
 
 **Exclusion**:

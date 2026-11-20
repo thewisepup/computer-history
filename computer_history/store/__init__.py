@@ -30,6 +30,14 @@ from computer_history.store.observations import InsertResult, Observation, inser
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
+from computer_history.store.screenshots import (
+    SCREENSHOT_STATUS_INDEX,
+    NewestScreenshot,
+    StatusTotal,
+    first_screenshot_at,
+    newest_screenshot,
+    screenshot_totals,
+)
 from computer_history.store.signals import (
     Projector,
     RebuildAborted,
@@ -59,6 +67,7 @@ from computer_history.store.timefmt import to_utc, utc_iso
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
+    "SCREENSHOT_STATUS_INDEX",
     "MIN_GAP_SECONDS",
     "STATUS_WINDOW",
     "Coverage",
@@ -66,6 +75,7 @@ __all__ = [
     "Gap",
     "InsertResult",
     "Migration",
+    "NewestScreenshot",
     "Observation",
     "OpenedStore",
     "PayloadValues",
@@ -78,6 +88,7 @@ __all__ = [
     "Signal",
     "SourceCoverage",
     "SourceSummary",
+    "StatusTotal",
     "SqliteBuild",
     "StatusReads",
     "StoreState",
@@ -87,16 +98,19 @@ __all__ = [
     "content_digest",
     "default_db_path",
     "find_gaps",
+    "first_screenshot_at",
     "get_progress",
     "insert_observations",
     "latest_payload_value",
     "load_migrations",
     "migrate",
+    "newest_screenshot",
     "open_store",
     "page_counts",
     "payload_values",
     "rebuild_signals",
     "resolve_db_path",
+    "screenshot_totals",
     "scanned_tables",
     "schema_version",
     "supported_version",

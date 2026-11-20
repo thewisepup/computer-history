@@ -109,6 +109,104 @@ func aScriptThatCannotBePlayedIsRefused(json: String, problem: String) throws {
     }
 }
 
+let signIn = """
+{
+  "start": "2026-11-18T09:00:00.000Z",
+  "apps": {
+    "site": {"name": "Site", "focused_window": "login", "windows": {
+      "login": {"role": "AXWindow", "title": "Sign in", "recognized_text": "Sign in\\nPassword", "children": [
+        {"role": "AXSecureTextField", "id": "password"}
+      ]},
+      "home": {"role": "AXWindow", "title": "Home"}
+    }}
+  },
+  "steps": [
+    {"at": 0, "focus": "site"},
+    {"at": 1, "focus_element": {"app": "site", "window": "login", "element": "password"}},
+    {"at": 2, "window_image": "no-permission"},
+    {"at": 3, "window_image": "failed"},
+    {"at": 4, "focus_element": {"app": "site"}},
+    {"at": 5, "window_image": "picture"},
+    {"at": 6, "end": true}
+  ]
+}
+"""
+
+private func picture(_ mac: ScriptedMac) -> String {
+    let window = FocusedWindow(processIdentifier: mac.focused!.processIdentifier, title: nil, frame: .zero)
+    return switch mac.focusedWindowImage(window, longEdge: 1440) {
+    case .image: "picture"
+    case .noPermission: "no-permission"
+    case .failed: "failed"
+    }
+}
+
+@Test func aScriptFocusesAPasswordFieldAndSetsWhatTheWindowPictureGives() throws {
+    let mac = ScriptedMac()
+    var player = try ScriptPlayer(try script(signIn), mac: mac, pause: PauseSwitch(file: scratchFolder()))
+    _ = try player.play(upTo: 0)
+    let app = mac.applicationElement(mac.focused!.processIdentifier)
+    #expect(focusedField(in: app) == .other)
+    #expect(picture(mac) == "picture")
+    _ = try player.play(upTo: 1)
+    #expect(focusedField(in: app) == .password)
+    _ = try player.play(upTo: 2)
+    #expect(picture(mac) == "no-permission")
+    _ = try player.play(upTo: 3)
+    #expect(picture(mac) == "failed")
+    _ = try player.play(upTo: 4)
+    #expect(focusedField(in: app) == .other)
+    #expect(picture(mac) == "failed")
+    _ = try player.play(upTo: 5)
+    #expect(picture(mac) == "picture")
+}
+
+@Test func eachSavedPictureIsRecognizedAsTheScriptedTextOfTheWindowItShows() throws {
+    let mac = ScriptedMac()
+    let folder = scratchFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let json = signIn.replacingOccurrences(
+        of: #"{"at": 1, "focus_element""#, with: #"{"at": 0.5, "focus_window": {"app": "site", "window": "home"}}, {"at": 1, "focus_element""#
+    )
+    var player = try ScriptPlayer(try script(json), mac: mac, pause: PauseSwitch(file: scratchFolder()))
+    let images = ScriptedImageStore(
+        images: JPEGImageStore(folder: folder, longEdge: 64, quality: 60), mac: mac, texts: player.recognizedTexts
+    )
+    let image = fixtureImage(width: 64, height: 40)
+    _ = try player.play(upTo: 0)
+    let login = try images.save(image, id: UUID(), at: mac.now())
+    _ = try player.play(upTo: 0.5)
+    let home = try images.save(image, id: UUID(), at: mac.now())
+    #expect(images.recognizedText(inImageAt: login.file) == "Sign in\nPassword")
+    #expect(images.recognizedText(inImageAt: home.file) == "")
+    #expect(images.recognizedText(inImageAt: folder.appendingPathComponent("never-saved.jpg")) == "")
+}
+
+@Test(arguments: [
+    (#"{"at": 0, "focus_element": {"app": "site", "window": "login", "element": "nope"}}"#, "no element nope in site/login"),
+    (#"{"at": 0, "focus_element": {"app": "site", "window": "login"}}"#, "focus_element needs both window and element, or neither"),
+    (#"{"at": 0, "focus_element": {"app": "nope"}}"#, "no app nope"),
+])
+func aFocusElementStepThatNamesNoElementIsRefused(step: String, problem: String) throws {
+    let json = signIn.replacingOccurrences(of: #"{"at": 0, "focus": "site"},"#, with: step + ",")
+    #expect(throws: ScriptError(description: problem)) {
+        try ScriptPlayer(try script(json), mac: ScriptedMac(), pause: PauseSwitch(file: scratchFolder()))
+    }
+}
+
+@Test func aScriptWithAnUnknownWindowImageOrARepeatedElementIDIsRefused() throws {
+    #expect(throws: DecodingError.self) {
+        try script(signIn.replacingOccurrences(of: #""window_image": "failed""#, with: #""window_image": "blank""#))
+    }
+    let twice = signIn.replacingOccurrences(
+        of: #"{"role": "AXSecureTextField", "id": "password"}"#,
+        with: #"{"role": "AXSecureTextField", "id": "password"}, {"role": "AXGroup", "children": [{"role": "AXStaticText", "id": "password"}]}"#
+    )
+    #expect(throws: ScriptError(description: "site/login has two elements with id password")) {
+        try ScriptPlayer(try script(twice), mac: ScriptedMac(), pause: PauseSwitch(file: scratchFolder()))
+    }
+}
+
 @Test func theCommittedSessionScriptsLoad() throws {
     let folder = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

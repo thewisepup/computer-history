@@ -16,12 +16,12 @@ from computer_history.sources.activitywatch import (
     stored_afk_spans,
     stored_app_spans,
 )
-from computer_history.sources.ax_text import (
+from computer_history.sources.capture_spool import (
     APP_TOLERANCE,
-    AX_TEXT_SOURCE,
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    WINDOW_TEXT_SOURCE,
     AppAgreement,
     Coverage,
     DayCounts,
@@ -66,8 +66,8 @@ def capture_health(
     now: datetime,
     window: timedelta,
     hostname: str,
+    day_start: datetime,
     min_gap_seconds: float = 0,
-    day_start: datetime | None = None,
 ) -> CaptureHealth:
     """Report on the agent from its stored records, its spool, aw-afk and aw-window, as of now.
 
@@ -78,7 +78,7 @@ def capture_health(
         spool, spool_error = spool_backlog(spool_folder), None
     except SpoolError as exc:
         spool, spool_error = None, str(exc)
-    summary = next((s for s in summaries if s.source == AX_TEXT_SOURCE), None)
+    summary = next((s for s in summaries if s.source == WINDOW_TEXT_SOURCE), None)
     stored = newest_stored(conn, until=now)
     if summary is None or summary.earliest_started_at is None or stored is None:
         return CaptureHealth(False, spool, spool_error)
@@ -87,8 +87,6 @@ def capture_health(
     newest = unstored if unstored is not None and unstored[0] > stored[0] else stored
     end = stored[0] if spool is None or spool.unstored else now
     start = max(end - window, summary.earliest_started_at)
-    if day_start is None:
-        day_start = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     day_start = to_utc(day_start)
     read_from = min(start - CAPTURE_TOLERANCE, day_start)
 

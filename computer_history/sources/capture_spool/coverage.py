@@ -4,8 +4,8 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from computer_history.sources.ax_text.record import PAUSED_KIND
-from computer_history.sources.ax_text.stored import StoredRecord
+from computer_history.sources.capture_spool.record import PAUSED_KIND
+from computer_history.sources.capture_spool.window_text import StoredRecord
 from computer_history.store import Gap
 
 HEARTBEAT_SECONDS = 30

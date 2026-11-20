@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from computer_history.cli.db import db_busy_hint, store_unavailable
-from computer_history.cli.sources import source_failed
+from computer_history.cli.sources import source_failed, unavailable_on
 from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
     ActivityWatch,
@@ -97,6 +97,8 @@ def _rejected(outcome: IngestOutcome, separator: str) -> str:
 
 
 def _on(failure: StreamFailure) -> str:
+    if failure.kind is FailureKind.SOURCE:
+        return unavailable_on(failure.stream)
     return f" on {failure.stream}" if failure.stream else ""
 
 

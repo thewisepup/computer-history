@@ -14,7 +14,13 @@ from types import MappingProxyType
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import AX_TEXT_SOURCE, capture_health, reproject_signals
+from computer_history.sources import (
+    SCREENSHOT_SOURCE,
+    WINDOW_TEXT_SOURCE,
+    capture_health,
+    reproject_signals,
+    screenshot_health,
+)
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -121,8 +127,8 @@ def _rebuild_signals(dataset: GateDataset, folder: Path) -> Session:
 
 def _status_reads(dataset: GateDataset, folder: Path) -> Session:
     conn = open_cached(dataset.entry)
-
-    return Session(conn, lambda: status_reads(conn, source_summary(conn), skip={AX_TEXT_SOURCE}))
+    skip = {SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE}
+    return Session(conn, lambda: status_reads(conn, source_summary(conn), skip=skip))
 
 
 def _capture_health(dataset: GateDataset, folder: Path) -> Session:
@@ -148,6 +154,13 @@ def _capture_health(dataset: GateDataset, folder: Path) -> Session:
     )
 
 
+def _screenshot_health(dataset: GateDataset, folder: Path) -> Session:
+    conn = open_cached(dataset.entry)
+    zone = ZoneInfo(dataset.inputs.timezone)
+    day_start = local_midnight(dataset.now.astimezone(zone).date(), zone)
+    return Session(conn, lambda: screenshot_health(conn, day_start=day_start, now=dataset.now))
+
+
 OPERATIONS: Mapping[str, Operation] = MappingProxyType(
     {
         operation.name: operation
@@ -156,6 +169,7 @@ OPERATIONS: Mapping[str, Operation] = MappingProxyType(
             Operation("rebuild-signals", _rebuild_signals, writes=True),
             Operation("status-reads", _status_reads, windowed=True),
             Operation("capture-health", _capture_health, windowed=True),
+            Operation("screenshot-health", _screenshot_health, windowed=True),
         )
     }
 )

@@ -25,8 +25,11 @@ summaries.
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
   MCP until M6 replaces it; `README.md` is its API reference.
-- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest);
-  `.claude/skills/verify-spool-handoff` says when to run `formal/check.sh`.
+- `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest).
+  `formal/check.sh` is run by hand only, and agents never run it on their own.
+  When a diff touches the handoff files listed in
+  `.claude/skills/verify-spool-handoff`, say so in the PR under "Not proven
+  here" and leave the run to Brandon, who runs it by hand or asks for it.
 - `scripts/mutate.sh` — mutation testing of `computer_history/` with a kill
   matrix of which tests catch which bugs; `.claude/skills/mutation-audit`
   says when to run it and which tests to keep.

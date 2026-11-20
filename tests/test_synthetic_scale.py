@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 import pytest
 from store_answers import local_days, stored_days, stored_gaps, stored_totals
 
-from computer_history.sources import AFK_SOURCE, AX_TEXT_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources import (
+    AFK_SOURCE,
+    SCREENSHOT_SOURCE,
+    WEB_SOURCE,
+    WINDOW_SOURCE,
+    WINDOW_TEXT_SOURCE,
+)
 from computer_history.store import connect, source_summary
 from computer_history.synthetic import (
     HEAVY,
@@ -32,7 +38,7 @@ from computer_history.synthetic.seeds import part_random
 from computer_history.text import extract_domain
 
 TARGET_EVENTS = 5000
-TARGET_MIX = {WINDOW_SOURCE: 0.53, WEB_SOURCE: 0.36, AX_TEXT_SOURCE: 0.12, AFK_SOURCE: 0.01}
+TARGET_MIX = {WINDOW_SOURCE: 0.53, WEB_SOURCE: 0.36, WINDOW_TEXT_SOURCE: 0.12, AFK_SOURCE: 0.01}
 ACTIVITYWATCH = (WINDOW_SOURCE, WEB_SOURCE, AFK_SOURCE)
 SEEDS = range(1, 6)
 MONDAY = date(2026, 1, 5)
@@ -61,9 +67,14 @@ def test_each_tier_covers_its_number_of_local_days(tier: str, days: int) -> None
     assert covered == [_day(offset) for offset in range(days)]
 
 
-def test_the_developer_day_makes_about_5000_events() -> None:
-    first = sum(rendered_counts(developer_day(1)).values())
-    typical = mean(sum(rendered_counts(developer_day(seed)).values()) for seed in range(1, 11))
+def _events(inputs: DatasetInputs) -> int:
+    counts = rendered_counts(inputs)
+    return sum(counts.values()) - counts[SCREENSHOT_SOURCE]
+
+
+def test_the_developer_day_makes_about_5000_events_besides_its_screenshots() -> None:
+    first = _events(developer_day(1))
+    typical = mean(_events(developer_day(seed)) for seed in range(1, 11))
 
     assert abs(first / TARGET_EVENTS - 1) <= 0.15, first
     assert abs(typical / TARGET_EVENTS - 1) <= 0.15, typical
@@ -217,8 +228,8 @@ def test_the_messy_scenario_builds_for_every_persona_and_matches_its_manifest(
     assert gaps == dataset.manifest.unobserved
     assert sorted(gap.kind for gap in explained) == ["excluded", "paused"]
     for gap in explained:
-        assert not [g for g in gaps[AX_TEXT_SOURCE] if g.start < gap.end and gap.start < g.end]
-    for gap in gaps[AX_TEXT_SOURCE]:
+        assert not [g for g in gaps[WINDOW_TEXT_SOURCE] if g.start < gap.end and gap.start < g.end]
+    for gap in gaps[WINDOW_TEXT_SOURCE]:
         assert any(not s.afk and s.start <= gap.start and gap.end <= s.end for s in afk)
 
 
@@ -254,7 +265,13 @@ AFTER_MIDNIGHT = Totals(
     afk_seconds=0.0,
 )
 
-AROUND_MIDNIGHT_COUNTS = {"aw-afk": 1, "aw-web": 1, "aw-window": 2, "ax-text": 50}
+AROUND_MIDNIGHT_COUNTS = {
+    "aw-afk": 1,
+    "aw-web": 1,
+    "aw-window": 2,
+    "ax-text": 50,
+    "screenshot": 50,
+}
 
 
 def test_a_session_across_local_midnight_splits_between_the_two_days(tmp_path: Path) -> None:

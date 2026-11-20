@@ -9,11 +9,11 @@ from datetime import datetime, timedelta
 
 from computer_history.sources import (
     AFK_SOURCE,
-    AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
     EXCLUDED_KIND,
     PAUSED_KIND,
     WINDOW_SOURCE,
+    WINDOW_TEXT_SOURCE,
 )
 from computer_history.store import Gap
 from computer_history.synthetic.afk import ReportedAfk
@@ -46,7 +46,7 @@ def unobserved(
     present = [(span.start, span.end) for span in afk if not span.afk]
     return {
         AFK_SOURCE: _gaps(outside([(s.start, s.end) for s in afk], timeline.start, timeline.end)),
-        AX_TEXT_SOURCE: _gaps(intersect(_missed_by_agent(timeline, records), present)),
+        WINDOW_TEXT_SOURCE: _gaps(intersect(_missed_by_agent(timeline, records), present)),
         WINDOW_SOURCE: _gaps(outside(window, timeline.start, timeline.end)),
     }
 

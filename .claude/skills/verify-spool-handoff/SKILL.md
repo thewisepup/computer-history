@@ -1,6 +1,6 @@
 ---
 name: verify-spool-handoff
-description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. Use when a change touches SpoolWriter.swift, the ax_text spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch), or when asked whether spool records can be lost.
+description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. The check is manual only, and agents never run it on their own. Use when a change touches SpoolWriter.swift, the capture_spool spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch): say so in the PR under "Not proven here" and leave the run to Brandon. Run it only when Brandon asks, or when he asks whether spool records can be lost.
 ---
 
 # Verify the spool handoff
@@ -18,7 +18,11 @@ the bounds in the configs.
 
 ## Does your change touch it?
 
-Rerun the check if the diff touches any of these files:
+The check is manual only, so it never slows ordinary work. Agents do not run
+`formal/check.sh` on their own. If the diff touches any of these files, say so
+in the PR under "Not proven here": name the files and say the spool handoff
+model check has not been run on them. Then leave the run to Brandon, who runs
+it by hand or asks for it.
 
 | Code | Model action |
 |---|---|
@@ -26,10 +30,10 @@ Rerun the check if the diff touches any of these files:
 | `SpoolWriter.append`, `dropUnfinishedLine` | `AgentAppends` (torn lines never count as records) |
 | `SpoolWriter.finishLocked` (stamp `max(now, lastFinished+1)`, `renamex_np` with `RENAME_EXCL`) | `AgentFinishes` |
 | process crash or kill; launchd restart | `AgentCrashes` |
-| `computer_history/sources/ax_text/spool.py`: `finished_files` | `IngestLists` |
-| `ax_text/adapter.py`: `CaptureSpool.pull_after` (the `_listed` deque, `read_lines`, `FileNotFoundError` -> `_gone`) | `IngestLists`, `IngestReads` |
+| `computer_history/sources/capture_spool/spool.py`: `finished_files` | `IngestLists` |
+| `capture_spool/adapter.py`: `CaptureSpool.pull_after` (one `_listed` deque per stream, `_forget_all_but`, `read_file` and the file identity it returns, each stream keeping only its own records, `FileNotFoundError` -> `_drop`) | `IngestLists`, `IngestReads` |
 | `sources/commit.py`: `commit_pull` (insert, then `after_commit`); `store/observations.py`: `insert_observations` (one transaction, `ON CONFLICT DO NOTHING`) | `IngestCommits`, then `IngestFinishes` |
-| `CaptureSpool._done`, `spool.remove_finished` (unlink by name), `spool.set_aside` (`os.link` then unlink) | `IngestFinishes`, `IngestUnlinksAside` |
+| `CaptureSpool._stored_by` (mark the stream stored that file; finish only once every stream stored the same file), `_finish`, `spool.remove_finished` (unlink by name), `spool.set_aside` (`os.link` then unlink) | `IngestFinishes`, `IngestUnlinksAside` |
 | `sources/runner.py`: `poll`, `watch` (the same `CaptureSpool`, and its `_listed`, across cycles); `cli/ingest.py` (no lock between ingest processes) | `Ingests` constant, `IngestCrashes` |
 
 Changes to record parsing, normalization, coverage, status or ActivityWatch do
@@ -37,10 +41,24 @@ not touch it.
 
 ## Run
 
+Brandon runs these by hand, or asks an agent to:
+
 ```bash
-formal/check.sh              # all configs, about 10 seconds
-formal/check.sh one_ingest   # one config
+formal/check.sh              # one_ingest and two_ingests, about 2 minutes on 18 cores
+formal/check.sh --all        # every config, two_ingests_steady_clock too, about 6 minutes
+formal/check.sh one_ingest   # one config, by name (an on-request config runs when named)
 ```
+
+`two_ingests_steady_clock` runs only on request, because it alone takes about
+4 minutes. It is the only config that shows two ingests running at once lose
+nothing while the clock moves forward; `two_ingests` fails on the known
+finding before it can show that. It matters (`--all`) when a change touches
+how two ingest processes can interleave: the both-streams gate
+(`CaptureSpool._stored_by`, `_forget_all_but`), removing or setting aside a
+file, listing, `commit_pull`, `insert_observations`, `poll`/`watch`, or
+`cli/ingest.py`. When a PR touches those, say in "Not proven here" that the
+steady-clock config is the one to run. It is also run before the coverage
+record moves forward.
 
 The first run downloads TLC 1.7.4 and a Temurin 21 JRE, pinned by SHA-256, into
 `~/.cache/computer-history/tla/`. Set `JAVA` to use another Java 11+. TLC's
@@ -52,9 +70,22 @@ The script exits 0 only when every config gives its expected result:
 
 | Config | Situation | Expected |
 |---|---|---|
-| `one_ingest` | 3 records, 1 ingest process, agent crashes up to 2, ingest crash 1, clock may be set back | pass |
-| `two_ingests_steady_clock` | 2 records, 2 concurrent ingests, clock only moves forward | pass |
-| `two_ingests` | 2 records, 2 concurrent ingests, clock may be set back | **fail NoLoss**: the known finding below |
+| `one_ingest` | 3 records (`r2` a screenshot record), 1 ingest process, agent crashes up to 2, ingest crash 1, clock may be set back | pass |
+| `two_ingests_steady_clock` (on request, `--all`) | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock only moves forward | pass |
+| `two_ingests` | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock may be set back | **fail NoLoss**: the known finding below |
+
+Each ingest reads every file once per stream (`ax-text`, `screenshot`), and
+a stream's read keeps only its own records. A file is removed only by the
+ingest that has stored it for both streams, and only if both reads saw the
+same file (the model's `gen`, the code's device, inode, size and mtime).
+Without that gate, one stream's removal loses the other stream's records in
+`one_ingest`.
+
+Two reductions keep the run short without narrowing what is checked: `VIEW
+ReadView` treats an idle ingest's read variables as absent (every read sets
+them all before anything uses them), and the two-ingest configs declare
+`SYMMETRY IngestSymmetry`, since the ingests are interchangeable and neither
+invariant names one.
 
 ## Read a result with /statechart
 
@@ -87,8 +118,9 @@ When a config gives an unexpected result:
 
 ## Update the model for an intended change
 
-Mirror the code change in the matching action, rerun, and read the result as
-above. When a config's expected result legitimately changes (for example, a
+Mirror the code change in the matching action. The run is still Brandon's:
+say in the PR that the model changed and has not been rerun, and read the
+result as above once it is run. When a config's expected result legitimately changes (for example, a
 fix for the known finding makes `two_ingests` pass), update `expect()` in
 `formal/check.sh` and the table here. If the change adds a new step that can
 interleave (a new syscall on the spool, a second transaction), it needs its
@@ -103,13 +135,14 @@ that neither of them read:
    another record to `open.part`, and crashes.
 2. The wall clock is set back to the old file's millisecond.
 3. Ingest A (say `ingest --watch`) and ingest B (a one-off `ingest`) both list
-   and read that file.
-4. A commits it and unlinks it. The spool folder is now empty.
+   and read that file, for both streams.
+4. A commits it for both streams and unlinks it. The spool folder is now empty.
 5. launchd restarts the agent. `startIfNeeded` finds no finished names, so
    `lastFinished` is 0. Finishing the leftover `open.part` picks
    `max(now, 1)`, which is the same name, and `RENAME_EXCL` allows it because
    the name is free.
-6. B commits what it read earlier (a duplicate) and then calls
+6. B commits what it read earlier (a duplicate), now for both streams of the
+   old file, and then calls
    `remove_finished` on the name. That deletes the agent's new file, which
    nobody read. With an unusable line, `set_aside` moves it to `unreadable/`
    instead.
@@ -129,9 +162,12 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
   modeled, in which the OS keeps written bytes.
 - Torn lines. The model trusts `dropUnfinishedLine` to strip a torn tail
   before every append and rename. A torn line is never an acked record.
-- A file that cannot be read (`OSError` other than missing) is set aside
-  without being stored. That is by design and not modeled. So are
-  `SpoolError` on unlink (`_stuck`) and folder permission changes.
+- A read that fails (`OSError` other than missing) is not modeled. In the
+  code (`_unreadable_by`) the file stays for the failing stream to retry while
+  any stream has stored it or any stream has yet to fail on it; only a file
+  every stream failed to read in one process is set aside unstored, by
+  design, which `NoLoss` would count as a loss. Also not modeled: `SpoolError`
+  on unlink (`_stuck`) and folder permission changes.
 - Directory listings and the agent's folder scan are treated as atomic
   snapshots.
 - Order and duplication are not checked. Duplicates are impossible because of
@@ -143,20 +179,28 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
 - Assumption: a restart takes longer than file names ever run ahead of the
   clock. Names run ahead only when two finishes fall in one millisecond, and
   launchd restarts take seconds.
+- Assumption: a later file under a name never has the same device, inode,
+  size and mtime (nanoseconds) as the file it replaced; the model gives each
+  finished file a new generation.
+- Which records are screenshot records is fixed per config (`Screenshots`),
+  not chosen as the agent appends: choosing it multiplied the state space
+  past what a check run can cover. Files holding both kinds, and files of one
+  kind alone, still arise.
 
 ## Coverage record
 
-Last confirmed that the model describes the code at commit `d6495bf`. Files:
+Last confirmed that the model describes the code at commit `db73dda`, with every config (`formal/check.sh --all`); `one_ingest` and `two_ingests` were run again at `9743bad`, with the model and these files unchanged. Files:
 `capture-agent/Sources/CaptureAgent/SpoolWriter.swift`,
-`computer_history/sources/ax_text/adapter.py`,
-`computer_history/sources/ax_text/spool.py`,
+`computer_history/sources/capture_spool/adapter.py`,
+`computer_history/sources/capture_spool/spool.py`,
 `computer_history/sources/commit.py`, `computer_history/store/observations.py`,
 `computer_history/sources/runner.py`, `computer_history/cli/ingest.py`.
 
 ```bash
-git diff --stat d6495bf -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/ax_text/adapter.py computer_history/sources/ax_text/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
+git diff --stat db73dda -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
 ```
 
 If that shows changes, re-read them against the table above. Move the commit
 in this section forward only after you have confirmed that the model describes
-the code at the new commit, and the check gives its expected results there.
+the code at the new commit, and a run of `formal/check.sh --all` (by Brandon, or
+at his request) gives its expected results there.

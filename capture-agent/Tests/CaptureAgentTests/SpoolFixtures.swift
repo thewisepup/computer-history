@@ -8,7 +8,7 @@ func utc(_ iso: String) -> Date {
 }
 
 func fixtureID(_ n: Int) -> UUID {
-    UUID(uuidString: "6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e0\(n)")!
+    UUID(uuidString: String(format: "6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e%02d", n))!
 }
 
 let fixtureRecords: [SpoolRecord] = [
@@ -39,6 +39,29 @@ let fixtureRecords: [SpoolRecord] = [
     ),
     .paused(id: fixtureID(6), at: utc("2026-11-18T09:03:00.000Z")),
     .resumed(id: fixtureID(7), at: utc("2026-11-18T09:15:42.999Z")),
+]
+
+let earlierCapture = SpoolRecord.capture(
+    id: fixtureID(0), at: utc("2026-11-18T08:59:58.000Z"), trigger: .app, appName: "Safari",
+    bundleID: "com.apple.Safari", windowTitle: "Sign In – Apple Account", text: "", fullTextBytes: 0,
+    timedOut: false
+)
+
+let fixtureScreenshots: [ScreenshotRecord] = [
+    .secureField(id: fixtureID(10), of: earlierCapture),
+    .kept(
+        id: fixtureID(11), of: fixtureRecords[0],
+        imagePath: "screenshots/2026-11-18/6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e11.jpg", imageBytes: 183442,
+        perceptualHash: "c3a1f0e2d4b69785", text: "def finish(path):\n    return \"done\"  # ✓ naïve",
+        fullTextBytes: 0
+    ),
+    .duplicate(
+        id: fixtureID(12), of: fixtureRecords[1],
+        imagePath: "screenshots/2026-11-17/6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e09.jpg",
+        perceptualHash: "9f8e7d6c5b4a3921", text: "Pull requests\nOpen 3 Closed 27", fullTextBytes: 61204
+    ),
+    .failed(id: fixtureID(13), of: fixtureRecords[2]),
+    .noPermission(id: fixtureID(14), of: fixtureRecords[3]),
 ]
 
 func captureRecord(text: String, fullTextBytes: Int, timedOut: Bool = false) -> SpoolRecord {

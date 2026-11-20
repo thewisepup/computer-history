@@ -25,9 +25,7 @@ public struct SpoolRecord: Equatable, Sendable {
     public let timedOut: Bool?
 
     /// The lowercase hex SHA-256 of the text as UTF-8, for records that carry text.
-    public var textSHA256: String? {
-        text.map { SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined() }
-    }
+    public var textSHA256: String? { text.map(sha256Hex) }
 
     /// Whether the text is shorter than the full text read, for records that carry text.
     public var textCutOff: Bool? {
@@ -121,4 +119,8 @@ extension SpoolRecord: Encodable {
         try line.encode(textCutOff, forKey: .textCutOff)
         try line.encode(timedOut, forKey: .timedOut)
     }
+}
+
+func sha256Hex(_ text: String) -> String {
+    SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
 }
