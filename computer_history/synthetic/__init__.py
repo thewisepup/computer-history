@@ -44,7 +44,7 @@ from computer_history.synthetic.devdb import (
     DevDatabase,
     LiveDatabaseRefused,
     OutputExists,
-    live_databases,
+    live_folders,
     make_dev_database,
 )
 from computer_history.synthetic.generate import (
@@ -88,7 +88,7 @@ __all__ = [
     "copy_dataset",
     "dataset_key",
     "generate_timeline",
-    "live_databases",
+    "live_folders",
     "make_dev_database",
     "open_cached",
     "poll_feeds",

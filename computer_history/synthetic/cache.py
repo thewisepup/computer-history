@@ -54,12 +54,13 @@ def cache_root() -> Path:
 
 
 def dataset_key(inputs: DatasetInputs, code: Path = PACKAGE) -> str:
-    """A hash of the inputs, the package's code and migrations, the schema and SQLite versions."""
+    """A hash of the inputs, package code and migrations, and schema, SQLite and Python versions."""
     digest = hashlib.sha256()
     versions = {
         "inputs": dataclasses.asdict(inputs),
         "schema": supported_version(),
         "sqlite": sqlite3.sqlite_version,
+        "python": list(sys.version_info[:2]),
     }
     digest.update(json.dumps(versions, sort_keys=True, default=str).encode())
     for path in sorted(code.rglob("*")):
@@ -71,23 +72,26 @@ def dataset_key(inputs: DatasetInputs, code: Path = PACKAGE) -> str:
     return digest.hexdigest()[:32]
 
 
-def cached_dataset(inputs: DatasetInputs, build: Build = build_dataset) -> CachedDataset:
+def cached_dataset(
+    inputs: DatasetInputs, root: Path, build: Build = build_dataset
+) -> CachedDataset:
     """The entry for the inputs, built in a temporary folder and renamed into place if missing.
 
-    When another build wins the race, this one's copy is discarded and the winner's is used.
+    A build that loses the race to another discards its copy and returns the winner's entry.
     """
-    root = cache_root()
     key = dataset_key(inputs)
     entry = root / key
-    if entry.is_dir():
+    if _complete(entry):
         return CachedDataset(key, entry, built=False)
     root.mkdir(parents=True, exist_ok=True)
+    if entry.exists():
+        _discard(entry, root / f".{key}.{uuid.uuid4().hex}.damaged")
     staging = root / f".{key}.{uuid.uuid4().hex}.partial"
     try:
         build(inputs, staging)
         staging.rename(entry)
     except OSError:
-        if not entry.is_dir():
+        if not _complete(entry):
             raise
         return CachedDataset(key, entry, built=False)
     finally:
@@ -95,8 +99,20 @@ def cached_dataset(inputs: DatasetInputs, build: Build = build_dataset) -> Cache
     return CachedDataset(key, entry, built=True)
 
 
+def _complete(entry: Path) -> bool:
+    return (entry / DATABASE_NAME).is_file() and (entry / MANIFEST_NAME).is_file()
+
+
+def _discard(entry: Path, aside: Path) -> None:
+    try:
+        entry.rename(aside)
+    except FileNotFoundError:
+        return
+    shutil.rmtree(aside, ignore_errors=True)
+
+
 def open_cached(dataset: CachedDataset) -> sqlite3.Connection:
-    """A read-only connection to the entry's database; writers copy the entry first."""
+    """Open the entry's database for reading only."""
     return connect_immutable(dataset.db_path)
 
 

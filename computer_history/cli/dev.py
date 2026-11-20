@@ -17,8 +17,8 @@ from computer_history.synthetic import (
     TIERS,
     BuildFailed,
     DatasetInputs,
-    LiveDatabaseRefused,
-    OutputExists,
+    cache_root,
+    live_folders,
     make_dev_database,
 )
 
@@ -88,12 +88,15 @@ def cmd_build_db(args: argparse.Namespace) -> int:
         print(f"dev build-db: invalid dataset inputs: {exc}", file=sys.stderr)
         return 2
     try:
-        made = make_dev_database(inputs, args.out, force=args.force)
-    except (LiveDatabaseRefused, OutputExists, NotADirectoryError) as exc:
+        made = make_dev_database(
+            inputs,
+            args.out,
+            cache=cache_root(),
+            live=live_folders(args.db_path),
+            force=args.force,
+        )
+    except (ValueError, OSError, BuildFailed) as exc:
         print(f"dev build-db refused: {exc}", file=sys.stderr)
-        return 1
-    except BuildFailed as exc:
-        print(f"dev build-db failed: {exc}", file=sys.stderr)
         return 1
     described = ", ".join(f"{name}={value}" for name, value in dataclasses.asdict(inputs).items())
     how = "built" if made.dataset.built else "reused from the cache"

@@ -223,22 +223,25 @@ their choices are whatever the synthetic package registers; `--start` and
 `--timezone` move the range. The same inputs always give the same database
 contents.
 
-It refuses, with exit code 1 and before building anything, an `--out` that is
-the live database or inside its folder: the default
-`~/Library/Application Support/ComputerHistory/` and the folder of
-`$COMPUTER_HISTORY_DB` when that is set. It refuses an `--out` that already
-holds any file it would write (`... already holds history.db, manifest.json;
-pass --force to replace them`); `--force` replaces just those, plus stale
-`-wal`/`-shm` files, and leaves the folder's other files alone.
+It refuses, with exit code 1, to write into a live folder: the default
+`~/Library/Application Support/ComputerHistory/`, the folder of
+`$COMPUTER_HISTORY_DB` or of a global `--db-path`, and `$COMPUTER_HISTORY_SPOOL`.
+Paths are compared after resolving symlinks and ignoring letter case, so
+`~/library/application support/computerhistory` is refused too. It refuses an
+`--out` that already holds any file it would write (`... already holds
+history.db, manifest.json; pass --force to replace them`); `--force` replaces
+just those, plus stale `-wal`/`-shm` files, and leaves the folder's other files
+alone.
 
 The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
 `~/Library/Caches/ComputerHistory/datasets/` on macOS (`$XDG_CACHE_HOME`, or
 `~/.cache`, then `computer-history/datasets/` elsewhere), shared by every
 worktree. An entry is keyed by the inputs, the package's code and migrations,
-the schema version and the SQLite version, so any change to ingest rebuilds
+and the schema, SQLite and Python versions, so any change to ingest rebuilds
 it. A build writes into a temporary folder beside the entry and renames it
 into place; when two builds race, the loser discards its copy. Delete the
-folder at any time: the next request rebuilds.
+folder at any time: the next request rebuilds, as it does for an entry missing
+its database or manifest.
 
 ## When the database can't be used
 

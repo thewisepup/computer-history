@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from computer_history.store import DB_ENV_VAR, default_db_path
+from computer_history.sources import resolve_spool_path
+from computer_history.store import default_db_path, resolve_db_path
+from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
 from computer_history.synthetic.generate import DatasetInputs
 
 SIDECARS = ("-wal", "-shm", "-journal")
+KNOWN_NAMES = (MANIFEST_NAME, DATABASE_NAME, *(DATABASE_NAME + suffix for suffix in SIDECARS))
 
 
 class LiveDatabaseRefused(ValueError):
-    """The output is the live database or lies in its folder."""
+    """The output would write into the live database's folder or the live spool."""
 
 
 class OutputExists(FileExistsError):
@@ -30,29 +34,35 @@ class DevDatabase:
     copied: tuple[Path, ...]
 
 
-def live_databases() -> tuple[Path, ...]:
-    """The default database location, and $COMPUTER_HISTORY_DB when it is set."""
-    configured = os.environ.get(DB_ENV_VAR)
-    found = [default_db_path(), *([Path(configured).expanduser()] if configured else [])]
-    return tuple(path.resolve() for path in found)
+def live_folders(explicit_db: str | os.PathLike[str] | None = None) -> tuple[Path, ...]:
+    """The folders of the default, configured and given databases, and the configured spool."""
+    databases = {default_db_path(), resolve_db_path(), resolve_db_path(explicit_db)}
+    folders = {db.parent for db in databases} | {resolve_spool_path(None, default_db_path())}
+    return tuple(sorted(folder.expanduser().resolve() for folder in folders))
 
 
-def make_dev_database(inputs: DatasetInputs, out: Path, *, force: bool = False) -> DevDatabase:
+def make_dev_database(
+    inputs: DatasetInputs,
+    out: Path,
+    *,
+    cache: Path,
+    live: Sequence[Path],
+    force: bool = False,
+) -> DevDatabase:
     """Build or reuse the cached dataset and copy its files into the out folder.
 
-    Refuses the live database and its folder, and files already in the way unless forced.
+    Refuses to write into a live folder, and replaces files already there only when forced.
     """
     target = out.expanduser().resolve()
-    for live in live_databases():
-        if target == live or target.is_relative_to(live.parent):
-            raise LiveDatabaseRefused(f"{out} is the live database {live} or inside its folder")
+    _refuse_live([target], live)
     if target.exists() and not target.is_dir():
         raise NotADirectoryError(f"{out} is a file, not a folder")
-    dataset = cached_dataset(inputs)
-    in_the_way = _in_the_way(dataset, target)
-    if in_the_way and not force:
-        names = ", ".join(path.name for path in in_the_way)
-        raise OutputExists(f"{out} already holds {names}; pass --force to replace them")
+    _refuse_existing(out, _in_the_way(target, KNOWN_NAMES), force)
+    dataset = cached_dataset(inputs, cache)
+    names = [*(item.name for item in sorted(dataset.folder.iterdir())), *KNOWN_NAMES]
+    _refuse_live([target / name for name in names], live)
+    in_the_way = _in_the_way(target, names)
+    _refuse_existing(out, in_the_way, force)
     for path in in_the_way:
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
@@ -61,9 +71,31 @@ def make_dev_database(inputs: DatasetInputs, out: Path, *, force: bool = False) 
     return DevDatabase(dataset, copy_dataset(dataset, target))
 
 
-def _in_the_way(dataset: CachedDataset, target: Path) -> list[Path]:
-    names = [item.name for item in sorted(dataset.folder.iterdir())]
-    names += [dataset.db_path.name + suffix for suffix in SIDECARS]
-    return [
-        target / name for name in names if (target / name).exists() or (target / name).is_symlink()
-    ]
+def _refuse_live(paths: Iterable[Path], live: Sequence[Path]) -> None:
+    for path in paths:
+        for folder in live:
+            if _within(path, folder):
+                raise LiveDatabaseRefused(
+                    f"{path} is in {folder}, which holds the live database or spool"
+                )
+
+
+def _within(path: Path, folder: Path) -> bool:
+    inner, outer = path.as_posix().casefold(), folder.as_posix().casefold()
+    if inner == outer or inner.startswith(outer.rstrip("/") + "/"):
+        return True
+    return folder.exists() and any(
+        candidate.exists() and os.path.samefile(candidate, folder)
+        for candidate in (path, *path.parents)
+    )
+
+
+def _refuse_existing(out: Path, in_the_way: Sequence[Path], force: bool) -> None:
+    if in_the_way and not force:
+        names = ", ".join(path.name for path in in_the_way)
+        raise OutputExists(f"{out} already holds {names}; pass --force to replace them")
+
+
+def _in_the_way(target: Path, names: Iterable[str]) -> list[Path]:
+    found = {target / name for name in names}
+    return sorted(path for path in found if path.exists() or path.is_symlink())

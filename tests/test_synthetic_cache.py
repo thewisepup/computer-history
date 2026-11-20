@@ -31,9 +31,9 @@ DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day
 
 
 def test_a_second_request_reuses_the_entry_without_building(dataset_cache: Path) -> None:
-    first = cached_dataset(DEVELOPER_DAY)
+    first = cached_dataset(DEVELOPER_DAY, dataset_cache)
     stamp = first.db_path.stat()
-    second = cached_dataset(DEVELOPER_DAY)
+    second = cached_dataset(DEVELOPER_DAY, dataset_cache)
 
     assert (first.built, second.built) == (True, False)
     assert second.folder == first.folder
@@ -76,11 +76,15 @@ def test_changing_a_source_file_or_migration_of_the_package_changes_the_key(
     assert len({before, after_module, after_migration}) == 3
 
 
-def test_a_newer_sqlite_changes_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_another_sqlite_or_python_changes_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     before = dataset_key(DEVELOPER_DAY)
     monkeypatch.setattr(sqlite3, "sqlite_version", "0.0.1")
+    other_sqlite = dataset_key(DEVELOPER_DAY)
+    monkeypatch.undo()
+    monkeypatch.setattr(sys, "version_info", (3, 99, 0, "final", 0))
+    other_python = dataset_key(DEVELOPER_DAY)
 
-    assert dataset_key(DEVELOPER_DAY) != before
+    assert len({before, other_sqlite, other_python}) == 3
 
 
 def test_a_build_that_loses_the_race_discards_its_copy(dataset_cache: Path) -> None:
@@ -88,10 +92,10 @@ def test_a_build_that_loses_the_race_discards_its_copy(dataset_cache: Path) -> N
 
     def build_while_a_rival_finishes_first(inputs: DatasetInputs, folder: Path) -> object:
         built = build_dataset(inputs, folder)
-        rival.append(cached_dataset(inputs))
+        rival.append(cached_dataset(inputs, dataset_cache))
         return built
 
-    loser = cached_dataset(DEVELOPER_DAY, build=build_while_a_rival_finishes_first)
+    loser = cached_dataset(DEVELOPER_DAY, dataset_cache, build=build_while_a_rival_finishes_first)
 
     assert rival[0].built and not loser.built
     assert loser.folder == rival[0].folder
@@ -112,7 +116,7 @@ def test_two_processes_building_one_key_leave_one_complete_entry(dataset_cache: 
     folders = {builder.communicate()[0].strip() for builder in builders}
 
     assert [builder.returncode for builder in builders] == [0, 0]
-    entry = cached_dataset(DEVELOPER_DAY)
+    entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     assert folders == {str(entry.folder)}
     assert _listing(dataset_cache) == [entry.key]
     _assert_complete(entry)
@@ -124,16 +128,28 @@ def test_a_failed_build_leaves_no_entry_and_the_next_request_builds(dataset_cach
         raise RuntimeError("the build was interrupted")
 
     with pytest.raises(RuntimeError, match="interrupted"):
-        cached_dataset(DEVELOPER_DAY, build=build_then_fail)
+        cached_dataset(DEVELOPER_DAY, dataset_cache, build=build_then_fail)
 
     assert _listing(dataset_cache) == []
-    entry = cached_dataset(DEVELOPER_DAY)
+    entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     assert entry.built
     _assert_complete(entry)
 
 
-def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouched() -> None:
-    entry = cached_dataset(DEVELOPER_DAY)
+def test_a_damaged_entry_is_rebuilt_instead_of_reused(dataset_cache: Path) -> None:
+    first = cached_dataset(DEVELOPER_DAY, dataset_cache)
+    first.db_path.unlink()
+    again = cached_dataset(DEVELOPER_DAY, dataset_cache)
+
+    assert again.built
+    assert _listing(dataset_cache) == [again.key]
+    _assert_complete(again)
+
+
+def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouched(
+    dataset_cache: Path,
+) -> None:
+    entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     before = _listing(entry.folder)
     conn = open_cached(entry)
     try:
@@ -146,8 +162,10 @@ def test_a_cached_database_opens_read_only_and_reading_leaves_the_entry_untouche
     assert _listing(entry.folder) == before == ["history.db", "manifest.json"]
 
 
-def test_writers_get_a_copy_and_the_entry_keeps_its_contents(tmp_path: Path) -> None:
-    entry = cached_dataset(DEVELOPER_DAY)
+def test_writers_get_a_copy_and_the_entry_keeps_its_contents(
+    tmp_path: Path, dataset_cache: Path
+) -> None:
+    entry = cached_dataset(DEVELOPER_DAY, dataset_cache)
     copied = copy_dataset(entry, tmp_path / "scratch")
     conn = connect(tmp_path / "scratch" / "history.db")
     try:
@@ -183,9 +201,9 @@ def test_the_cache_lives_in_the_environment_variable_else_the_user_cache_folder(
 
 
 BUILD_IN_A_NEW_PROCESS = """
-from computer_history.synthetic import DatasetInputs, cached_dataset
+from computer_history.synthetic import DatasetInputs, cache_root, cached_dataset
 inputs = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
-print(cached_dataset(inputs).folder)
+print(cached_dataset(inputs, cache_root()).folder)
 """
 
 

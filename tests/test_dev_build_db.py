@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from computer_history import cli
+from computer_history.sources import SPOOL_ENV_VAR
 from computer_history.store import DB_ENV_VAR, connect, content_digest
 from computer_history.synthetic import PERSONAS, SCENARIOS, TIERS
 
@@ -120,11 +121,12 @@ def test_build_db_refuses_the_default_live_database_and_its_folder(
     (live / "history.db").write_text("real history\n")
     alias = tmp_path / "alias"
     alias.symlink_to(live)
+    shouted = Path(str(live).upper())
 
-    for out in (live, live / "sub", live / "history.db", alias, alias / "sub"):
+    for out in (live, live / "sub", live / "history.db", alias, alias / "sub", shouted):
         code, _, said = build_db(capsys, *DEVELOPER_DAY, "--out", str(out), "--force")
         assert code == 1, out
-        assert "live database" in said, out
+        assert "holds the live database" in said, out
 
     assert sorted(path.name for path in live.iterdir()) == ["history.db"]
     assert (live / "history.db").read_text() == "real history\n"
@@ -147,6 +149,51 @@ def test_build_db_refuses_the_database_environment_variable_and_its_folder(
     allowed, _, _ = build_db(capsys, *DEVELOPER_DAY, "--out", str(tmp_path / "dev"))
 
     assert [code for code, _, _ in refused] == [1, 1, 1]
-    assert all(str(live / "history.db") in said for _, _, said in refused)
+    assert all(f"in {live}, which holds the live database" in said for _, _, said in refused)
     assert not live.exists()
     assert allowed == 0
+
+
+def test_build_db_refuses_the_folder_of_a_database_given_with_db_path(
+    capsys: pytest.CaptureFixture[str], home: Path, tmp_path: Path
+) -> None:
+    live = tmp_path / "data" / "history.db"
+    code = cli.main(
+        ["--db-path", str(live), "dev", "build-db", *DEVELOPER_DAY, "--out", str(live.parent)]
+    )
+
+    assert code == 1
+    assert "holds the live database" in capsys.readouterr().err
+    assert not live.parent.exists()
+
+
+def test_build_db_never_replaces_the_configured_live_spool(
+    capsys: pytest.CaptureFixture[str],
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spool = tmp_path / "data" / "spool"
+    spool.mkdir(parents=True)
+    (spool / "20260105T090000.000000Z.jsonl").write_text("waiting\n")
+    monkeypatch.setenv(SPOOL_ENV_VAR, str(spool))
+
+    inside, _, said = build_db(capsys, *DEVELOPER_DAY, "--out", str(spool / "dev"), "--force")
+
+    assert inside == 1
+    assert str(spool) in said
+    assert [path.name for path in spool.iterdir()] == ["20260105T090000.000000Z.jsonl"]
+
+
+def test_a_database_already_in_the_output_is_refused_before_anything_is_built(
+    capsys: pytest.CaptureFixture[str], home: Path, tmp_path: Path, dataset_cache: Path
+) -> None:
+    out = tmp_path / "dev"
+    out.mkdir()
+    (out / "history.db").write_text("mine\n")
+
+    code, _, said = build_db(capsys, *DEVELOPER_DAY, "--out", str(out))
+
+    assert code == 1
+    assert "already holds history.db" in said
+    assert list(dataset_cache.iterdir()) == []
