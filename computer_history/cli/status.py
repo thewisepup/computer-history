@@ -112,7 +112,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print()
         _print_agent(health, spool_path, now)
         print()
-        _print_screenshots(screenshot_health(store.conn, day_start=day_start), now)
+        _print_screenshots(screenshot_health(store.conn, day_start=day_start, now=now), now)
         print()
         _print_counts(table_counts(store.conn))
     return 0
@@ -293,12 +293,20 @@ def _print_screenshots(shots: ScreenshotHealth, now: datetime) -> None:
         f"  disk          {human_size(shots.total.image_bytes)} in total,"
         f" {human_size(shots.today.image_bytes)} today (from kept records)"
     )
-    if shots.no_permission_since is not None:
+    missing = shots.no_permission
+    if missing is None:
+        return
+    if missing.current:
         print(
             "  warning: Screen Recording permission is missing since"
-            f" {ago(shots.no_permission_since, now)} (records say no-permission, and no"
+            f" {ago(missing.since, now)} (records say no-permission, and no"
             " screenshot was taken since). Grant it in System Settings > Privacy & Security"
             " > Screen Recording."
+        )
+    else:
+        print(
+            f"  permission    last recorded missing {ago(missing.last, now)}, missing since"
+            f" {ago(missing.since, now)}; no screenshot record since says whether it is held"
         )
 
 

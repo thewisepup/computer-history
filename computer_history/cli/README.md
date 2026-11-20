@@ -177,20 +177,25 @@ runs ahead:
 - **disk**: the `image_bytes` of the `kept` records, in total and today. An
   image left without a record is not counted.
 - **warning**: printed when a `no-permission` record is newer than every
-  `kept` and `duplicate` record, with the time of the first `no-permission`
-  record after the last screenshot taken. `secure-field` and `failed` records
-  neither raise nor clear it.
+  `kept` and `duplicate` record and the newest `no-permission` record is at
+  most 5 minutes old (the window in which the capture agent counts as alive),
+  with the time of the first `no-permission` record after the last screenshot
+  taken. `secure-field` and `failed` records neither raise nor clear it.
+- **permission**: printed instead of the warning once that newest
+  `no-permission` record is older, as when screenshots were turned off or the
+  agent stopped: when the records last said the grant was missing, and since
+  when. It is information, not a warning.
 
 After the end-to-end check's scripted session, whose last two captures lost
-the grant (real output):
+the grant, run a day later so the records are old (real output):
 
 ```
 Screenshots:
-  last kept     2026-11-18 01:05 (1d 19h ago), Calculator, screenshots/2026-11-18/eb706daf-4138-4be3-aa0d-13ba3f4f63ea.jpg
+  last kept     2026-11-18 01:05 (1d 20h ago), Calculator, screenshots/2026-11-18/44261db4-595d-49ef-ae79-3b034eced225.jpg
   today         0 kept, 0 duplicate, 0 secure-field, 0 no-permission, 0 failed
   all stored    4 kept, 1 duplicate, 1 secure-field, 2 no-permission, 1 failed
   disk          299.3 KB in total, 0 B today (from kept records)
-  warning: Screen Recording permission is missing since 2026-11-18 01:07 (1d 19h ago) (records say no-permission, and no screenshot was taken since). Grant it in System Settings > Privacy & Security > Screen Recording.
+  permission    last recorded missing 2026-11-18 01:09 (1d 20h ago), missing since 2026-11-18 01:07 (1d 20h ago); no screenshot record since says whether it is held
 ```
 
 `screenshot` coverage is not checked: coverage is judged from `ax-text`

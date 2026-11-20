@@ -469,7 +469,7 @@ def test_a_missing_grant_posts_one_reminder_and_keeps_its_time(session: Session)
     assert timedelta(0) <= gap < timedelta(seconds=2)
 
 
-def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_grant(
+def test_status_reports_every_screenshot_status_the_disk_used_and_the_grant_last_missing(
     session: Session,
 ) -> None:
     shots = session.screenshots()
@@ -486,7 +486,8 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
         return human_size(sum(s["image_bytes"] for s in _by_status(of, "kept")))
 
     last = _by_status(shots, "kept")[-1]
-    first_missing = _by_status(shots, "no-permission")[0]
+    missing = _by_status(shots, "no-permission")
+    first_missing, last_missing = missing[0], missing[-1]
     assert re.search(
         rf"^  last kept     {re.escape(when(to_utc(last['captured_at'])))} \(.+ ago\),"
         rf" {last['app_name']}, {re.escape(last['image_path'])}$",
@@ -499,10 +500,11 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
         f"\n  disk          {disk(shots)} in total, {disk(today)} today (from kept records)\n"
         in out
     )
+    assert "warning: Screen Recording" not in out
     assert (
-        "  warning: Screen Recording permission is missing since"
-        f" {when(to_utc(first_missing['captured_at']))} ("
+        f"  permission    last recorded missing {when(to_utc(last_missing['captured_at']))} ("
     ) in out
+    assert f"missing since {when(to_utc(first_missing['captured_at']))} (" in out
 
 
 def test_the_backend_works_with_the_screenshots_folder_closed_to_it_and_leaves_the_images_alone(

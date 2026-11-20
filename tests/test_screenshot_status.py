@@ -16,11 +16,13 @@ from projectors import AW
 from computer_history import cli
 from computer_history.cli import status as cli_status
 from computer_history.sources import (
+    AGENT_ALIVE_WITHIN,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
     WINDOW_TEXT_SOURCE,
     KeptScreenshot,
+    MissingPermission,
     screenshot_health,
 )
 from computer_history.store import (
@@ -59,7 +61,7 @@ def store_shots(conn: sqlite3.Connection, lines: list[str]) -> None:
 
 
 def health(conn: sqlite3.Connection):
-    return screenshot_health(conn, day_start=DAY_START)
+    return screenshot_health(conn, day_start=DAY_START, now=NOW)
 
 
 def test_counts_records_by_status_in_total_and_since_the_day_began(conn) -> None:
@@ -140,7 +142,7 @@ def test_a_kept_record_dated_after_now_still_clears_the_permission_warning(conn)
             shot(2, NOW + timedelta(minutes=5), "kept"),
         ],
     )
-    assert health(conn).no_permission_since is None
+    assert health(conn).no_permission is None
 
 
 def test_with_nothing_kept_there_is_no_last_kept_screenshot(conn) -> None:
@@ -166,8 +168,27 @@ def test_permission_is_missing_while_no_kept_or_duplicate_record_follows_a_no_pe
 ) -> None:
     times = [NOW - timedelta(minutes=10 - i) for i in range(len(statuses))]
     store_shots(conn, [shot(i, t, s) for i, (t, s) in enumerate(zip(times, statuses, strict=True))])
-    expected = None if missing_at is None else times[missing_at]
-    assert health(conn).no_permission_since == expected
+    missing = health(conn).no_permission
+    assert (None if missing is None else missing.since) == (
+        None if missing_at is None else times[missing_at]
+    )
+
+
+@pytest.mark.parametrize(
+    ("age", "current"),
+    [
+        (timedelta(0), True),
+        (AGENT_ALIVE_WITHIN, True),
+        (AGENT_ALIVE_WITHIN + timedelta(seconds=1), False),
+        (timedelta(days=1), False),
+    ],
+)
+def test_a_missing_permission_is_current_only_while_its_newest_record_is_recent(
+    conn, age: timedelta, current: bool
+) -> None:
+    first, last = NOW - age - timedelta(minutes=1), NOW - age
+    store_shots(conn, [shot(1, first, "no-permission"), shot(2, last, "no-permission")])
+    assert health(conn).no_permission == MissingPermission(first, last, current)
 
 
 def test_every_screenshot_query_reads_only_the_screenshot_status_index(conn) -> None:
@@ -292,7 +313,7 @@ def test_status_warns_when_the_newest_screenshot_records_say_no_permission(
         [
             shot(1, CLI_NOW - timedelta(minutes=30), "kept"),
             shot(2, CLI_NOW - timedelta(minutes=20), "no-permission"),
-            shot(3, CLI_NOW - timedelta(minutes=10), "no-permission"),
+            shot(3, CLI_NOW - timedelta(minutes=2), "no-permission"),
         ],
     )
     conn.close()
@@ -302,6 +323,28 @@ def test_status_warns_when_the_newest_screenshot_records_say_no_permission(
         " (records say no-permission, and no screenshot was taken since). Grant it in"
         " System Settings > Privacy & Security > Screen Recording.\n"
     ) in out
+
+
+def test_status_only_mentions_a_missing_permission_once_no_screenshot_record_is_recent(
+    capsys, status_at, db_path: Path
+) -> None:
+    conn = connect(db_path)
+    store_shots(
+        conn,
+        [
+            shot(1, CLI_NOW - timedelta(minutes=30), "kept"),
+            shot(2, CLI_NOW - timedelta(minutes=20), "no-permission"),
+            shot(3, CLI_NOW - timedelta(minutes=10), "no-permission"),
+        ],
+    )
+    conn.close()
+    out = run_status(capsys, db_path)
+    section = out[out.index("Screenshots:") :]
+    assert "warning" not in section
+    assert (
+        "  permission    last recorded missing 2026-11-18 11:50 (10m ago), missing since"
+        " 2026-11-18 11:40 (20m ago); no screenshot record since says whether it is held\n"
+    ) in section
 
 
 @pytest.mark.parametrize(

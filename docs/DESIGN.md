@@ -476,7 +476,9 @@ settings are provisional until they are measured on real screens (#38).
   capture id and hash. `status` reports the screenshots from stored records
   only, never the folder: the last kept, counts by status today and in
   total, disk use summed from `kept` records' sizes (an orphaned image is not
-  counted), and a warning when the newest records say `no-permission`.
+  counted), and a warning when the newest records say `no-permission` and the
+  newest of those is at most 5 minutes old; an older one is shown as plain
+  information, so turning screenshots off or stopping the agent clears it.
   Coverage is still judged from `ax-text` records.
 - Spool handoff: the agent appends JSONL (one record per line, UUID =
   `source_id`) to one open file and renames it to a finished name every

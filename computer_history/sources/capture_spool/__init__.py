@@ -29,7 +29,7 @@
                 screenshots.py
                              the stored screenshot records: the last kept, counts by
                              status, kept image bytes, and since when the newest say
-                             no-permission
+                             no-permission, current while the newest is recent
 
 Re-reading a file after a crash between commit and removal stores nothing twice.
 """
@@ -67,6 +67,7 @@ from computer_history.sources.capture_spool.record import (
 )
 from computer_history.sources.capture_spool.screenshots import (
     KeptScreenshot,
+    MissingPermission,
     ScreenshotHealth,
     ScreenshotTally,
     screenshot_health,
@@ -108,6 +109,7 @@ __all__ = [
     "DayCounts",
     "InvalidRecord",
     "KeptScreenshot",
+    "MissingPermission",
     "SpoolBacklog",
     "SpoolError",
     "StoredRecord",

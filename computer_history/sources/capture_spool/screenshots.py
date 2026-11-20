@@ -7,6 +7,7 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import NamedTuple
 
+from computer_history.sources.capture_spool.coverage import AGENT_ALIVE_WITHIN
 from computer_history.sources.capture_spool.record import (
     DUPLICATE_STATUS,
     KEPT_STATUS,
@@ -30,6 +31,14 @@ class KeptScreenshot(NamedTuple):
     image_path: str | None
 
 
+class MissingPermission(NamedTuple):
+    """When the records began and last said no-permission, and whether the last is recent."""
+
+    since: datetime
+    last: datetime
+    current: bool
+
+
 @dataclass(frozen=True)
 class ScreenshotTally:
     """How many screenshot records of each status, and the bytes of the images they kept."""
@@ -44,13 +53,15 @@ class ScreenshotHealth:
 
     reported: bool
     last_kept: KeptScreenshot | None = None
-    no_permission_since: datetime | None = None
+    no_permission: MissingPermission | None = None
     total: ScreenshotTally = ScreenshotTally()
     today: ScreenshotTally = ScreenshotTally()
 
 
-def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> ScreenshotHealth:
-    """Report on every stored screenshot record, and on those since the day began."""
+def screenshot_health(
+    conn: sqlite3.Connection, *, day_start: datetime, now: datetime
+) -> ScreenshotHealth:
+    """Report on every stored screenshot record, and on those since the day began, as of now."""
     total = _tally(conn)
     if not any(total.statuses.values()):
         return ScreenshotHealth(reported=False)
@@ -62,7 +73,7 @@ def screenshot_health(conn: sqlite3.Connection, *, day_start: datetime) -> Scree
     return ScreenshotHealth(
         reported=True,
         last_kept=last_kept,
-        no_permission_since=_no_permission_since(conn),
+        no_permission=_missing_permission(conn, to_utc(now)),
         total=total,
         today=_tally(conn, since=to_utc(day_start)),
     )
@@ -75,7 +86,7 @@ def _tally(conn: sqlite3.Connection, since: datetime | None = None) -> Screensho
     return ScreenshotTally(statuses, 0 if kept is None else kept.image_bytes)
 
 
-def _no_permission_since(conn: sqlite3.Connection) -> datetime | None:
+def _missing_permission(conn: sqlite3.Connection, now: datetime) -> MissingPermission | None:
     kept, duplicate, refused = (
         newest_screenshot(conn, status)
         for status in (KEPT_STATUS, DUPLICATE_STATUS, NO_PERMISSION_STATUS)
@@ -83,5 +94,6 @@ def _no_permission_since(conn: sqlite3.Connection) -> datetime | None:
     taken = max((found.at for found in (kept, duplicate) if found is not None), default=None)
     if refused is None or (taken is not None and refused.at <= taken):
         return None
-    return first_screenshot_at(conn, NO_PERMISSION_STATUS, after=taken)
+    since = first_screenshot_at(conn, NO_PERMISSION_STATUS, after=taken) or refused.at
+    return MissingPermission(since, refused.at, now - refused.at <= AGENT_ALIVE_WITHIN)
 
