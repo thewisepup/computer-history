@@ -88,6 +88,7 @@ class Session:
     status_at: datetime
     rebuild: subprocess.CompletedProcess[str]
     signals_before_rebuild: list[tuple]
+    images_before: dict[Path, bytes]
 
     def records(self) -> list[dict]:
         with sqlite3.connect(self.db) as conn:
@@ -160,6 +161,10 @@ def _cli(*args: str, db: Path, aw_url: str | None = None) -> subprocess.Complete
     )
 
 
+def _image_bytes(folder: Path) -> dict[Path, bytes]:
+    return {path: path.read_bytes() for path in folder.rglob("*.jpg")}
+
+
 def _row_count(db: Path) -> int:
     with sqlite3.connect(db) as conn:
         observations = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
@@ -189,18 +194,24 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         kept.mkdir()
         for path in finished:
             shutil.copy(path, kept / path.name)
-        ingests = [_cli("ingest", db=db, aw_url=aw_url)]
-        row_counts = [_row_count(db)]
-        ingests.append(_cli("ingest", db=db, aw_url=aw_url))
-        row_counts.append(_row_count(db))
-        for path in kept.iterdir():
-            shutil.copy(path, spool / path.name)
-        ingests.append(_cli("ingest", db=db, aw_url=aw_url))
-        row_counts.append(_row_count(db))
-        status_at = datetime.now(UTC)
-        status = _cli("status", db=db, aw_url=aw_url)
-        signals_before_rebuild = _signal_rows(db, "screenshot")
-        rebuild = _cli("rebuild-signals", db=db)
+        images = folder / "screenshots"
+        images_before = _image_bytes(images)
+        images.chmod(0)
+        try:
+            ingests = [_cli("ingest", db=db, aw_url=aw_url)]
+            row_counts = [_row_count(db)]
+            ingests.append(_cli("ingest", db=db, aw_url=aw_url))
+            row_counts.append(_row_count(db))
+            for path in kept.iterdir():
+                shutil.copy(path, spool / path.name)
+            ingests.append(_cli("ingest", db=db, aw_url=aw_url))
+            row_counts.append(_row_count(db))
+            status_at = datetime.now(UTC)
+            status = _cli("status", db=db, aw_url=aw_url)
+            signals_before_rebuild = _signal_rows(db, "screenshot")
+            rebuild = _cli("rebuild-signals", db=db)
+        finally:
+            images.chmod(0o700)
     finally:
         server.shutdown()
     yield Session(
@@ -217,6 +228,7 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         status_at,
         rebuild,
         signals_before_rebuild,
+        images_before,
     )
 
 
@@ -477,6 +489,15 @@ def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_gr
         "  warning: Screen Recording permission is missing since"
         f" {when(_spool_time(first_missing['captured_at']))} ("
     ) in out
+
+
+def test_the_backend_works_with_the_screenshots_folder_closed_to_it_and_leaves_the_images_alone(
+    session: Session,
+) -> None:
+    for run in (*session.ingests, session.status, session.rebuild):
+        assert run.returncode == 0, run.stdout + run.stderr
+    assert session.images_before
+    assert _image_bytes(session.folder / "screenshots") == session.images_before
 
 
 def test_rebuild_signals_reproduces_the_screenshot_signals(session: Session) -> None:
