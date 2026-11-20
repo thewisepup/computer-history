@@ -10,7 +10,7 @@ from pathlib import Path
 from computer_history.synthetic.meter import Costs, Scan, StatementCost
 from computer_history.synthetic.operations import OPERATIONS, Operation
 
-BASELINE_PATH = Path(__file__).with_name("perf_baseline.json")
+BASELINE_PATH = Path(__file__).with_name("perf_baselines") / "sqlite-3.54.1.json"
 
 Key = tuple[str, str]
 

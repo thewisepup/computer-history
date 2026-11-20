@@ -276,7 +276,7 @@ store reads `status` makes, and the capture agent's health) on the developer
 persona's `messy` datasets from the dataset cache, once untimed and once with
 SQLite's work counted: statements run, VM instructions, full table scans in
 the query plans of the reads it ran, and the pages of a database it writes.
-It compares those with `computer_history/synthetic/perf_baseline.json` and
+It compares those with `computer_history/synthetic/perf_baselines/sqlite-3.54.1.json` and
 exits 1 on any difference: statements, scans and pages exactly, VM steps past
 2%, cheaper ones too, so an improvement is locked in by rerunning with
 `--update-baselines` and saying why in the pull request. A scan fails unless

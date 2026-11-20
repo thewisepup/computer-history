@@ -25,7 +25,7 @@ include = ["computer_history*"]
 
 [tool.setuptools.package-data]
 "computer_history.store" = ["migrations/*.sql"]
-"computer_history.synthetic" = ["perf_baseline.json"]
+"computer_history.synthetic" = ["perf_baselines/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
