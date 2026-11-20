@@ -4,7 +4,7 @@ import sqlite3
 from collections.abc import Iterable
 
 from computer_history.sources.activitywatch.adapter import ActivityWatch
-from computer_history.sources.ax_text.adapter import CaptureSpool
+from computer_history.sources.capture_spool.adapter import CaptureSpool
 from computer_history.sources.contract import Projecting, StreamProjector
 from computer_history.store import (
     Projector,

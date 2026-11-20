@@ -29,10 +29,14 @@
 Re-reading a file after a crash between commit and removal stores nothing twice.
 """
 
-from computer_history.sources.ax_text.adapter import CaptureSpool
-from computer_history.sources.ax_text.agreement import APP_TOLERANCE, AppAgreement, app_agreement
-from computer_history.sources.ax_text.backlog import SpoolBacklog, spool_backlog
-from computer_history.sources.ax_text.coverage import (
+from computer_history.sources.capture_spool.adapter import CaptureSpool
+from computer_history.sources.capture_spool.agreement import (
+    APP_TOLERANCE,
+    AppAgreement,
+    app_agreement,
+)
+from computer_history.sources.capture_spool.backlog import SpoolBacklog, spool_backlog
+from computer_history.sources.capture_spool.coverage import (
     AGENT_ALIVE_WITHIN,
     CAPTURE_TOLERANCE,
     HEARTBEAT_SECONDS,
@@ -40,9 +44,9 @@ from computer_history.sources.ax_text.coverage import (
     capture_coverage,
     liveness,
 )
-from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE, MAX_AX_TEXT_LENGTH
-from computer_history.sources.ax_text.paths import SPOOL_ENV_VAR, resolve_spool_path
-from computer_history.sources.ax_text.record import (
+from computer_history.sources.capture_spool.normalize import AX_TEXT_SOURCE, MAX_AX_TEXT_LENGTH
+from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR, resolve_spool_path
+from computer_history.sources.capture_spool.record import (
     CAPTURE_KIND,
     PAUSED_KIND,
     SCREENSHOT_KIND,
@@ -50,12 +54,16 @@ from computer_history.sources.ax_text.record import (
     InvalidRecord,
     parse_record,
 )
-from computer_history.sources.ax_text.screenshot import (
+from computer_history.sources.capture_spool.screenshot import (
     MAX_RECOGNIZED_TEXT_LENGTH,
     SCREENSHOT_SOURCE,
 )
-from computer_history.sources.ax_text.spool import UNREADABLE_FOLDER, SpoolError, finished_files
-from computer_history.sources.ax_text.stored import (
+from computer_history.sources.capture_spool.spool import (
+    UNREADABLE_FOLDER,
+    SpoolError,
+    finished_files,
+)
+from computer_history.sources.capture_spool.stored import (
     DayCounts,
     StoredRecord,
     day_counts,

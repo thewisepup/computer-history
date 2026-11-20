@@ -1,6 +1,6 @@
 ---
 name: verify-spool-handoff
-description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. Use when a change touches SpoolWriter.swift, the ax_text spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch), or when asked whether spool records can be lost.
+description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. Use when a change touches SpoolWriter.swift, the capture_spool spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch), or when asked whether spool records can be lost.
 ---
 
 # Verify the spool handoff
@@ -26,8 +26,8 @@ Rerun the check if the diff touches any of these files:
 | `SpoolWriter.append`, `dropUnfinishedLine` | `AgentAppends` (torn lines never count as records) |
 | `SpoolWriter.finishLocked` (stamp `max(now, lastFinished+1)`, `renamex_np` with `RENAME_EXCL`) | `AgentFinishes` |
 | process crash or kill; launchd restart | `AgentCrashes` |
-| `computer_history/sources/ax_text/spool.py`: `finished_files` | `IngestLists` |
-| `ax_text/adapter.py`: `CaptureSpool.pull_after` (one `_listed` deque per stream, `_forget_all_but`, `read_file` and the file identity it returns, each stream keeping only its own records, `FileNotFoundError` -> `_drop`) | `IngestLists`, `IngestReads` |
+| `computer_history/sources/capture_spool/spool.py`: `finished_files` | `IngestLists` |
+| `capture_spool/adapter.py`: `CaptureSpool.pull_after` (one `_listed` deque per stream, `_forget_all_but`, `read_file` and the file identity it returns, each stream keeping only its own records, `FileNotFoundError` -> `_drop`) | `IngestLists`, `IngestReads` |
 | `sources/commit.py`: `commit_pull` (insert, then `after_commit`); `store/observations.py`: `insert_observations` (one transaction, `ON CONFLICT DO NOTHING`) | `IngestCommits`, then `IngestFinishes` |
 | `CaptureSpool._stored_by` (mark the stream stored that file; finish only once every stream stored the same file), `_finish`, `spool.remove_finished` (unlink by name), `spool.set_aside` (`os.link` then unlink) | `IngestFinishes`, `IngestUnlinksAside` |
 | `sources/runner.py`: `poll`, `watch` (the same `CaptureSpool`, and its `_listed`, across cycles); `cli/ingest.py` (no lock between ingest processes) | `Ingests` constant, `IngestCrashes` |
@@ -163,13 +163,13 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
 
 Last confirmed that the model describes the code at commit `d6495bf`. Files:
 `capture-agent/Sources/CaptureAgent/SpoolWriter.swift`,
-`computer_history/sources/ax_text/adapter.py`,
-`computer_history/sources/ax_text/spool.py`,
+`computer_history/sources/capture_spool/adapter.py`,
+`computer_history/sources/capture_spool/spool.py`,
 `computer_history/sources/commit.py`, `computer_history/store/observations.py`,
 `computer_history/sources/runner.py`, `computer_history/cli/ingest.py`.
 
 ```bash
-git diff --stat d6495bf -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/ax_text/adapter.py computer_history/sources/ax_text/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
+git diff --stat d6495bf -- capture-agent/Sources/CaptureAgent/SpoolWriter.swift computer_history/sources/capture_spool/adapter.py computer_history/sources/capture_spool/spool.py computer_history/sources/commit.py computer_history/store/observations.py computer_history/sources/runner.py computer_history/cli/ingest.py
 ```
 
 If that shows changes, re-read them against the table above. Move the commit

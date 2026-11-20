@@ -7,8 +7,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from computer_history.sources.ax_text.record import CAPTURE_KIND
-from computer_history.sources.ax_text.stored import StoredRecord
+from computer_history.sources.capture_spool.record import CAPTURE_KIND
+from computer_history.sources.capture_spool.stored import StoredRecord
 
 APP_TOLERANCE = timedelta(seconds=2)
 

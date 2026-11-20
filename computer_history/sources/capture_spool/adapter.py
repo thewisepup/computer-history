@@ -11,15 +11,15 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
-from computer_history.sources.ax_text.normalize import AX_TEXT_SOURCE, project_capture
-from computer_history.sources.ax_text.record import (
+from computer_history.sources.capture_spool.normalize import AX_TEXT_SOURCE, project_capture
+from computer_history.sources.capture_spool.record import (
     AX_TEXT_KINDS,
     SCREENSHOT_KIND,
     InvalidRecord,
     parse_record,
 )
-from computer_history.sources.ax_text.screenshot import SCREENSHOT_SOURCE, project_screenshot
-from computer_history.sources.ax_text.spool import (
+from computer_history.sources.capture_spool.screenshot import SCREENSHOT_SOURCE, project_screenshot
+from computer_history.sources.capture_spool.spool import (
     FileIdentity,
     SpoolError,
     finished_files,

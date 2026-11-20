@@ -190,7 +190,7 @@ Rebuilt signals in .../history.db from stored observations
 
 Wipes `signals` and re-projects every stored observation through its source
 adapter's projector, the same one ingest used. Needed only after changing a
-projector (`activitywatch/normalize.py`, `ax_text/normalize.py`) or
+projector (`activitywatch/normalize.py`, `capture_spool/normalize.py`) or
 `text.py`. Aborts (and rolls back) if too many rows fail to project or the
 result would shrink suspiciously. It also aborts, without counting them as
 malformed, when observations come from a source this version has no adapter

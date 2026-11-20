@@ -37,7 +37,7 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
-from computer_history.sources.ax_text import adapter as spool_adapter
+from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import connect, get_progress, table_counts, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"

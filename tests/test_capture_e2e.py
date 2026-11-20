@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.sources.ax_text import (
+from computer_history.sources.capture_spool import (
     MAX_AX_TEXT_LENGTH,
     SPOOL_ENV_VAR,
     resolve_spool_path,

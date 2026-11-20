@@ -3,7 +3,7 @@
 (*                                                                          *)
 (* The agent (capture-agent/Sources/CaptureAgent/SpoolWriter.swift) appends *)
 (* records to open.part and renames it to a finished <stamp>.jsonl file.    *)
-(* Ingest (computer_history/sources/ax_text/adapter.py, spool.py) reads    *)
+(* Ingest (computer_history/sources/capture_spool/adapter.py, spool.py) reads    *)
 (* the same files once per stream (ax-text, screenshot): it lists them,     *)
 (* reads the oldest, commits that stream's records, and once both streams   *)
 (* stored that same file, removes it or sets it aside into unreadable/.     *)

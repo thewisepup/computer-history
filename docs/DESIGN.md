@@ -83,13 +83,13 @@ computer_history/
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
                 # health for status, judged against aw-afk and aw-window),
-                # then one adapter per source: activitywatch/, ax_text/
+                # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for
                 # backfill), afk (stored and newest AFK spans, for status),
                 # frontmost (stored and newest aw-window app spans, for status)
-                # ax_text/: paths (where the spool is), spool (finished files:
+                # capture_spool/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
                 # against format v1), normalize (the ax-text projector),
                 # screenshot (the screenshot projector), adapter (CaptureSpool:

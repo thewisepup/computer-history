@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from computer_history.sources.ax_text.record import CAPTURE_KIND, parse_record
+from computer_history.sources.capture_spool.record import CAPTURE_KIND, parse_record
 from computer_history.store import Signal
 from computer_history.text import clean_text
 

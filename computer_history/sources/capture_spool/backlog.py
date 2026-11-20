@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from computer_history.sources.ax_text.record import AX_TEXT_KINDS, InvalidRecord, parse_record
-from computer_history.sources.ax_text.spool import (
+from computer_history.sources.capture_spool.record import AX_TEXT_KINDS, InvalidRecord, parse_record
+from computer_history.sources.capture_spool.spool import (
     FINISHED_NAME_FORMAT,
     OPEN_FILE,
     UNREADABLE_FOLDER,

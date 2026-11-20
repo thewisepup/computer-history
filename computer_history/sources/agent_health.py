@@ -16,7 +16,7 @@ from computer_history.sources.activitywatch import (
     stored_afk_spans,
     stored_app_spans,
 )
-from computer_history.sources.ax_text import (
+from computer_history.sources.capture_spool import (
     APP_TOLERANCE,
     AX_TEXT_SOURCE,
     CAPTURE_KIND,
