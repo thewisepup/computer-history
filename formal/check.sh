@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Model-check formal/spool/SpoolHandoff.tla with TLC on each config.
+# Manual only: agents do not run this on their own (see .claude/skills/verify-spool-handoff).
 #   formal/check.sh               every config except the on-request ones (about 2 minutes)
 #   formal/check.sh --all         every config in formal/spool/, on-request ones too (about 6 minutes)
 #   formal/check.sh one_ingest    one config, by name
