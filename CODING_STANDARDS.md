@@ -82,3 +82,7 @@ Review findings ratchet into rules:
   the checks (`AGENTS.md`, `README.md`) in the same commit.
 - **H6** When a function already does something, call it rather than writing
   it again, and name a test after the code path it actually runs.
+- **H7** Identifiers and docstrings use the GLOSSARY term, never a word in its
+  _Avoid_ list; values already persisted are exempt.
+- **H8** A change to a domain concept updates its glossary entry in the same
+  change.
