@@ -25,6 +25,10 @@
                              explains within the heartbeat tolerance, and liveness
                 agreement.py each capture's app judged against the app aw-window shows
                              in front, within its polling tolerance
+                screenshots.py
+                             the stored screenshot records: the last kept, counts by
+                             status, kept image bytes, and since when the newest say
+                             no-permission
 
 Re-reading a file after a crash between commit and removal stores nothing twice.
 """
@@ -60,6 +64,12 @@ from computer_history.sources.capture_spool.record import (
     InvalidRecord,
     parse_record,
 )
+from computer_history.sources.capture_spool.screenshots import (
+    KeptScreenshot,
+    ScreenshotHealth,
+    ScreenshotTally,
+    screenshot_health,
+)
 from computer_history.sources.capture_spool.spool import (
     UNREADABLE_FOLDER,
     SpoolError,
@@ -85,6 +95,8 @@ __all__ = [
     "PAUSED_KIND",
     "SCREENSHOT_KIND",
     "SCREENSHOT_SOURCE",
+    "ScreenshotHealth",
+    "ScreenshotTally",
     "SPOOL_ENV_VAR",
     "SPOOL_STREAMS",
     "SPOOL_VERSION",
@@ -94,6 +106,7 @@ __all__ = [
     "Coverage",
     "DayCounts",
     "InvalidRecord",
+    "KeptScreenshot",
     "SpoolBacklog",
     "SpoolError",
     "StoredRecord",
@@ -105,6 +118,7 @@ __all__ = [
     "newest_stored",
     "parse_record",
     "resolve_spool_path",
+    "screenshot_health",
     "spool_backlog",
     "stored_records",
 ]

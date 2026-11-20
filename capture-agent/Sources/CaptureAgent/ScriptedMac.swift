@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 final class ScriptedMac: Mac, @unchecked Sendable {
@@ -11,9 +12,19 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var frontmost: FocusedApplication?
     var apps: [pid_t: ScriptedElement] = [:]
     var calls: [String] = []
+    var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .failed }
+    var windowImageRequests: [pid_t] = []
+    var recognizedText: (URL) throws -> String = { _ in "" }
+    var notificationPosting = NotificationPosting.posted
+    var notifications: [UserNotification] = []
+    var onCall: (String) -> Void = { _ in }
+    private var elements: CGWindowID = 0
 
     init(start: Date = Date(timeIntervalSince1970: 0)) {
         self.start = start
+        windowImage = { [unowned self] window, _ in
+            .image(fixtureImage(width: 1600, height: 1000), windowID: apps[window.processIdentifier]?.focusedWindow?.windowID ?? 0)
+        }
     }
 
     func uptime() -> TimeInterval { clock }
@@ -31,23 +42,42 @@ final class ScriptedMac: Mac, @unchecked Sendable {
 
     func hasElectronFramework(_ bundle: URL) -> Bool { false }
 
+    func focusedWindowImage(_ window: FocusedWindow, longEdge: Int) -> WindowImage {
+        windowImageRequests.append(window.processIdentifier)
+        return windowImage(window, longEdge)
+    }
+
+    func recognizeText(inImageAt file: URL) throws -> String { try recognizedText(file) }
+
+    func post(_ notification: UserNotification) -> NotificationPosting {
+        notifications.append(notification)
+        return notificationPosting
+    }
+
     func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
-        ScriptedElement(mac: self, name: name, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children)
+        elements += 1
+        return ScriptedElement(
+            mac: self, name: name, windowID: elements, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children
+        )
     }
 }
 
 final class ScriptedElement: AccessibilityElement {
     let mac: ScriptedMac
     let name: String
+    let windowID: CGWindowID
     var attributes: [String: String]
     var children: [ScriptedElement]
     var focusedWindow: ScriptedElement?
+    var focusedElement: ScriptedElement?
+    var bounds: CGRect? = CGRect(x: 0, y: 25, width: 1600, height: 1000)
     var hangs: Set<String> = []
     var flagsSet: [String] = []
 
-    init(mac: ScriptedMac, name: String, attributes: [String: String], children: [ScriptedElement]) {
+    init(mac: ScriptedMac, name: String, windowID: CGWindowID, attributes: [String: String], children: [ScriptedElement]) {
         self.mac = mac
         self.name = name
+        self.windowID = windowID
         self.attributes = attributes
         self.children = children
     }
@@ -57,7 +87,14 @@ final class ScriptedElement: AccessibilityElement {
     }
 
     func element(_ attribute: String) -> AccessibilityResult<ScriptedElement> {
-        perform(attribute) { attribute == "AXFocusedWindow" ? focusedWindow.map { .value($0) } ?? .missing : .missing }
+        perform(attribute) {
+            let focused = switch attribute {
+            case "AXFocusedWindow": focusedWindow
+            case "AXFocusedUIElement": focusedElement
+            default: nil as ScriptedElement?
+            }
+            return focused.map { .value($0) } ?? .missing
+        }
     }
 
     func elements(_ attribute: String) -> AccessibilityResult<[ScriptedElement]> {
@@ -71,8 +108,13 @@ final class ScriptedElement: AccessibilityElement {
         }
     }
 
+    func frame() -> AccessibilityResult<CGRect> {
+        perform("AXFrame") { bounds.map { .value($0) } ?? .missing }
+    }
+
     private func perform<Value>(_ attribute: String, _ body: () -> AccessibilityResult<Value>) -> AccessibilityResult<Value> {
         mac.calls.append("\(name).\(attribute)")
+        mac.onCall("\(name).\(attribute)")
         if hangs.contains(attribute) {
             mac.clock += mac.callTimeout
             return .timedOut
@@ -83,4 +125,19 @@ final class ScriptedElement: AccessibilityElement {
 
     static func == (lhs: ScriptedElement, rhs: ScriptedElement) -> Bool { lhs === rhs }
     func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
+}
+
+/// A striped test image whose stripes shift with the seed, so different seeds give different pictures.
+func fixtureImage(width: Int, height: Int, seed: Int = 0) -> CGImage {
+    let context = CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    )!
+    let stripe = max(1, width / 24)
+    for (index, x) in stride(from: 0, to: width, by: stripe).enumerated() {
+        let shade = CGFloat((index * 7 + seed * 3) % 11) / 10
+        context.setFillColor(red: shade, green: 1 - shade, blue: CGFloat((index + seed) % 2), alpha: 1)
+        context.fill(CGRect(x: x, y: 0, width: stripe, height: height))
+    }
+    return context.makeImage()!
 }

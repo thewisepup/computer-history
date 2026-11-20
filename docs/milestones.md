@@ -44,15 +44,41 @@ use ([#12](https://github.com/thewisepup/computer-history/issues/12)).
       locked; a full day's backlog is covered by the automated test and the
       TLA+ model in `formal/`.)*
 
-### M3 — Capture agent: screenshots + OCR
+### M3 — Capture agent: screenshots + text recognition
 
-- [ ] ScreenCaptureKit capture at the decided scope, downscaled JPEG.
-- [ ] Perceptual-hash dedup drops near-identical frames (verify on a static
-      screen).
-- [ ] Vision OCR runs in the agent; OCR text in the spool record; image path
-      in `extras`.
-- [ ] Only text ever crosses into Python; JPEGs stay on disk.
-- [ ] A normal day lands within the storage budget; disk usage queryable.
+Remaining before ✅: the measurements on real screens
+([#38](https://github.com/thewisepup/computer-history/issues/38)), the
+Screen Recording unknowns
+([#39](https://github.com/thewisepup/computer-history/issues/39)), a normal
+day within the storage budget, and a static screen saving at most one image
+per keep-after limit. All on Brandon's Mac.
+
+- [ ] ScreenCaptureKit still of the focused window only, downscaled JPEG in
+      dated folders beside the database. *(Saving, downscaling and folders
+      are checked through the scripted Mac; the live ScreenCaptureKit call
+      and its window matching wait for #38.)*
+- [ ] Thumbnail dedup drops near-identical screenshots per window, with a
+      keep-after limit. *(The rule is tested on rendered pages and in the
+      end-to-end check; a static screen saving at most one image per
+      keep-after limit, and the thresholds on real screens, wait for #38.)*
+- [x] Vision text recognition runs in the agent, off the capture thread;
+      recognized text in the screenshot record; image path in `extras`.
+      *(Vision is tested on a fixture image; legibility and timing on real
+      screens wait for #38.)*
+- [x] Every capture gets one screenshot record (`kept`, `duplicate`,
+      `secure-field`, `no-permission` or `failed`); a duplicate points at its
+      kept image and copies its text.
+- [x] Only text ever crosses into Python; JPEGs stay on disk. *(The
+      end-to-end check runs ingest, `status` and `rebuild-signals` with the
+      screenshots folder closed to them.)*
+- [x] `status` reports screenshots: last kept, counts by status, disk use in
+      total and today, and a warning when the grant is missing.
+- [ ] A missing Screen Recording grant posts one reminder a day that opens
+      the settings pane; the grant survives a rebuild. *(The once-a-day rule
+      is tested; posting and clicking from the windowless agent, the settings
+      link on macOS 26, `install.sh`'s request and the grant across rebuilds
+      wait for #39.)*
+- [ ] A normal day lands within the storage budget (150 MB, provisional).
 
 ### M4 — Login agents + reliability
 

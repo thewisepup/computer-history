@@ -10,6 +10,7 @@ unobserved time, the capture agent's health and the row counts.
 - `status-sources` each source line shows observations, latest end and settled-until lag.
 - `status-gaps` gaps of 5m or more are warnings of unobserved time, never idle.
 - `status-agent` the capture agent section: last capture, alive, spool, today, paused.
+- `status-screenshots` the screenshots section: last kept, counts by status, disk, the no-permission warning.
 - `status-aw-down` ActivityWatch unreachable reads `ActivityWatch: no`.
 
 ## How to get to it (user POV)
@@ -42,6 +43,13 @@ Preconditions:
   `aw-web 2`, `aw-window 17`, `ax-text 7` observations; `Coverage gaps` has
   `warning: no aw-web coverage from ... (16m ...)` and an
   `ax-text ... while you were active` line.
+- **Screenshots.** With ActivityWatch rows only, `Screenshots: none stored
+  yet (no screenshot records)`. After the fixture ingest above: `last kept
+  2026-11-18 ...`, `all stored 1 kept, 1 duplicate, 1 secure-field, 1
+  no-permission, 1 failed`, `disk 179.1 KB in total, 0 B today`, and the
+  `warning: Screen Recording permission is missing since 2026-11-18 ...` line,
+  since the fixture's newest screenshot record is `no-permission`. Coverage
+  reads `screenshot: not checked (coverage is judged from ax-text records)`.
 - **Rows.** The `Rows:` block's `observations` equals
   `$C sql "SELECT COUNT(*) FROM observations"`.
 - **ActivityWatch down.** Run `$C cli status --aw-url http://127.0.0.1:9/api/0`

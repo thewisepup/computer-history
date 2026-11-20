@@ -11,7 +11,7 @@ app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop)
-  +-- status.py    freshness, coverage gaps, the capture agent, row counts
+  +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
         |
@@ -73,7 +73,7 @@ computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 ```
 
 ```
-Database:      .../ComputerHistory/history.db (5.2 MB, schema v3)
+Database:      .../ComputerHistory/history.db (5.2 MB, schema v5)
 ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
 
 Sources:
@@ -85,6 +85,7 @@ Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused):
   warning: no ax-text coverage from 2026-11-18 08:02 to 2026-11-18 08:40 (38m), while you were active
   warning: no ax-text coverage from 2026-11-18 09:15 to 2026-11-18 09:27 (12m), cannot be judged: no aw-afk data
+  screenshot: not checked (coverage is judged from ax-text records)
 
 Capture agent:
   last capture  2026-11-18 10:09 (40s ago)
@@ -96,6 +97,12 @@ Capture agent:
                 5 x Discord -> Google Chrome
                 3 x Google Chrome -> Discord
                 2 x Zoom -> Discord
+
+Screenshots:
+  last kept     2026-11-18 10:09 (45s ago), Cursor, screenshots/2026-11-18/6f1c2a52-8d0e-4b7a-9c3e-1a2b3c4d5e11.jpg
+  today         402 kept, 377 duplicate, 6 secure-field, 0 no-permission, 1 failed
+  all stored    6,904 kept, 7,311 duplicate, 85 secure-field, 12 no-permission, 9 failed
+  disk          1.1 GB in total, 71.2 MB today (from kept records)
 
 Rows:
   ...
@@ -156,6 +163,45 @@ Capture agent: has not reported yet (no ax-text records stored)
   spool         3 finished files waiting (oldest 2m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
 ```
 
+The screenshots section reads only stored `screenshot` records, never the
+screenshots folder, through an index on their status, capture time and image
+size, so it stays quick at months of records. Every stored record counts, by
+its own capture time, including one dated after now when the agent's clock
+runs ahead:
+
+- **last kept**: the newest `kept` record, its app and the image path it
+  names (relative to the data folder).
+- **today** and **all stored**: records by status, since local midnight (the
+  midnight's own offset, so a daylight saving changeover day starts on time)
+  and in total. Records still in the spool count once ingested.
+- **disk**: the `image_bytes` of the `kept` records, in total and today. An
+  image left without a record is not counted.
+- **warning**: printed when a `no-permission` record is newer than every
+  `kept` and `duplicate` record, with the time of the first `no-permission`
+  record after the last screenshot taken. `secure-field` and `failed` records
+  neither raise nor clear it.
+
+After the end-to-end check's scripted session, whose last two captures lost
+the grant (real output):
+
+```
+Screenshots:
+  last kept     2026-11-18 01:05 (1d 19h ago), Calculator, screenshots/2026-11-18/eb706daf-4138-4be3-aa0d-13ba3f4f63ea.jpg
+  today         0 kept, 0 duplicate, 0 secure-field, 0 no-permission, 0 failed
+  all stored    4 kept, 1 duplicate, 1 secure-field, 2 no-permission, 1 failed
+  disk          299.3 KB in total, 0 B today (from kept records)
+  warning: Screen Recording permission is missing since 2026-11-18 01:07 (1d 19h ago) (records say no-permission, and no screenshot was taken since). Grant it in System Settings > Privacy & Security > Screen Recording.
+```
+
+`screenshot` coverage is not checked: coverage is judged from `ax-text`
+records, so the coverage gaps list says `screenshot: not checked` after the
+`ax-text` check, and says nothing about screenshots when that check has
+nothing to judge. With no screenshot records stored, the section is one line:
+
+```
+Screenshots: none stored yet (no screenshot records)
+```
+
 ## backfill — one-time history import
 
 ```bash
@@ -211,15 +257,15 @@ rebuild-signals aborted: no source adapter projects 'screenshot', the source of 
 Every command opens the store the same way and refuses, with exit code 1 and
 no traceback, when the database is:
 
-- **newer** than this CLI (`cannot use ...: schema v4 is newer than this CLI
-  understands (v3); upgrade computer-history`). Nothing is read or written.
+- **newer** than this CLI (`cannot use ...: schema v6 is newer than this CLI
+  understands (v5); upgrade computer-history`). Nothing is read or written.
 - **busy** while opening for write, e.g. another process is migrating
   (`cannot open ...: database is locked` plus a try-again hint).
 - **not a database** (`cannot open ...: file is not a database`).
 
 An **outdated** schema is migrated by `ingest`, `backfill` and
 `rebuild-signals`. `status` and `backfill --dry-run` never migrate: status
-prints `note: this CLI uses schema v3; computer-history ingest will migrate
+prints `note: this CLI uses schema v5; computer-history ingest will migrate
 the database` and stops there, and a dry run refuses. A **missing** database
 is created by `ingest` and `backfill` (only once planning succeeds), shown as
 "not created yet" by `status`, and refused by `rebuild-signals`.

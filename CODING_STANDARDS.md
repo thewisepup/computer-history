@@ -60,6 +60,13 @@ Review findings ratchet into rules:
 - **A5** Anything that must commit atomically lives in one function in one module.
 - **A6** The top layer (CLI, later API/MCP) holds zero business logic: parse, call
   one function below, format, exit code.
+- **A7** A module takes only the settings it reads: pass it the fields it
+  uses, not a whole settings struct it reads part of.
+- **A8** In-memory state keeps typed values; text from the spool or the wire
+  is parsed once, where it comes in.
+- **A9** A factory parameter that every production caller fills with a
+  placeholder is removed, and the value is set once, where it becomes known.
+- **A10** A Bool flag that picks between two counters becomes two methods.
 
 ## Hygiene
 
@@ -73,3 +80,5 @@ Review findings ratchet into rules:
   never hard-code them.
 - **H5** A change to the pre-commit hook or CI updates every doc that describes
   the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H6** When a function already does something, call it rather than writing
+  it again, and name a test after the code path it actually runs.

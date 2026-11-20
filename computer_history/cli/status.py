@@ -7,17 +7,31 @@ from pathlib import Path
 from socket import gethostname
 
 from computer_history.cli.db import outdated_note, store_unavailable
-from computer_history.cli.formatting import ago, app_name, db_size, duration, lag, when
+from computer_history.cli.formatting import (
+    ago,
+    app_name,
+    db_size,
+    duration,
+    human_size,
+    lag,
+    local_midnight,
+    printable,
+    when,
+)
 from computer_history.sources import (
     AX_TEXT_SOURCE,
     CAPTURE_TOLERANCE,
+    SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
     ActivityWatch,
     AWClient,
     CaptureHealth,
+    ScreenshotHealth,
+    ScreenshotTally,
     SourceUnavailable,
     capture_health,
     resolve_spool_path,
+    screenshot_health,
 )
 from computer_history.store import (
     Purpose,
@@ -37,10 +51,15 @@ MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     db_path = resolve_db_path(args.db_path)
     spool_path = resolve_spool_path(args.spool_path, db_path)
-    now = datetime.now(UTC)
+    now = utc_now()
+    day_start = local_midnight(now)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
@@ -84,6 +103,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             window=STATUS_WINDOW,
             hostname=gethostname(),
             min_gap_seconds=MIN_GAP_SECONDS,
+            day_start=day_start,
         )
         print()
         _print_sources(summaries, now)
@@ -91,6 +111,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         _print_gaps(store.conn, summaries, health)
         print()
         _print_agent(health, spool_path, now)
+        print()
+        _print_screenshots(screenshot_health(store.conn, day_start=day_start), now)
         print()
         _print_counts(table_counts(store.conn))
     return 0
@@ -136,6 +158,12 @@ def _print_gaps(
     for s in summaries:
         if s.source == AX_TEXT_SOURCE and health.reported:
             _print_capture_gaps(health)
+            continue
+        if s.source == SCREENSHOT_SOURCE:
+            if health.coverage is not None:
+                print(
+                    f"  {s.source}: not checked (coverage is judged from {AX_TEXT_SOURCE} records)"
+                )
             continue
         end = s.settled_until or s.latest_ended_at
         first = s.earliest_started_at
@@ -245,6 +273,36 @@ def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:
         oldest = duration(age) if age >= 0 else f"{duration(-age)} ahead of now"
         waiting += f" (oldest {oldest})"
     return f"{waiting}, {spool.unreadable:,} in {UNREADABLE_FOLDER}/  ({spool_path})"
+
+
+def _print_screenshots(shots: ScreenshotHealth, now: datetime) -> None:
+    if not shots.reported:
+        print(f"Screenshots: none stored yet (no {SCREENSHOT_SOURCE} records)")
+        return
+    print("Screenshots:")
+    kept = shots.last_kept
+    if kept is None:
+        print("  last kept     none yet")
+    else:
+        path = "(no path)" if kept.image_path is None else printable(kept.image_path)
+        print(f"  last kept     {ago(kept.at, now)}, {app_name(kept.app)}, {path}")
+    print(f"  today         {_statuses(shots.today)}")
+    print(f"  all stored    {_statuses(shots.total)}")
+    print(
+        f"  disk          {human_size(shots.total.image_bytes)} in total,"
+        f" {human_size(shots.today.image_bytes)} today (from kept records)"
+    )
+    if shots.no_permission_since is not None:
+        print(
+            "  warning: Screen Recording permission is missing since"
+            f" {ago(shots.no_permission_since, now)} (records say no-permission, and no"
+            " screenshot was taken since). Grant it in System Settings > Privacy & Security"
+            " > Screen Recording."
+        )
+
+
+def _statuses(tally: ScreenshotTally) -> str:
+    return ", ".join(f"{n:,} {status}" for status, n in tally.statuses.items())
 
 
 def _print_counts(counts: dict[str, int]) -> None:

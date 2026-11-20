@@ -24,7 +24,18 @@ STREAM_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {AX_TEXT_SOURCE: AX_TEXT_KINDS, SCREENSHOT_SOURCE: (SCREENSHOT_KIND,)}
 )
 SPOOL_STREAMS = tuple(STREAM_KINDS)
-SCREENSHOT_STATUSES = ("kept", "duplicate", "secure-field", "no-permission", "failed")
+KEPT_STATUS = "kept"
+DUPLICATE_STATUS = "duplicate"
+SECURE_FIELD_STATUS = "secure-field"
+NO_PERMISSION_STATUS = "no-permission"
+FAILED_STATUS = "failed"
+SCREENSHOT_STATUSES = (
+    KEPT_STATUS,
+    DUPLICATE_STATUS,
+    SECURE_FIELD_STATUS,
+    NO_PERMISSION_STATUS,
+    FAILED_STATUS,
+)
 
 _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _TYPED_FIELDS: Mapping[str, type] = {
@@ -54,11 +65,11 @@ _SCREENSHOT_IMAGE_FIELDS = (
 )
 _WITH_IMAGE = frozenset(_SCREENSHOT_IMAGE_FIELDS) - {"image_bytes"}
 _SCREENSHOT_NEEDS: Mapping[str, frozenset[str]] = {
-    "kept": frozenset(_SCREENSHOT_IMAGE_FIELDS),
-    "duplicate": _WITH_IMAGE,
-    "secure-field": frozenset(),
-    "no-permission": frozenset(),
-    "failed": frozenset(),
+    KEPT_STATUS: frozenset(_SCREENSHOT_IMAGE_FIELDS),
+    DUPLICATE_STATUS: _WITH_IMAGE,
+    SECURE_FIELD_STATUS: frozenset(),
+    NO_PERMISSION_STATUS: frozenset(),
+    FAILED_STATUS: frozenset(),
 }
 
 
