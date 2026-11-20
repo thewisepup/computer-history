@@ -1,3 +1,4 @@
+import AppKit
 import CaptureAgent
 import Foundation
 import os
@@ -57,6 +58,8 @@ case .resume:
     finish(resumeCapture(pause))
 case .checkConfig:
     finish(checkConfig(settings))
+case .requestScreenRecording:
+    finish(requestScreenRecording(open: NSWorkspace.shared.open))
 case .scriptedSession(let script):
     finish(runScriptedSession(script: URL(fileURLWithPath: script), settings: settings, homes: userHomes(), log: { print($0) }))
 case .usage:

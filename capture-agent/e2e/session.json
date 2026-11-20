@@ -6,7 +6,7 @@
       "bundle_id": "com.apple.TextEdit",
       "focused_window": "notes",
       "windows": {
-        "notes": {"role": "AXWindow", "title": "Notes", "children": [
+        "notes": {"role": "AXWindow", "title": "Notes", "recognized_text": "Notes\nship the screenshot milestone", "children": [
           {"role": "AXStaticText", "value": "hello from the scripted session"},
           {"role": "AXButton", "title": "OK", "children": [{"role": "AXStaticText", "value": "button label"}]},
           {"role": "AXSecureTextField", "value": "hunter2"}
@@ -18,11 +18,12 @@
       "bundle_id": "com.google.Chrome",
       "focused_window": "inbox",
       "windows": {
-        "inbox": {"role": "AXWindow", "title": "Inbox", "children": [
+        "inbox": {"role": "AXWindow", "title": "Inbox", "recognized_text": "Inbox\n3 pull requests", "children": [
           {"role": "AXHeading", "title": "Inbox"},
-          {"role": "AXLink", "children": [{"role": "AXStaticText", "value": "https://github.com/thewisepup/computer-history/pulls"}]}
+          {"role": "AXLink", "children": [{"role": "AXStaticText", "value": "https://github.com/thewisepup/computer-history/pulls"}]},
+          {"role": "AXSecureTextField", "id": "password", "value": "hunter2"}
         ]},
-        "docs": {"role": "AXWindow", "title": "Docs", "children": [
+        "docs": {"role": "AXWindow", "title": "Docs", "recognized_text": "The design doc\nImages never leave the Mac", "children": [
           {"role": "AXTextArea", "value": "the design doc"}
         ]}
       }
@@ -42,7 +43,7 @@
       "bundle_id": "com.apple.calculator",
       "focused_window": "main",
       "windows": {
-        "main": {"role": "AXWindow", "title": "Calculator", "children": [
+        "main": {"role": "AXWindow", "title": "Calculator", "recognized_text": "42", "children": [
           {"role": "AXStaticText", "value": "42"},
           {"role": "AXStaticText", "value": "never read", "hangs": ["AXValue"]}
         ]}
@@ -62,15 +63,20 @@
   "steps": [
     {"at": 0, "focus": "textedit"},
     {"at": 10, "focus": "chrome"},
+    {"at": 15, "focus_element": {"app": "chrome", "window": "inbox", "element": "password"}},
     {"at": 20, "set_title": {"app": "chrome", "window": "inbox", "title": "Pull requests"}},
+    {"at": 25, "focus_element": {"app": "chrome"}},
     {"at": 30, "focus_window": {"app": "chrome", "window": "docs"}},
+    {"at": 35, "window_image": "failed"},
     {"at": 40, "focus": "cursor"},
+    {"at": 45, "window_image": "picture"},
     {"at": 50, "focus": "calculator"},
     {"at": 60, "focus": "onepassword"},
     {"at": 70, "set_title": {"app": "onepassword", "window": "vault", "title": "Another item"}},
     {"at": 100, "focus": "textedit"},
     {"at": 110, "pause": true},
     {"at": 115, "focus": "chrome"},
+    {"at": 160, "window_image": "no-permission"},
     {"at": 170, "resume": true},
     {"at": 180, "presence": {"locked": true}},
     {"at": 240, "presence": {"locked": false}},

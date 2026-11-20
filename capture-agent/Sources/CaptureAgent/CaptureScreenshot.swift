@@ -31,7 +31,7 @@ enum QueuedScreenshot: Sendable {
     case copy(from: KeptText, record: Record)
 }
 
-/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record.
+/// Takes the screenshot that goes with a capture just written and turns it into the capture's screenshot record, reminding once a day while the Screen Recording grant is missing.
 struct CaptureScreenshot<M: Mac> {
     let mac: M
     let images: any ImageStore
@@ -39,6 +39,8 @@ struct CaptureScreenshot<M: Mac> {
     let pause: PauseSwitch
     let idleThreshold: TimeInterval
     var dedup: FrameDedup
+    var reminder: PermissionReminder
+    let log: (String) -> Void
 
     mutating func take(for capture: SpoolRecord, of application: FocusedApplication) -> QueuedScreenshot {
         guard !pause.isPaused, mac.samplePresence().silence(idleThreshold: idleThreshold).isEmpty,
@@ -56,10 +58,12 @@ struct CaptureScreenshot<M: Mac> {
         let focused = FocusedWindow(processIdentifier: application.processIdentifier, title: capture.windowTitle, frame: frame)
         switch mac.focusedWindowImage(focused, longEdge: longEdge) {
         case .noPermission:
+            reminder.grantMissing(at: mac.now(), post: mac.post, log: log)
             return .ready(.noPermission(of: capture))
         case .failed:
             return .ready(.failed(of: capture))
         case .image(let image, let windowID):
+            reminder.grantSeen()
             guard let hash = differenceHash(image), let frame = FrameThumbnail(image, points: focused.frame.size) else {
                 return .ready(.failed(of: capture))
             }

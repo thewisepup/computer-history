@@ -48,7 +48,9 @@ final class CaptureLoop<M: Mac> {
                 longEdge: settings.screenshots.longEdge,
                 pause: settings.pause,
                 idleThreshold: settings.capture.idleThreshold,
-                dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter)
+                dedup: FrameDedup(changePixels: settings.screenshots.changePixels, keepAfter: settings.screenshots.keepAfter),
+                reminder: PermissionReminder(file: settings.permissionReminderFile),
+                log: log
             )
             let queue = ScreenshotQueue(
                 recognize: { [mac] in try mac.recognizeText(inImageAt: $0) },

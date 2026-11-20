@@ -16,6 +16,7 @@ at the Mac, with a screenshot of that window saved beside the database.
 | Spool | `spool/` in the folder |
 | Screenshots | `screenshots/` in the folder |
 | Config | `agent-config.json` in the folder, optional |
+| Reminder | `screen-recording-reminded` in the folder: when the missing-grant reminder was last posted |
 
 ## Commands
 
@@ -25,7 +26,8 @@ Run these from `capture-agent/`.
 scripts/test.sh        # swift test, with the Swift Testing paths Command Line Tools need
 scripts/e2e.sh         # the end-to-end check: a scripted session through the spool into a temp database
 scripts/build.sh       # build, wrap in .build/ComputerHistoryAgent.app, sign, verify
-scripts/install.sh     # build, replace the installed app, register the login item, check it runs
+scripts/install.sh     # build, replace the installed app, register the login item, check it runs,
+                       # then ask for Screen Recording and open its settings pane unless granted
 scripts/uninstall.sh   # unregister the login item, stop the agent, delete the app
 ```
 
@@ -44,6 +46,7 @@ agent=~/Applications/ComputerHistoryAgent.app/Contents/MacOS/computer-history-ag
 "$agent" pause         # stop capturing until resume, across restarts and reboots
 "$agent" resume
 "$agent" check-config  # where the settings came from, every problem, the settings in effect; exit 1 on problems
+"$agent" request-screen-recording  # ask macOS for Screen Recording, open its settings pane unless granted; install.sh runs it
 "$agent" uninstall
 "$agent" install       # exit 2 means approval is needed in System Settings > General > Login Items & Extensions
 ```
@@ -269,8 +272,8 @@ It is recorded for later measurement and decides nothing.
 
 ### Text recognition
 
-Screenshot records go through one first-in, first-out queue with no length
-limit, on a thread of its own, so the capture thread never waits for
+Screenshot records go through one first-in, first-out queue, `ScreenshotQueue`,
+with no length limit, on a thread of its own, so the capture thread never waits for
 recognition. The image is saved before its record is queued; the queue holds
 the record and the image's path, never the picture. Every screenshot record
 goes through it, whatever its status, so a capture's screenshot record reaches
@@ -313,11 +316,33 @@ new captures but not the queue: records of captures taken before the pause
 are still written, after the `paused` record. The scripted session waits for
 the queue to empty before it ends, with or without a crash.
 
-The agent does not ask for the Screen Recording grant itself, but its first
-ScreenCaptureKit call without the grant may make macOS show the Screen
-Recording prompt. Turn on Computer History Agent in System Settings > Privacy
-& Security > Screen Recording. Until then every screenshot record says
-`no-permission` and window text capture carries on.
+### Screen Recording permission
+
+`scripts/install.sh` asks for the grant once per install: it launches the
+installed app through `open -n -W ... --args request-screen-recording`, so
+macOS asks on behalf of the agent rather than the terminal. That command calls
+`CGRequestScreenCaptureAccess` and, unless that reports the grant held, opens
+the Screen Recording settings pane. Turn on Computer History Agent there.
+That answer only decides whether the pane opens. The agent never trusts
+`CGPreflightScreenCaptureAccess`, which can stay stale for the life of the
+process: a picture taken is the evidence the grant is held, and a
+`no-permission` record is the evidence it is missing. Until it is granted,
+window text capture carries on.
+
+When a screenshot comes back `no-permission`, the agent posts one notification
+whose click opens the settings pane, trying
+`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture`
+first and `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture`
+if that does not open. While the grant stays missing it tries again at most
+once every 24 hours, or at once if the clock was set back by more than that.
+The time of the last notification actually posted is kept in
+`screen-recording-reminded` in the folder, so a restart keeps the 24 hours; a
+try that posted nothing (macOS still asking to allow notifications, a
+notification centre that did not answer within 2 seconds, notifications turned
+off, or the agent not running from its app bundle) waits the 24 hours only
+within that run, and a restart tries again. Any picture taken (`kept` or
+`duplicate`) deletes the file, and a later loss reminds at once. With
+notifications off, `status` is the only warning.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
@@ -328,10 +353,10 @@ that finds the spool held by another agent exits without capturing.
 Everything the capture loop asks of the Mac is one protocol, `Mac`: the
 clocks, presence, the Accessibility grant, the focused app and its
 accessibility tree with each window's frame, a picture of the focused
-window and the text in a saved picture. `LiveMac` answers from macOS;
+window, the text in a saved picture, and posting a notification. `LiveMac` answers from macOS;
 `ScriptedMac` answers from a script on a virtual clock, with scripted
 accessibility elements, a striped 1600x1000 fixture image for every picture
-and empty recognized text unless a test scripts it per image file, so the real
+and empty recognized text unless a test or the script sets it, so the real
 `CaptureLoop`, `CaptureDecision`, `AppWatch`, `WindowWatch`, `WindowWalk` and
 `SpoolWriter` run unchanged on top of it. The unit tests use `ScriptedMac`
 too. `main.swift` is the only place that picks `LiveMac`.
@@ -357,23 +382,34 @@ in time order, each `at` seconds after the start with exactly one action:
 | `"focus": "<app>"` | that app comes to the front |
 | `"focus_window": {"app": ..., "window": ...}` | the app's focused window changes |
 | `"set_title": {"app": ..., "window": ..., "title": ...}` | the window's title changes |
+| `"focus_element": {"app": ..., "window": ..., "element": ...}` | the app's focused element becomes the element with that `id` in that window; `{"app": ...}` alone clears it |
+| `"window_image": "picture" \| "no-permission" \| "failed"` | what a picture of the focused window gives from now on: the fixture image (the start), a missing grant, or a failure |
 | `"presence": {"idle_seconds": ..., "locked": ..., "asleep": ...}` | presence; missing keys are 0 or false |
 | `"pause": true`, `"resume": true` | creates or deletes `capture-paused`, as the commands do |
 | `"end": true` | finishes the open spool file and exits |
 | `"crash": true` | exits leaving `open.part` unfinished, as a crash would |
 
-A window is an element: `role`, and optionally `title`, `subrole`,
-`description`, `value` (repeated `repeat` times), `hangs` (attributes whose
-calls time out) and `children`.
+A window is an element: `role`, and optionally `id` (unique in its window,
+for `focus_element`), `title`, `subrole`, `description`, `value` (repeated
+`repeat` times), `hangs` (attributes whose calls time out) and `children`. A
+window may also set `recognized_text`: the text the scripted recognition reads
+from each picture kept of it (otherwise empty).
 
 `scripts/e2e.sh` builds the agent and runs `tests/test_capture_e2e.py`. It
 plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
 `e2e/session.json`, then runs the real `computer-history ingest` three times
 (twice, then once more with the finished files put back) and `status` against
 a temporary database, with a stand-in ActivityWatch that has no buckets, and
-checks the stored records and signals against the scripts. It also checks
-that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder.
+checks the stored records and signals against the scripts. The session's nine
+captures give every screenshot status: `kept` with scripted recognized text,
+`secure-field` on a focused password field, `failed` from a refused picture, a
+`duplicate` copying its kept record's text, and two `no-permission` records
+that post one reminder and leave `status` warning. The test checks the images
+on disk, the stored records and their signals (a `rebuild-signals` included),
+the reminder's saved time, and every line of the screenshots section in
+`status`. The backend runs with the screenshots folder closed to it (mode
+`000`), and the images must come out byte for byte the same. It also checks that the agent's `check-config` and the backend name
+the same default folder and spool for a scratch home folder.
 Plain `pytest` skips it unless `CAPTURE_AGENT_BINARY` names a built agent.
 
 ## Logs
@@ -398,7 +434,12 @@ write (last: <error>)`, `, 1 screenshot records failed to write (last:
 writes or recognitions fail, each only when its count is not zero and each
 with the last error of its own kind. `silent: paused`, `silent:
 idle`, `silent: locked, asleep` and `capturing again` mark silence starting,
-changing and ending. The log never holds window titles or text. After a crash,
+changing and ending. Each reminder try logs one of `screen recording missing,
+posted a reminder`, `..., asked macOS to allow notifications for the
+reminder`, `..., the notification centre did not answer within 2s`, or, once
+per run, `..., notifications unavailable (<reason>), status is the only
+warning`. `could not save the reminder time to <path> (<error>), a restart may
+remind again` appears at most once per run. The log never holds window titles or text. After a crash,
 start also logs `spool finished leftover file <name>`.
 
 ## Spool
