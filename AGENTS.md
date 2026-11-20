@@ -82,6 +82,45 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
 - Commit subjects are plain descriptions with no ticket prefix (an issue key
   is prepended once a tracker is in use).
 
+## Synthetic datasets
+
+`computer_history/synthetic/` builds datasets of invented history through the
+real ingest path, each with a manifest of true answers, and runs the
+performance gate on them. Its `__init__.py` maps the modules;
+`computer_history/cli/README.md` shows the commands:
+
+```bash
+computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
+computer-history dev perf                      # the gate against perf_baseline.json
+computer-history dev perf --update-baselines   # a deliberate change of cost
+```
+
+A new source, table, timeline field or public store function lands with its
+synthetic coverage in the same change. `tests/test_synthetic_coverage.py` goes
+red until it does. It needs:
+
+- every stream a source projects fed by a renderer in `RENDERERS`;
+- every table holding rows in the gate's day dataset;
+- every `Stretch` and `Fault` field changing some renderer's output or the
+  manifest;
+- every public store function taking a connection called by an operation in
+  `OPERATIONS`.
+
+Each failure names the registry to extend. Where coverage can't exist yet (a
+table whose milestone hasn't landed), add an entry with its reason to the
+exemption list in that test.
+
+What to test and what the gate does, by change:
+
+| Change | Correctness | Performance | What the gate does |
+|---|---|---|---|
+| New source | A renderer, its manifest facts and assertions against them | Nothing new | `ingest` costs more: `--update-baselines`, say why in the PR |
+| New timeline field | A default, rendered somewhere, its truth in the manifest | Nothing new | Moves only if the rendered data does |
+| New store read | Its answer matches the manifest | An `Operation` that runs it | Records a baseline, then guards it |
+| Changed operation | Existing tests still pass, plus cases for new behaviour | A new case only for a new code path | Up: justify in the PR; down: lock it in with `--update-baselines` |
+| Schema change | Facts for new tables, or a reasoned exemption | Operations for new reads | Every cached dataset rebuilds; plans, pages and costs rechecked |
+| Refactor | Nothing new | Nothing new | Must pass unchanged |
+
 ## Agent skills
 
 ### Issue tracker
