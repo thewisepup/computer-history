@@ -14,6 +14,7 @@ app.py         parser + dispatch: one entry per command
   +-- status.py    freshness, coverage gaps, the capture agent, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
+  +-- dev.py       dev build-db: a database of synthetic history from the dataset cache
         |
 db.py and sources.py (unusable database / source messages),
 formatting.py (durations, times, sizes)
@@ -199,6 +200,46 @@ rebuild-signals aborted: no source adapter projects 'screenshot', the source of 
   this computer-history has no adapter for that source; rebuild with the version that ingested it
 ```
 
+## dev build-db — a database of synthetic history
+
+```bash
+computer-history dev build-db --persona developer --scenario typical --tier day --seed 1 --out /tmp/dev
+computer-history status --db-path /tmp/dev/history.db   # the spool is /tmp/dev/spool, beside it
+```
+
+```
+Dataset persona=developer, scenario=typical, tier=day, seed=1, start=2026-01-05, timezone=America/Los_Angeles
+  built: ~/Library/Caches/ComputerHistory/datasets/69b4a3a750a56e1dd6c2543276a92ee8
+  database   /tmp/dev/history.db
+  manifest   /tmp/dev/manifest.json
+```
+
+Builds a synthetic dataset through the real backfill and poll, or reuses the
+one already in the dataset cache (`reused from the cache`), and copies every
+file of it into `--out`: the database, the manifest of true answers, and any
+rendered source files such as a spool. Every field of the dataset's inputs is
+a flag: `--persona`, `--scenario`, `--tier` and `--seed` are required, and
+their choices are whatever the synthetic package registers; `--start` and
+`--timezone` move the range. The same inputs always give the same database
+contents.
+
+It refuses, with exit code 1 and before building anything, an `--out` that is
+the live database or inside its folder: the default
+`~/Library/Application Support/ComputerHistory/` and the folder of
+`$COMPUTER_HISTORY_DB` when that is set. It refuses an `--out` that already
+holds any file it would write (`... already holds history.db, manifest.json;
+pass --force to replace them`); `--force` replaces just those, plus stale
+`-wal`/`-shm` files, and leaves the folder's other files alone.
+
+The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
+`~/Library/Caches/ComputerHistory/datasets/` on macOS (`$XDG_CACHE_HOME`, or
+`~/.cache`, then `computer-history/datasets/` elsewhere), shared by every
+worktree. An entry is keyed by the inputs, the package's code and migrations,
+the schema version and the SQLite version, so any change to ingest rebuilds
+it. A build writes into a temporary folder beside the entry and renames it
+into place; when two builds race, the loser discards its copy. Delete the
+folder at any time: the next request rebuilds.
+
 ## When the database can't be used
 
 Every command opens the store the same way and refuses, with exit code 1 and
@@ -225,7 +266,7 @@ computer-history status --aw-url http://127.0.0.1:5666/api/0
 computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 ```
 
-Every command takes `--db-path`; the networked ones (`ingest`, `status`,
+Every command but `dev` takes `--db-path`; the networked ones (`ingest`, `status`,
 `backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch
 database never collects the real spool. `-h` on any command prints its flags.

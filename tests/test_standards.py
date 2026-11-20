@@ -119,8 +119,9 @@ FORBIDDEN_IMPORTS = {
     "sources": ("computer_history.synthetic", "computer_history.cli"),
     "synthetic": ("computer_history.cli",),
 }
-OPENERS = ("AWClient", "connect", "connect_readonly", "open_store")
+OPENERS = ("AWClient", "connect", "connect_immutable", "connect_readonly", "open_store")
 SCRATCH_DATABASE_LAYERS = ("synthetic",)
+SCRATCH_OPENERS = ("connect", "connect_immutable")
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
@@ -162,7 +163,7 @@ def test_only_the_cli_opens_connections_and_clients(path: Path) -> None:
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in OPENERS
-        and not (scratch and node.func.id == "connect" and node.args)
+        and not (scratch and node.func.id in SCRATCH_OPENERS and node.args)
     ]
     assert not calls, f"{_rel(path)}: take these as parameters instead: {calls}"
 
