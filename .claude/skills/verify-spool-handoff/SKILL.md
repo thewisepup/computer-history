@@ -27,9 +27,9 @@ Rerun the check if the diff touches any of these files:
 | `SpoolWriter.finishLocked` (stamp `max(now, lastFinished+1)`, `renamex_np` with `RENAME_EXCL`) | `AgentFinishes` |
 | process crash or kill; launchd restart | `AgentCrashes` |
 | `computer_history/sources/ax_text/spool.py`: `finished_files` | `IngestLists` |
-| `ax_text/adapter.py`: `CaptureSpool.pull_after` (the `_listed` deque, `read_lines`, `FileNotFoundError` -> `_gone`) | `IngestLists`, `IngestReads` |
+| `ax_text/adapter.py`: `CaptureSpool.pull_after` (one `_listed` deque per stream, `_forget_all_but`, `read_file` and the file identity it returns, each stream keeping only its own records, `FileNotFoundError` -> `_drop`) | `IngestLists`, `IngestReads` |
 | `sources/commit.py`: `commit_pull` (insert, then `after_commit`); `store/observations.py`: `insert_observations` (one transaction, `ON CONFLICT DO NOTHING`) | `IngestCommits`, then `IngestFinishes` |
-| `CaptureSpool._done`, `spool.remove_finished` (unlink by name), `spool.set_aside` (`os.link` then unlink) | `IngestFinishes`, `IngestUnlinksAside` |
+| `CaptureSpool._stored_by` (mark the stream stored that file; finish only once every stream stored the same file), `_finish`, `spool.remove_finished` (unlink by name), `spool.set_aside` (`os.link` then unlink) | `IngestFinishes`, `IngestUnlinksAside` |
 | `sources/runner.py`: `poll`, `watch` (the same `CaptureSpool`, and its `_listed`, across cycles); `cli/ingest.py` (no lock between ingest processes) | `Ingests` constant, `IngestCrashes` |
 
 Changes to record parsing, normalization, coverage, status or ActivityWatch do
@@ -38,7 +38,7 @@ not touch it.
 ## Run
 
 ```bash
-formal/check.sh              # all configs, about 10 seconds
+formal/check.sh              # all configs, about 20 minutes on 18 cores (one_ingest about 1)
 formal/check.sh one_ingest   # one config
 ```
 
@@ -52,9 +52,16 @@ The script exits 0 only when every config gives its expected result:
 
 | Config | Situation | Expected |
 |---|---|---|
-| `one_ingest` | 3 records, 1 ingest process, agent crashes up to 2, ingest crash 1, clock may be set back | pass |
-| `two_ingests_steady_clock` | 2 records, 2 concurrent ingests, clock only moves forward | pass |
-| `two_ingests` | 2 records, 2 concurrent ingests, clock may be set back | **fail NoLoss**: the known finding below |
+| `one_ingest` | 3 records (`r2` a screenshot record), 1 ingest process, agent crashes up to 2, ingest crash 1, clock may be set back | pass |
+| `two_ingests_steady_clock` | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock only moves forward | pass |
+| `two_ingests` | 2 records (`r2` a screenshot record), 2 concurrent ingests, clock may be set back | **fail NoLoss**: the known finding below |
+
+Each ingest reads every file once per stream (`ax-text`, `screenshot`), and
+a stream's read keeps only its own records. A file is removed only by the
+ingest that has stored it for both streams, and only if both reads saw the
+same file (the model's `gen`, the code's device, inode, size and mtime).
+Without that gate, one stream's removal loses the other stream's records in
+`one_ingest`.
 
 ## Read a result with /statechart
 
@@ -103,13 +110,14 @@ that neither of them read:
    another record to `open.part`, and crashes.
 2. The wall clock is set back to the old file's millisecond.
 3. Ingest A (say `ingest --watch`) and ingest B (a one-off `ingest`) both list
-   and read that file.
-4. A commits it and unlinks it. The spool folder is now empty.
+   and read that file, for both streams.
+4. A commits it for both streams and unlinks it. The spool folder is now empty.
 5. launchd restarts the agent. `startIfNeeded` finds no finished names, so
    `lastFinished` is 0. Finishing the leftover `open.part` picks
    `max(now, 1)`, which is the same name, and `RENAME_EXCL` allows it because
    the name is free.
-6. B commits what it read earlier (a duplicate) and then calls
+6. B commits what it read earlier (a duplicate), now for both streams of the
+   old file, and then calls
    `remove_finished` on the name. That deletes the agent's new file, which
    nobody read. With an unusable line, `set_aside` moves it to `unreadable/`
    instead.
@@ -143,6 +151,13 @@ reuses a stamp (persist `lastFinished`), or a lock between ingest processes.
 - Assumption: a restart takes longer than file names ever run ahead of the
   clock. Names run ahead only when two finishes fall in one millisecond, and
   launchd restarts take seconds.
+- Assumption: a later file under a name never has the same device, inode,
+  size and mtime (nanoseconds) as the file it replaced; the model gives each
+  finished file a new generation.
+- Which records are screenshot records is fixed per config (`Screenshots`),
+  not chosen as the agent appends: choosing it multiplied the state space
+  past what a check run can cover. Files holding both kinds, and files of one
+  kind alone, still arise.
 
 ## Coverage record
 

@@ -35,6 +35,7 @@ Ingested from http://127.0.0.1:5600/api/0 and .../ComputerHistory/spool into ...
   aw-web     inserted     62  skipped      1  held back   0
   aw-window  inserted    271  skipped      1  held back   1
   ax-text    inserted    412  skipped      0  held back   0  rejected 1
+  screenshot inserted    410  skipped      0  held back   0
 ```
 
 `inserted` is new rows, `skipped` is rows already stored (re-reads are
@@ -46,9 +47,10 @@ project is reported (`error on aw-window: no source adapter projects
 observations from 'aw-window'`, exit 1) while the other streams are still
 ingested.
 
-`ax-text` is the capture agent's spool, read in the same poll. Each finished
-`*.jsonl` file is stored in one commit, oldest first, then deleted; the
-agent's `open.part` and `agent.lock` are never touched. `rejected` counts
+`ax-text` and `screenshot` are the capture agent's spool, read in the same
+poll. Each stream stores its own records from each finished `*.jsonl` file in
+one commit, oldest first; the file is deleted once both streams have stored
+it. The agent's `open.part` and `agent.lock` are never touched. `rejected` counts
 lines that are not usable records (malformed, failing validation, or an
 unknown format version): they are skipped and logged, and the rest of the
 file is stored. A file with any unusable line, or one that cannot be read, is

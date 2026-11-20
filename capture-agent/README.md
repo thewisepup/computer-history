@@ -294,7 +294,8 @@ another agent is writing to <folder>, exiting`, asks for no Accessibility
 prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
 or so, until the lock is free.
 
-Every record has every key, sorted, with `null` where a key does not apply:
+A capture, exclusion, pause or resume record has every key below, sorted,
+with `null` where a key does not apply:
 
 | Key | Value |
 |---|---|
@@ -312,8 +313,27 @@ Every record has every key, sorted, with `null` where a key does not apply:
 | `text_cut_off` | `capture` only: `true` when `text` is shorter than the full text |
 | `timed_out` | `capture` only: `true` when reading stopped at a timeout and the text is partial |
 
+A `screenshot` record (`ScreenshotRecord`) tells what became of the
+screenshot taken with one capture. The agent does not write these yet. It has
+every key below, sorted, with `null` where a key does not apply:
+
+| Key | Value |
+|---|---|
+| `version` | format version, `1` |
+| `id` | lowercase UUID of this record; becomes the observation's `source_id` |
+| `kind` | `screenshot` |
+| `capture_id` | the `id` of the capture it belongs to |
+| `captured_at` | the capture's time |
+| `status` | `kept`, `duplicate`, `secure-field`, `no-permission` or `failed` |
+| `app_name`, `bundle_id`, `window_title` | the capture's |
+| `image_path` | `kept` and `duplicate`: the JPEG's path relative to the folder (for `duplicate`, the kept image it matched) |
+| `image_bytes` | `kept` only: the JPEG's size |
+| `perceptual_hash` | `kept` and `duplicate`: the frame's hash |
+| `text` | `kept` and `duplicate`: the recognized text, possibly cut off (for `duplicate`, the kept record's) |
+| `text_sha256`, `full_text_bytes`, `text_cut_off` | as for a capture, of the recognized text |
+
 [`fixtures/spool/records.jsonl`](../fixtures/spool/records.jsonl) holds one
-example of every kind and trigger. It is the contract with the backend: the
+example of every kind, trigger and screenshot status. It is the contract with the backend: the
 Swift tests check the encoder writes exactly those lines, and the Python tests
 read the same file.
 

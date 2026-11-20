@@ -38,6 +38,7 @@ import PackageDescription
 ///     CaptureScript.swift   a scripted session's JSON: apps, windows and timed steps
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line
+///     ScreenshotRecord.swift    a capture's screenshot record: its status, image and recognized text
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps
 ///
 /// The spool and its record format are described in README.md.

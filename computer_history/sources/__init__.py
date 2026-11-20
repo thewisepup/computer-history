@@ -3,8 +3,8 @@
     activitywatch/   an adapter: names its streams, pulls settled raw observations,
           |          says where each stream's progress now stands, and supplies
           |          a projector (stored payload -> signal) for each stream
-    ax_text/         the same for the capture spool: one finished file per pull,
-          |          removed after its commit
+    ax_text/         the same for the capture spool's ax-text and screenshot streams:
+          |          one finished file per pull, removed once both streams committed it
       contract.py    what an adapter implements: Source (projectors, streams + pull
           |          after a position), HistorySource (adds history facts + range pulls)
           |

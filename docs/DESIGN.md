@@ -83,8 +83,7 @@ computer_history/
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
                 # health for status, judged against aw-afk and aw-window),
-                # then one adapter per source: activitywatch/, ax_text/,
-                # screenshots
+                # then one adapter per source: activitywatch/, ax_text/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for
@@ -92,8 +91,10 @@ computer_history/
                 # frontmost (stored and newest aw-window app spans, for status)
                 # ax_text/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
-                # against format v1), normalize (its projector), adapter
-                # (CaptureSpool: one file per pull); for status, backlog (what
+                # against format v1), normalize (the ax-text projector),
+                # screenshot (the screenshot projector), adapter (CaptureSpool:
+                # two streams, one file per pull, removed once both stored
+                # it); for status, backlog (what
                 # waits in the spool), stored (the stored records' kinds and
                 # apps, the day's counts), coverage (unobserved stretches,
                 # liveness) and agreement (each capture's app against aw-window)
@@ -152,7 +153,8 @@ observations (
 Content sources projected into one typed table so consumers read one shape.
 Normalization is computation, not just reshaping: domain extraction from URLs,
 text hygiene (capping, whitespace collapse). `ax-text` signals keep the first
-10,000 characters; the raw observation keeps everything.
+10,000 characters, and `screenshot` signals the first 10,000 of the recognized
+text; the raw observation keeps everything.
 
 ```sql
 signals (
@@ -299,8 +301,8 @@ classification_runs (id, started_at, finished_at, range, model, status, error)
 ```
 
 - **Progress is opaque and moves only with a batch.** `position` is whatever
-  the source needs to resume (ActivityWatch: a UTC timestamp; the AX-text
-  spool: the time of the latest stored capture, also its `settled_until`,
+  the source needs to resume (ActivityWatch: a UTC timestamp; each spool
+  stream: the time of its latest stored record, also its `settled_until`,
   since finished files are read oldest first and removed once stored). Only
   `insert_observations` writes it, in the same transaction as the batch,
   either advancing it (incremental ingest) or setting it only if the source
@@ -323,7 +325,7 @@ Only adapters know payload dialects; everything downstream reads `signals`.
 
 - An adapter (`sources/contract.py`) is a `Source`: `streams()` names the
   streams it feeds (ActivityWatch: `aw-window`, `aw-afk`, `aw-web`; the
-  AX-text spool: `ax-text`), and `pull_after(stream, position, now=)` returns
+  capture spool: `ax-text` and `screenshot`), and `pull_after(stream, position, now=)` returns
   a `Pull`: settled observations, a held-back count, the new `position`
   (`None` leaves progress as it is) and `settled_until`, plus three fields a
   file-based source needs: `rejected` (records it could not use and skipped),
@@ -404,7 +406,10 @@ Screenshot mechanics are still **[proposed]**; the AX mechanics are decided.
 - Spool handoff: the agent appends JSONL (one record per line, UUID =
   `source_id`) to one open file and renames it to a finished name every
   minute. The backend reads only finished files, stores them, then deletes
-  them; no offset cursor, since re-reading is idempotent. Unusable lines are
+  them; no offset cursor, since re-reading is idempotent. Both spool streams
+  (`ax-text`, `screenshot`) read every file for their own records, and a file
+  is deleted only once both have stored that same file (told apart from a
+  later file of the same name by device, inode, size and mtime). Unusable lines are
   skipped and counted; a file with any unusable line, or that cannot be read,
   is moved into `spool/unreadable/`, never deleted. The filesystem is the
   queue; backend downtime just accumulates files.

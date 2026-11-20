@@ -18,6 +18,7 @@ from computer_history.sources import (
     AX_TEXT_SOURCE,
     MAX_AX_TEXT_LENGTH,
     MAX_TEXT_LENGTH,
+    SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
@@ -40,7 +41,11 @@ from computer_history.sources.ax_text import adapter as spool_adapter
 from computer_history.store import connect, get_progress, table_counts, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
-FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()
+FIXTURE_LINES = [
+    line
+    for line in FIXTURE.read_text(encoding="utf-8").splitlines()
+    if json.loads(line)["kind"] != "screenshot"
+]
 FIXTURE_CAPTURES = sum(json.loads(line)["kind"] == "capture" for line in FIXTURE_LINES)
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
@@ -114,7 +119,10 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
 
     latest = datetime(2026, 11, 18, 9, 15, 42, 999000, tzinfo=UTC)
     assert summary.ok
-    assert summary.outcomes == {AX_TEXT_SOURCE: IngestOutcome(len(FIXTURE_LINES), 0, 0, latest)}
+    assert summary.outcomes == {
+        AX_TEXT_SOURCE: IngestOutcome(len(FIXTURE_LINES), 0, 0, latest),
+        SCREENSHOT_SOURCE: IngestOutcome(0, 0, 0, None),
+    }
     records = [json.loads(line) for line in FIXTURE_LINES]
     assert observations(conn) == [
         (r["id"], utc_iso(r["captured_at"]), utc_iso(r["captured_at"]), line)
@@ -240,7 +248,10 @@ def test_a_missing_spool_folder_is_nothing_to_ingest(
     summary = poll(conn, [CaptureSpool(tmp_path / "no-such-spool")], now=NOW)
 
     assert summary.ok
-    assert summary.outcomes == {AX_TEXT_SOURCE: IngestOutcome(0, 0, 0, None)}
+    assert summary.outcomes == {
+        AX_TEXT_SOURCE: IngestOutcome(0, 0, 0, None),
+        SCREENSHOT_SOURCE: IngestOutcome(0, 0, 0, None),
+    }
     assert get_progress(conn, AX_TEXT_SOURCE) is None
     assert not (tmp_path / "no-such-spool").exists()
 
@@ -293,7 +304,9 @@ def test_a_file_that_cannot_be_removed_fails_once_and_does_not_block_later_files
     finally:
         spool_dir.chmod(0o755)
 
-    assert [(f.stream, f.kind) for f in failed.failures] == [(AX_TEXT_SOURCE, FailureKind.SOURCE)]
+    assert [(f.stream, f.kind) for f in failed.failures] == [
+        (SCREENSHOT_SOURCE, FailureKind.SOURCE)
+    ]
     assert "cannot remove stored spool file" in failed.failures[0].error
     assert "spool/" + file_name(2) in again.failures[0].error
     assert len(observations(conn)) == 2 and first.exists() and second.exists()
@@ -336,9 +349,9 @@ def test_a_backlog_is_listed_once_per_drain(
     spool = CaptureSpool(spool_dir)
 
     assert poll(conn, [spool], now=NOW).outcomes[AX_TEXT_SOURCE].inserted == 20
-    assert listings == [20]
+    assert listings == [20, 20]
     poll(conn, [spool], now=NOW)
-    assert listings == [20, 0]
+    assert listings == [20, 20, 0, 0]
 
 
 def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(

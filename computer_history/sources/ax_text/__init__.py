@@ -1,16 +1,22 @@
-"""The capture spool adapter: the capture agent's AX-text captures, read from the spool.
+"""The capture spool adapter: the capture agent's window text and screenshot records.
 
     spool folder (paths.py: --spool-path, $COMPUTER_HISTORY_SPOOL, or beside the database)
           |
       spool.py       finished *.jsonl files oldest first (never open.part or agent.lock),
-          |          read, removed once stored, or set aside into unreadable/
+          |          read with what tells the file apart, removed once stored, or set
+          |          aside into unreadable/
       record.py      one line -> a checked record of format v1 (InvalidRecord otherwise)
           |
-      adapter.py     CaptureSpool: one file per pull, its position the latest capture time,
-                     its after-commit step removing the file, or setting it aside if any
-                     line was unusable; more while listed files remain
-                     normalize.py: its projector, stored record -> signal
+      adapter.py     CaptureSpool, two streams over the same files: ax-text (captures,
+                     exclusions, pauses, resumes) and screenshot. Each pull reads one file
+                     for one stream, its position that stream's latest capture time; the
+                     after-commit step removes the file, or sets it aside if any line was
+                     unusable, only once both streams stored that same file; more while
+                     the stream's listed files remain
+                     normalize.py: the ax-text projector, stored record -> signal
                      (app, title, capped text, the rest in extras)
+                     screenshot.py: the screenshot projector, stored record -> signal
+                     (app, title, capped recognized text, image and status in extras)
 
     For status: backlog.py   what waits in the spool and its newest record, changing nothing
                 stored.py    the stored records' kinds, apps and flags, the newest, the
@@ -39,9 +45,14 @@ from computer_history.sources.ax_text.paths import SPOOL_ENV_VAR, resolve_spool_
 from computer_history.sources.ax_text.record import (
     CAPTURE_KIND,
     PAUSED_KIND,
+    SCREENSHOT_KIND,
     SPOOL_VERSION,
     InvalidRecord,
     parse_record,
+)
+from computer_history.sources.ax_text.screenshot import (
+    MAX_RECOGNIZED_TEXT_LENGTH,
+    SCREENSHOT_SOURCE,
 )
 from computer_history.sources.ax_text.spool import UNREADABLE_FOLDER, SpoolError, finished_files
 from computer_history.sources.ax_text.stored import (
@@ -60,7 +71,10 @@ __all__ = [
     "CAPTURE_TOLERANCE",
     "HEARTBEAT_SECONDS",
     "MAX_AX_TEXT_LENGTH",
+    "MAX_RECOGNIZED_TEXT_LENGTH",
     "PAUSED_KIND",
+    "SCREENSHOT_KIND",
+    "SCREENSHOT_SOURCE",
     "SPOOL_ENV_VAR",
     "SPOOL_VERSION",
     "UNREADABLE_FOLDER",

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from computer_history.sources.ax_text.record import InvalidRecord, parse_record
+from computer_history.sources.ax_text.record import AX_TEXT_KINDS, InvalidRecord, parse_record
 from computer_history.sources.ax_text.spool import (
     FINISHED_NAME_FORMAT,
     OPEN_FILE,
@@ -66,7 +66,8 @@ def _newest_record(path: Path) -> tuple[datetime, str] | None:
             record = parse_record(raw.decode("utf-8"))
         except (UnicodeDecodeError, InvalidRecord):
             continue
-        return record.captured_at, record.kind
+        if record.kind in AX_TEXT_KINDS:
+            return record.captured_at, record.kind
     return None
 
 

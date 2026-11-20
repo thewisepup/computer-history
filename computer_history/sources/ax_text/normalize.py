@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from types import MappingProxyType
 
 from computer_history.sources.ax_text.record import CAPTURE_KIND, parse_record
-from computer_history.sources.contract import StreamProjector
 from computer_history.store import Signal
 from computer_history.text import clean_text
 
@@ -27,6 +24,3 @@ def project_capture(payload: str) -> Signal | None:
         text=clean_text(data.get("text"), MAX_AX_TEXT_LENGTH),
         extras=json.dumps(extras, sort_keys=True) if extras else None,
     )
-
-
-PROJECTORS: Mapping[str, StreamProjector] = MappingProxyType({AX_TEXT_SOURCE: project_capture})

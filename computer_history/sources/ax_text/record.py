@@ -14,7 +14,10 @@ CAPTURE_KIND = "capture"
 EXCLUDED_KIND = "excluded"
 PAUSED_KIND = "paused"
 RESUMED_KIND = "resumed"
-KINDS = (CAPTURE_KIND, EXCLUDED_KIND, PAUSED_KIND, RESUMED_KIND)
+SCREENSHOT_KIND = "screenshot"
+AX_TEXT_KINDS = (CAPTURE_KIND, EXCLUDED_KIND, PAUSED_KIND, RESUMED_KIND)
+KINDS = (*AX_TEXT_KINDS, SCREENSHOT_KIND)
+SCREENSHOT_STATUSES = ("kept", "duplicate", "secure-field", "no-permission", "failed")
 
 _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _TYPED_FIELDS: Mapping[str, type] = {
@@ -27,11 +30,18 @@ _TYPED_FIELDS: Mapping[str, type] = {
     "full_text_bytes": int,
     "text_cut_off": bool,
     "timed_out": bool,
+    "image_path": str,
+    "image_bytes": int,
+    "perceptual_hash": str,
 }
 
 
 class InvalidRecord(ValueError):
-    """A spool line that is not a record this backend can use."""
+    """A spool line that is not a record this backend can use, and the kind it names if known."""
+
+    def __init__(self, message: str, kind: str | None = None) -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 @dataclass(frozen=True)
@@ -61,10 +71,25 @@ def parse_record(line: str) -> ParsedRecord:
     kind = data.get("kind")
     if kind not in KINDS:
         raise InvalidRecord(f"unknown kind {kind!r}")
+    try:
+        return _checked(data, record_id, kind)
+    except InvalidRecord as exc:
+        exc.kind = kind
+        raise
+
+
+def _checked(data: dict[str, Any], record_id: str, kind: str) -> ParsedRecord:
     for key, expected in _TYPED_FIELDS.items():
         value = data.get(key)
         if value is not None and type(value) is not expected:
             raise InvalidRecord(f"{key} is not a {expected.__name__}: {value!r}")
+    if kind == SCREENSHOT_KIND:
+        status = data.get("status")
+        if status not in SCREENSHOT_STATUSES:
+            raise InvalidRecord(f"unknown status {status!r}")
+        capture_id = data.get("capture_id")
+        if not isinstance(capture_id, str) or not _ID.fullmatch(capture_id):
+            raise InvalidRecord(f"bad capture_id {capture_id!r}")
     return ParsedRecord(record_id, _captured_at(data.get("captured_at")), kind, data)
 
 

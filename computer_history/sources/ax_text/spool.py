@@ -33,12 +33,22 @@ def finished_files(folder: Path) -> list[Path]:
     return [folder / name for name in names]
 
 
+FileIdentity = tuple[int, int, int, int]
+
+
 def read_lines(path: Path) -> list[bytes]:
     """The file's lines without their line endings."""
-    lines = path.read_bytes().split(b"\n")
+    return read_file(path)[0]
+
+
+def read_file(path: Path) -> tuple[list[bytes], FileIdentity]:
+    """The file's lines without line endings, and what tells it from a later file of that name."""
+    with path.open("rb") as handle:
+        info = os.fstat(handle.fileno())
+        lines = handle.read().split(b"\n")
     if lines and not lines[-1]:
         lines.pop()
-    return lines
+    return lines, (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
 
 
 def remove_finished(path: Path) -> None:

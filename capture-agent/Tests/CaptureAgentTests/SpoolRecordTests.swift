@@ -4,7 +4,7 @@ import Testing
 
 @Test func encoderWritesExactlyTheFixtureLines() throws {
     let encoded = try fixtureRecords.map { String(decoding: try $0.jsonLine(), as: UTF8.self) }
-    #expect(encoded == (try fixtureLines()))
+    #expect(encoded == (try fixtureLines().filter { !isScreenshotLine($0) }))
 }
 
 @Test func fixtureCoversEveryKindAndTrigger() {

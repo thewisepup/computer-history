@@ -177,10 +177,10 @@ def test_the_agent_writes_every_kind_and_trigger_the_scripts_call_for(session: S
 
 def test_every_record_has_exactly_the_contract_fixtures_keys_and_version(session: Session) -> None:
     contract = [json.loads(line) for line in CONTRACT.read_text("utf-8").splitlines()]
-    keys = {key for record in contract for key in record}
+    keys = {record["kind"]: set(record) for record in contract}
     versions = {record["version"] for record in contract}
     for record in session.records():
-        assert set(record) == keys
+        assert set(record) == keys[record["kind"]]
         assert {record["version"]} == versions
 
 
