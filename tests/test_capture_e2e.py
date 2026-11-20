@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -9,18 +10,20 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
-from computer_history.cli.formatting import human_size
+from computer_history.cli.formatting import human_size, local_midnight, when
 from computer_history.sources.capture_spool import (
     MAX_AX_TEXT_LENGTH,
     SPOOL_ENV_VAR,
     resolve_spool_path,
 )
 from computer_history.store import DB_ENV_VAR, resolve_db_path
+from computer_history.store.timefmt import to_utc
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
 REPO = Path(__file__).resolve().parent.parent
@@ -54,6 +57,22 @@ EXPECTED = [
     ("capture", "heartbeat", "Google Chrome"),
 ]
 
+EXPECTED_SCREENSHOTS = [
+    ("kept", "TextEdit", "Crash notes"),
+    ("duplicate", "TextEdit", "Crash notes"),
+    ("duplicate", "TextEdit", "Crash notes"),
+    ("kept", "TextEdit", "Notes"),
+    ("kept", "Google Chrome", "Inbox"),
+    ("secure-field", "Google Chrome", "Pull requests"),
+    ("kept", "Google Chrome", "Docs"),
+    ("failed", "Cursor", "long.txt — computer-history"),
+    ("kept", "Calculator", "Calculator"),
+    ("duplicate", "TextEdit", "Notes"),
+    ("no-permission", "Google Chrome", "Docs"),
+    ("no-permission", "Google Chrome", "Docs"),
+]
+REMINDED = "screen recording missing, posted a reminder"
+
 
 @dataclass(frozen=True)
 class Session:
@@ -67,6 +86,10 @@ class Session:
     ingests: list[subprocess.CompletedProcess[str]]
     row_counts: list[int]
     status: subprocess.CompletedProcess[str]
+    status_at: datetime
+    rebuild: subprocess.CompletedProcess[str]
+    signals_before_rebuild: list[tuple]
+    images_before: dict[Path, bytes]
 
     def records(self) -> list[dict]:
         with sqlite3.connect(self.db) as conn:
@@ -86,14 +109,8 @@ class Session:
         with sqlite3.connect(self.db) as conn:
             return [p for (p,) in conn.execute("SELECT payload FROM observations")]
 
-    def signals(self) -> dict[str, tuple]:
-        with sqlite3.connect(self.db) as conn:
-            rows = conn.execute(
-                "SELECT o.source_id, s.app, s.title, s.text, s.extras"
-                " FROM signals s JOIN observations o ON o.id = s.observation_id"
-                " WHERE s.source = 'ax-text'"
-            ).fetchall()
-        return {row[0]: row[1:] for row in rows}
+    def signals(self, source: str = "ax-text") -> dict[str, tuple]:
+        return {row[0]: row[1:] for row in _signal_rows(self.db, source)}
 
 
 class EmptyActivityWatch(BaseHTTPRequestHandler):
@@ -122,16 +139,31 @@ def _agent(script: str, folder: Path) -> subprocess.CompletedProcess[str]:
     return run
 
 
-def _cli(*args: str, db: Path, aw_url: str) -> subprocess.CompletedProcess[str]:
+def _signal_rows(db: Path, source: str) -> list[tuple]:
+    with sqlite3.connect(db) as conn:
+        return conn.execute(
+            "SELECT o.source_id, s.app, s.title, s.text, s.extras"
+            " FROM signals s JOIN observations o ON o.id = s.observation_id"
+            " WHERE s.source = ? ORDER BY s.observation_id",
+            (source,),
+        ).fetchall()
+
+
+def _cli(*args: str, db: Path, aw_url: str | None = None) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(REPO), env.get("PYTHONPATH")]))
+    aw = ["--aw-url", aw_url] if aw_url else []
     return subprocess.run(
-        [str(CLI), *args, "--db-path", str(db), "--aw-url", aw_url],
+        [str(CLI), *args, "--db-path", str(db), *aw],
         env=env,
         capture_output=True,
         text=True,
         timeout=60,
     )
+
+
+def _image_bytes(folder: Path) -> dict[Path, bytes]:
+    return {path: path.read_bytes() for path in folder.rglob("*.jpg")}
 
 
 def _row_count(db: Path) -> int:
@@ -163,19 +195,41 @@ def session(tmp_path_factory: pytest.TempPathFactory):
         kept.mkdir()
         for path in finished:
             shutil.copy(path, kept / path.name)
-        ingests = [_cli("ingest", db=db, aw_url=aw_url)]
-        row_counts = [_row_count(db)]
-        ingests.append(_cli("ingest", db=db, aw_url=aw_url))
-        row_counts.append(_row_count(db))
-        for path in kept.iterdir():
-            shutil.copy(path, spool / path.name)
-        ingests.append(_cli("ingest", db=db, aw_url=aw_url))
-        row_counts.append(_row_count(db))
-        status = _cli("status", db=db, aw_url=aw_url)
+        images = folder / "screenshots"
+        images_before = _image_bytes(images)
+        images.chmod(0)
+        try:
+            ingests = [_cli("ingest", db=db, aw_url=aw_url)]
+            row_counts = [_row_count(db)]
+            ingests.append(_cli("ingest", db=db, aw_url=aw_url))
+            row_counts.append(_row_count(db))
+            for path in kept.iterdir():
+                shutil.copy(path, spool / path.name)
+            ingests.append(_cli("ingest", db=db, aw_url=aw_url))
+            row_counts.append(_row_count(db))
+            status_at = datetime.now(UTC)
+            status = _cli("status", db=db, aw_url=aw_url)
+            signals_before_rebuild = _signal_rows(db, "screenshot")
+            rebuild = _cli("rebuild-signals", db=db)
+        finally:
+            images.chmod(0o700)
     finally:
         server.shutdown()
     yield Session(
-        folder, spool, db, crash_run, run, spool_lines, modes, ingests, row_counts, status
+        folder,
+        spool,
+        db,
+        crash_run,
+        run,
+        spool_lines,
+        modes,
+        ingests,
+        row_counts,
+        status,
+        status_at,
+        rebuild,
+        signals_before_rebuild,
+        images_before,
     )
 
 
@@ -194,8 +248,7 @@ def test_every_record_has_exactly_the_contract_fixtures_keys_and_version(session
 
 
 def test_raw_payloads_are_the_spool_lines_verbatim(session: Session) -> None:
-    captures = sum(kind == "capture" for kind, _, _ in EXPECTED)
-    assert len(session.spool_lines) == len(EXPECTED) + captures
+    assert len(session.spool_lines) == len(EXPECTED) + len(EXPECTED_SCREENSHOTS)
     assert sorted(session.payloads()) == sorted(session.spool_lines)
 
 
@@ -277,7 +330,8 @@ def test_a_crashed_runs_open_file_is_recovered_without_its_torn_line(session: Se
 def test_ingest_empties_the_spool_and_a_second_ingest_adds_nothing(session: Session) -> None:
     first, second, again = session.ingests
     assert first.returncode == 0, first.stderr
-    assert f"inserted {len(EXPECTED):>6}" in first.stdout
+    assert f"ax-text     inserted {len(EXPECTED):>6}" in first.stdout
+    assert f"screenshot  inserted {len(EXPECTED_SCREENSHOTS):>6}" in first.stdout
     assert second.returncode == 0, second.stderr
     assert again.returncode == 0, again.stderr
     assert f"inserted {0:>6}  skipped {len(EXPECTED):>6}" in again.stdout
@@ -291,27 +345,179 @@ def test_status_reports_the_capture_agent(session: Session) -> None:
     assert "last capture" in session.status.stdout
 
 
-def test_every_capture_keeps_one_screenshot_saved_beside_the_database(session: Session) -> None:
-    captures = [r for r in session.records() if r["kind"] == "capture"]
-    screenshots = session.screenshots()
-    assert sorted(s["capture_id"] for s in screenshots) == sorted(r["id"] for r in captures)
-    for shot in screenshots:
-        assert shot["status"] == "kept"
+def _by_status(shots: list[dict], status: str) -> list[dict]:
+    return [s for s in shots if s["status"] == status]
+
+
+def _scripted_window(app: str, window: str) -> dict:
+    scripted = json.loads((SCRIPTS / "session.json").read_text("utf-8"))
+    return scripted["apps"][app]["windows"][window]
+
+
+def test_every_capture_gets_one_screenshot_record_in_the_status_the_scripts_call_for(
+    session: Session,
+) -> None:
+    shots = session.screenshots()
+    assert [(s["status"], s["app_name"], s["window_title"]) for s in shots] == EXPECTED_SCREENSHOTS
+    captures = {r["id"]: r for r in session.records() if r["kind"] == "capture"}
+    assert sorted(s["capture_id"] for s in shots) == sorted(captures)
+    for shot in shots:
+        assert shot["captured_at"] == captures[shot["capture_id"]]["captured_at"]
+
+
+def test_kept_images_are_saved_beside_the_database_and_nothing_else_is(session: Session) -> None:
+    kept = _by_status(session.screenshots(), "kept")
+    for shot in kept:
         image = session.folder / shot["image_path"]
         assert shot["image_path"] == f"screenshots/{image.parent.name}/{shot['id']}.jpg"
         assert image.stat().st_size == shot["image_bytes"]
         assert image.read_bytes()[:3] == b"\xff\xd8\xff"
         assert stat.S_IMODE(image.stat().st_mode) == 0o600
-    on_disk = {p.name for p in (session.folder / "screenshots").rglob("*.jpg")}
-    assert on_disk == {f"{s['id']}.jpg" for s in screenshots}
+    on_disk = {p.name for p in (session.folder / "screenshots").rglob("*")}
+    assert on_disk == {f"{s['id']}.jpg" for s in kept} | {
+        s["image_path"].split("/")[1] for s in kept
+    }
 
 
-def test_status_reports_the_kept_screenshots_and_their_size(session: Session) -> None:
+def test_screenshots_without_a_picture_carry_no_image_or_text(session: Session) -> None:
     shots = session.screenshots()
+    for status in ("secure-field", "failed", "no-permission"):
+        assert _by_status(shots, status)
+        for shot in _by_status(shots, status):
+            empty = ("image_path", "image_bytes", "perceptual_hash", "text", "full_text_bytes")
+            assert [shot[k] for k in empty] == [None] * len(empty)
+
+
+def test_recognized_text_is_stored_raw_and_becomes_the_screenshots_signal(
+    session: Session,
+) -> None:
+    signals = session.signals("screenshot")
+    shots = session.screenshots()
+    assert set(signals) == {s["id"] for s in shots}
+    scripted = {
+        ("TextEdit", "Notes"): _scripted_window("textedit", "notes"),
+        ("Google Chrome", "Inbox"): _scripted_window("chrome", "inbox"),
+        ("Google Chrome", "Docs"): _scripted_window("chrome", "docs"),
+        ("Calculator", "Calculator"): _scripted_window("calculator", "main"),
+    }
+    for shot in _by_status(shots, "kept"):
+        window = scripted.get((shot["app_name"], shot["window_title"]))
+        text = window["recognized_text"] if window else ""
+        assert shot["text"] == text
+        assert shot["full_text_bytes"] == len(text.encode())
+        assert shot["text_cut_off"] is False
+        app, title, signal_text, extras = signals[shot["id"]]
+        assert (app, title, signal_text) == (
+            shot["app_name"],
+            shot["window_title"],
+            " ".join(text.split()) or None,
+        )
+        assert json.loads(extras) == {
+            "capture_id": shot["capture_id"],
+            "image_bytes": shot["image_bytes"],
+            "image_path": shot["image_path"],
+            "perceptual_hash": shot["perceptual_hash"],
+            "status": "kept",
+        }
+    for shot in shots:
+        assert json.loads(signals[shot["id"]][3])["status"] == shot["status"]
+
+
+def _keep_after_seconds(folder: Path) -> int:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["COMPUTER_HISTORY_DB"] = str(folder / "history.db")
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "check-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    found = re.search(r"a new kept image after (\d+) min", run.stdout + run.stderr)
+    assert found, run.stdout + run.stderr
+    return int(found.group(1)) * 60
+
+
+def test_a_duplicate_points_at_its_windows_recent_kept_image_and_copies_its_text(
+    session: Session,
+) -> None:
+    shots = session.screenshots()
+    keep_after = _keep_after_seconds(session.folder)
+    kept = {s["image_path"]: s for s in _by_status(shots, "kept")}
+    signals = session.signals("screenshot")
+    duplicates = _by_status(shots, "duplicate")
+    assert any(d["text"] for d in duplicates)
+    for shot in duplicates:
+        original = kept[shot["image_path"]]
+        window = ("app_name", "bundle_id", "window_title")
+        assert [shot[k] for k in window] == [original[k] for k in window]
+        age = to_utc(shot["captured_at"]) - to_utc(original["captured_at"])
+        assert 0 < age.total_seconds() <= keep_after
+        assert shot["image_bytes"] is None
+        assert re.fullmatch(r"[0-9a-f]{16}", shot["perceptual_hash"])
+        copied = ("text", "text_sha256", "full_text_bytes", "text_cut_off")
+        assert [shot[k] for k in copied] == [original[k] for k in copied]
+        assert signals[shot["id"]][2] == signals[original["id"]][2]
+
+
+def test_a_missing_grant_posts_one_reminder_and_keeps_its_time(session: Session) -> None:
+    assert session.run.stdout.count(REMINDED) == 1
+    assert REMINDED not in session.crash_run.stdout
+    first = _by_status(session.screenshots(), "no-permission")[0]
+    reminded = (session.folder / "screen-recording-reminded").read_text("utf-8").strip()
+    gap = to_utc(reminded) - to_utc(first["captured_at"]).replace(microsecond=0)
+    assert timedelta(0) <= gap < timedelta(seconds=2)
+
+
+def test_status_reports_every_screenshot_status_the_disk_used_and_the_missing_grant(
+    session: Session,
+) -> None:
+    shots = session.screenshots()
+    assert session.status.returncode == 0, session.status.stderr
     out = session.status.stdout
-    assert f"  all stored    {len(shots)} kept, 0 duplicate, 0 secure-field," in out
-    total = human_size(sum(s["image_bytes"] for s in shots))
-    assert f"  disk          {total} in total," in out
+    statuses = ("kept", "duplicate", "secure-field", "no-permission", "failed")
+    midnight = local_midnight(session.status_at)
+    today = [s for s in shots if to_utc(s["captured_at"]) >= midnight]
+
+    def counts(of: list[dict]) -> str:
+        return ", ".join(f"{len(_by_status(of, status))} {status}" for status in statuses)
+
+    def disk(of: list[dict]) -> str:
+        return human_size(sum(s["image_bytes"] for s in _by_status(of, "kept")))
+
+    last = _by_status(shots, "kept")[-1]
+    first_missing = _by_status(shots, "no-permission")[0]
+    assert re.search(
+        rf"^  last kept     {re.escape(when(to_utc(last['captured_at'])))} \(.+ ago\),"
+        rf" {last['app_name']}, {re.escape(last['image_path'])}$",
+        out,
+        re.MULTILINE,
+    )
+    assert f"\n  today         {counts(today)}\n" in out
+    assert f"\n  all stored    {counts(shots)}\n" in out
+    assert (
+        f"\n  disk          {disk(shots)} in total, {disk(today)} today (from kept records)\n"
+        in out
+    )
+    assert (
+        "  warning: Screen Recording permission is missing since"
+        f" {when(to_utc(first_missing['captured_at']))} ("
+    ) in out
+
+
+def test_the_backend_works_with_the_screenshots_folder_closed_to_it_and_leaves_the_images_alone(
+    session: Session,
+) -> None:
+    for run in (*session.ingests, session.status, session.rebuild):
+        assert run.returncode == 0, run.stdout + run.stderr
+    assert session.images_before
+    assert _image_bytes(session.folder / "screenshots") == session.images_before
+
+
+def test_rebuild_signals_reproduces_the_screenshot_signals(session: Session) -> None:
+    assert session.rebuild.returncode == 0, session.rebuild.stderr
+    assert session.signals_before_rebuild
+    assert _signal_rows(session.db, "screenshot") == session.signals_before_rebuild
 
 
 def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(

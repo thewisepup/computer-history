@@ -8,11 +8,11 @@ final class LoopFixture {
     let counts = CaptureCounts()
     var windowText = WindowTextSettings()
     var denylist = Denylist()
-    var screenshots = ScreenshotSettings()
+    var screenshots = ScreenshotSettings(recognitionTimeout: 120)
     var images: (any ImageStore)?
-    var spoolRefusesScreenshots = false
     var logged: [String] = []
     private lazy var writer = spool.writer()
+    lazy var screenshotGate = ScreenshotRefusingSpool(writer: writer, refusals: 0)
 
     var mac: ScriptedMac { focus.mac }
     var settings: AgentSettings {
@@ -30,7 +30,7 @@ final class LoopFixture {
         CaptureLoop(
             settings: settings,
             mac: mac,
-            spool: spoolRefusesScreenshots ? ScreenshotRefusingSpool(writer: writer) : writer,
+            spool: screenshotGate,
             images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
             counts: counts,
             log: { self.logged.append($0) }
@@ -41,9 +41,14 @@ final class LoopFixture {
         loop = makeLoop()
     }
 
-    func run(for seconds: TimeInterval) {
+    func run(for seconds: TimeInterval, waitingForScreenshots: Bool = true) {
         let end = mac.clock + seconds
         loop.run { mac.clock < end }
+        if waitingForScreenshots { waitForScreenshots() }
+    }
+
+    func waitForScreenshots() {
+        loop.waitForScreenshots()
     }
 
     func records() throws -> [[String: Any]] {

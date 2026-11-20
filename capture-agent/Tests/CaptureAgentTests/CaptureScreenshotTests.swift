@@ -11,7 +11,7 @@ func savedImages(in folder: URL) -> [String] {
 
 @Test func everyCaptureIsFollowedByOneKeptScreenshotRecordWhoseImageIsSaved() throws {
     let fixture = LoopFixture()
-    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 2880, height: 1800)) }
+    fixture.mac.windowImage = { _, _ in .image(fixtureImage(width: 2880, height: 1800), windowID: 1) }
     fixture.run(for: 2)
     let records = try fixture.records()
     try #require(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
@@ -60,19 +60,22 @@ struct RefusingImageStore: ImageStore {
     func save(_ image: CGImage, id: UUID, at date: Date) throws -> SavedImage {
         throw ImageStoreError(description: "disk full")
     }
-
-    func remove(_ path: String) {}
 }
 
 final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
     let writer: SpoolWriter
+    var refusals: Int
 
-    init(writer: SpoolWriter) {
+    init(writer: SpoolWriter, refusals: Int) {
         self.writer = writer
+        self.refusals = refusals
     }
 
     func append(_ record: some SpoolLine) throws {
-        if record is ScreenshotRecord { throw ImageStoreError(description: "spool refused") }
+        if record is ScreenshotRecord, refusals > 0 {
+            refusals -= 1
+            throw ImageStoreError(description: "spool refused")
+        }
         try writer.append(record)
     }
 }
@@ -127,7 +130,8 @@ final class ScreenshotRefusingSpool: SpoolAppender, @unchecked Sendable {
     for (index, record) in records.enumerated() where record["kind"] as? String == "screenshot" {
         #expect(record["capture_id"] as? String == records[index - 1]["id"] as? String)
     }
-    #expect(Set(savedImages(in: fixture.settings.folder)) == Set(try fixture.screenshotRecords().map { "\($0["id"] as! String).jpg" }))
+    let kept = try fixture.screenshotRecords().filter { $0["status"] as? String == "kept" }
+    #expect(Set(savedImages(in: fixture.settings.folder)) == Set(kept.map { "\($0["id"] as! String).jpg" }))
     #expect(fixture.mac.windowImageRequests == [plainApp.processIdentifier, chrome.processIdentifier, chrome.processIdentifier])
 }
 
@@ -209,12 +213,12 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
     #expect(fixture.mac.windowImageRequests.isEmpty)
 }
 
-@Test func aKeptImageWhoseRecordCannotBeWrittenIsRemovedAndCountedApart() throws {
+@Test func aKeptImageWhoseRecordCannotBeWrittenStaysAndIsCountedApart() throws {
     let fixture = LoopFixture()
-    fixture.spoolRefusesScreenshots = true
+    fixture.screenshotGate.refusals = .max
     fixture.run(for: 2)
     #expect(try fixture.records().map { $0["kind"] as? String } == ["capture"])
-    #expect(savedImages(in: fixture.settings.folder).isEmpty)
+    #expect(savedImages(in: fixture.settings.folder).count == 1)
     let summary = fixture.counts.take()
     #expect(summary.written == 1)
     #expect(summary.failed == 0)

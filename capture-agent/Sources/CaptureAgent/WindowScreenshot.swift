@@ -2,9 +2,9 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
-/// What asking for a picture of the focused window came to.
+/// What asking for a picture of the focused window came to: the picture with the ScreenCaptureKit id of the window it shows, or the reason there is none.
 public enum WindowImage: Sendable {
-    case image(CGImage)
+    case image(CGImage, windowID: CGWindowID)
     case noPermission
     case failed
 }
@@ -43,27 +43,6 @@ private func sameFrame(_ a: CGRect, _ b: CGRect) -> Bool {
     [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].allSatisfy { abs($0) <= 2 }
 }
 
-/// Lets one request for a picture be outstanding at a time: while one has not answered, every other fails at once.
-final class OneRequestAtATime: @unchecked Sendable {
-    private let lock = NSLock()
-    private var outstanding = false
-
-    /// Starts the request and waits up to the timeout for its answer, or fails at once if an earlier request has not answered yet.
-    func run(timeout: TimeInterval, _ start: (@escaping @Sendable (WindowImage) -> Void) -> Void) -> WindowImage {
-        let free = lock.withLock {
-            defer { outstanding = true }
-            return !outstanding
-        }
-        guard free else { return .failed }
-        let result = WindowImageResult()
-        start { image in
-            self.lock.withLock { self.outstanding = false }
-            result.finish(image)
-        }
-        return result.wait(timeout: timeout)
-    }
-}
-
 /// Takes a still of the focused window through ScreenCaptureKit, answering once with the image or the reason there is none.
 func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, answer: @escaping @Sendable (WindowImage) -> Void) {
     SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
@@ -82,7 +61,7 @@ func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, answer: @esca
         configuration.height = size.height
         configuration.showsCursor = false
         SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
-            answer(image.map(WindowImage.image) ?? error.map(windowImage(for:)) ?? .failed)
+            answer(image.map { .image($0, windowID: id) } ?? error.map(windowImage(for:)) ?? .failed)
         }
     }
 }
@@ -90,20 +69,4 @@ func captureFocusedWindow(_ focused: FocusedWindow, longEdge: Int, answer: @esca
 private func windowImage(for error: any Error) -> WindowImage {
     let error = error as NSError
     return error.domain == SCStreamErrorDomain && error.code == SCStreamError.Code.userDeclined.rawValue ? .noPermission : .failed
-}
-
-private final class WindowImageResult: @unchecked Sendable {
-    private let lock = NSLock()
-    private let done = DispatchSemaphore(value: 0)
-    private var image: WindowImage?
-
-    func finish(_ image: WindowImage) {
-        lock.withLock { self.image = self.image ?? image }
-        done.signal()
-    }
-
-    func wait(timeout: TimeInterval) -> WindowImage {
-        guard done.wait(timeout: .now() + timeout) == .success else { return .failed }
-        return lock.withLock { image ?? .failed }
-    }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import CaptureAgent
 import Foundation
 import os
@@ -22,6 +23,7 @@ case .run:
     let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
+    let captureStop = CaptureStop()
     exit(AgentLifecycle(
         report: settings.report,
         isPaused: { pause.isPaused },
@@ -37,9 +39,11 @@ case .run:
                     folder: settings.folder, longEdge: settings.screenshots.longEdge, quality: settings.screenshots.quality
                 ),
                 counts: counts,
+                stop: captureStop,
                 log: log
             )
         },
+        stopCapturing: captureStop.stop(by:),
         log: log
     ).run())
 case .install:
@@ -54,6 +58,8 @@ case .resume:
     finish(resumeCapture(pause))
 case .checkConfig:
     finish(checkConfig(settings))
+case .requestScreenRecording:
+    finish(requestScreenRecording(open: NSWorkspace.shared.open))
 case .scriptedSession(let script):
     finish(runScriptedSession(script: URL(fileURLWithPath: script), settings: settings, homes: userHomes(), log: { print($0) }))
 case .usage:

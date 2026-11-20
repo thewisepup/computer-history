@@ -6,6 +6,7 @@ public struct AgentSettings: Equatable, Sendable {
     public static let spoolEnvironmentVariable = "COMPUTER_HISTORY_SPOOL"
     public static let configFileName = "agent-config.json"
     public static let pauseFileName = "capture-paused"
+    public static let permissionReminderFileName = "screen-recording-reminded"
 
     public enum ConfigFile: Equatable, Sendable {
         case missing, read, unreadable
@@ -22,6 +23,7 @@ public struct AgentSettings: Equatable, Sendable {
 
     public var configPath: URL { folder.appendingPathComponent(Self.configFileName) }
     public var pause: PauseSwitch { PauseSwitch(file: folder.appendingPathComponent(Self.pauseFileName)) }
+    public var permissionReminderFile: URL { folder.appendingPathComponent(Self.permissionReminderFileName) }
 
     /// Finds the folder the way the backend does, then reads the config file in it, falling back to defaults for anything missing or invalid.
     public static func load(
@@ -98,6 +100,12 @@ public struct AgentSettings: Equatable, Sendable {
                 screenshots.longEdge = wholeNumber(value, key: key, range: 256...8_192, default: screenshots.longEdge)
             case .screenshotJPEGQuality:
                 screenshots.quality = wholeNumber(value, key: key, range: 1...100, default: screenshots.quality)
+            case .screenshotChangePixels:
+                screenshots.changePixels = wholeNumber(value, key: key, range: 0...1_000, default: screenshots.changePixels)
+            case .screenshotKeepAfterMinutes:
+                screenshots.keepAfter = TimeInterval(
+                    wholeNumber(value, key: key, range: 1...1_440, default: Int(screenshots.keepAfter / 60)) * 60
+                )
             }
         }
     }
@@ -166,6 +174,8 @@ private enum ConfigKey: String, CaseIterable {
     case screenshots
     case screenshotLongEdgePixels = "screenshot_long_edge_pixels"
     case screenshotJPEGQuality = "screenshot_jpeg_quality"
+    case screenshotChangePixels = "screenshot_change_pixels"
+    case screenshotKeepAfterMinutes = "screenshot_keep_after_minutes"
 }
 
 /// Prints where the settings came from, every problem in the config file, and the settings in effect.
@@ -182,7 +192,8 @@ public func checkConfig(_ settings: AgentSettings) -> CommandOutcome {
         "call timeout: \(formatted(settings.windowText.callTimeout))s",
         "window timeout: \(formatted(settings.windowText.windowTimeout))s",
         "screenshots: \(settings.screenshots.enabled ? "on" : "off"), long edge \(settings.screenshots.longEdge) px, "
-            + "JPEG quality \(settings.screenshots.quality)",
+            + "JPEG quality \(settings.screenshots.quality), duplicate when under \(settings.screenshots.changePixels) "
+            + "thumbnail pixels (9x9 points each) changed, a new kept image after \(formatted(settings.screenshots.keepAfter / 60)) min",
     ]
     return CommandOutcome(exitCode: settings.problems.isEmpty ? 0 : 1, message: lines.joined(separator: "\n"))
 }

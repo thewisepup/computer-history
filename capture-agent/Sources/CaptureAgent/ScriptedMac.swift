@@ -12,12 +12,19 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var frontmost: FocusedApplication?
     var apps: [pid_t: ScriptedElement] = [:]
     var calls: [String] = []
-    var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .image(fixtureImage(width: 1600, height: 1000)) }
+    var windowImage: (FocusedWindow, Int) -> WindowImage = { _, _ in .failed }
     var windowImageRequests: [pid_t] = []
+    var recognizedText: (URL) throws -> String = { _ in "" }
+    var notificationPosting = NotificationPosting.posted
+    var notifications: [UserNotification] = []
     var onCall: (String) -> Void = { _ in }
+    private var elements: CGWindowID = 0
 
     init(start: Date = Date(timeIntervalSince1970: 0)) {
         self.start = start
+        windowImage = { [unowned self] window, _ in
+            .image(fixtureImage(width: 1600, height: 1000), windowID: apps[window.processIdentifier]?.focusedWindow?.windowID ?? 0)
+        }
     }
 
     func uptime() -> TimeInterval { clock }
@@ -40,14 +47,25 @@ final class ScriptedMac: Mac, @unchecked Sendable {
         return windowImage(window, longEdge)
     }
 
+    func recognizeText(inImageAt file: URL) throws -> String { try recognizedText(file) }
+
+    func post(_ notification: UserNotification) -> NotificationPosting {
+        notifications.append(notification)
+        return notificationPosting
+    }
+
     func node(_ name: String, role: String, _ attributes: [String: String] = [:], children: [ScriptedElement] = []) -> ScriptedElement {
-        ScriptedElement(mac: self, name: name, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children)
+        elements += 1
+        return ScriptedElement(
+            mac: self, name: name, windowID: elements, attributes: attributes.merging(["AXRole": role]) { $1 }, children: children
+        )
     }
 }
 
 final class ScriptedElement: AccessibilityElement {
     let mac: ScriptedMac
     let name: String
+    let windowID: CGWindowID
     var attributes: [String: String]
     var children: [ScriptedElement]
     var focusedWindow: ScriptedElement?
@@ -56,9 +74,10 @@ final class ScriptedElement: AccessibilityElement {
     var hangs: Set<String> = []
     var flagsSet: [String] = []
 
-    init(mac: ScriptedMac, name: String, attributes: [String: String], children: [ScriptedElement]) {
+    init(mac: ScriptedMac, name: String, windowID: CGWindowID, attributes: [String: String], children: [ScriptedElement]) {
         self.mac = mac
         self.name = name
+        self.windowID = windowID
         self.attributes = attributes
         self.children = children
     }
