@@ -69,6 +69,10 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
 
 Issues live in GitHub Issues for `thewisepup/computer-history` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
+### Pull requests
+
+Every pull request description follows the shape in `docs/agents/pull-requests.md`.
+
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.
