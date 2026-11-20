@@ -72,19 +72,26 @@ class Operation:
 
 
 def measure_operation(operation: Operation, dataset: GateDataset, folder: Path) -> Costs:
-    """Run the operation once uncounted, then once under the cost meter."""
-    warm = operation.start(dataset, folder / "warm")
+    """Run the operation once uncounted, then once under the cost meter, in a scratch folder.
+
+    The folder is removed afterwards, and a fresh run's warm copy before the counted one starts.
+    """
     try:
-        warm.action()
-        if not operation.fresh:
-            return measure(warm.conn, warm.action)
+        warm = operation.start(dataset, folder / "warm")
+        try:
+            warm.action()
+            if not operation.fresh:
+                return measure(warm.conn, warm.action)
+        finally:
+            warm.conn.close()
+        shutil.rmtree(folder / "warm", ignore_errors=True)
+        measured = operation.start(dataset, folder / "measured")
+        try:
+            return measure(measured.conn, measured.action)
+        finally:
+            measured.conn.close()
     finally:
-        warm.conn.close()
-    measured = operation.start(dataset, folder / "measured")
-    try:
-        return measure(measured.conn, measured.action)
-    finally:
-        measured.conn.close()
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _ingest(dataset: GateDataset, folder: Path) -> Session:

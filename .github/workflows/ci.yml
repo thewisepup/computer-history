@@ -36,15 +36,24 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e .
+      - id: runner
+        run: echo "image=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
       - id: datasets
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.COMPUTER_HISTORY_DATASET_CACHE }}
-          key: datasets-${{ env.ImageOS }}-${{ env.ImageVersion }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('computer_history/**/*.py', 'computer_history/**/*.sql') }}
+          key: datasets-${{ steps.runner.outputs.image }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('computer_history/**/*.py', 'computer_history/**/*.sql') }}
       - name: Performance gate
         run: |
           set -o pipefail
           computer-history dev perf --counters perf-counters.json | tee perf-gate.txt
+      - if: failure()
+        run: >-
+          echo "::notice title=Performance gate::If the change of cost is intended, take this
+          run's counters as the CI SQLite's baseline: gh run download ${{ github.run_id }}
+          -n perf-counters -D /tmp/perf, then copy /tmp/perf/perf-counters.json over the
+          computer_history/synthetic/perf_baselines file the log names, and run
+          computer-history dev perf --update-baselines locally for your own SQLite."
       - if: always() && steps.datasets.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:

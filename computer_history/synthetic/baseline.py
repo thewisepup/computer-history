@@ -1,4 +1,4 @@
-"""The committed baseline: each operation's costs per dataset, and the SQLite that recorded them."""
+"""The committed baselines: each operation's costs per dataset, one file per SQLite version."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from computer_history.synthetic.meter import Costs, Scan, StatementCost
 from computer_history.synthetic.operations import OPERATIONS, Operation
 
-BASELINE_PATH = Path(__file__).with_name("perf_baseline.json")
+BASELINE_DIR = Path(__file__).with_name("perf_baselines")
 
 Key = tuple[str, str]
 
@@ -21,6 +21,32 @@ class Baseline:
 
     costs: Mapping[Key, Costs]
     versions: Mapping[Key, str]
+
+
+def baseline_file(version: str, folder: Path = BASELINE_DIR) -> Path:
+    """The baseline file for costs counted on one SQLite version."""
+    return folder / f"sqlite-{version}.json"
+
+
+def compared_baseline(version: str, folder: Path = BASELINE_DIR) -> Path:
+    """The SQLite version's own baseline file, else the newest version's, else its unwritten own.
+
+    VM steps differ by SQLite version, so a fallback is noted wherever the gate reports.
+    """
+    own = baseline_file(version, folder)
+    others = {
+        _version(path): path
+        for path in folder.glob(baseline_file("*", folder).name)
+        if _version(path) is not None
+    }
+    if own.exists() or not others:
+        return own
+    return others[max(others)]
+
+
+def _version(path: Path) -> tuple[int, ...] | None:
+    parts = path.stem.removeprefix("sqlite-").split(".")
+    return tuple(int(part) for part in parts) if all(part.isdigit() for part in parts) else None
 
 
 def recorded(operation: Operation, costs: Costs) -> Costs:

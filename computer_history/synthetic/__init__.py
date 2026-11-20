@@ -27,14 +27,26 @@
       operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
       meter.py          the statements, VM steps, full scans and pages one operation costs
       gate.py           those costs per operation and dataset against the committed baseline
-          |             baseline.py: the committed costs and the SQLite they were recorded on
+          |             baseline.py: the committed costs, one file per SQLite version
+      bench.py          each operation's median wall-clock time against this machine's baseline
 """
 
 from computer_history.synthetic.baseline import (
-    BASELINE_PATH,
+    BASELINE_DIR,
     Baseline,
+    baseline_file,
+    compared_baseline,
     load_baseline,
     save_baseline,
+)
+from computer_history.synthetic.bench import (
+    BENCH_BASELINE_NAME,
+    RUNS,
+    SLOWER,
+    Timing,
+    bench_baseline_path,
+    run_bench,
+    time_operation,
 )
 from computer_history.synthetic.build import (
     DATABASE_NAME,
@@ -103,7 +115,8 @@ from computer_history.synthetic.scenarios import SCENARIOS
 from computer_history.synthetic.timeline import Fault, FaultKind, Stretch, StretchKind, Timeline
 
 __all__ = [
-    "BASELINE_PATH",
+    "BASELINE_DIR",
+    "BENCH_BASELINE_NAME",
     "CACHE_ENV_VAR",
     "DATABASE_NAME",
     "EXPECTED_SCALING_FAILURES",
@@ -116,8 +129,10 @@ __all__ = [
     "PERF_DATASETS",
     "PERSONAS",
     "RENDERERS",
+    "RUNS",
     "SCAN_ALLOWLIST",
     "SCENARIOS",
+    "SLOWER",
     "SMALLEST",
     "TIERS",
     "Baseline",
@@ -144,13 +159,17 @@ __all__ = [
     "Stretch",
     "StretchKind",
     "Timeline",
+    "Timing",
     "Totals",
     "backfill_feeds",
+    "baseline_file",
+    "bench_baseline_path",
     "build_dataset",
     "build_timeline",
     "cache_root",
     "cached_dataset",
     "compare",
+    "compared_baseline",
     "copy_dataset",
     "dataset_key",
     "gate_dataset",
@@ -162,8 +181,10 @@ __all__ = [
     "measure_operation",
     "open_cached",
     "poll_feeds",
+    "run_bench",
     "run_gate",
     "save_baseline",
     "scaling",
     "statement_text",
+    "time_operation",
 ]
