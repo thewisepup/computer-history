@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from computer_history.synthetic.persona import App, Page, Persona, Project, Site
+from computer_history.synthetic.persona import App, Page, Persona, Project, Rhythm, Site
 
 BROWSER = "Google Chrome"
 
@@ -10,9 +10,9 @@ DEVELOPER = Persona(
     name="developer",
     browser=BROWSER,
     apps=(
-        App("Cursor", ("{file} — {project}", "{file} (Working Tree) — {project}"), weight=5),
-        App("Terminal", ("{project} — zsh — 120×40", "pytest — {project}"), weight=3),
-        App(BROWSER, (), weight=4),
+        App("Cursor", ("{file} — {project}", "{file} (Working Tree) — {project}"), weight=2),
+        App("Terminal", ("{project} — zsh — 120×40", "pytest — {project}")),
+        App(BROWSER, (), weight=12),
         App("Slack", ("#{project} - Acme - Slack", "Threads - Acme - Slack"), work_type="comms"),
         App("Notion", ("{topic} notes", "{project} roadmap"), work_type="writing"),
         App("zoom.us", ("Zoom Meeting",), work_type="meeting"),
@@ -84,6 +84,8 @@ DEVELOPER = Persona(
         "Notes on {topic}: check the settled-until time before trusting a gap.",
         "{project} release checklist: tests, ruff, changelog.",
     ),
+    rhythm=Rhythm(breaks_every_minutes=16, break_minutes=(3, 6)),
+    switch_seconds=11.0,
     interruptions=("Slack",),
     meeting_app="zoom.us",
 )

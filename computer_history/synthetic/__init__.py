@@ -1,8 +1,9 @@
 """Synthetic datasets: believable activity built through the real ingest path.
 
-    generate.py         the inputs (persona, scenario, tier, seed) -> one timeline
-          |             persona.py: who the user is, as typed config
+    generate.py         the inputs (persona, scenario, tier, heavy, seed) -> one timeline
+          |             persona.py: who the user is, as typed config, and a heavier user
           |             developer.py: the developer persona
+          |             content_creator.py: the content-creator persona
           |             days.py: the ordinary days a persona lives through
           |             scenarios.py: what happens, placed on the ordinary timeline
           |             timeline.py: stretches and faults, in fixed UTC time
@@ -53,6 +54,7 @@ from computer_history.synthetic.devdb import (
 )
 from computer_history.synthetic.gaps import ExplainedGap
 from computer_history.synthetic.generate import (
+    HEAVY,
     PERSONAS,
     TIERS,
     DatasetInputs,
@@ -71,6 +73,7 @@ __all__ = [
     "CACHE_ENV_VAR",
     "DATABASE_NAME",
     "GENERATOR_VERSION",
+    "HEAVY",
     "MANIFEST_NAME",
     "PERSONAS",
     "RENDERERS",

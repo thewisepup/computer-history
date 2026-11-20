@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import time
 
 
@@ -84,3 +84,18 @@ class Persona:
     meeting_chance: float = 0.04
     meeting_minutes: tuple[int, int] = (25, 55)
     text_chars: tuple[int, int] = (200, 2000)
+
+
+def heavier(persona: Persona, factor: float) -> Persona:
+    """The same user factor times as busy: switching faster, writing more, and on weekends."""
+    if factor < 1:
+        raise ValueError(f"a heavy factor must be at least 1, not {factor}")
+    if factor == 1:
+        return persona
+    low, high = persona.text_chars
+    return replace(
+        persona,
+        switch_seconds=persona.switch_seconds / factor,
+        text_chars=(round(low * factor), round(high * factor)),
+        rhythm=replace(persona.rhythm, weekend_workdays=True),
+    )

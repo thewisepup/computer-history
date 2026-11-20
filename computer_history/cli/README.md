@@ -208,7 +208,7 @@ computer-history status --db-path /tmp/dev/history.db   # the spool is /tmp/dev/
 ```
 
 ```
-Dataset persona=developer, scenario=typical, tier=day, seed=1, start=2026-01-05, timezone=America/Los_Angeles
+Dataset persona=developer, scenario=typical, tier=day, seed=1, start=2026-01-05, timezone=America/Los_Angeles, heavy=1.0
   built: ~/Library/Caches/ComputerHistory/datasets/69b4a3a750a56e1dd6c2543276a92ee8
   database   /tmp/dev/history.db
   manifest   /tmp/dev/manifest.json
@@ -220,9 +220,10 @@ one already in the dataset cache (`reused from the cache`), and copies every
 file of it into `--out`: the database, the manifest of true answers, and any
 rendered source files such as a spool. Every field of the dataset's inputs is
 a flag: `--persona`, `--scenario`, `--tier` and `--seed` are required, and
-their choices are whatever the synthetic package registers; `--start` and
-`--timezone` move the range. The same inputs always give the same database
-contents.
+their choices are whatever the synthetic package registers (tiers: day, week,
+month, year); `--start` and `--timezone` move the range, and `--heavy 2` makes
+the persona a heavier user (switching twice as often, twice the text, weekends
+worked). The same inputs always give the same database contents.
 
 It refuses, with exit code 1, to write into a live folder: the default
 `~/Library/Application Support/ComputerHistory/`, the folder of

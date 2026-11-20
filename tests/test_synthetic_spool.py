@@ -23,6 +23,7 @@ from computer_history.store import connect, content_digest, payload_values, sour
 from computer_history.synthetic import (
     CaptureCounts,
     DatasetInputs,
+    Fault,
     FaultKind,
     Stretch,
     StretchKind,
@@ -34,7 +35,7 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
-from computer_history.synthetic.captures import IDLE_THRESHOLD
+from computer_history.synthetic.captures import IDLE_THRESHOLD, agent_captures
 from computer_history.synthetic.spool import (
     BUNDLE_IDS,
     SPOOL_FOLDER,
@@ -570,3 +571,27 @@ def test_the_rendered_captures_match_the_real_agent_playing_the_same_day(
     assert [r[1:] for r in agent] == [r[1:] for r in ours]
     lag = [theirs[0] - mine[0] for theirs, mine in zip(agent, ours, strict=True)]
     assert all(timedelta(0) <= late < AGENT_READ_LAG for late in lag), max(lag)
+
+
+def test_an_app_switched_to_while_paused_is_captured_a_poll_after_the_resume() -> None:
+    timeline = Timeline(
+        DAY,
+        DAY + timedelta(days=1),
+        "UTC",
+        (
+            Stretch(DAY, at(9, 0), kind=StretchKind.ASLEEP),
+            Stretch(at(9, 0), at(9, 2), app="Cursor", title="a.py"),
+            Stretch(at(9, 2), at(9, 6), app="Google Chrome", title="Docs"),
+            Stretch(at(9, 6), DAY + timedelta(days=1), kind=StretchKind.ASLEEP),
+        ),
+        faults=(Fault(at(9, 1), at(9, 3), FaultKind.PAUSED),),
+    )
+    after_resume = [
+        (c.at, c.trigger, c.kind) for c in agent_captures(timeline) if at(9, 3) <= c.at < at(9, 4)
+    ]
+
+    assert after_resume[:3] == [
+        (at(9, 3), None, "resumed"),
+        (at(9, 3, 1) + timedelta(milliseconds=500), "app", "capture"),
+        (at(9, 3, 31) + timedelta(milliseconds=500), "heartbeat", "capture"),
+    ]

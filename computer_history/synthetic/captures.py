@@ -26,6 +26,7 @@ from computer_history.synthetic.timeline import (
 
 HEARTBEAT = timedelta(seconds=HEARTBEAT_SECONDS)
 SETTLE = timedelta(seconds=1)
+POLL = timedelta(milliseconds=500)
 MINIMUM_GAP = timedelta(seconds=1)
 IDLE_THRESHOLD = timedelta(seconds=180)
 PRECEDENCE = ("app", "window", "title")
@@ -35,7 +36,8 @@ Focus = tuple[str, str | None, str]
 
 class Mode(Enum):
     LISTENING = "listening"
-    SILENT = "silent"  # asleep, idle or paused
+    SILENT = "silent"  # asleep or idle
+    PAUSED = "paused"  # silent, and focus is next polled a tick after the resume
     DOWN = "down"
     BLIND = "blind"  # no Accessibility permission
     EXCLUDED = "excluded"
@@ -60,12 +62,14 @@ def agent_captures(timeline: Timeline) -> list[Capture]:
     last: datetime | None = None
     seen: Focus | None = None
     silent = True
+    resumed_at: datetime | None = None
     for start, end, stretch, mode in _listening(timeline):
         if mode is Mode.DOWN:
-            pending, silent, seen, last = None, True, None, None
+            pending, silent, seen, last, resumed_at = None, True, None, None, None
             continue
-        if stretch is None or mode is Mode.SILENT:
+        if stretch is None or mode in (Mode.SILENT, Mode.PAUSED):
             pending, silent = None, True
+            resumed_at = end if mode is Mode.PAUSED else None
             continue
         if silent:
             heartbeat_due, silent = start + SETTLE, False
@@ -75,12 +79,14 @@ def agent_captures(timeline: Timeline) -> list[Capture]:
             focus = (stretch.app, stretch.project, stretch.title)
         change = _change(seen, focus)
         seen = focus
+        noticed = start if resumed_at is None else max(start, resumed_at + POLL)
+        resumed_at = None
         if change is not None:
             if pending is None:
-                pending, pending_since = change, start
+                pending, pending_since = change, noticed
             else:
                 pending = next(kind for kind in PRECEDENCE if kind in (pending, change))
-            settled_at = start + SETTLE
+            settled_at = noticed + SETTLE
         while True:
             if pending is None:
                 due, trigger = heartbeat_due, "heartbeat"
@@ -151,7 +157,7 @@ def _mode(kinds: set[FaultKind]) -> Mode:
     if FaultKind.AGENT_DOWN in kinds:
         return Mode.DOWN
     if FaultKind.PAUSED in kinds:
-        return Mode.SILENT
+        return Mode.PAUSED
     if FaultKind.EXCLUDED in kinds:
         return Mode.EXCLUDED
     if FaultKind.PERMISSION_LOST in kinds:
