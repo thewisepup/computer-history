@@ -76,7 +76,22 @@ def test_every_window_event_is_stored_whole(day: Day) -> None:
     assert not cut_off
 
 
+IDLE_AFTER_A_TEN_MINUTE_SLEEP = Day(
+    (Stretch("active", 1, "Code"), Stretch("asleep", 600, "Code"), Stretch("idle", 5, "Code")),
+    poll_phase=0,
+    afk_phase=0,
+    extra_polls=(1,),
+)
+A_DAY_STARTING_ASLEEP = Day(
+    (Stretch("asleep", 601, "Code"), Stretch("idle", 100, "Code")),
+    poll_phase=0,
+    afk_phase=1,
+)
+
+
 @checked
+@example(IDLE_AFTER_A_TEN_MINUTE_SLEEP)
+@example(A_DAY_STARTING_ASLEEP)
 @given(days)
 def test_every_afk_event_is_stored(day: Day) -> None:
     with ingest(day) as (aw, conn):

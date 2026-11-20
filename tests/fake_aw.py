@@ -24,20 +24,26 @@ class FakeAW:
         self, buckets: dict[str, str], *, t0: datetime = T0, created: datetime | None = None
     ) -> None:
         self.t0 = t0
-        self.buckets = {
-            bucket_id: {
-                "id": bucket_id,
-                "created": (t0 if created is None else created).isoformat(),
-                "type": bucket_type,
-                "client": "aw-client-web" if bucket_type == "web.tab.current" else bucket_id,
-                "hostname": "test-host.local",
-                "data": {},
-            }
-            for bucket_id, bucket_type in buckets.items()
-        }
-        self.events: dict[str, list[dict[str, Any]]] = {b: [] for b in buckets}
+        self.buckets: dict[str, dict[str, Any]] = {}
+        self.events: dict[str, list[dict[str, Any]]] = {}
         self.refetches: list[tuple[str, Any]] = []
+        for bucket_id, bucket_type in buckets.items():
+            self.create_bucket(bucket_id, bucket_type, t0 if created is None else created)
         self._next_id = 1
+
+    def create_bucket(self, bucket_id: str, bucket_type: str, created: datetime) -> None:
+        """Create an empty bucket, unless one with that id exists."""
+        if bucket_id in self.buckets:
+            return
+        self.buckets[bucket_id] = {
+            "id": bucket_id,
+            "created": created.isoformat(),
+            "type": bucket_type,
+            "client": "aw-client-web" if bucket_type == "web.tab.current" else bucket_id,
+            "hostname": "test-host.local",
+            "data": {},
+        }
+        self.events[bucket_id] = []
 
     def add(
         self, bucket_id: str, start_minutes: float, duration_seconds: float, data: dict[str, Any]
