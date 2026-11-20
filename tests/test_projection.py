@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from db_states import corrupt_payloads
 from fake_aw import FakeAW
 from fake_source import FakeSource, at
 from projectors import no_signal
@@ -281,9 +282,8 @@ def test_rebuild_with_an_unclaimed_source_aborts_without_calling_it_malformed(
 def test_unclaimed_rows_win_over_earlier_malformed_ones(conn: sqlite3.Connection) -> None:
     poll(conn, [full_aw(datetime.now(UTC))])
     before = signal_rows(conn)
-    damage = "UPDATE observations SET payload = '{not json' WHERE source != ?"
     with transaction(conn):
-        conn.execute(damage, (AFK_SOURCE,))
+        corrupt_payloads(conn, "source != ?", (AFK_SOURCE,))
     unclaimed_capture(conn)
 
     with pytest.raises(RebuildAborted) as exc:

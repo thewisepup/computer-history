@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 cd "$(git rev-parse --show-toplevel)"
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not found; install it with 'brew install gitleaks'" >&2
+  exit 1
+fi
+gitleaks git --staged --redact --no-banner .
 PY="$(scripts/venv-python)" || {
   echo "pre-commit: no venv to run the checks with" >&2
   exit 1
