@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,7 +8,15 @@ from pathlib import Path
 
 from computer_history.host import Host
 from computer_history.stable.layout import PACKAGES_FILE_NAME, VENV_FOLDER_NAME, Layout
-from computer_history.store import INSTALL_MARKER_NAME, SHORT_COMMIT_LENGTH, VERSIONS_FOLDER_NAME
+from computer_history.store import (
+    INSTALL_MARKER_NAME,
+    SHORT_COMMIT_LENGTH,
+    VERSIONS_FOLDER_NAME,
+    load_migrations,
+    replace_atomically,
+)
+
+PACKAGE_MIGRATIONS = "lib/python*/site-packages/computer_history/store/migrations"
 
 
 @dataclass(frozen=True)
@@ -34,16 +41,21 @@ def pointed(pointer: Path) -> InstalledVersion | None:
     return InstalledVersion(marker.parent.name, datetime.fromtimestamp(marker.stat().st_mtime, UTC))
 
 
+def supported_schema(layout: Layout, name: str) -> int | None:
+    """The newest schema version a version folder's code migrates to, or None if it can't tell."""
+    found = sorted((layout.versions / name / VENV_FOLDER_NAME).glob(PACKAGE_MIGRATIONS))
+    if not found:
+        return None
+    try:
+        migrations = load_migrations(found[-1])
+    except (OSError, RuntimeError):
+        return None
+    return migrations[-1].version if migrations else None
+
+
 def replace_symlink(link: Path, target: Path) -> None:
     """Point a symlink at a target in one step, leaving nothing behind when that fails."""
-    staged = link.with_name(f".{link.name}.new")
-    staged.unlink(missing_ok=True)
-    staged.symlink_to(target)
-    try:
-        os.replace(staged, link)
-    except OSError:
-        staged.unlink(missing_ok=True)
-        raise
+    replace_atomically(link, lambda staged: staged.symlink_to(target))
 
 
 def point(pointer: Path, name: str) -> None:

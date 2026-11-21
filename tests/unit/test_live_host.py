@@ -47,6 +47,11 @@ def no_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(live.GITHUB_TOKEN_ENV_VAR, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def notifications_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(live.NOTIFY_ENV_VAR, raising=False)
+
+
 def github_answers(monkeypatch: pytest.MonkeyPatch, answer: object) -> list[urllib.request.Request]:
     asked: list[urllib.request.Request] = []
 
@@ -163,7 +168,7 @@ def test_another_refusal_says_what_github_answered(monkeypatch: pytest.MonkeyPat
     [
         (0, LAUNCHCTL_RUNNING, JobState(loaded=True, pid=4242)),
         (0, LAUNCHCTL_WAITING, JobState(loaded=True)),
-        (113, "Could not find service", JobState(loaded=False)),
+        (live.LAUNCHCTL_NO_SUCH_SERVICE, "Could not find service", JobState(loaded=False)),
     ],
     ids=["running", "loaded, not running", "not loaded"],
 )
@@ -173,6 +178,15 @@ def test_job_reads_launchctl_print(
     commands_answer(monkeypatch, returncode, stdout)
 
     assert LiveHost().job(BACKEND.label) == state
+
+
+def test_a_launchctl_print_that_fails_otherwise_is_a_host_error_not_an_unloaded_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands_answer(monkeypatch, 5, stderr="Could not connect to the bootstrap server")
+
+    with pytest.raises(HostError, match="bootstrap server"):
+        LiveHost().job(BACKEND.label)
 
 
 @pytest.mark.parametrize("returncode", sorted(live.LAUNCHCTL_BUSY_CODES))
@@ -284,19 +298,28 @@ def test_a_notification_passes_its_text_as_arguments_never_as_script(
     ran = commands_answer(monkeypatch)
     message = 'He said "quit" & tell application "Finder" to quit'
 
-    LiveHost().notify("Computer History", message)
+    LiveHost().notify(message)
 
     ((command),) = ran
     assert command[0] == live.OSASCRIPT
-    assert command[-2:] == ["Computer History", message]
+    assert command[-2:] == [live.NOTIFICATION_TITLE, message]
     assert all(message not in arg for arg in command[:-1])
+
+
+def test_notifications_turned_off_post_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    ran = commands_answer(monkeypatch)
+    monkeypatch.setenv(live.NOTIFY_ENV_VAR, "0")
+
+    LiveHost().notify("hello")
+
+    assert ran == []
 
 
 def test_a_notification_osascript_refuses_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
     commands_answer(monkeypatch, 1, stderr="execution error: Not authorized (-1743)")
 
     with pytest.raises(HostError, match="post a notification: execution error"):
-        LiveHost().notify("Computer History", "hello")
+        LiveHost().notify("hello")
 
 
 @pytest.mark.parametrize(
@@ -304,7 +327,7 @@ def test_a_notification_osascript_refuses_is_a_host_error(monkeypatch: pytest.Mo
     [
         lambda host: host.activitywatch_running(),
         lambda host: host.open_activitywatch(),
-        lambda host: host.notify("Computer History", "hello"),
+        lambda host: host.notify("hello"),
     ],
     ids=["pgrep", "open", "osascript"],
 )
@@ -332,4 +355,4 @@ def test_a_hung_osascript_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(live.subprocess, "run", hang)
 
     with pytest.raises(HostError, match="could not post a notification"):
-        LiveHost().notify("Computer History", "hello")
+        LiveHost().notify("hello")

@@ -10,10 +10,9 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
       |
   runner.py      poll every stream of every source, once or in the watch loop,
       |          pulling again while a pull says there is more
-  backend_heartbeat.py  the watch loop's last cycle, in a file beside the database
-      |
-  ingest_health.py  the watch loop's failure streak: saved beside the database
-      |          after every cycle, with an alert when it lasts and ends
+  ingest_health.py  the watch loop's last cycle and failure streak, in one file
+      |          beside the database rewritten after every cycle, with an alert
+      |          through the host adapter when a streak lasts and when it ends
   cycle_report.py   each cycle's one log record, counted toward that streak
       |
   backfill.py    plan a stream's history in chunks, then ingest them oldest first
@@ -48,7 +47,6 @@ from computer_history.sources.activitywatch import (
     AWClient,
     AWError,
     AWSource,
-    BucketPull,
     SourcePull,
     clean_text,
     clean_url,
@@ -60,7 +58,6 @@ from computer_history.sources.activitywatch import (
     project_signal,
     pull_bucket,
     pull_source,
-    resume_start,
     stored_afk_spans,
     stored_app_spans,
     watcher_ends,
@@ -72,21 +69,13 @@ from computer_history.sources.agent_health import (
     capture_health,
     capture_liveness,
 )
-from computer_history.sources.backend_heartbeat import (
-    BackendHeartbeat,
-    backend_heartbeat_path,
-    read_backend_heartbeat,
-    write_backend_heartbeat,
-)
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
     BackfillPlan,
     BackfillProgress,
     BackfillResult,
-    BackfillRun,
     Chunk,
     ChunkDone,
-    Planning,
     plan_all_backfills,
     plan_backfill,
     run_backfill,
@@ -164,8 +153,6 @@ from computer_history.sources.contract import (
 from computer_history.sources.cycle_report import CycleReporter
 from computer_history.sources.ingest_health import (
     ALERT_AFTER_FAILURES,
-    ALERT_REPEAT,
-    HEALTH_FILE_NAME,
     HEALTH_STALE_AFTER,
     FailureStreak,
     IngestHealth,
@@ -192,7 +179,6 @@ __all__ = [
     "AFK_SOURCE",
     "AGENT_ALIVE_WITHIN",
     "ALERT_AFTER_FAILURES",
-    "ALERT_REPEAT",
     "APP_TOLERANCE",
     "BACKFILL_CHUNK",
     "CAPTURE_KIND",
@@ -200,7 +186,6 @@ __all__ = [
     "DEFAULT_AW_URL",
     "DUPLICATE_STATUS",
     "EXCLUDED_KIND",
-    "HEALTH_FILE_NAME",
     "HEALTH_STALE_AFTER",
     "HEARTBEAT_SECONDS",
     "KEPT_STATUS",
@@ -237,12 +222,9 @@ __all__ = [
     "AfkSpan",
     "AppAgreement",
     "AppSpan",
-    "BackendHeartbeat",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",
-    "BackfillRun",
-    "BucketPull",
     "CaptureHealth",
     "CaptureLiveness",
     "CaptureSpool",
@@ -263,7 +245,6 @@ __all__ = [
     "KeptScreenshot",
     "Liveness",
     "MissingPermission",
-    "Planning",
     "Projecting",
     "Pull",
     "Recovery",
@@ -283,7 +264,6 @@ __all__ = [
     "active_spans",
     "agent_config_path",
     "app_agreement",
-    "backend_heartbeat_path",
     "capture_coverage",
     "capture_health",
     "capture_liveness",
@@ -310,11 +290,9 @@ __all__ = [
     "projector_for",
     "pull_bucket",
     "pull_source",
-    "read_backend_heartbeat",
     "read_health",
     "reproject_signals",
     "resolve_spool_path",
-    "resume_start",
     "run_backfill",
     "screenshot_health",
     "spool_backlog",
@@ -323,6 +301,5 @@ __all__ = [
     "stored_records",
     "watch",
     "watcher_ends",
-    "write_backend_heartbeat",
     "write_health",
 ]

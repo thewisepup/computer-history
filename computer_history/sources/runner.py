@@ -6,10 +6,8 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import NoReturn
 
-from computer_history.sources.backend_heartbeat import write_backend_heartbeat
 from computer_history.sources.commit import (
     FailureKind,
     StrayObservation,
@@ -142,12 +140,11 @@ def watch(
     clock: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
-    heartbeat: Path | None = None,
     hold: SpoolHold | None = None,
 ) -> NoReturn:
     """Poll forever, reporting each cycle and the seconds until the next one.
 
-    After an ok cycle it releases an active spool hold; after every cycle it rewrites the heartbeat.
+    After an ok cycle it releases an active spool hold.
     """
     clock = clock or (lambda: datetime.now(UTC))
     monotonic = monotonic or time.monotonic
@@ -157,26 +154,6 @@ def watch(
         if hold is not None and summary.ok and hold.active:
             hold.release()
             log.info("a cycle completed: spool files are deleted again once stored")
-        if heartbeat is not None:
-            write_backend_heartbeat(
-                heartbeat,
-                summary.at,
-                summary.ok,
-                _first_failure(summary),
-                sources_unavailable=_only_sources_unavailable(summary),
-            )
         delay = max(0.0, interval - summary.duration_s)
         report(summary, delay)
         sleep(delay)
-
-
-def _only_sources_unavailable(summary: CycleSummary) -> bool:
-    failures = summary.failures
-    return bool(failures) and all(failure.kind is FailureKind.SOURCE for failure in failures)
-
-
-def _first_failure(summary: CycleSummary) -> str | None:
-    if not summary.failures:
-        return None
-    failure = summary.failures[0]
-    return failure.error if failure.stream is None else f"{failure.stream}: {failure.error}"

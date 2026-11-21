@@ -17,8 +17,6 @@ from computer_history.stable.updates.preparing import Prepared
 from computer_history.stable.versions import point
 from computer_history.store import stored_schema_version
 
-NOTIFICATION_TITLE = "Computer History update fell back"
-
 
 @dataclass(frozen=True)
 class FellBack:
@@ -37,19 +35,22 @@ def fall_back(
     now: Callable[[], datetime],
     sleep: Callable[[float], None] = time.sleep,
 ) -> FellBack:
-    """Put the old version back, restoring the backup only when the schema changed, and notify."""
+    """Put the old version back, restoring the backup only when the schema changed, and notify.
+
+    The spool hold is released only once the new backend is confirmed stopped and the restore done.
+    """
     problems: list[str] = []
     old, new = prepared.old.name, prepared.new
     stopped = _stop_new_backend(host, problems, sleep)
     pointed_back = _point_back(layout, prepared, problems)
-    try:
-        prepared.hold.release()
-    except OSError as exc:
-        problems.append(
-            f"the spool hold {prepared.hold.path} could not be removed ({exc}); ingest keeps"
-            " spool files until it is"
-        )
     restored = _restore_if_migrated(host, layout, prepared, problems, now, sleep)
+    if stopped:
+        _release_hold(prepared, problems)
+    else:
+        problems.append(
+            f"kept the spool hold {prepared.hold.path}, since the new backend may still run; the"
+            " backend's next ok cycle removes it"
+        )
     try:
         load_agent(host, layout, BACKEND, sleep=sleep)
     except (HostError, OSError) as exc:
@@ -64,7 +65,7 @@ def fall_back(
     append_or_note(layout.update_log, entry, problems)
     back = f"back on {old}" if pointed_back else "run computer-history status to see where it is"
     try:
-        host.notify(NOTIFICATION_TITLE, f"Update to {new} fell back: {reason}; {back}.")
+        host.notify(f"Update to {new} fell back: {reason}; {back}.")
     except HostError as exc:
         problems.append(f"the notification could not be posted: {exc}")
     return FellBack(restored, tuple(problems))
@@ -77,6 +78,16 @@ def _stop_new_backend(host: Host, problems: list[str], sleep: Callable[[float], 
         problems.append(f"the new version's backend could not be confirmed stopped: {exc}")
         return False
     return True
+
+
+def _release_hold(prepared: Prepared, problems: list[str]) -> None:
+    try:
+        prepared.hold.release()
+    except OSError as exc:
+        problems.append(
+            f"the spool hold {prepared.hold.path} could not be removed ({exc}); ingest keeps"
+            " spool files until it is"
+        )
 
 
 def _point_back(layout: Layout, prepared: Prepared, problems: list[str]) -> bool:

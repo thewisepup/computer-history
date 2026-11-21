@@ -23,6 +23,7 @@ from computer_history.stable import (
     PRE_UPDATE_FOLDER_NAME,
     SET_ASIDE_FOLDER_NAME,
     TAKEN_AT_STAMP,
+    WATCHDOG,
     daily_backup_path,
     stable_layout,
     take_pre_update_backup,
@@ -267,6 +268,7 @@ def test_restore_stops_the_agents_sets_the_database_aside_and_starts_them_again(
     aside = set_aside(live, clock[0])
     assert agent_calls(host, BACKEND) == ["unload", "load"]
     assert agent_calls(host, DAILY_BACKUP) == ["unload", "load"]
+    assert agent_calls(host, WATCHDOG) == ["unload", "load"]
     assert host.calls.index(("unload", DAILY_BACKUP.label)) < host.calls.index(
         ("unload", BACKEND.label)
     )
@@ -279,6 +281,7 @@ def test_restore_stops_the_agents_sets_the_database_aside_and_starts_them_again(
         f"  from          {daily(live, NOON)}",
         f"  set aside     {aside} (never deleted)",
         f"  backend       {BACKEND.label} stopped, then started again",
+        f"  watchdog      {WATCHDOG.label} stopped, then started again",
         f"  backup        {DAILY_BACKUP.label} stopped, then started again",
     ]
 
@@ -331,7 +334,7 @@ def test_restore_refuses_while_another_process_still_has_the_database_open(
 
     assert exit_code == 1
     assert err.startswith("restore failed: another process has ")
-    assert err.endswith(" (nothing was changed; backend and backup started again)\n")
+    assert err.endswith(" (nothing was changed; backend, watchdog and backup started again)\n")
     assert agent_calls(host, BACKEND) == ["unload", "load"]
     assert host.jobs[BACKEND.label].pid is not None
     assert stored_ids(live / DATABASE_NAME) == ["a terminal's ingest --watch", "current"]
@@ -382,6 +385,7 @@ def test_restore_starts_the_backend_again_when_it_will_not_stop(
     code, host = stable
     backed_up(run, code, host, live, "current")
     host.unload(DAILY_BACKUP.label)
+    host.unload(WATCHDOG.label)
     monkeypatch.setattr(stable_launch_agents, "UNLOAD_WAIT_SECONDS", 0.2)
     monkeypatch.setattr(stable_launch_agents, "LOAD_RETRY_SECONDS", 0)
     host.unload_lingers = 3

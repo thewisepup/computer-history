@@ -8,7 +8,7 @@ from datetime import datetime
 
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import BackupFailed, take_pre_update_backup
-from computer_history.stable.launch_agents import BACKEND, start_agent, stop_if_loaded
+from computer_history.stable.launch_agents import BACKEND, start_agent, stop_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.versions import InstalledVersion, build_version, pointed, version_name
 from computer_history.store import DatabaseCopy, SpoolHold, sidecars
@@ -39,27 +39,32 @@ def prepare(
     now: Callable[[], datetime],
     sleep: Callable[[float], None] = time.sleep,
 ) -> Prepared:
-    """Build the new version, stop the backend, back up the database and place the spool hold."""
+    """Build the new version, stop the backend, back up the database and place the spool hold.
+
+    Anything that stops it, Ctrl-C included, undoes what it did first and restarts the backend.
+    """
     name = version_name(commit)
     try:
         built = build_version(host, layout, commit)
     except (HostError, OSError) as exc:
         raise UpdateFailed(f"could not build version {name}: {exc} ({NOTHING_CHANGED})") from exc
     hold = SpoolHold.beside(layout.database)
-    stopped = False
+    was_loaded = False
     backup = None
     try:
-        try:
-            stopped = stop_if_loaded(host, BACKEND.label, sleep=sleep)
-        except HostError:
-            stopped = not _still_loaded(host)
-            raise
+        was_loaded = host.job(BACKEND.label).loaded
+        if was_loaded:
+            stop_agent(host, BACKEND.label, sleep=sleep)
         if layout.database.is_file():
             backup = take_pre_update_backup(layout.database, version=old.name, now=now())
         hold.place()
-    except (HostError, BackupFailed, OSError) as exc:
-        left = _undo(host, layout, name if built else None, backup, stopped, sleep)
-        raise UpdateFailed(f"{exc} ({left})") from exc
+    except BaseException as exc:
+        restart = was_loaded and not _still_loaded(host)
+        left = _undo(host, layout, name if built else None, backup, restart, sleep)
+        if isinstance(exc, HostError | BackupFailed | OSError):
+            raise UpdateFailed(f"{exc} ({left})") from exc
+        exc.add_note(left)
+        raise
     return Prepared(old, pointed(layout.previous), name, built, backup, hold)
 
 

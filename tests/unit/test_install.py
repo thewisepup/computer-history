@@ -9,7 +9,7 @@ from cli_output import RunCli
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
 from computer_history.cli.profile import NOT_A_CHECKOUT
-from computer_history.host import CheckOutcome
+from computer_history.host import CheckOutcome, JobState
 from computer_history.stable import (
     BACKEND,
     LOAD_ATTEMPTS,
@@ -280,6 +280,50 @@ def test_install_boots_out_a_stopgap_whose_plist_was_deleted(
     assert code == 0, err
     assert STOPGAP_LABEL not in host.jobs
     assert f"  stopgap       {STOPGAP_LABEL} booted out and removed" in out
+
+
+def test_install_waits_for_the_stopgap_to_unload_before_starting_its_own_backend(
+    run: RunCli, layout: Layout, checkout: Path
+) -> None:
+    host = FakeHost(checks={OLDER: gate_runs()}, loaded=[STOPGAP_LABEL], unload_lingers=3)
+
+    code, _, err = run(checkout, "install", host=host)
+
+    assert code == 0, err
+    stopgap_gone = host.calls.index(("unload", STOPGAP_LABEL)) + 4
+    assert host.calls[stopgap_gone] == ("job", STOPGAP_LABEL)
+    assert stopgap_gone < host.calls.index(("load", BACKEND.label))
+
+
+class VersionsWhileLoaded(FakeHost):
+    """A host that notes, at each lookup that finds the backend still loaded, whether its
+    versions folder is still there."""
+
+    def __init__(self, layout: Layout, **options: object) -> None:
+        super().__init__(**options)  # type: ignore[arg-type]
+        self.layout = layout
+        self.versions_kept: list[bool] = []
+
+    def job(self, label: str) -> JobState:
+        state = super().job(label)
+        if label == BACKEND.label and state.loaded:
+            self.versions_kept.append(self.layout.versions.exists())
+        return state
+
+
+def test_uninstall_waits_for_the_backend_to_unload_before_removing_its_version(
+    run: RunCli, layout: Layout, checkout: Path
+) -> None:
+    host = VersionsWhileLoaded(layout, checks={OLDER: gate_runs()})
+    assert run(checkout, "install", host=host)[0] == 0
+    host.unload_lingers = 3
+    host.versions_kept.clear()
+
+    code, _, err = run(checkout, "uninstall", host=host)
+
+    assert code == 0, err
+    assert host.versions_kept == [True] * 4
+    assert not layout.versions.exists()
 
 
 @pytest.mark.parametrize("spelling", ["~/.local/bin/", "{home}/.local/bin/", "{alias}/.local/bin"])

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import fcntl
 import json
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -20,7 +23,7 @@ from fake_host import (
 
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import CheckOutcome
-from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat, runner
+from computer_history.sources import health_path, read_health, runner
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,
@@ -29,7 +32,7 @@ from computer_history.stable import (
     stable_layout,
     version_name,
 )
-from computer_history.stable.updates import waiting
+from computer_history.stable.updates import preparing, waiting
 from computer_history.store import DATABASE_NAME, sidecars, spool_hold_path
 
 OLDEST = "a" * 40
@@ -64,8 +67,8 @@ def stable_code(layout: Layout) -> Path:
     return installed_package(layout.current.resolve() / "venv")
 
 
-def heartbeat(layout: Layout) -> Path:
-    return backend_heartbeat_path(layout.database)
+def health(layout: Layout) -> Path:
+    return health_path(layout.database)
 
 
 def updating(layout: Layout, *starts: BackendStart, **options: object) -> FakeHost:
@@ -134,7 +137,7 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
 
     def new_backend(host: FakeHost) -> None:
         backed_up_at_start.append(pre_update_backups(layout))
-        completes_a_cycle(heartbeat(layout))(host)
+        completes_a_cycle(health(layout))(host)
 
     host = updating(layout, new_backend)
 
@@ -176,12 +179,12 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
 
 
 def test_a_second_update_keeps_one_previous_version(run: RunCli, layout: Layout) -> None:
-    host = updating(layout, completes_a_cycle(heartbeat(layout)))
+    host = updating(layout, completes_a_cycle(health(layout)))
     assert run(stable_code(layout), "update", host=host)[0] == 0
     host = FakeHost(
         checks={NEWEST: gate_runs(), NEWER: gate_runs()},
         loaded=[BACKEND.label],
-        backend_starts=[completes_a_cycle(heartbeat(layout))],
+        backend_starts=[completes_a_cycle(health(layout))],
     )
 
     code, out, err = run(stable_code(layout), "update", host=host)
@@ -210,7 +213,7 @@ def test_update_skips_commits_the_release_gate_does_not_pass(
 ) -> None:
     host = FakeHost(
         checks={NEWEST: gate_runs(**newest), NEWER: gate_runs(), OLDER: gate_runs()},
-        backend_starts=[completes_a_cycle(heartbeat(layout))],
+        backend_starts=[completes_a_cycle(health(layout))],
     )
 
     code, out, err = run(stable_code(layout), "update", host=host)
@@ -226,7 +229,7 @@ def test_update_ignores_the_checks_outside_the_release_gate(run: RunCli, layout:
     runs = gate_runs(typecheck=CheckOutcome.FAILURE, perf=CheckOutcome.RUNNING)
     host = FakeHost(
         checks={NEWER: runs, OLDER: gate_runs()},
-        backend_starts=[completes_a_cycle(heartbeat(layout))],
+        backend_starts=[completes_a_cycle(health(layout))],
     )
 
     assert run(stable_code(layout), "update", host=host)[0] == 0
@@ -289,7 +292,7 @@ def test_an_update_whose_backup_fails_changes_nothing_and_restarts_the_backend(
 def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_unchanged(
     run: RunCli, layout: Layout, start: BackendStart | None, reason: str
 ) -> None:
-    host = updating(layout, start or completes_a_cycle(heartbeat(layout), error=CYCLE_ERROR))
+    host = updating(layout, start or completes_a_cycle(health(layout), error=CYCLE_ERROR))
     before = {path: data for path, data in install_state(layout).items() if path.is_symlink()}
 
     code, out, err = run(stable_code(layout), "update", *QUICK, host=host)
@@ -309,12 +312,7 @@ def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_
         "  database      kept as it is (the schema did not change)",
         f"  backend       restarted on {old}; it reads the spool files it kept again",
     ]
-    assert host.notifications == [
-        (
-            "Computer History update fell back",
-            f"Update to {new} fell back: {reason}; back on {old}.",
-        )
-    ]
+    assert host.notifications == [f"Update to {new} fell back: {reason}; back on {old}."]
     ((entry),) = log_lines(layout)
     assert {k: entry[k] for k in ("action", "from", "to", "reason")} == {
         "action": "fell back",
@@ -338,7 +336,7 @@ def test_a_fallback_after_the_new_version_changed_the_schema_restores_the_backup
         with writer(database, "written by the new version"):
             pass
         newer_db(database)
-        completes_a_cycle(heartbeat(layout), error=CYCLE_ERROR)(host)
+        completes_a_cycle(health(layout), error=CYCLE_ERROR)(host)
 
     host = updating(layout, migrates_then_fails)
 
@@ -373,7 +371,7 @@ def test_rollback_swaps_current_and_previous_without_the_network(
         run(
             stable_code(layout),
             "update",
-            host=updating(layout, completes_a_cycle(heartbeat(layout))),
+            host=updating(layout, completes_a_cycle(health(layout))),
         )[0]
         == 0
     )
@@ -470,7 +468,7 @@ def test_a_backend_whose_first_cycle_fails_keeps_holding(
     assert code == 0
     assert hold.exists()
     assert (spool / SPOOL_FILE).exists()
-    written = read_backend_heartbeat(heartbeat(layout))
+    written = read_health(health(layout))
     assert written is not None
     assert written.sources_unavailable
 
@@ -521,7 +519,7 @@ def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, li
 
 
 def test_update_never_moves_back_to_an_older_commit(run: RunCli, layout: Layout) -> None:
-    host = updating(layout, completes_a_cycle(heartbeat(layout)))
+    host = updating(layout, completes_a_cycle(health(layout)))
     assert run(stable_code(layout), "update", host=host)[0] == 0
     host = FakeHost(checks={NEWER: gate_runs(unit=CheckOutcome.CANCELLED), OLDER: gate_runs()})
     before = install_state(layout)
@@ -539,8 +537,8 @@ def test_update_never_moves_back_to_an_older_commit(run: RunCli, layout: Layout)
 
 
 def test_a_first_cycle_with_activitywatch_down_is_waited_out(run: RunCli, layout: Layout) -> None:
-    down = completes_a_cycle(heartbeat(layout), error=AW_DOWN, sources_unavailable=True)
-    host = updating(layout, then(down, stays_silent, completes_a_cycle(heartbeat(layout))))
+    down = completes_a_cycle(health(layout), error=AW_DOWN, sources_unavailable=True)
+    host = updating(layout, then(down, stays_silent, completes_a_cycle(health(layout))))
 
     code, out, err = run(stable_code(layout), "update", host=host)
 
@@ -552,7 +550,7 @@ def test_a_first_cycle_with_activitywatch_down_is_waited_out(run: RunCli, layout
 def test_activitywatch_down_for_the_whole_wait_falls_back_and_says_so(
     run: RunCli, layout: Layout
 ) -> None:
-    down = completes_a_cycle(heartbeat(layout), error=AW_DOWN, sources_unavailable=True)
+    down = completes_a_cycle(health(layout), error=AW_DOWN, sources_unavailable=True)
     host = updating(layout, down)
 
     code, out, _ = run(stable_code(layout), "update", *QUICK, host=host)
@@ -598,6 +596,12 @@ def test_a_fallback_that_cannot_stop_the_new_backend_keeps_its_folder(
         " ".join(out)
     )
     assert f"  warning: kept {new_folder}, since its backend or a pointer may still use it" in out
+    hold = spool_hold_path(layout.database)
+    assert hold.exists()
+    assert (
+        f"  warning: kept the spool hold {hold}, since the new backend may still run; the"
+        " backend's next ok cycle removes it"
+    ) in out
 
 
 def test_a_fallback_that_cannot_point_current_back_keeps_the_new_version_runnable(
@@ -622,7 +626,7 @@ def test_a_fallback_that_cannot_point_current_back_keeps_the_new_version_runnabl
         for line in out
     )
     assert f"  warning: kept {new_folder}, since its backend or a pointer may still use it" in out
-    assert host.notifications[-1][1].endswith("run computer-history status to see where it is.")
+    assert host.notifications[-1].endswith("run computer-history status to see where it is.")
 
 
 def test_an_interrupted_wait_falls_back_and_exits_130(
@@ -661,7 +665,7 @@ def test_a_failure_after_the_backup_removes_it(run: RunCli, layout: Layout) -> N
 def test_a_rollback_that_cannot_point_previous_keeps_current_on_the_newer_version(
     run: RunCli, layout: Layout
 ) -> None:
-    host = updating(layout, completes_a_cycle(heartbeat(layout)))
+    host = updating(layout, completes_a_cycle(health(layout)))
     assert run(stable_code(layout), "update", host=host)[0] == 0
     staged = layout.live / ".previous.new"
     staged.mkdir()
@@ -676,3 +680,109 @@ def test_a_rollback_that_cannot_point_previous_keeps_current_on_the_newer_versio
     )
     assert layout.current.resolve().name == version_name(NEWER)
     assert layout.previous.resolve().name == version_name(OLDER)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM], ids=["ctrl-c", "sigterm"])
+def test_an_interrupt_during_the_pre_update_backup_changes_nothing_and_restarts_the_backend(
+    run: RunCli, layout: Layout, monkeypatch: pytest.MonkeyPatch, signum: signal.Signals
+) -> None:
+    def interrupted_backup(*args: object, **kwargs: object) -> None:
+        os.kill(os.getpid(), signum)
+
+    monkeypatch.setattr(preparing, "take_pre_update_backup", interrupted_backup)
+    host = updating(layout)
+    before = install_state(layout)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 130
+    assert out[1:] == []
+    assert err == "update interrupted before switching versions (nothing was changed)\n"
+    assert install_state(layout) == before
+    assert host.jobs[BACKEND.label].loaded
+
+
+class InterruptedFallback(FakeHost):
+    """A host whose second start of the backend, the fallback's, arrives with a Ctrl-C."""
+
+    def __init__(self, **options: object) -> None:
+        super().__init__(**options)  # type: ignore[arg-type]
+        self.backend_loads = 0
+
+    def load(self, plist: Path) -> None:
+        super().load(plist)
+        if plist.name == f"{BACKEND.label}.plist":
+            self.backend_loads += 1
+            if self.backend_loads == 2:
+                os.kill(os.getpid(), signal.SIGINT)
+
+
+def test_an_interrupt_during_a_fallback_lets_it_finish_then_exits_130(
+    run: RunCli, layout: Layout
+) -> None:
+    host = InterruptedFallback(
+        checks={NEWER: gate_runs(), OLDER: gate_runs()},
+        loaded=[BACKEND.label],
+        backend_starts=[crashes],
+    )
+
+    code, out, _ = run(stable_code(layout), "update", host=host)
+
+    assert code == 130
+    assert out[2].startswith(f"Update to version {version_name(NEWER)} fell back: ")
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert sorted(path.name for path in layout.versions.iterdir()) == [version_name(OLDER)]
+    assert log_lines(layout)[-1]["action"] == "fell back"
+    assert len(host.notifications) == 1
+    assert host.jobs[BACKEND.label].loaded
+
+
+def test_rollback_refuses_a_database_the_previous_version_cannot_open(
+    run: RunCli, layout: Layout
+) -> None:
+    def migrates(host: FakeHost) -> None:
+        newer_db(layout.database)
+        completes_a_cycle(health(layout))(host)
+
+    assert run(stable_code(layout), "update", host=updating(layout, migrates))[0] == 0
+    (backup,) = pre_update_backups(layout)
+    host = FakeHost(loaded=[BACKEND.label])
+    before = install_state(layout)
+
+    code, _, err = run(stable_code(layout), "rollback", host=host)
+
+    assert code == 1
+    assert err == (
+        f"rollback failed: the database is at schema v{SUPPORTED + 1}, newer than version"
+        f" {version_name(OLDER)} can open (v{SUPPORTED}); put its pre-update backup back first"
+        f" with `computer-history restore {backup}`, then roll back (nothing was changed)\n"
+    )
+    assert install_state(layout) == before
+    assert changes(host) == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [("install",), ("uninstall",), ("update",), ("rollback",), ("restore", "2026-11-20")],
+    ids=["install", "uninstall", "update", "rollback", "restore"],
+)
+def test_a_second_install_command_is_refused_while_one_holds_the_live_folder(
+    run: RunCli, layout: Layout, argv: tuple[str, ...]
+) -> None:
+    host = updating(layout, completes_a_cycle(health(layout)))
+    before = install_state(layout)
+    held = os.open(layout.live, os.O_RDONLY)
+    try:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        code, out, err = run(stable_code(layout), *argv, host=host)
+    finally:
+        os.close(held)
+
+    assert code == 1
+    assert out[1:] == []
+    assert err == (
+        f"{argv[0]} refused: another install, uninstall, update, rollback or restore is using"
+        f" {layout.live}; run it again once that one has finished\n"
+    )
+    assert install_state(layout) == before
+    assert changes(host) == []

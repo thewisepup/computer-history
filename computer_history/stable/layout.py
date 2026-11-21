@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.host import COMMAND_NAME
+from computer_history.logs import LOG_FOLDER_NAME
 from computer_history.store import DATABASE_NAME, VERSIONS_FOLDER_NAME, live_folder
 
 NOTHING_CHANGED = "nothing was changed"
@@ -61,7 +62,7 @@ class Layout:
 
     @property
     def logs(self) -> Path:
-        return self.home / "Library" / "Logs" / COMMAND_NAME
+        return self.home / "Library" / "Logs" / LOG_FOLDER_NAME
 
     def command(self, version: Path) -> Path:
         """The computer-history command inside a version folder, or through a pointer to one."""

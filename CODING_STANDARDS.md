@@ -98,6 +98,9 @@ Review findings ratchet into rules:
   below raises (`InstallFailed`, `BackupFailed`, `RestoreFailed`), carrying
   the message to print; the CLI never catches a tuple of library exceptions
   (`OSError`, `sqlite3.Error`) itself.
+- **A13** A file or link rewritten in place (a state file, a pointer, the PATH
+  link) goes through the one atomic-write helper, `replace_atomically` in
+  `store/paths.py`, never its own staged write and `os.replace`.
 
 ## Logging
 

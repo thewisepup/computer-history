@@ -6,9 +6,9 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from computer_history.alerts import desktop_notifier
 from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.cli.sources import source_failed, unavailable_on
+from computer_history.host import Host, HostError
 from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
     ActivityWatch,
@@ -22,7 +22,6 @@ from computer_history.sources import (
     IngestOutcome,
     StreakAlert,
     StreamFailure,
-    backend_heartbeat_path,
     health_path,
     poll,
     read_health,
@@ -47,10 +46,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     with store:
         if args.watch:
             health = health_path(db_path)
-            post = desktop_notifier()
             streak = FailureStreak(
                 save=partial(write_health, health),
-                notify=None if post is None else lambda alert: post(alert_text(alert)),
+                notify=partial(_notify, args.host),
                 health=_saved(health),
             )
             log.info(
@@ -69,7 +67,6 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                     conn,
                     sources,
                     report=CycleReporter(cycle_line, streak=streak),
-                    heartbeat=backend_heartbeat_path(db_path),
                     hold=hold,
                 )
             except KeyboardInterrupt:
@@ -83,10 +80,11 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     return code
 
 
-def alert_text(alert: StreakAlert) -> str:
-    if alert.ended:
-        return "ingest recovered."
-    return f"ingest failing for {alert.failures:,} cycles. Run `computer-history status`."
+def _notify(host: Host, alert: StreakAlert) -> None:
+    try:
+        host.notify(alert.message)
+    except HostError as exc:
+        log.warning("notification not shown", extra={"error": str(exc)})
 
 
 def _saved(path: Path) -> IngestHealth | None:

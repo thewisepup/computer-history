@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import fcntl
 import json
-import os
-import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -11,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from computer_history.store import replace_atomically
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
 WATCHDOG_STATE_NAME = "watchdog.json"
@@ -28,7 +27,6 @@ class WatchdogState:
     open: frozenset[Check] = frozenset()
     reopened: tuple[datetime, ...] = ()
     unreachable_since: datetime | None = None
-    failing_since: datetime | None = None
     logged: dict[str, datetime] = field(default_factory=lambda: {})
     errors: tuple[str, ...] = ()
 
@@ -72,7 +70,6 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
             open=frozenset(Check(name) for name in saved["open"]),
             reopened=tuple(_required(at) for at in saved["reopened"]),
             unreachable_since=_time(saved["unreachable_since"]),
-            failing_since=_time(saved["failing_since"]),
             logged={str(message): _required(at) for message, at in saved["logged"].items()},
             errors=tuple(str(error) for error in saved["errors"]),
         )
@@ -81,7 +78,7 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
 
 
 def write_watchdog_state(path: Path, state: WatchdogState) -> None:
-    """Replace the state file in one step, through a temporary file of its own."""
+    """Replace the state file in one step."""
     saved = {
         "ran_at": _iso(state.ran_at),
         "watching_since": _iso(state.watching_since),
@@ -99,20 +96,11 @@ def write_watchdog_state(path: Path, state: WatchdogState) -> None:
         "open": sorted(check.value for check in state.open),
         "reopened": [at.isoformat() for at in state.reopened],
         "unreachable_since": _iso(state.unreachable_since),
-        "failing_since": _iso(state.failing_since),
         "logged": {message: at.isoformat() for message, at in state.logged.items()},
         "errors": list(state.errors),
     }
-    staged = tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
-    )
-    try:
-        with staged:
-            staged.write(json.dumps(saved, indent=1))
-        os.replace(staged.name, path)
-    except BaseException:
-        Path(staged.name).unlink(missing_ok=True)
-        raise
+    text = json.dumps(saved, indent=1)
+    replace_atomically(path, lambda staged: staged.write_text(text, encoding="utf-8"))
 
 
 def _finding(saved: dict[str, Any]) -> Finding:

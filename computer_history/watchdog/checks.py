@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from computer_history.sources import BackendHeartbeat, CaptureLiveness, Liveness, Span, liveness
+from computer_history.sources import CaptureLiveness, IngestHealth, Liveness, Span, liveness
 
 
 class Check(Enum):
@@ -22,7 +22,7 @@ class Verdict(Enum):
 
 class Reason(Enum):
     RECORDING = "recording"
-    FAILING = "cycles are failing"
+    FAILING = "running, but its cycles fail (ingest alerts on that)"
     SILENT = "silent while you were active"
     AFK = "silent, but aw-afk does not show you active"
     PAUSED = "paused"
@@ -68,27 +68,25 @@ def judge_capture_agent(
 
 
 def judge_backend(
-    heartbeat: BackendHeartbeat | None,
+    health: IngestHealth | None,
     *,
     now: datetime,
     active: Iterable[Span],
     watched_since: datetime,
-    failing_since: datetime | None,
     silent_after: timedelta,
 ) -> Finding:
-    """Judge the backend from its heartbeat, silent or failing for longer than the threshold."""
-    active = list(active)
-    last = None if heartbeat is None else heartbeat.cycle_at
-    alive = _liveness(last, now, active, watched_since, silent_after)
+    """Judge the backend from its last cycle: a problem only when it has finished none for longer
+    than the threshold, since a backend whose cycles fail alerts on its own failure streak."""
+    last = None if health is None else health.cycle_at
+    alive = _liveness(last, now, list(active), watched_since, silent_after)
     if alive is Liveness.SILENT:
         return Finding(Check.BACKEND, Verdict.PROBLEM, Reason.SILENT, last)
-    if heartbeat is not None and now - heartbeat.cycle_at <= silent_after:
-        if heartbeat.ok:
-            return Finding(Check.BACKEND, Verdict.OK, Reason.RECORDING, heartbeat.cycle_at)
-        since = heartbeat.cycle_at if failing_since is None else failing_since
-        failing = _liveness(since, now, active, watched_since, silent_after)
-        verdict = Verdict.PROBLEM if failing is Liveness.SILENT else Verdict.UNKNOWN
-        return Finding(Check.BACKEND, verdict, Reason.FAILING, heartbeat.cycle_at, heartbeat.error)
+    if health is not None and now - health.cycle_at <= silent_after:
+        if health.ok:
+            return Finding(Check.BACKEND, Verdict.OK, Reason.RECORDING, health.cycle_at)
+        return Finding(
+            Check.BACKEND, Verdict.OK, Reason.FAILING, health.cycle_at, health.last_error
+        )
     if alive is Liveness.ALIVE:
         reason = Reason.NEVER_SEEN if last is None else Reason.RESUMED
         return Finding(Check.BACKEND, Verdict.UNKNOWN, reason, last)

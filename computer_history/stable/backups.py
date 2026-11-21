@@ -15,6 +15,7 @@ from computer_history.host import Host, HostError
 from computer_history.stable.launch_agents import (
     BACKEND,
     DAILY_BACKUP,
+    WATCHDOG,
     LaunchAgent,
     start_agent,
     stop_agent,
@@ -40,7 +41,7 @@ DAILY_NAME = re.compile(r"^history-(\d{4}-\d{2}-\d{2})\.db$")
 PRE_UPDATE_NAME = re.compile(r"^history-.+\.db$")
 SQLITE_HEADER = b"SQLite format 3\x00"
 COPY_FAILURES = (OSError, sqlite3.Error, RuntimeError)
-STOPPED_FOR_RESTORE = (DAILY_BACKUP, BACKEND)
+STOPPED_FOR_RESTORE = (DAILY_BACKUP, WATCHDOG, BACKEND)
 
 
 class BackupFailed(Exception):
@@ -147,9 +148,10 @@ class BackupInventory:
     daily: list[KeptBackup]
     pre_update: list[KeptBackup]
 
-    def overdue(self, today: date) -> bool:
-        """Whether there is no daily backup, or the newest is older than yesterday."""
+    def overdue(self, now: datetime) -> bool:
+        """Whether there is no daily backup, or the newest is older than yesterday, local time."""
         newest = self.daily[-1].day if self.daily else None
+        today = now.astimezone().date()
         return newest is None or (today - newest).days > DAILY_BACKUP_MAX_AGE_DAYS
 
 
@@ -202,6 +204,16 @@ def _kept(path: Path, found: os.stat_result, day: date | None) -> KeptBackup:
     return KeptBackup(path, day, datetime.fromtimestamp(found.st_mtime, UTC), found.st_size)
 
 
+def pre_update_backup_of(database: Path, version: str) -> Path | None:
+    """The newest pre-update backup taken while a version was current, or None if there is none."""
+    kept = [
+        backup
+        for backup in backup_inventory(database).pre_update
+        if backup.path.name.endswith(f"-{version}.db")
+    ]
+    return kept[-1].path if kept else None
+
+
 def find_daily_backup(database: Path, day: date) -> Path:
     """The daily backup of a day, or RestoreFailed naming the days that are kept."""
     days = daily_backups(database)
@@ -239,7 +251,8 @@ def restore_backup(
 ) -> Restored:
     """Put a day's daily backup, or a backup file, in the database's place, setting it aside.
 
-    For the live database the backend and the daily backup are stopped first and started after.
+    For the live database the backend, the watchdog and the daily backup are stopped first and
+    started after.
     """
     source = find_daily_backup(database, backup) if isinstance(backup, date) else backup
     if not source.is_file():
@@ -290,7 +303,9 @@ def _unchanged(
         return f"{NOTHING_CHANGED} to the database, but {failed}; run install to start them"
     if not stopped:
         return NOTHING_CHANGED
-    return f"{NOTHING_CHANGED}; {' and '.join(agent.name for agent in stopped)} started again"
+    names = [agent.name for agent in stopped]
+    started = " and ".join(filter(None, (", ".join(names[:-1]), names[-1])))
+    return f"{NOTHING_CHANGED}; {started} started again"
 
 
 def _start_again(

@@ -10,10 +10,12 @@ units.py       what every unit of work's records share: outcomes, progress caden
 """
 
 from computer_history.logs.config import (
+    DEV_LOG_FOLDER_NAME,
     LEVEL_NAMES,
     LOG_BACKUPS,
     LOG_DIR_ENV_VAR,
     LOG_FILE_NAME,
+    LOG_FOLDER_NAME,
     LOG_LEVEL_ENV_VAR,
     MAX_LOG_BYTES,
     PACKAGE_LOGGER,
@@ -35,11 +37,13 @@ from computer_history.logs.rotation import SharedRotatingFileHandler
 from computer_history.logs.units import PROGRESS_RECORDS, Outcome, progress_step
 
 __all__ = [
+    "DEV_LOG_FOLDER_NAME",
     "LEVELS",
     "LEVEL_NAMES",
     "LOG_BACKUPS",
     "LOG_DIR_ENV_VAR",
     "LOG_FILE_NAME",
+    "LOG_FOLDER_NAME",
     "LOG_LEVEL_ENV_VAR",
     "MAX_LOG_BYTES",
     "PACKAGE_LOGGER",

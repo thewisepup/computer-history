@@ -22,10 +22,20 @@ from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
 from computer_history.host import Host, LiveHost
 from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
-from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
-from computer_history.stable import FIRST_CYCLE_WAIT_SECONDS
+from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS, SPOOL_ENV_VAR
+from computer_history.stable import (
+    FIRST_CYCLE_WAIT_SECONDS,
+    InstallBusy,
+    holding_install_lock,
+    stable_layout,
+)
 from computer_history.store import (
+    DATABASE_NAME,
+    DB_ENV_VAR,
+    DEV_FOLDER_NAME,
+    LIVE_FOLDER_NAME,
     LiveDatabaseRefused,
+    Profile,
     live_folder,
     resolve_db_path,
     resolve_dev_db_path,
@@ -105,10 +115,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Local activity store and ActivityWatch ingest.",
     )
     db_help = (
-        "SQLite database path (default: $COMPUTER_HISTORY_DB, else history.db in the profile's"
-        " data folder: ~/Library/Application Support/ComputerHistory-dev/ for dev,"
-        " ComputerHistory/ for stable). For dev snapshot it is where the copy goes, always dev's"
-        " database whichever profile runs"
+        f"SQLite database path (default: ${DB_ENV_VAR}, else {DATABASE_NAME} in the profile's"
+        f" data folder: ~/Library/Application Support/{DEV_FOLDER_NAME}/ for dev,"
+        f" {LIVE_FOLDER_NAME}/ for stable). For dev snapshot it is where the copy goes, always"
+        " dev's database whichever profile runs"
     )
     parser.add_argument("--db-path", help=db_help)
     parser.add_argument(
@@ -187,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name in ("ingest", "status", "watchdog"):
             sub.add_argument(
                 "--spool-path",
-                help="capture spool folder (default: $COMPUTER_HISTORY_SPOOL, else spool/ beside"
+                help=f"capture spool folder (default: ${SPOOL_ENV_VAR}, else spool/ beside"
                 " the database)",
             )
         if name == "ingest":
@@ -254,15 +264,16 @@ def main(
     except ValueError as exc:
         print(f"computer-history: {exc}", file=sys.stderr)
         return 2
+    running = running_code(code)
+    args.profile = running.profile
+    args.log_dir = resolve_log_dir(dev=running.profile is Profile.DEV)
     watching = getattr(args, "watch", False)
     configure(
         f"{args.command} --watch" if watching else args.command,
         level=level,
         long_running=watching,
-        log_dir=resolve_log_dir(),
+        log_dir=args.log_dir,
     )
-    running = running_code(code)
-    args.profile = running.profile
     args.host = LiveHost() if host is None else host
     handler = HANDLERS.get(args.command)
     if handler is None:
@@ -282,12 +293,25 @@ def main(
         uses = f"output {args.out}"
     print(profile_line(running, code, uses), file=_profile_stream(args.command), flush=True)
     try:
-        return handler(args)
+        if not _changes_the_install(args):
+            return handler(args)
+        with holding_install_lock(stable_layout()):
+            return handler(args)
+    except InstallBusy as exc:
+        print(f"{args.command} refused: {exc}", file=sys.stderr)
+        return 1
     except LiveDatabaseRefused as exc:
         return _refused(exc)
     except Exception:
         log.critical("command crashed", exc_info=True)
         return 1
+
+
+def _changes_the_install(args: argparse.Namespace) -> bool:
+    """Whether the command changes the stable install, or restores a database a stable run uses."""
+    if args.command == "restore":
+        return args.profile is Profile.STABLE
+    return args.command in INSTALL_COMMANDS
 
 
 def _database(args: argparse.Namespace) -> Path | None:

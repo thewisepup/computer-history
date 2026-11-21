@@ -3,6 +3,9 @@
     install.py        install (a current version, the PATH link, the LaunchAgents,
         |             the stopgap retired) and uninstall (all of it, never the data)
         |
+    install_lock.py   the one lock on the live folder that install, uninstall,
+        |             update, rollback and a stable restore hold while they run
+        |
         +-- gate.py           the release gate: the checks a main commit must pass,
         |                     and the walk to the newest one that does
         +-- versions.py       build a commit into its marked version folder and point
@@ -22,8 +25,8 @@
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
-                      and starts the backend and the daily backup around it for the
-                      live database (uses launch_agents.py and layout.py)
+                      and starts the backend, the watchdog and the daily backup around
+                      it for the live database (uses launch_agents.py and layout.py)
 
 Everything that reaches launchctl, GitHub or uv goes through the host adapter it is given.
 """
@@ -47,6 +50,7 @@ from computer_history.stable.backups import (
 )
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
+from computer_history.stable.install_lock import InstallBusy, holding_install_lock
 from computer_history.stable.launch_agents import (
     ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
@@ -64,6 +68,7 @@ from computer_history.stable.launch_agents import (
 )
 from computer_history.stable.layout import (
     CAPTURE_AGENT_LABEL,
+    NOTHING_CHANGED,
     PACKAGES_FILE_NAME,
     Layout,
     stable_layout,
@@ -94,6 +99,7 @@ __all__ = [
     "EVERY_MINUTE_SECONDS",
     "FIRST_CYCLE_WAIT_SECONDS",
     "LOAD_ATTEMPTS",
+    "NOTHING_CHANGED",
     "PACKAGES_FILE_NAME",
     "PRE_UPDATE_FOLDER_NAME",
     "RELEASE_GATE",
@@ -107,6 +113,7 @@ __all__ = [
     "BackupFailed",
     "BackupInventory",
     "DailyOutcome",
+    "InstallBusy",
     "InstallFailed",
     "LaunchAgent",
     "Layout",
@@ -120,6 +127,7 @@ __all__ = [
     "agent_statuses",
     "backup_inventory",
     "daily_backup_path",
+    "holding_install_lock",
     "install",
     "last_update_log_entry",
     "pointed",

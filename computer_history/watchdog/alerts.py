@@ -4,10 +4,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from computer_history.host import ALERT_REPEAT
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
-NOTIFY_EVERY = timedelta(hours=1)
-LOG_EVERY = timedelta(hours=1)
 SUBJECTS = {
     Check.CAPTURE_AGENT: "The capture agent",
     Check.ACTIVITYWATCH: "ActivityWatch",
@@ -44,7 +43,7 @@ def notices(
         if finding.verdict is Verdict.OK and check in open_problems:
             found.append(Notice(check, True, CLEARED[check]))
         last = notified.get(check)
-        if finding.verdict is Verdict.PROBLEM and (last is None or now - last >= NOTIFY_EVERY):
+        if finding.verdict is Verdict.PROBLEM and (last is None or now - last >= ALERT_REPEAT):
             found.append(Notice(check, False, _problem_message(finding, silent_after[check])))
     return found
 
@@ -53,7 +52,7 @@ def due_to_log(
     messages: Iterable[str], logged: Mapping[str, datetime], now: datetime
 ) -> tuple[tuple[str, ...], dict[str, datetime]]:
     """Pick the messages not logged in the last hour, and when each message was last logged."""
-    kept = {message: at for message, at in logged.items() if now - at < LOG_EVERY}
+    kept = {message: at for message, at in logged.items() if now - at < ALERT_REPEAT}
     due = tuple(dict.fromkeys(message for message in messages if message not in kept))
     return due, kept | {message: now for message in due}
 
@@ -66,9 +65,6 @@ def _problem_message(finding: Finding, silent_after: timedelta) -> str:
             return f"{subject} has been unreachable for over {minutes}."
         case Reason.STALLED:
             return f"{subject} has recorded nothing for over {minutes} in {finding.detail}."
-        case Reason.FAILING:
-            why = f": {finding.detail}" if finding.detail else "."
-            return f"{subject}'s ingest cycles have been failing for over {minutes}{why}"
         case _ if finding.check is Check.BACKEND:
             return (
                 f"{subject} has finished no ingest cycle for over {minutes} while you were active."

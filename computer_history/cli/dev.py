@@ -13,6 +13,7 @@ from typing import Any
 
 from computer_history.cli.formatting import human_size
 from computer_history.store import (
+    DB_ENV_VAR,
     DatabaseExists,
     DatabaseInUse,
     IntegrityCheckFailed,
@@ -90,7 +91,7 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
     snapshot.add_argument(
         "--db-path",
         default=argparse.SUPPRESS,
-        help="database to copy into (default: $COMPUTER_HISTORY_DB, else history.db in the dev"
+        help=f"database to copy into (default: ${DB_ENV_VAR}, else {DATABASE_NAME} in the dev"
         " folder); never one in the live folder",
     )
     snapshot.add_argument(

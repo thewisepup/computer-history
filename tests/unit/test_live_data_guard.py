@@ -16,7 +16,7 @@ from live_data_guard import (
     RealNotification,
 )
 
-from computer_history.alerts import post_notification
+from computer_history.host import NOTIFY_ENV_VAR, LiveHost
 from computer_history.logs import (
     LOG_DIR_ENV_VAR,
     default_log_dir,
@@ -39,7 +39,7 @@ def test_home_is_a_sandbox_and_defaults_land_in_it() -> None:
     assert Path.home() != LIVE_DATA_DIR.parents[2]
     assert not default_db_path(Profile.STABLE).is_relative_to(LIVE_DATA_DIR)
     assert not any(os.environ.get(name) for name in GUARDED_ENV_VARS if name != LOG_DIR_ENV_VAR)
-    assert not resolve_log_dir().is_relative_to(LIVE_LOG_DIR)
+    assert not resolve_log_dir(dev=False).is_relative_to(LIVE_LOG_DIR)
 
 
 def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
@@ -47,7 +47,7 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
 ) -> None:
     monkeypatch.setenv("HOME", str(LIVE_DATA_DIR.parents[2]))
     assert default_db_path(Profile.STABLE) == LIVE_DATA_DIR / "history.db"
-    assert default_log_dir() == LIVE_LOG_DIR
+    assert default_log_dir(dev=False) == LIVE_LOG_DIR
     assert set(GUARDED_ENV_VARS) == {DB_ENV_VAR, SPOOL_ENV_VAR, LOG_DIR_ENV_VAR}
 
 
@@ -98,9 +98,10 @@ def test_touching_live_data_raises(touch) -> None:
     assert not PROBE.exists()
 
 
-def test_posting_a_real_notification_raises() -> None:
+def test_posting_a_real_notification_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(NOTIFY_ENV_VAR)
     with pytest.raises(RealNotification):
-        post_notification("a test must never show this")
+        LiveHost().notify("a test must never show this")
 
 
 def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: Path) -> None:

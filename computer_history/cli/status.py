@@ -12,6 +12,7 @@ from computer_history.cli.formatting import (
     app_name,
     db_size,
     duration,
+    finding_lines,
     human_size,
     lag,
     local_midnight,
@@ -19,7 +20,6 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.cli.watchdog import finding_lines
 from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
@@ -34,10 +34,8 @@ from computer_history.sources import (
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
-    backend_heartbeat_path,
     capture_health,
     health_path,
-    read_backend_heartbeat,
     read_health,
     resolve_spool_path,
     screenshot_health,
@@ -82,18 +80,18 @@ MAX_APP_PAIRS_SHOWN = 3
 
 
 def cmd_status(args: argparse.Namespace) -> int:
+    """Print the database's sections, read beside the database it was given, then the stable
+    install's, which describe stable whichever database that is."""
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = formatting.utc_now()
     code = _print_store(args, db_path, spool_path, now)
     print()
+    _print_backups(backup_inventory(db_path), now)
+    print()
     _print_install(args.profile, now)
     print()
     _print_launch_agents(args.host)
-    print()
-    _print_backend(now)
-    print()
-    _print_backups(backup_inventory(db_path), now)
     print()
     _print_watchdog(now)
     return code
@@ -201,11 +199,10 @@ def _print_launch_agents(host: Host) -> None:
         return
     width = max(len(status.name) for status in statuses)
     for status in statuses:
-        loaded = status.state is not None and status.state.loaded
-        if status.retired and not (status.installed or loaded):
+        if not status.shown:
             continue
         print(f"  {status.name:<{width}}  {_job(status)}  {status.label}")
-        if status.retired and loaded:
+        if status.lingering:
             print(f"  warning: the {status.name} still runs; `computer-history install` retires it")
 
 
@@ -215,23 +212,6 @@ def _job(status: AgentStatus) -> str:
         return "installed, not loaded" if status.installed else "not installed"
     shown = "loaded, not running" if state.pid is None else f"loaded, running (pid {state.pid})"
     return shown if status.installed else f"{shown}, plist deleted"
-
-
-def _print_backend(now: datetime) -> None:
-    print("Stable backend:")
-    heartbeat_path = backend_heartbeat_path(default_db_path(Profile.STABLE))
-    try:
-        heartbeat = read_backend_heartbeat(heartbeat_path)
-    except (OSError, ValueError) as exc:
-        print(f"  last cycle    unreadable heartbeat: {exc}")
-        return
-    if heartbeat is None:
-        print(f"  last cycle    none yet (no heartbeat at {heartbeat_path})")
-        return
-    result = "ok" if heartbeat.ok else "failed"
-    if heartbeat.error is not None:
-        result += f": {heartbeat.error}"
-    print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
 
 
 def _print_backups(kept: BackupInventory, now: datetime) -> None:
@@ -259,7 +239,7 @@ def _print_backups(kept: BackupInventory, now: datetime) -> None:
         )
     print("  integrity     each passed SQLite's integrity check before it was kept")
     print(f"  folder        {kept.folder}")
-    if kept.overdue(now.astimezone().date()):
+    if kept.overdue(now):
         missing = f"since {kept.daily[-1].day}" if kept.daily else "taken yet"
         print(
             f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"
@@ -304,10 +284,10 @@ def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
         return None, f"Ingest:        cannot read {path}: {exc}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
-    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.updated_at, now)}"
+    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"
     if health.stale(now):
         line += (
-            f"; NOT REPORTING for {duration((now - health.updated_at).total_seconds())}"
+            f"; NOT REPORTING for {duration((now - health.cycle_at).total_seconds())}"
             " (is `ingest --watch` running?)"
         )
     if not health.consecutive_failures:

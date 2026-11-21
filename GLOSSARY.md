@@ -75,7 +75,7 @@ What an update does on its own when the new version's backend crashes, fails its
 _Avoid_: Revert, auto-rollback
 
 **Rollback**:
-Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored.
+Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
 _Avoid_: Downgrade, revert
 
 **Update log**:
@@ -95,15 +95,23 @@ The named CI checks a `main` commit must all have passed on its push run before 
 _Avoid_: Required checks, green build
 
 **Host adapter**:
-The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests.
+The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
 _Avoid_: System client, platform layer
 
-**Backend heartbeat**:
-The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time, whether it succeeded, its first failure and whether every failure was an unavailable source. Not the capture agent's heartbeat record.
-_Avoid_: Ping, liveness file
+**Daily backup**:
+The copy of the database the backup LaunchAgent takes once a day (or after wake, when the day's run was missed) into `backups/daily/`, checked with SQLite's integrity check; the newest seven are kept.
+_Avoid_: Snapshot, dump, archive
+
+**Pre-update backup**:
+The copy of the database an update takes before it switches versions, kept in `backups/pre-update/` apart from the dailies and named for the version that was current; a fallback restores it when the schema changed.
+_Avoid_: Checkpoint, safety copy
+
+**Restore**:
+Putting a backup in the database's place, the current database set aside (never deleted); for the live database the backend, the watchdog and the daily backup are stopped around it.
+_Avoid_: Revert, recover, rollback (for this meaning)
 
 **Watchdog**:
-The stable install's every-minute check that the capture agent, ActivityWatch and the backend are recording, which notifies Brandon of a problem and reopens ActivityWatch when it is down.
+The stable install's every-minute check that the capture agent, ActivityWatch and the backend are recording, which notifies Brandon of a problem and reopens ActivityWatch when it is down. It calls the backend a problem only when it has gone silent; failing cycles are the failure streak's to report.
 _Avoid_: Monitor, health check, supervisor
 
 **Finding**:
@@ -151,8 +159,12 @@ How far ingest has stored a stream, and up to when that stream is complete.
 _Avoid_: Cursor, watermark, offset, checkpoint
 
 **Ingest health**:
-How the watch loop's recent cycles went: when one last succeeded, and the failure streak (cycles failed in a row, since when, the last error). It says nothing about coverage.
-_Avoid_: Uptime, watch heartbeat (the capture agent's heartbeat is its own record)
+`ingest-health.json` beside the database, which `ingest --watch` rewrites after every cycle: when the last cycle ran, whether it succeeded and why not (and whether every failure was an unavailable source), when one last succeeded, and the failure streak. The watchdog, update's first-cycle wait and `status` all read it. It says nothing about coverage.
+_Avoid_: Uptime, backend heartbeat, watch heartbeat (the capture agent's heartbeat is its own record)
+
+**Failure streak**:
+The run of watch-loop cycles that failed in a row. It notifies once it reaches five cycles, at most hourly while it lasts, and once when an ok cycle ends it; it never names the error.
+_Avoid_: Outage, incident, error count
 
 ### Coverage and time
 

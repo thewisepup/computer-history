@@ -8,7 +8,8 @@ run.py          one run, under a lock: read the thresholds and the last state,
     |                  three times an hour
     +-- checks.py      judge the capture agent (its newest record and status's
     |                  liveness), ActivityWatch (reachable, sources advancing)
-    |                  and the backend (its heartbeat: silent or failing)
+    |                  and the backend (silent: no cycle in its ingest health
+    |                  file; failing cycles alert from ingest itself)
     +-- alerts.py      which findings notify: a problem at most once an hour,
     |                  a clear once, the notification text, and which errors
     |                  are due a log line
@@ -17,32 +18,23 @@ run.py          one run, under a lock: read the thresholds and the last state,
                        when watching resumed
 """
 
-from computer_history.alerts import NOTIFICATION_TITLE
-from computer_history.watchdog.alerts import Notice
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
-from computer_history.watchdog.reopening import REOPEN_LIMIT, Reopening, recent_reopens
+from computer_history.watchdog.reopening import REOPEN_LIMIT, recent_reopens
 from computer_history.watchdog.run import WatchdogRun, WatchPaths, stopped, watch_once
 from computer_history.watchdog.state import (
-    WatchdogState,
     read_watchdog_state,
     watchdog_lock_path,
     watchdog_state_path,
 )
-from computer_history.watchdog.thresholds import Thresholds
 
 __all__ = [
-    "NOTIFICATION_TITLE",
     "REOPEN_LIMIT",
     "Check",
     "Finding",
-    "Notice",
     "Reason",
-    "Reopening",
-    "Thresholds",
     "Verdict",
     "WatchPaths",
     "WatchdogRun",
-    "WatchdogState",
     "read_watchdog_state",
     "recent_reopens",
     "stopped",

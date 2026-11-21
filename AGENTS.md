@@ -16,9 +16,10 @@ summaries.
   its flow diagram; `computer_history/cli/README.md` shows every command with
   examples.
 - `computer_history/logs/` — logging for every command: text to stderr, JSON
-  lines to `~/Library/Logs/computer-history/computer-history.jsonl`, read back
-  with `computer-history logs`. `CODING_STANDARDS.md` has the logging rules;
-  `computer_history/alerts.py` posts the macOS notifications.
+  lines to `~/Library/Logs/computer-history/computer-history.jsonl` (dev runs
+  use `computer-history-dev/`), read back with `computer-history logs`.
+  `CODING_STANDARDS.md` has the logging rules; every macOS notification goes
+  through the host adapter's `notify` (`computer_history/host/`).
 - `computer_history/synthetic/` — synthetic datasets: a persona's timeline,
   rendered per source and built through the real backfill and poll, with a
   manifest of true answers that tests check against.
