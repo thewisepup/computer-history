@@ -6,9 +6,9 @@ import sys
 from functools import partial
 from pathlib import Path
 
+from computer_history.alerts import desktop_notifier
 from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.cli.sources import source_failed, unavailable_on
-from computer_history.logs import desktop_notifier
 from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
     ActivityWatch,

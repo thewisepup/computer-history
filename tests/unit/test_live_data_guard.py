@@ -16,10 +16,10 @@ from live_data_guard import (
     RealNotification,
 )
 
+from computer_history.alerts import post_notification
 from computer_history.logs import (
     LOG_DIR_ENV_VAR,
     default_log_dir,
-    post_notification,
     resolve_log_dir,
 )
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR

@@ -5,7 +5,6 @@
     formatters.py  a record as one JSON line or one text line, control characters escaped
          |
     query.py       the JSON lines read back across the rotated files, filtered
-    notify.py      a macOS notification, or none when they are turned off
 """
 
 from computer_history.logs.config import (
@@ -23,7 +22,6 @@ from computer_history.logs.config import (
     resolve_log_dir,
 )
 from computer_history.logs.formatters import JsonFormatter, TextFormatter, escape, text_line
-from computer_history.logs.notify import NOTIFY_ENV_VAR, desktop_notifier, post_notification
 from computer_history.logs.query import LEVELS, log_files, read_records
 
 __all__ = [
@@ -34,16 +32,13 @@ __all__ = [
     "LOG_FILE_NAME",
     "LOG_LEVEL_ENV_VAR",
     "MAX_LOG_BYTES",
-    "NOTIFY_ENV_VAR",
     "PACKAGE_LOGGER",
     "JsonFormatter",
     "TextFormatter",
     "configure",
     "default_log_dir",
-    "desktop_notifier",
     "escape",
     "log_files",
-    "post_notification",
     "read_records",
     "reset",
     "resolve_level",
