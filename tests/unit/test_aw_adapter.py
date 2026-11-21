@@ -685,6 +685,7 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     import computer_history.sources as sources
     from computer_history.sources import (
         agent_health,
+        backend_heartbeat,
         backfill,
         capture_spool,
         commit,
@@ -693,7 +694,17 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         runner,
     )
 
-    modules = (contract, commit, projection, runner, backfill, aw, capture_spool, agent_health)
+    modules = (
+        contract,
+        commit,
+        projection,
+        runner,
+        backend_heartbeat,
+        backfill,
+        aw,
+        capture_spool,
+        agent_health,
+    )
     names = [name for module in modules for name in module.__all__]
     assert sorted(sources.__all__) == sorted(names)
     assert len(set(sources.__all__)) == len(sources.__all__)

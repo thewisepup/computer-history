@@ -16,6 +16,7 @@ from computer_history.sources import (
     FailureKind,
     IngestOutcome,
     StreamFailure,
+    backend_heartbeat_path,
     poll,
     resolve_spool_path,
     watch,
@@ -43,7 +44,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 db_path,
             )
             try:
-                watch(conn, sources, report=log_cycle)
+                watch(conn, sources, report=log_cycle, heartbeat=backend_heartbeat_path(db_path))
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0

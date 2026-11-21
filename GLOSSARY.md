@@ -63,12 +63,24 @@ _Avoid_: Queue, buffer, inbox
 _Avoid_: Prod folder, real folder
 
 **Stable install**:
-The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable.
+The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable. `install` builds it from a commit that passed the release gate, and `current` points at the version in use.
 _Avoid_: Release, production build
 
 **Profile**:
 Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
 _Avoid_: Mode, environment
+
+**Release gate**:
+The named CI checks a `main` commit must all have passed on its push run before the stable install may hold it.
+_Avoid_: Required checks, green build
+
+**Host adapter**:
+The one seam to macOS and the network (launchctl, GitHub, building with uv), live on the Mac and a fake in tests.
+_Avoid_: System client, platform layer
+
+**Backend heartbeat**:
+The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time and whether it succeeded. Not the capture agent's heartbeat record.
+_Avoid_: Ping, liveness file
 
 **Dev snapshot**:
 A copy of the live database taken into dev's database by `dev snapshot`, read-only and while the stable backend keeps writing; the one read of live data dev is allowed. It never includes the spool or screenshots.

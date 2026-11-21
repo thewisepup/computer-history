@@ -3,8 +3,10 @@ from pathlib import Path
 
 import live_data_guard  # noqa: F401
 import pytest
+from fake_host import FakeHost
 from hypothesis import HealthCheck, settings
 
+from computer_history.cli import app as cli_app
 from computer_history.store import DB_ENV_VAR, connect
 from computer_history.store import db as store_db
 from computer_history.synthetic import CACHE_ENV_VAR
@@ -39,6 +41,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 @pytest.fixture(autouse=True)
 def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(DB_ENV_VAR, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_live_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_app, "LiveHost", FakeHost)
 
 
 @pytest.fixture(autouse=True)

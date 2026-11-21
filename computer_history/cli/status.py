@@ -17,6 +17,7 @@ from computer_history.cli.formatting import (
     printable,
     when,
 )
+from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
@@ -28,18 +29,23 @@ from computer_history.sources import (
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
+    backend_heartbeat_path,
     capture_health,
+    read_backend_heartbeat,
     resolve_spool_path,
     screenshot_health,
 )
+from computer_history.stable import AgentStatus, agent_statuses, pointed, stable_layout
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
     Coverage,
+    Profile,
     Purpose,
     SourceCoverage,
     SourceSummary,
     StoreState,
+    default_db_path,
     open_store,
     source_summary,
     status_reads,
@@ -58,6 +64,17 @@ def cmd_status(args: argparse.Namespace) -> int:
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = utc_now()
+    code = _print_store(args, db_path, spool_path, now)
+    print()
+    _print_install(args.profile, now)
+    print()
+    _print_launch_agents(args.host)
+    print()
+    _print_backend(now)
+    return code
+
+
+def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now: datetime) -> int:
     day_start = local_midnight(now)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
@@ -117,6 +134,58 @@ def cmd_status(args: argparse.Namespace) -> int:
         print()
         _print_counts(reads.counts)
     return 0
+
+
+def _print_install(profile: Profile, now: datetime) -> None:
+    layout = stable_layout()
+    print("Stable install:")
+    print(f"  this run      {profile.value}")
+    for name, pointer in (("current", layout.current), ("previous", layout.previous)):
+        version = pointed(pointer)
+        if version is None:
+            print(f"  {name:<13} none")
+        else:
+            print(f"  {name:<13} {version.name}, installed {ago(version.installed_at, now)}")
+
+
+def _print_launch_agents(host: Host) -> None:
+    print("Stable install's LaunchAgents:")
+    try:
+        statuses = agent_statuses(host, stable_layout())
+    except HostError as exc:
+        print(f"  cannot ask launchd: {exc}")
+        return
+    width = max(len(status.name) for status in statuses)
+    for status in statuses:
+        loaded = status.state is not None and status.state.loaded
+        if status.retired and not (status.installed or loaded):
+            continue
+        print(f"  {status.name:<{width}}  {_job(status)}  {status.label}")
+        if status.retired and loaded:
+            print(f"  warning: the {status.name} still runs; `computer-history install` retires it")
+
+
+def _job(status: AgentStatus) -> str:
+    state = status.state
+    if state is None or not state.loaded:
+        return "installed, not loaded" if status.installed else "not installed"
+    shown = "loaded, not running" if state.pid is None else f"loaded, running (pid {state.pid})"
+    return shown if status.installed else f"{shown}, plist deleted"
+
+
+def _print_backend(now: datetime) -> None:
+    print("Stable backend:")
+    heartbeat_path = backend_heartbeat_path(default_db_path(Profile.STABLE))
+    try:
+        heartbeat = read_backend_heartbeat(heartbeat_path)
+    except (OSError, ValueError) as exc:
+        print(f"  last cycle    unreadable heartbeat: {exc}")
+        return
+    if heartbeat is None:
+        print(f"  last cycle    none yet (no heartbeat at {heartbeat_path})")
+        return
+    result = "ok" if heartbeat.ok else "failed"
+    print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
 
 
 def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:

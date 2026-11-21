@@ -5,8 +5,10 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import NoReturn
 
+from computer_history.sources.backend_heartbeat import write_backend_heartbeat
 from computer_history.sources.commit import (
     FailureKind,
     StrayObservation,
@@ -131,10 +133,11 @@ def watch(
     clock: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
+    heartbeat: Path | None = None,
 ) -> NoReturn:
     """Poll forever, reporting each cycle and the seconds until the next one.
 
-    A failed cycle is reported like any other and retried on the next.
+    After each cycle, failed or not, it rewrites the heartbeat file when given one.
     """
     clock = clock or (lambda: datetime.now(UTC))
     monotonic = monotonic or time.monotonic
@@ -142,6 +145,8 @@ def watch(
     while True:
         began = monotonic()
         summary = poll(conn, sources, now=clock())
+        if heartbeat is not None:
+            write_backend_heartbeat(heartbeat, summary.at, summary.ok)
         delay = max(0.0, interval - (monotonic() - began))
         report(summary, delay)
         sleep(delay)

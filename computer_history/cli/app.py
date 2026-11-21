@@ -11,12 +11,15 @@ import computer_history
 from computer_history.cli.backfill import cmd_backfill
 from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
+from computer_history.cli.install import cmd_install, cmd_uninstall
 from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
+from computer_history.host import Host, LiveHost
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 from computer_history.store import (
     LiveDatabaseRefused,
+    live_folder,
     resolve_db_path,
     resolve_dev_db_path,
     running_code,
@@ -24,6 +27,7 @@ from computer_history.store import (
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 DATABASE_COMMANDS = frozenset({"ingest", "status", "rebuild-signals", "backfill"})
+INSTALL_COMMANDS = frozenset({"install", "uninstall"})
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -35,6 +39,11 @@ COMMANDS = {
         "One-time ingest of existing ActivityWatch history, in bounded chunks"
         " (idempotent: re-running adds nothing)."
     ),
+    "install": (
+        "Set up the stable install from the newest main commit that passed the release gate,"
+        " and start the backend at login from it (safe to re-run)."
+    ),
+    "uninstall": "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
     "dev": (
         "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
         " live database into the dev folder, perf runs the performance gate, bench times each"
@@ -47,6 +56,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "status": cmd_status,
     "rebuild-signals": cmd_rebuild_signals,
     "backfill": cmd_backfill,
+    "install": cmd_install,
+    "uninstall": cmd_uninstall,
     "dev": cmd_dev,
 }
 
@@ -78,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
             continue
         if name in ("ingest", "status", "backfill"):
             parents = [db_after_command, aw]
+        elif name in INSTALL_COMMANDS:
+            parents = []
         else:
             parents = [db_after_command]
         sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
@@ -134,7 +147,9 @@ def when_arg(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> int:
+def main(
+    argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION, host: Host | None = None
+) -> int:
     """Run one command; the profile is decided from where the code runs."""
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -144,6 +159,7 @@ def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> in
     )
     running = running_code(code)
     args.profile = running.profile
+    args.host = LiveHost() if host is None else host
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
@@ -156,6 +172,8 @@ def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> in
         return _refused(exc)
     if args.database is not None:
         uses = f"database {args.database}"
+    elif args.command in INSTALL_COMMANDS:
+        uses = f"stable install {live_folder()}"
     elif args.command == "dev" and args.dev_command == "build-db":
         uses = f"output {args.out}"
     print(profile_line(running, code, uses), flush=True)

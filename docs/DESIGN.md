@@ -82,7 +82,8 @@ computer_history/
                 # introspection (query plans, pages and the SQLite build, for
                 # the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
-                # backfill (plan + run in chunks), projection (routes each
+                # backend_heartbeat (the file beside the database that
+                # ingest --watch rewrites after each cycle), backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
@@ -120,6 +121,16 @@ computer_history/
                 # meter), gate (costs against the committed baseline,
                 # + baseline: one file per SQLite version), bench (median
                 # wall-clock times against this machine's last baseline)
+  host/         # the host adapter, the one seam to macOS and the network:
+                # contract (Host, its answers, HostError), live (LiveHost:
+                # launchctl, GitHub's check runs, building with uv); tests
+                # use a fake that records calls and plays back answers
+  stable/       # the stable install: gate (the release gate and the walk to
+                # the newest main commit passing it), versions (build a
+                # commit into a marked version folder; current and previous
+                # pointers), launch_agents (plists, loading, launchd's state
+                # for status), layout (where it all lives), install (install
+                # and uninstall)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -658,6 +669,54 @@ suggestions, status, disk usage, screenshot display.
 - LaunchAgents start backend + capture agent at login; immediate ingest +
   classification catch-up.
 - Localhost only, no auth. Disk usage visible via status tool + UI.
+
+### 8.5 Stable install
+
+`computer-history install`, run from a checkout, sets up the stable install
+in the live folder and starts the backend at login from it:
+
+```
+~/Library/Application Support/ComputerHistory/
+  history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
+  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool}, rewritten after each cycle
+  versions/<short commit>/
+    venv/                  # built with uv on a uv-managed Python 3.12
+    packages.txt           # uv pip freeze of that venv
+    installed              # empty marker, written last: the version is complete
+  current -> versions/<short commit>
+  previous -> versions/<short commit>                  # kept by update (later)
+~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
+~/Library/Logs/computer-history/backend.log
+```
+
+- **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
+  commit must pass on its push run to `main`: `lint`, `unit`, `data`, `poc`,
+  `secrets`, `macos-capture-agent-tests`, `macos-capture-agent-e2e` (the
+  checks `main` requires on pull requests, `docs/agents/checks.md`). Failed,
+  missing, still-running and cancelled all disqualify; `typecheck` and `perf`
+  are not in the gate. The lookup walks the newest 20 `main` commits through
+  GitHub's public API, stopping at the first that passes; no token is needed,
+  and `$GITHUB_TOKEN` is sent when set.
+- **Install** with no current version builds the newest passing commit with
+  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a `--help` smoke run,
+  `uv pip freeze`), writes the marker last and points `current` at it. A
+  failed lookup, build or file write removes what it created, so nothing
+  changes. With a current version it skips GitHub and uv and only repairs:
+  the PATH link, the
+  backend plist (reloaded: boot out, wait until launchd lets go of it, then
+  bootstrap, retried while launchd answers busy), and the stopgap
+  `io.github.thewisepup.computer-history.backend` job, booted out and its plist
+  deleted before the backend loads, so two backends never ingest at once.
+- **Backend LaunchAgent:** `current/venv/bin/computer-history ingest --watch`,
+  `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30s. Through `current`, a
+  pointer switch plus a restart moves it to another version.
+- **Uninstall** boots out and removes the stable install's LaunchAgents, the
+  PATH link (only when it is the install's own), the pointers and `versions/`.
+  Data and logs stay.
+- **Host adapter** (`host/`): launchctl (`print`, `bootstrap`, `bootout` in the
+  `gui/<uid>` domain), the GitHub lookup and the uv build. Nothing else in
+  the install reaches macOS or the network.
 
 ## 9. Milestones
 

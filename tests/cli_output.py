@@ -5,11 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from computer_history.host import Host
+
 
 class RunCli(Protocol):
     """The run fixture: the CLI run from a code location, giving its exit code, out lines, err."""
 
-    def __call__(self, code: Path, *argv: str) -> tuple[int, list[str], str]: ...
+    def __call__(
+        self, code: Path, *argv: str, host: Host | None = None
+    ) -> tuple[int, list[str], str]: ...
 
 
 def after_profile_line(out: str) -> str:

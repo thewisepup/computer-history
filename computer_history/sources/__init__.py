@@ -10,6 +10,8 @@
           |
       runner.py      poll every stream of every source, once or in the watch loop,
           |          pulling again while a pull says there is more
+      backend_heartbeat.py  the watch loop's last cycle, in a file beside the database
+          |
       backfill.py    plan a stream's history in chunks, then ingest them oldest first
           |
       projection.py  routes each observation to the projector of the source that
@@ -60,6 +62,11 @@ from computer_history.sources.activitywatch import (
 from computer_history.sources.agent_health import (
     CaptureHealth,
     capture_health,
+)
+from computer_history.sources.backend_heartbeat import (
+    backend_heartbeat_path,
+    read_backend_heartbeat,
+    write_backend_heartbeat,
 )
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
@@ -234,6 +241,7 @@ __all__ = [
     "StreamFailure",
     "StreamProjector",
     "app_agreement",
+    "backend_heartbeat_path",
     "capture_coverage",
     "capture_health",
     "clean_text",
@@ -258,6 +266,7 @@ __all__ = [
     "projector_for",
     "pull_bucket",
     "pull_source",
+    "read_backend_heartbeat",
     "reproject_signals",
     "resolve_spool_path",
     "resume_start",
@@ -268,4 +277,5 @@ __all__ = [
     "stored_app_spans",
     "stored_records",
     "watch",
+    "write_backend_heartbeat",
 ]
