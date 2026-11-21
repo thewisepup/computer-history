@@ -7,8 +7,10 @@
         |                     and the walk to the newest one that does
         +-- versions.py       build a commit into its marked version folder and point
         |                     current at it, undoing it all on failure; the pointers
-        +-- launch_agents.py  the plists (kept running, or run daily), loading,
-        |                     stopping, starting and removing them, and what
+        +-- launch_agents.py  the plists (kept running, run every minute, run daily or
+        |                     once at login: the backend, the backup, the watchdog and
+        |                     ActivityWatch), loading, stopping, starting and removing
+        |                     them, and what
         |                     launchd says about each agent for status
         +-- layout.py         where the versions, pointers, link, plists and logs live
 
@@ -40,13 +42,18 @@ from computer_history.stable.backups import (
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.launch_agents import (
+    ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
     DAILY_BACKUP,
+    EVERY_MINUTE_SECONDS,
     LOAD_ATTEMPTS,
     RESTART_THROTTLE_SECONDS,
     STABLE_AGENTS,
     STOPGAP_LABEL,
+    WATCHDOG,
     AgentStatus,
+    LaunchAgent,
+    Schedule,
     agent_statuses,
 )
 from computer_history.stable.layout import (
@@ -58,12 +65,14 @@ from computer_history.stable.layout import (
 from computer_history.stable.versions import pointed, version_name
 
 __all__ = [
+    "ACTIVITYWATCH_AT_LOGIN",
     "BACKEND",
     "BACKUPS_FOLDER_NAME",
     "CAPTURE_AGENT_LABEL",
     "DAILY_BACKUP",
     "DAILY_FOLDER_NAME",
     "DAILY_KEPT",
+    "EVERY_MINUTE_SECONDS",
     "LOAD_ATTEMPTS",
     "PACKAGES_FILE_NAME",
     "PRE_UPDATE_FOLDER_NAME",
@@ -73,13 +82,16 @@ __all__ = [
     "STABLE_AGENTS",
     "STOPGAP_LABEL",
     "TAKEN_AT_STAMP",
+    "WATCHDOG",
     "AgentStatus",
     "BackupFailed",
     "BackupInventory",
     "DailyOutcome",
     "InstallFailed",
+    "LaunchAgent",
     "Layout",
     "RestoreFailed",
+    "Schedule",
     "agent_statuses",
     "backup_inventory",
     "daily_backup_path",

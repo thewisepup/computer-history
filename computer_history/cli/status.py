@@ -18,6 +18,8 @@ from computer_history.cli.formatting import (
     printable,
     when,
 )
+from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
+from computer_history.cli.watchdog import finding_lines
 from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
@@ -27,6 +29,7 @@ from computer_history.sources import (
     ActivityWatch,
     AWClient,
     CaptureHealth,
+    Liveness,
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
@@ -61,10 +64,16 @@ from computer_history.store import (
     source_summary,
     status_reads,
 )
+from computer_history.watchdog import (
+    REOPEN_LIMIT,
+    read_watchdog_state,
+    recent_reopens,
+    stopped,
+    watchdog_state_path,
+)
 
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
-STATUS_AW_TIMEOUT_SECONDS = 5
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -80,12 +89,14 @@ def cmd_status(args: argparse.Namespace) -> int:
     _print_backend(now)
     print()
     _print_backups(backup_inventory(db_path), now)
+    print()
+    _print_watchdog(now)
     return code
 
 
 def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now: datetime) -> int:
     day_start = local_midnight(now)
-    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
         streams = aw.streams()
@@ -194,6 +205,8 @@ def _print_backend(now: datetime) -> None:
         print(f"  last cycle    none yet (no heartbeat at {heartbeat_path})")
         return
     result = "ok" if heartbeat.ok else "failed"
+    if heartbeat.error is not None:
+        result += f": {heartbeat.error}"
     print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
 
 
@@ -227,6 +240,35 @@ def _print_backups(kept: BackupInventory, now: datetime) -> None:
         print(
             f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"
             " and read its log"
+        )
+
+
+def _print_watchdog(now: datetime) -> None:
+    print("Stable watchdog:")
+    path = watchdog_state_path(default_db_path(Profile.STABLE))
+    try:
+        state = read_watchdog_state(path)
+    except (OSError, ValueError) as exc:
+        print(f"  last run       unreadable state: {exc}")
+        return
+    if state is None or state.ran_at is None:
+        print(f"  last run       none yet (no state at {path})")
+        return
+    print(f"  last run       {ago(state.ran_at, now)}")
+    for line in finding_lines(state.findings, now, state.notified):
+        print(line)
+    reopens = recent_reopens(state.reopened, now)
+    if reopens:
+        print(
+            f"  reopened       ActivityWatch {len(reopens)} time{'' if len(reopens) == 1 else 's'}"
+            f" in the last hour (at most {REOPEN_LIMIT})"
+        )
+    for error in state.errors:
+        print(f"  error: {error}")
+    if stopped(state, now):
+        print(
+            f"  warning: the watchdog last ran {duration((now - state.ran_at).total_seconds())}"
+            " ago; it runs every minute while its LaunchAgent is loaded"
         )
 
 
@@ -367,11 +409,11 @@ def _print_agreement(health: CaptureHealth) -> None:
 
 def _alive(health: CaptureHealth, now: datetime) -> str:
     last = ago(health.last_record, now)
-    if health.alive == "yes":
+    if health.alive is Liveness.ALIVE:
         return f"yes (last record {last})"
-    if health.alive == "no":
+    if health.alive is Liveness.SILENT:
         return f"NO: no record since {last}, although aw-afk shows you active since then"
-    if health.alive == "paused":
+    if health.alive is Liveness.PAUSED:
         return f"paused, so no records are expected (last record {last})"
     return f"cannot tell: no record since {last}, and aw-afk does not show you active since then"
 

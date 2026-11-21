@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 __all__ = [
+    "BackendHeartbeat",
     "backend_heartbeat_path",
     "read_backend_heartbeat",
     "write_backend_heartbeat",
@@ -20,10 +21,11 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class BackendHeartbeat:
-    """When the backend last completed an ingest cycle, and whether that cycle succeeded."""
+    """When the backend last completed an ingest cycle, whether it succeeded, and why not if not."""
 
     cycle_at: datetime
     ok: bool
+    error: str | None = None
 
 
 def backend_heartbeat_path(db_path: Path) -> Path:
@@ -31,11 +33,14 @@ def backend_heartbeat_path(db_path: Path) -> Path:
     return db_path.parent / BACKEND_HEARTBEAT_NAME
 
 
-def write_backend_heartbeat(path: Path, cycle_at: datetime, ok: bool) -> None:
+def write_backend_heartbeat(
+    path: Path, cycle_at: datetime, ok: bool, error: str | None = None
+) -> None:
     """Replace the heartbeat with a cycle's time and result in one step, logging a failed write."""
     staged = path.with_name(f".{path.name}.new")
+    written = {"cycle_at": cycle_at.isoformat(), "ok": ok, "error": error}
     try:
-        staged.write_text(json.dumps({"cycle_at": cycle_at.isoformat(), "ok": ok}), "utf-8")
+        staged.write_text(json.dumps(written), "utf-8")
         os.replace(staged, path)
     except OSError as exc:
         log.warning("could not write the backend heartbeat %s: %s", path, exc)
@@ -49,8 +54,9 @@ def read_backend_heartbeat(path: Path) -> BackendHeartbeat | None:
     try:
         cycle_at = datetime.fromisoformat(written["cycle_at"])
         ok = written["ok"]
-    except (KeyError, TypeError) as exc:
+        error = written.get("error")
+    except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"{path} is not a heartbeat") from exc
     if cycle_at.tzinfo is None or not isinstance(ok, bool):
         raise ValueError(f"{path} is not a heartbeat")
-    return BackendHeartbeat(cycle_at, ok)
+    return BackendHeartbeat(cycle_at, ok, error if isinstance(error, str) else None)

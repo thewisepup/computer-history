@@ -4,6 +4,7 @@ from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 
 from computer_history.sources.capture_spool.record import PAUSED_KIND, SLEPT_KIND
 from computer_history.sources.capture_spool.window_text import StoredRecord
@@ -15,6 +16,13 @@ AGENT_ALIVE_WITHIN = timedelta(minutes=5)
 SILENT_KINDS = (PAUSED_KIND, SLEPT_KIND)
 
 Span = tuple[datetime, datetime]
+
+
+class Liveness(Enum):
+    ALIVE = "yes"
+    SILENT = "no"  # aw-afk shows the user active since the last record
+    PAUSED = "paused"
+    UNKNOWN = "unknown"  # silent, but aw-afk does not show the user active
 
 
 @dataclass(frozen=True)
@@ -57,19 +65,26 @@ def capture_coverage(
     )
 
 
-def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterable[Span]) -> str:
-    """Whether the agent appears alive: 'yes', 'no', 'paused' or 'unknown'.
+def liveness(
+    last_seen: datetime,
+    *,
+    now: datetime,
+    paused: bool,
+    active: Iterable[Span],
+    alive_within: timedelta = AGENT_ALIVE_WITHIN,
+) -> Liveness:
+    """Whether the agent appears alive, silent, paused, or cannot be told.
 
-    It is 'no' only when aw-afk shows the user active for longer than the tolerance since the last
-    record.
+    It is silent only when aw-afk shows the user active for longer than the tolerance since the
+    last record.
     """
     if paused:
-        return "paused"
-    if now - last_seen <= AGENT_ALIVE_WITHIN:
-        return "yes"
+        return Liveness.PAUSED
+    if now - last_seen <= alive_within:
+        return Liveness.ALIVE
     stretches = _clip(_merge(active), last_seen + CAPTURE_TOLERANCE, now)
     attended = sum((b - a for a, b in stretches), timedelta())
-    return "no" if attended > CAPTURE_TOLERANCE else "unknown"
+    return Liveness.SILENT if attended > CAPTURE_TOLERANCE else Liveness.UNKNOWN
 
 
 def _silent_spans(

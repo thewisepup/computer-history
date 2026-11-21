@@ -13,20 +13,24 @@ app.py         parser + dispatch: one entry per command
   |                (ActivityWatch and the capture spool in one loop), with
   |                the backend heartbeat after each cycle
   +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts,
-  |                the install, its LaunchAgents, the backend's last cycle and the backups
+  |                the install, its LaunchAgents, the backend's last cycle, the backups
+  |                and the watchdog's findings
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
   +-- backup.py    backup (the day's backup, seven days kept) and restore (a backup
   |                put in place, the stable backend stopped and started around it)
+  +-- watchdog.py  one watchdog run: check, notify, reopen ActivityWatch, and its
+  |                findings as lines, which status shows too
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
   |                dev snapshot: the live database copied into the dev folder;
   |                dev perf: the performance gate against the committed baseline;
   |                dev bench: wall-clock timings against this machine's last ones
         |
-db.py and sources.py (unusable database / source messages),
+db.py and sources.py (unusable database / source messages, and the ActivityWatch
+timeout status and the watchdog share),
 profile.py (the first line: profile, version or checkout, database),
-formatting.py (durations, times, sizes)
+formatting.py (durations, times, sizes, and the clock every command reads)
 ```
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the
@@ -112,13 +116,18 @@ by label, so a stopgap whose plist was deleted is found too), and loads the
 backend LaunchAgent `io.github.thewisepup.computer-history.ingest`
 (`computer-history ingest --watch` from `current`, started at login,
 restarted by launchd when it exits, at most every 30s; log in
-`~/Library/Logs/computer-history/backend.log`), and the daily backup
+`~/Library/Logs/computer-history/backend.log`), the daily backup
 LaunchAgent `io.github.thewisepup.computer-history.backup` (`computer-history
-backup` at 03:00 and at login; see "backup and restore" below). The database,
-spool, screenshots and agent config stay where they are.
+backup` at 03:00 and at login; see "backup and restore" below), the watchdog
+LaunchAgent `io.github.thewisepup.computer-history.watchdog` (`computer-history
+watchdog` from `current`, at load and then every 60s; only its stderr goes to
+`watchdog.log`) and `io.github.thewisepup.computer-history.activitywatch`,
+which runs `/usr/bin/open -g -b net.activitywatch.ActivityWatch` once at login
+so ActivityWatch starts with the session. The database, spool,
+screenshots and agent config stay where they are.
 
 Run again with a current version, it skips GitHub and `uv` and repairs the
-rest: the link, the plist (rewritten, the running backend booted out and
+rest: the link, the plists (each rewritten, its running job booted out and
 waited for, up to 5s, and then loaded again, retried twice while launchd is
 still busy with the old copy) and the stopgap. Moving
 stable to a newer commit is `update`'s job. Offline, without `uv`, or with no
@@ -143,6 +152,8 @@ Installed version 572c48b (commit 572c48b111111111111111111111111111111111)
   stopgap       io.github.thewisepup.computer-history.backend booted out and removed
   LaunchAgent   io.github.thewisepup.computer-history.ingest loaded: computer-history ingest --watch, restarted by launchd at most every 30s
   LaunchAgent   io.github.thewisepup.computer-history.backup loaded: computer-history backup, daily at 03:00 and at login
+  LaunchAgent   io.github.thewisepup.computer-history.watchdog loaded: computer-history watchdog, every 60s
+  LaunchAgent   io.github.thewisepup.computer-history.activitywatch loaded: /usr/bin/open -g -b net.activitywatch.ActivityWatch, once at login
 $ .venv/bin/computer-history install
 Profile dev (branch 106-install-stable at f3eb7a0), stable install ~/Library/Application Support/ComputerHistory
 Version 572c48b is already installed and current
@@ -150,10 +161,14 @@ Version 572c48b is already installed and current
   PATH link     ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
   LaunchAgent   io.github.thewisepup.computer-history.ingest loaded: computer-history ingest --watch, restarted by launchd at most every 30s
   LaunchAgent   io.github.thewisepup.computer-history.backup loaded: computer-history backup, daily at 03:00 and at login
+  LaunchAgent   io.github.thewisepup.computer-history.watchdog loaded: computer-history watchdog, every 60s
+  LaunchAgent   io.github.thewisepup.computer-history.activitywatch loaded: /usr/bin/open -g -b net.activitywatch.ActivityWatch, once at login
 $ computer-history uninstall
 Profile dev (branch 106-install-stable at f3eb7a0), stable install ~/Library/Application Support/ComputerHistory
   removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
   removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
+  removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.watchdog.plist
+  removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.activitywatch.plist
   removed       ~/.local/bin/computer-history
   removed       .../ComputerHistory/current
   removed       .../ComputerHistory/versions
@@ -249,6 +264,77 @@ restore failed: no daily backup of 2026-01-02; the kept ones are 2026-11-19, 202
 
 A run that takes the eighth day's backup also lists each file it removed
 (`  removed   .../backups/daily/history-2026-11-12.db`).
+
+## watchdog — is anything silent?
+
+```bash
+computer-history watchdog                       # what the watchdog LaunchAgent runs every minute
+.venv/bin/computer-history watchdog --db-path /tmp/scratch/history.db --aw-url http://127.0.0.1:5666/api/0
+```
+
+One run checks three things, posts a macOS notification for each problem
+(at most once an hour each) and once when a notified problem clears, saves
+its findings to `watchdog.json` beside the database, and exits 0:
+
+- **capture agent**: its newest record, stored or still in the spool, by the
+  liveness `status` uses. A problem only while aw-afk shows you active;
+  paused or idle is `cannot tell`.
+- **ActivityWatch**: reachable, and this host's AFK and window sources each
+  advancing, judged by the source's most recently advanced bucket (an old,
+  empty or erroring sibling bucket is ignored). A problem whether or not you are active. When it is unreachable
+  and its app (`aw-qt`) isn't running, the watchdog opens it, at most three
+  times in any hour.
+- **backend**: the last cycle in its heartbeat, silent or failing for longer
+  than the threshold (`cycles are failing`, with the first failure the
+  heartbeat recorded). A problem only while you are active; a failed cycle
+  never clears a silent backend.
+
+Each is silent after 5 minutes unless the agent's config file beside the
+database (`agent-config.json`) says otherwise:
+
+```json
+{"watchdog": {"capture_agent_minutes": 10, "activitywatch_minutes": 5, "backend_minutes": 15}}
+```
+
+Values run from 1 to 1440 minutes; a bad one falls back to 5 and is shown as
+`config problem: watchdog.backend_minutes must be a number of minutes from 1
+to 1440, using 5`. Config problems and errors are shown on stdout every run
+but written to stderr, which is what `watchdog.log` keeps, at most once an
+hour per message. A run that finds another one still holding the lock
+(`.watchdog.lock` beside the database) exits 0 without a word past the
+profile line. After a sleep (or any run more than 3
+minutes after the last), silence counts from that run, so waking the Mac
+never notifies; until a subject has had one threshold to show it is alive, it
+is `cannot tell`, which neither notifies nor clears.
+
+Real output through the CLI with the test suite's fake host adapter and fake
+ActivityWatch, one run a minute, the capture agent stopping after minute 2
+(home shortened to `~`; times are the fake clock's, in local time):
+
+```
+$ computer-history watchdog          # minute 2
+Profile stable (version bbbbbbb), database ~/Library/Application Support/ComputerHistory/history.db
+Watchdog (silent after: capture agent 5m, ActivityWatch 5m, backend 5m)
+  capture agent  ok: recording, last seen 2026-11-17 02:02 (0s ago)
+  ActivityWatch  ok: recording, last seen 2026-11-17 02:02 (0s ago)
+  backend        ok: recording, last seen 2026-11-17 02:02 (0s ago)
+$ computer-history watchdog          # minute 8
+Profile stable (version bbbbbbb), database ~/Library/Application Support/ComputerHistory/history.db
+Watchdog (silent after: capture agent 5m, ActivityWatch 5m, backend 5m)
+  capture agent  PROBLEM: silent while you were active, last seen 2026-11-17 02:02 (6m ago)
+  ActivityWatch  ok: recording, last seen 2026-11-17 02:08 (0s ago)
+  backend        ok: recording, last seen 2026-11-17 02:08 (0s ago)
+  notified: The capture agent has recorded nothing for over 5 min while you were active.
+```
+
+The first run that finds it recording again prints `cleared: The capture
+agent is recording again.`, and a clear resets the hourly limit, so a second
+outage notifies again. Other lines a run can print: `reopened
+ActivityWatch`, `did not reopen ActivityWatch: reopened 3 times in the last
+hour`, and `error: could not post a notification: ...` (tried again next
+run). Notifications are posted with `osascript`'s `display
+notification`, through the host adapter, so macOS shows them as Script
+Editor's.
 
 ## ingest — the everyday command
 
@@ -346,6 +432,8 @@ Stable install:
 Stable install's LaunchAgents:
   backend          loaded, running (pid 4242)  io.github.thewisepup.computer-history.ingest
   backup           loaded, not running  io.github.thewisepup.computer-history.backup
+  watchdog         loaded, not running  io.github.thewisepup.computer-history.watchdog
+  activitywatch    loaded, not running  io.github.thewisepup.computer-history.activitywatch
   capture agent    loaded, running (pid 812)  io.github.thewisepup.computer-history.agent
 
 Stable backend:
@@ -357,17 +445,25 @@ Backups:
   pre-update    1 kept, newest taken 2026-11-19 16:02
   integrity     each passed SQLite's integrity check before it was kept
   folder        .../ComputerHistory/backups
+
+Stable watchdog:
+  last run       2026-11-20 19:27 (30s ago)
+  capture agent  PROBLEM: silent while you were active, last seen 2026-11-20 19:21 (6m 30s ago), notified 30s ago
+  ActivityWatch  ok: recording, last seen 2026-11-20 19:27 (30s ago)
+  backend        ok: recording, last seen 2026-11-20 19:27 (30s ago)
 ```
 
 Read-only: never creates, migrates or writes, and never changes the spool.
-The last four sections (illustrative above) come after the rest whatever
-state the database is in. The first three describe the stable install,
-whichever profile runs `status`; the backups are the database's own:
+The last five sections (illustrative above) come after the rest whatever
+state the database is in. The first three and the last describe the stable
+install, whichever profile runs `status`; the backups are the database's own:
 
 - **Stable install**: this run's profile, and the version `current` and
   `previous` point at, with when its build finished; `none` before `install`.
 - **Stable install's LaunchAgents**: what launchd says about the backend, the
-  daily backup (`loaded, not running` between runs) and the capture agent (`loaded, running (pid N)`, `loaded, not running`,
+  daily backup, the watchdog, the ActivityWatch login agent and the capture
+  agent (the backup, the watchdog and the ActivityWatch opener are usually
+  `loaded, not running` between runs) (`loaded, running (pid N)`, `loaded, not running`,
   `installed, not loaded`). Only an agent whose plist is installed is looked
   up; one without is `not installed`. The stopgap backend is looked up by
   label whenever the live folder exists, and listed while its plist is there
@@ -375,7 +471,8 @@ whichever profile runs `status`; the backups are the database's own:
   warning while it is loaded. When launchctl cannot be asked, the section is
   one line, `cannot ask launchd: <reason>`, and the exit code is unchanged.
 - **Stable backend**: the last cycle the stable backend's heartbeat (beside
-  the live database) records, and whether it was `ok` or `failed`; `none yet`
+  the live database) records, and whether it was `ok` or `failed` (with its
+  first failure, `failed: aw-window: ...`); `none yet`
   before its first cycle, and `unreadable heartbeat: ...` for a file that is
   not one (a time without an offset, an `ok` that is not true or false).
   A dev `ingest --watch` writes its own heartbeat beside the dev database,
@@ -389,6 +486,11 @@ whichever profile runs `status`; the backups are the database's own:
   `warning: no daily backup since <day>` follows when the newest is older
   than yesterday. Before the first, the section is one line:
   `none yet (the daily backup takes one a day into .../backups/daily)`.
+- **Stable watchdog**: the stable watchdog's last run and its findings from
+  `watchdog.json` beside the live database, with when a current problem was
+  last notified, any ActivityWatch reopens in the last hour, and errors from
+  that run; `none yet` before its first run, and a warning when it last ran
+  more than 3 minutes ago (its LaunchAgent is not running it).
 Gaps are reported as unobserved time, never assumed idle, and are checked up
 to each source's settled-until time. Small lag is normal — an ActivityWatch
 source is settled only up to the start of its current, still-growing event. A
@@ -785,7 +887,7 @@ computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 ```
 
 Every command but `dev`, `install` and `uninstall` takes `--db-path`, and so does `dev snapshot`; the networked ones (`ingest`, `status`,
-`backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
+`backfill`, `watchdog`) take `--aw-url`. `ingest`, `status` and `watchdog` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch
 database never collects the real spool. Without `--db-path` the database is
 the profile's (see Profiles above), and dev refuses any of these paths inside

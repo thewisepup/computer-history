@@ -16,6 +16,7 @@ from computer_history.cli.install import cmd_install, cmd_uninstall
 from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
+from computer_history.cli.watchdog import cmd_watchdog
 from computer_history.host import Host, LiveHost
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 from computer_history.store import (
@@ -28,7 +29,7 @@ from computer_history.store import (
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 DATABASE_COMMANDS = frozenset(
-    {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore"}
+    {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore", "watchdog"}
 )
 INSTALL_COMMANDS = frozenset({"install", "uninstall"})
 
@@ -55,6 +56,11 @@ COMMANDS = {
         " and start the backend at login from it (safe to re-run)."
     ),
     "uninstall": "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
+    "watchdog": (
+        "Check once that the capture agent, ActivityWatch and the backend are recording, post a"
+        " notification for a problem or a cleared one, and reopen ActivityWatch if it is down"
+        " (run every minute by its LaunchAgent)."
+    ),
     "dev": (
         "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
         " live database into the dev folder, perf runs the performance gate, bench times each"
@@ -71,6 +77,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "restore": cmd_restore,
     "install": cmd_install,
     "uninstall": cmd_uninstall,
+    "watchdog": cmd_watchdog,
     "dev": cmd_dev,
 }
 
@@ -100,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "dev":
             add_dev_commands(subparsers.add_parser(name, help=help_text, description=help_text))
             continue
-        if name in ("ingest", "status", "backfill"):
+        if name in ("ingest", "status", "backfill", "watchdog"):
             parents = [db_after_command, aw]
         elif name in INSTALL_COMMANDS:
             parents = []
@@ -139,7 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="discover sources and print the planned chunks; write nothing",
             )
-        if name in ("ingest", "status"):
+        if name in ("ingest", "status", "watchdog"):
             sub.add_argument(
                 "--spool-path",
                 help="capture spool folder (default: $COMPUTER_HISTORY_SPOOL, else spool/ beside"

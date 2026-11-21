@@ -9,13 +9,15 @@ from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
 from computer_history.cli import ingest as cli_ingest
-from computer_history.sources import backend_heartbeat_path, runner
+from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat, runner
 from computer_history.stable import (
+    ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
     CAPTURE_AGENT_LABEL,
     DAILY_BACKUP,
     STABLE_AGENTS,
     STOPGAP_LABEL,
+    WATCHDOG,
     stable_layout,
     version_name,
 )
@@ -66,8 +68,9 @@ def test_dev_status_shows_the_stable_backends_last_cycle(
     assert line.endswith(" ago), ok")
 
 
-def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_it_failed(
+def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_why_it_failed(
     run: RunCli,
+    live: Path,
     checkout: Path,
     stable_code: tuple[Path, FakeHost],
     one_cycle: None,
@@ -78,7 +81,11 @@ def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_it_failed(
     _, out, _ = run(checkout, *STATUS, host=host)
 
     (line,) = section(out, BACKEND_SECTION)
-    assert line.endswith(" ago), failed")
+    assert " ago), failed: " in line
+    heartbeat = read_backend_heartbeat(backend_heartbeat_path(live / DATABASE_NAME))
+    assert heartbeat is not None and heartbeat.error is not None
+    assert line.endswith(f" ago), failed: {heartbeat.error}")
+    assert "ActivityWatch" in heartbeat.error
 
 
 def test_a_dev_backends_heartbeat_is_not_shown_as_stables(
@@ -130,11 +137,13 @@ def test_status_shows_the_install_and_its_launch_agents(
     assert install[0] == "  this run      dev"
     assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
     assert install[2:] == ["  previous      none"]
-    pid = host.jobs[BACKEND.label].pid
-    backup_pid = host.jobs[DAILY_BACKUP.label].pid
+    pids = {agent: host.jobs[agent.label].pid for agent in STABLE_AGENTS}
     assert section(out, AGENTS) == [
-        f"  backend          loaded, running (pid {pid})  {BACKEND.label}",
-        f"  backup           loaded, running (pid {backup_pid})  {DAILY_BACKUP.label}",
+        f"  backend          loaded, running (pid {pids[BACKEND]})  {BACKEND.label}",
+        f"  backup           loaded, running (pid {pids[DAILY_BACKUP]})  {DAILY_BACKUP.label}",
+        f"  watchdog         loaded, running (pid {pids[WATCHDOG]})  {WATCHDOG.label}",
+        f"  activitywatch    loaded, running (pid {pids[ACTIVITYWATCH_AT_LOGIN]})"
+        f"  {ACTIVITYWATCH_AT_LOGIN.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
     ]
 
@@ -151,6 +160,8 @@ def test_status_before_install_flags_the_stopgap_backend(
     assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
         f"  backup           not installed  {DAILY_BACKUP.label}",
+        f"  watchdog         not installed  {WATCHDOG.label}",
+        f"  activitywatch    not installed  {ACTIVITYWATCH_AT_LOGIN.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
         f"  stopgap backend  loaded, running (pid 100)  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",

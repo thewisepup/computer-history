@@ -106,6 +106,8 @@ public struct AgentSettings: Equatable, Sendable {
                 screenshots.keepAfter = TimeInterval(
                     wholeNumber(value, key: key, range: 1...1_440, default: Int(screenshots.keepAfter / 60)) * 60
                 )
+            case .watchdog:
+                break
             }
         }
     }
@@ -176,6 +178,8 @@ private enum ConfigKey: String, CaseIterable {
     case screenshotJPEGQuality = "screenshot_jpeg_quality"
     case screenshotChangePixels = "screenshot_change_pixels"
     case screenshotKeepAfterMinutes = "screenshot_keep_after_minutes"
+    /// Read and checked by the backend's watchdog, not by the agent.
+    case watchdog
 }
 
 /// Prints where the settings came from, every problem in the config file, and the settings in effect.

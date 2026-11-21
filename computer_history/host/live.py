@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from computer_history.host.contract import (
     COMMAND_NAME,
+    OPEN_ACTIVITYWATCH,
     CheckOutcome,
     CheckRun,
     HostError,
@@ -31,12 +32,23 @@ PYTHON_VERSION = "3.12"
 LAUNCHCTL = "/bin/launchctl"
 LAUNCHCTL_BUSY_CODES = frozenset({5, 37})  # EIO, EALREADY: a boot-out still in progress
 COMMAND_TIMEOUT_SECONDS = 600
+QUICK_COMMAND_TIMEOUT_SECONDS = 10
 RUNNING_STATE = re.compile(r"^\s*state = running\s*$", re.MULTILINE)
 PID_LINE = re.compile(r"^\s*pid = (\d+)\s*$", re.MULTILINE)
+PGREP = "/usr/bin/pgrep"
+PGREP_NONE_FOUND = 1
+ACTIVITYWATCH_PROCESS = "aw-qt"
+OSASCRIPT = "/usr/bin/osascript"
+NOTIFY_SCRIPT = (
+    "on run argv",
+    "display notification (item 2 of argv) with title (item 1 of argv)",
+    "end run",
+)
 
 
 class LiveHost:
-    """The host adapter for this Mac: launchctl in the login session, GitHub's API, uv."""
+    """The host adapter for this Mac: launchctl in the login session, GitHub's API, uv, pgrep,
+    open and osascript."""
 
     def main_commits(self, limit: int) -> list[str]:
         commits = _github(f"/commits?sha=main&per_page={limit}", "list main's newest commits")
@@ -99,6 +111,28 @@ class LiveHost:
     def unload(self, label: str) -> None:
         _run([LAUNCHCTL, "bootout", f"{_domain()}/{label}"], f"boot out {label}")
 
+    def activitywatch_running(self) -> bool:
+        doing = "look for ActivityWatch's process"
+        found = _command(
+            [PGREP, "-x", "-U", str(os.getuid()), ACTIVITYWATCH_PROCESS],
+            doing,
+            timeout=QUICK_COMMAND_TIMEOUT_SECONDS,
+        )
+        if found.returncode not in (0, PGREP_NONE_FOUND):
+            raise HostError(_failure(doing, found))
+        return found.returncode == 0
+
+    def open_activitywatch(self) -> None:
+        _run(list(OPEN_ACTIVITYWATCH), "open ActivityWatch", timeout=QUICK_COMMAND_TIMEOUT_SECONDS)
+
+    def notify(self, title: str, message: str) -> None:
+        script = [arg for line in NOTIFY_SCRIPT for arg in ("-e", line)]
+        _run(
+            [OSASCRIPT, *script, title, message],
+            "post a notification",
+            timeout=QUICK_COMMAND_TIMEOUT_SECONDS,
+        )
+
 
 def _domain() -> str:
     return f"gui/{os.getuid()}"
@@ -144,11 +178,11 @@ def _refusal(exc: urllib.error.HTTPError, authenticated: bool) -> str:
     )
 
 
-def _command(command: list[str], doing: str) -> subprocess.CompletedProcess[str]:
+def _command(
+    command: list[str], doing: str, *, timeout: float = COMMAND_TIMEOUT_SECONDS
+) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(
-            command, capture_output=True, text=True, timeout=COMMAND_TIMEOUT_SECONDS
-        )
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise HostError(f"could not {doing}: {exc}") from exc
 
@@ -158,8 +192,8 @@ def _failure(doing: str, done: subprocess.CompletedProcess[str]) -> str:
     return f"could not {doing}: {detail[-1] if detail else f'exit code {done.returncode}'}"
 
 
-def _run(command: list[str], doing: str) -> str:
-    done = _command(command, doing)
+def _run(command: list[str], doing: str, *, timeout: float = COMMAND_TIMEOUT_SECONDS) -> str:
+    done = _command(command, doing, timeout=timeout)
     if done.returncode != 0:
         raise HostError(_failure(doing, done))
     return done.stdout

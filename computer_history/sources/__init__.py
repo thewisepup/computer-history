@@ -22,8 +22,9 @@
       store/         insert_observations, rebuild_signals (each projects through
                      the projector it is given)
 
-    agent_health.py  for status: the capture agent's stored records and spool,
-                     judged against aw-afk and aw-window, drawing on both adapters
+    agent_health.py  for status and the watchdog: the capture agent's stored records
+                     and spool, judged against aw-afk and aw-window, drawing on both
+                     adapters
 """
 
 from computer_history.sources.activitywatch import (
@@ -58,12 +59,17 @@ from computer_history.sources.activitywatch import (
     resume_start,
     stored_afk_spans,
     stored_app_spans,
+    watcher_ends,
 )
 from computer_history.sources.agent_health import (
     CaptureHealth,
+    CaptureLiveness,
+    active_spans,
     capture_health,
+    capture_liveness,
 )
 from computer_history.sources.backend_heartbeat import (
+    BackendHeartbeat,
     backend_heartbeat_path,
     read_backend_heartbeat,
     write_backend_heartbeat,
@@ -112,12 +118,15 @@ from computer_history.sources.capture_spool import (
     DayCounts,
     InvalidRecord,
     KeptScreenshot,
+    Liveness,
     MissingPermission,
     ScreenshotHealth,
     ScreenshotTally,
+    Span,
     SpoolBacklog,
     SpoolError,
     StoredRecord,
+    agent_config_path,
     app_agreement,
     capture_coverage,
     configured_spool_path,
@@ -206,12 +215,14 @@ __all__ = [
     "AfkSpan",
     "AppAgreement",
     "AppSpan",
+    "BackendHeartbeat",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",
     "BackfillRun",
     "BucketPull",
     "CaptureHealth",
+    "CaptureLiveness",
     "CaptureSpool",
     "Chunk",
     "ChunkDone",
@@ -225,6 +236,7 @@ __all__ = [
     "InvalidRecord",
     "JsonValue",
     "KeptScreenshot",
+    "Liveness",
     "MissingPermission",
     "Planning",
     "Projecting",
@@ -234,16 +246,20 @@ __all__ = [
     "Source",
     "SourcePull",
     "SourceUnavailable",
+    "Span",
     "SpoolBacklog",
     "SpoolError",
     "StoredRecord",
     "StrayObservation",
     "StreamFailure",
     "StreamProjector",
+    "active_spans",
+    "agent_config_path",
     "app_agreement",
     "backend_heartbeat_path",
     "capture_coverage",
     "capture_health",
+    "capture_liveness",
     "clean_text",
     "clean_url",
     "commit_pull",
@@ -277,5 +293,6 @@ __all__ = [
     "stored_app_spans",
     "stored_records",
     "watch",
+    "watcher_ends",
     "write_backend_heartbeat",
 ]
