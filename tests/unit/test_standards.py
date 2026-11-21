@@ -193,6 +193,22 @@ def _constants(path: Path) -> dict[str, str]:
     return found
 
 
+SAME_BY_CHANCE = {"BROWSER": "each synthetic persona picks its own browser"}
+
+
+def test_no_two_modules_define_the_same_constant() -> None:
+    owners: dict[tuple[str, str], list[str]] = {}
+    for path in SOURCES:
+        for name, value in _constants(path).items():
+            owners.setdefault((name, value), []).append(_rel(path))
+    copies = sorted(
+        f"{name}: {', '.join(paths)}"
+        for (name, _), paths in owners.items()
+        if len(paths) > 1 and name not in SAME_BY_CHANCE
+    )
+    assert not copies, f"define each constant once and import it: {copies}"
+
+
 def test_the_cli_defines_no_constant_a_lower_layer_also_defines() -> None:
     cli = {
         name: (path, value)
@@ -293,23 +309,54 @@ LOGGING_PACKAGE = PACKAGE / "logs"
 UNCONFIGURED = [path for path in SOURCES if not path.is_relative_to(LOGGING_PACKAGE)]
 
 
-def _log_calls(tree: ast.AST):
+def _is_get_logger(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    return (isinstance(func, ast.Attribute) and func.attr == "getLogger") or (
+        isinstance(func, ast.Name) and func.id == "getLogger"
+    )
+
+
+def _logger_names(tree: ast.Module) -> set[str]:
+    return {
+        target.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and _is_get_logger(node.value)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+
+
+def _log_calls(tree: ast.AST, loggers: set[str]):
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in LOG_METHODS
             and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "log"
+            and node.func.value.id in loggers
         ):
             yield node
 
 
+def test_the_log_checks_see_every_logger_whatever_its_name() -> None:
+    tree = ast.parse(
+        "import logging\nlogger = logging.getLogger(__name__)\n"
+        "def f(x):\n    try:\n        g()\n    except E:\n"
+        "        logger.error(f'bad {x}')\n        raise\n"
+    )
+    loggers = _logger_names(tree)
+    assert loggers == {"logger"}
+    assert [call.lineno for call in _log_calls(tree, loggers)] == [7]
+
+
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
 def test_log_messages_are_string_literals(path: Path) -> None:
+    tree = _tree(path)
     bad = [
         f"line {call.lineno}"
-        for call in _log_calls(_tree(path))
+        for call in _log_calls(tree, _logger_names(tree))
         if not call.args
         or not (isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str))
     ]
@@ -318,11 +365,13 @@ def test_log_messages_are_string_literals(path: Path) -> None:
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
 def test_a_handler_that_logs_does_not_reraise(path: Path) -> None:
+    tree = _tree(path)
+    loggers = _logger_names(tree)
     bad = [
         f"line {handler.lineno}"
-        for handler in ast.walk(_tree(path))
+        for handler in ast.walk(tree)
         if isinstance(handler, ast.ExceptHandler)
-        and any(True for _ in _log_calls(handler))
+        and any(True for _ in _log_calls(handler, loggers))
         and any(isinstance(node, ast.Raise) for node in ast.walk(handler))
     ]
     assert not bad, f"{_rel(path)}: log the exception where it is handled, or re-raise it: {bad}"

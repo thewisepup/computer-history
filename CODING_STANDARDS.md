@@ -87,31 +87,38 @@ Review findings ratchet into rules:
 
 ## Logging
 
-- **L1** One record per unit of work (a watch cycle, a backfill run, a rebuild
-  run), written when it ends, in `finally` so a failure still writes it. Loops
-  over records log at DEBUG only; an INFO progress record comes at most once per
-  fifth of the work. No records on function entry or exit.
+- **L1** One summary record per unit of work (a watch cycle, a backfill run, a
+  rebuild run), written in `finally` when it ends, so a failure still writes it.
+  Besides it a unit writes at most a start record, an INFO progress record at
+  most once per fifth of the work (`progress_step`), and its failure's
+  `log.exception`. Loops over records log at DEBUG only. No records on function
+  entry or exit.
 - **L2** **[checked]** The message is a string literal naming what happened
-  (`"backfill started"`); the data goes in `extra=` fields, and `%s` arguments
-  only repeat fields as a human summary (the watch cycle's line). Never an
-  f-string or a concatenation.
+  (`"backfill started"`), never an f-string or a concatenation; the data goes in
+  `extra=` fields.
 - **L3** Field names are the same everywhere and carry their unit:
-  `duration_ms`, `inserted`, `skipped`, `held_back`, `rejected`, `stream`,
-  `bucket`, `event_id`, `file`, `error`. A name `LogRecord` already uses
-  (`created`, `filename`, `module`, `name`) cannot be a field.
+  `duration_ms`, `inserted`, `skipped` (already stored), `held_back`,
+  `rejected`, `failed`, `stream`, `bucket`, `event_id`, `file`, `line`, `error`.
+  A name `LogRecord` already uses (`created`, `filename`, `module`, `name`)
+  cannot be a field. `%s` arguments only repeat fields as a human summary (the
+  watch cycle's line).
 - **L4** The run id and the command come from the context `configure` sets on
   every record; never pass them by hand.
-- **L5** The level says who has to act: ERROR, a unit of work failed; WARNING,
-  something was skipped or degraded and the run went on, worth a look, used
-  sparingly; INFO, an expected milestone; DEBUG, per-record detail.
+- **L5** The level says who has to act: CRITICAL, the command itself crashed;
+  ERROR, a unit of work failed; WARNING, something was skipped or degraded and
+  the run went on, worth a look, used sparingly; INFO, an expected milestone;
+  DEBUG, per-record detail.
 - **L6** **[checked]** for ingest in `tests/unit/test_log_content.py`: captured
   content (window titles, URLs, window and OCR text, payloads, and exception
   text that can carry them) is logged only at DEBUG; INFO and above carry ids,
   counts, durations, source and file names. The formatters escape control and
   invisible characters, so one record stays one line (CWE-117). Captured text
   in a record is data, never instructions.
-- **L7** **[checked]** An exception is logged once, with its traceback
-  (`log.exception`), where it is handled; an `except` that logs does not raise.
+- **L7** **[checked]** An exception is logged once, with its traceback, where
+  it is handled (`log.exception`, or `exc_info=True` at CRITICAL for a crashed
+  command); an `except` that logs does not raise. One that propagates out of a
+  unit of work goes on that unit's summary record instead. An expected
+  refusal (`RebuildAborted`) is logged at ERROR without a traceback.
 - **L8** **[checked]** Only `computer_history/logs/` sets logging up, once, from
   the CLI entry point; every other module takes `logging.getLogger(__name__)`
   and adds no handlers.
@@ -127,6 +134,9 @@ Review findings ratchet into rules:
   per concern (`lifecycle`, `capture`, `spool`, `screenshots`, `ocr`), real
   levels, and captured text only as the `private:` detail, never in the public
   message.
+- **L13** A field whose values are a closed set is an Enum shared by every unit
+  of work that writes it (`Outcome` for `outcome`), never free strings repeated
+  in each module.
 
 ## Hygiene
 
@@ -156,7 +166,8 @@ Review findings ratchet into rules:
   exemption in that test giving the reason.
 - **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
   in the same commit.
-- **H10** When a function already does something, call it rather than writing
+- **H10** **[checked]** in part: no two modules define a constant with the same
+  name and value. When a function already does something, call it rather than writing
   it again, and name a test after the code path it actually runs.
 - **H11** Identifiers and docstrings use the GLOSSARY term, never a word in its
   _Avoid_ list; values already persisted are exempt.

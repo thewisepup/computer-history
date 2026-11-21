@@ -84,7 +84,7 @@ _Avoid_: Cursor, watermark, offset, checkpoint
 
 **Ingest health**:
 How the watch loop's recent cycles went: when one last succeeded, and the failure streak (cycles failed in a row, since when, the last error). It says nothing about coverage.
-_Avoid_: Uptime, heartbeat
+_Avoid_: Uptime, watch heartbeat (the capture agent's heartbeat is its own record)
 
 ### Coverage and time
 
