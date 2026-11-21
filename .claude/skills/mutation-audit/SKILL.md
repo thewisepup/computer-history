@@ -33,10 +33,10 @@ It deletes `mutants/`, runs `mutmut run`, then:
 - Mutated: `computer_history/` only. Not the POC (`history.py`,
   `history_mcp.py`), not Swift (issue #48).
 - Not run against mutants, and never pruned, because they check things the
-  tool cannot see: `tests/test_standards.py`, `tests/test_spool_fixture.py`,
-  `tests/test_capture_e2e.py`, `tests/test_synthetic_cli_http.py` (both run
+  tool cannot see: `tests/unit/test_standards.py`, `tests/unit/test_spool_fixture.py`,
+  `tests/e2e/test_capture_e2e.py`, `tests/data/test_synthetic_cli_http.py` (both run
   the CLI as a subprocess, which mutmut cannot follow) and
-  `tests/test_synthetic_coverage.py` (it traces store functions by name, which
+  `tests/data/test_synthetic_coverage.py` (it traces store functions by name, which
   mutmut's wrappers hide). The list is
   `pytest_add_cli_args_test_selection` in `pyproject.toml`.
 - mutmut mutates Python only, never the SQL in `store/migrations/`. A test

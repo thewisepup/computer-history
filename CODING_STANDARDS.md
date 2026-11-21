@@ -1,7 +1,8 @@
 # Code standards
 
-Rules marked **[checked]** fail automatically in `tests/test_standards.py`,
-or in the test the rule names (run by the pre-commit hook and CI). The
+Rules marked **[checked]** fail automatically in `tests/unit/test_standards.py`,
+or in the test the rule names (`tests/unit/` runs in the pre-commit hook and CI's
+`unit` job, `tests/data/` in CI's `data` job only). The
 comment and docstring checks cover `computer_history/` and `tests/`; the rest
 cover `computer_history/` only.
 Unmarked rules are judgement calls the standards reviewer
@@ -16,7 +17,7 @@ Review findings ratchet into rules:
    rule here with the next free ID in its section. A one-off bug gets a fix
    and a regression test instead.
 2. A finding that cites an existing rule is its second sighting. If code can
-   detect it, it becomes a test in `tests/test_standards.py`, the rule is
+   detect it, it becomes a test in `tests/unit/test_standards.py`, the rule is
    marked **[checked]**, and the reviewer stops looking for it. If only
    judgement can detect it, it stays a reviewer rule.
 
@@ -109,7 +110,7 @@ Review findings ratchet into rules:
 - **H7** A capture-agent contract value the backend already defines (the
   heartbeat, the format version, the record kinds) is imported from `sources/`
   by `synthetic/`, never restated.
-- **H8** **[checked]** in `tests/test_synthetic_coverage.py`: a new stream,
+- **H8** **[checked]** in `tests/data/test_synthetic_coverage.py`: a new stream,
   table, timeline field or public store function on a connection lands with
   synthetic coverage in the same change (a renderer, generated rows, a
   rendered or manifest effect, a gate operation that runs it), or with an
@@ -122,7 +123,7 @@ Review findings ratchet into rules:
   _Avoid_ list; values already persisted are exempt.
 - **H12** A change to a domain concept updates its glossary entry in the same
   change.
-- **H13** **[checked]** in `tests/test_standards.py`: `docs/agents/checks.md`
+- **H13** **[checked]** in `tests/unit/test_standards.py`: `docs/agents/checks.md`
   names every CI and nightly job.
 - **H14** A narrowing assert repeated on a store read in tests becomes one helper
   beside the test fixtures (`stored_progress` in `tests/db_states.py`).

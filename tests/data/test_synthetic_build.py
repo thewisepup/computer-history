@@ -38,9 +38,7 @@ from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.renderer import Feed
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
-pytestmark = pytest.mark.dataset
-
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 SCENARIO_DAYS = pytest.mark.parametrize(

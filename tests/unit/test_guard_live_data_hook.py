@@ -15,7 +15,7 @@ from live_data_guard import LIVE_DATA_DIR
 
 from computer_history.store import live_folder
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 BLOCKED = 2
 
 
