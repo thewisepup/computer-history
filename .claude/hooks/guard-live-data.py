@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: blocks Bash commands and file-tool targets that name the live data folder."""
+"""PreToolUse guard: blocks Bash commands and file-tool targets that name the live data folder.
+
+Read, Grep and Glob are not guarded: reading live data is allowed, writing and running are not.
+"""
 
 import json
 import os

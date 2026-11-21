@@ -22,7 +22,7 @@ from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
 from computer_history.host import Host, LiveHost
 from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
-from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
+from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS, SPOOL_ENV_VAR
 from computer_history.stable import (
     FIRST_CYCLE_WAIT_SECONDS,
     InstallBusy,
@@ -30,6 +30,10 @@ from computer_history.stable import (
     stable_layout,
 )
 from computer_history.store import (
+    DATABASE_NAME,
+    DB_ENV_VAR,
+    DEV_FOLDER_NAME,
+    LIVE_FOLDER_NAME,
     LiveDatabaseRefused,
     Profile,
     live_folder,
@@ -111,10 +115,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Local activity store and ActivityWatch ingest.",
     )
     db_help = (
-        "SQLite database path (default: $COMPUTER_HISTORY_DB, else history.db in the profile's"
-        " data folder: ~/Library/Application Support/ComputerHistory-dev/ for dev,"
-        " ComputerHistory/ for stable). For dev snapshot it is where the copy goes, always dev's"
-        " database whichever profile runs"
+        f"SQLite database path (default: ${DB_ENV_VAR}, else {DATABASE_NAME} in the profile's"
+        f" data folder: ~/Library/Application Support/{DEV_FOLDER_NAME}/ for dev,"
+        f" {LIVE_FOLDER_NAME}/ for stable). For dev snapshot it is where the copy goes, always"
+        " dev's database whichever profile runs"
     )
     parser.add_argument("--db-path", help=db_help)
     parser.add_argument(
@@ -193,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name in ("ingest", "status", "watchdog"):
             sub.add_argument(
                 "--spool-path",
-                help="capture spool folder (default: $COMPUTER_HISTORY_SPOOL, else spool/ beside"
+                help=f"capture spool folder (default: ${SPOOL_ENV_VAR}, else spool/ beside"
                 " the database)",
             )
         if name == "ingest":

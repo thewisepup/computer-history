@@ -199,11 +199,10 @@ def _print_launch_agents(host: Host) -> None:
         return
     width = max(len(status.name) for status in statuses)
     for status in statuses:
-        loaded = status.state is not None and status.state.loaded
-        if status.retired and not (status.installed or loaded):
+        if not status.shown:
             continue
         print(f"  {status.name:<{width}}  {_job(status)}  {status.label}")
-        if status.retired and loaded:
+        if status.lingering:
             print(f"  warning: the {status.name} still runs; `computer-history install` retires it")
 
 
@@ -240,7 +239,7 @@ def _print_backups(kept: BackupInventory, now: datetime) -> None:
         )
     print("  integrity     each passed SQLite's integrity check before it was kept")
     print(f"  folder        {kept.folder}")
-    if kept.overdue(now.astimezone().date()):
+    if kept.overdue(now):
         missing = f"since {kept.daily[-1].day}" if kept.daily else "taken yet"
         print(
             f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"

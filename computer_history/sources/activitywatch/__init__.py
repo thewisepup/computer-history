@@ -55,11 +55,9 @@ from computer_history.sources.activitywatch.normalize import PROJECTORS, project
 from computer_history.sources.activitywatch.position import (
     RESUME_OVERLAP_SECONDS,
     position_at,
-    resume_start,
 )
 from computer_history.sources.activitywatch.pull import (
     STABILITY_MARGIN_SECONDS,
-    BucketPull,
     SourcePull,
     pull_bucket,
     pull_source,
@@ -90,7 +88,6 @@ __all__ = [
     "ActivityWatch",
     "AfkSpan",
     "AppSpan",
-    "BucketPull",
     "SourcePull",
     "clean_text",
     "clean_url",
@@ -102,7 +99,6 @@ __all__ = [
     "project_signal",
     "pull_bucket",
     "pull_source",
-    "resume_start",
     "stored_afk_spans",
     "stored_app_spans",
     "watcher_ends",

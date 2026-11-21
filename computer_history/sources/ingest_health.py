@@ -16,7 +16,6 @@ from computer_history.store import replace_atomically
 
 __all__ = [
     "ALERT_AFTER_FAILURES",
-    "HEALTH_FILE_NAME",
     "HEALTH_STALE_AFTER",
     "FailureStreak",
     "IngestHealth",

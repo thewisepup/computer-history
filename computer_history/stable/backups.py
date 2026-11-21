@@ -148,9 +148,10 @@ class BackupInventory:
     daily: list[KeptBackup]
     pre_update: list[KeptBackup]
 
-    def overdue(self, today: date) -> bool:
-        """Whether there is no daily backup, or the newest is older than yesterday."""
+    def overdue(self, now: datetime) -> bool:
+        """Whether there is no daily backup, or the newest is older than yesterday, local time."""
         newest = self.daily[-1].day if self.daily else None
+        today = now.astimezone().date()
         return newest is None or (today - newest).days > DAILY_BACKUP_MAX_AGE_DAYS
 
 

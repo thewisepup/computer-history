@@ -102,6 +102,20 @@ class AgentStatus:
     state: JobState | None
     retired: bool = False
 
+    @property
+    def loaded(self) -> bool:
+        return self.state is not None and self.state.loaded
+
+    @property
+    def shown(self) -> bool:
+        """Whether status lists it: always, except a retired agent that is gone."""
+        return not self.retired or self.installed or self.loaded
+
+    @property
+    def lingering(self) -> bool:
+        """A retired agent that launchd still has loaded."""
+        return self.retired and self.loaded
+
 
 def load_agent(
     host: Host, layout: Layout, agent: LaunchAgent, *, sleep: Callable[[float], None] = time.sleep
