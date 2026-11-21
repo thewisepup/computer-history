@@ -32,9 +32,7 @@ def project_signal(source: str, payload: Mapping[str, Any] | str) -> Signal | No
         return Signal(app=app, title=title, extras=_extras(data))
     url = _take_str(data, "url")
     title = clean_text(_take_str(data, "title"))
-    return Signal(
-        url=clean_url(url), domain=extract_domain(url), title=title, extras=_extras(data)
-    )
+    return Signal(url=clean_url(url), domain=extract_domain(url), title=title, extras=_extras(data))
 
 
 PROJECTORS: Mapping[str, StreamProjector] = MappingProxyType(

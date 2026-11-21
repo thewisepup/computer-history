@@ -9,11 +9,9 @@ from datetime import datetime
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import BackupFailed, take_pre_update_backup
 from computer_history.stable.launch_agents import BACKEND, start_agent, stop_if_loaded
-from computer_history.stable.layout import Layout
+from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.versions import InstalledVersion, build_version, pointed, version_name
 from computer_history.store import DatabaseCopy, SpoolHold, sidecars
-
-NOTHING_CHANGED = "nothing was changed"
 
 
 class UpdateFailed(Exception):

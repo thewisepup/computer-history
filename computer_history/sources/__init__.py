@@ -1,30 +1,34 @@
 """Sources and the ingest runner that reads them into the store.
 
-    activitywatch/   an adapter: names its streams, pulls settled raw observations,
-          |          says where each stream's progress now stands, and supplies
-          |          a projector (stored payload -> signal) for each stream
-    capture_spool/   the same for the capture spool's ax-text and screenshot streams:
-          |          one finished file per pull, removed once both streams committed it
-      contract.py    what an adapter implements: Source (projectors, streams + pull
-          |          after a position), HistorySource (adds history facts + range pulls)
-          |
-      runner.py      poll every stream of every source, once or in the watch loop,
-          |          pulling again while a pull says there is more
-      backend_heartbeat.py  the watch loop's last cycle, in a file beside the database
-          |
-      backfill.py    plan a stream's history in chunks, then ingest them oldest first
-          |
-      projection.py  routes each observation to the projector of the source that
-          |          claims its stream: ingest and rebuild-signals both use it
-      commit.py      shared by poll and backfill: one pull, its signals and its
-          |          progress in one commit, then the pull's after-commit step,
-          |          and which failures stop a run
-      store/         insert_observations, rebuild_signals (each projects through
-                     the projector it is given)
+activitywatch/   an adapter: names its streams, pulls settled raw observations,
+      |          says where each stream's progress now stands, and supplies
+      |          a projector (stored payload -> signal) for each stream
+capture_spool/   the same for the capture spool's ax-text and screenshot streams:
+      |          one finished file per pull, removed once both streams committed it
+  contract.py    what an adapter implements: Source (projectors, streams + pull
+      |          after a position), HistorySource (adds history facts + range pulls)
+      |
+  runner.py      poll every stream of every source, once or in the watch loop,
+      |          pulling again while a pull says there is more
+  backend_heartbeat.py  the watch loop's last cycle, in a file beside the database
+      |
+  ingest_health.py  the watch loop's failure streak: saved beside the database
+      |          after every cycle, with an alert when it lasts and ends
+  cycle_report.py   each cycle's one log record, counted toward that streak
+      |
+  backfill.py    plan a stream's history in chunks, then ingest them oldest first
+      |
+  projection.py  routes each observation to the projector of the source that
+      |          claims its stream: ingest and rebuild-signals both use it
+  commit.py      shared by poll and backfill: one pull, its signals and its
+      |          progress in one commit, then the pull's after-commit step,
+      |          and which failures stop a run
+  store/         insert_observations, rebuild_signals (each projects through
+                 the projector it is given)
 
-    agent_health.py  for status and the watchdog: the capture agent's stored records
-                     and spool, judged against aw-afk and aw-window, drawing on both
-                     adapters
+agent_health.py  for status and the watchdog: the capture agent's stored records
+                 and spool, judged against aw-afk and aw-window, drawing on both
+                 adapters
 """
 
 from computer_history.sources.activitywatch import (
@@ -157,6 +161,20 @@ from computer_history.sources.contract import (
     SourceUnavailable,
     StreamProjector,
 )
+from computer_history.sources.cycle_report import CycleReporter
+from computer_history.sources.ingest_health import (
+    ALERT_AFTER_FAILURES,
+    ALERT_REPEAT,
+    HEALTH_FILE_NAME,
+    HEALTH_STALE_AFTER,
+    FailureStreak,
+    IngestHealth,
+    Recovery,
+    StreakAlert,
+    health_path,
+    read_health,
+    write_health,
+)
 from computer_history.sources.projection import (
     KNOWN_SOURCES,
     projector_for,
@@ -173,6 +191,8 @@ from computer_history.sources.runner import (
 __all__ = [
     "AFK_SOURCE",
     "AGENT_ALIVE_WITHIN",
+    "ALERT_AFTER_FAILURES",
+    "ALERT_REPEAT",
     "APP_TOLERANCE",
     "BACKFILL_CHUNK",
     "CAPTURE_KIND",
@@ -180,6 +200,8 @@ __all__ = [
     "DEFAULT_AW_URL",
     "DUPLICATE_STATUS",
     "EXCLUDED_KIND",
+    "HEALTH_FILE_NAME",
+    "HEALTH_STALE_AFTER",
     "HEARTBEAT_SECONDS",
     "KEPT_STATUS",
     "KNOWN_SOURCES",
@@ -228,10 +250,13 @@ __all__ = [
     "ChunkDone",
     "Committed",
     "Coverage",
+    "CycleReporter",
     "CycleSummary",
     "DayCounts",
     "FailureKind",
+    "FailureStreak",
     "HistorySource",
+    "IngestHealth",
     "IngestOutcome",
     "InvalidRecord",
     "JsonValue",
@@ -241,6 +266,7 @@ __all__ = [
     "Planning",
     "Projecting",
     "Pull",
+    "Recovery",
     "ScreenshotHealth",
     "ScreenshotTally",
     "Source",
@@ -251,6 +277,7 @@ __all__ = [
     "SpoolError",
     "StoredRecord",
     "StrayObservation",
+    "StreakAlert",
     "StreamFailure",
     "StreamProjector",
     "active_spans",
@@ -269,6 +296,7 @@ __all__ = [
     "extract_domain",
     "failure_of",
     "finished_files",
+    "health_path",
     "liveness",
     "newest_afk_spans",
     "newest_app_spans",
@@ -283,6 +311,7 @@ __all__ = [
     "pull_bucket",
     "pull_source",
     "read_backend_heartbeat",
+    "read_health",
     "reproject_signals",
     "resolve_spool_path",
     "resume_start",
@@ -295,4 +324,5 @@ __all__ = [
     "watch",
     "watcher_ends",
     "write_backend_heartbeat",
+    "write_health",
 ]

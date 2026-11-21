@@ -237,10 +237,13 @@ def agreement(records: list[StoredRecord], spans: list[tuple[float, float, str]]
 
 
 def test_a_capture_inside_a_span_of_its_app_matches_ignoring_case() -> None:
-    result = agreement([capture(-30, "Cursor"), capture(-10, "google chrome")], [
-        (-40, -20, "Cursor"),
-        (-20, 0, "Google Chrome"),
-    ])
+    result = agreement(
+        [capture(-30, "Cursor"), capture(-10, "google chrome")],
+        [
+            (-40, -20, "Cursor"),
+            (-20, 0, "Google Chrome"),
+        ],
+    )
     assert (result.matched, result.differ, result.unjudged, result.pairs) == (2, 0, 0, ())
 
 

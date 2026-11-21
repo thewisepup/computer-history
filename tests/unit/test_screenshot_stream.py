@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from fake_aw import FakeAW
+from log_records import logged
 
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
@@ -234,9 +235,7 @@ def commit(conn: sqlite3.Connection, spool: CaptureSpool, stream: str, *, crash:
     pulled = spool.pull_after(stream, None, now=NOW)
     if crash:
         pulled = replace(pulled, after_commit=None)
-    commit_pull(
-        conn, stream, pulled, project=projector_for([spool]), now=NOW, progress_from=pulled
-    )
+    commit_pull(conn, stream, pulled, project=projector_for([spool]), now=NOW, progress_from=pulled)
     return pulled
 
 
@@ -316,7 +315,7 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
         screenshot(1, T0, status="blurry"),
         screenshot(2, T0, image_bytes="big"),
         screenshot(3, T0, version=2),
-        screenshot(4, T0) .replace('"id": "00000000-0000-4000-8000-000000000004"', '"id": "x"'),
+        screenshot(4, T0).replace('"id": "00000000-0000-4000-8000-000000000004"', '"id": "x"'),
         "{not json",
         json.dumps(capture | {"kind": "snapshot"}),
         json.dumps(capture | {"timed_out": "no"}),
@@ -333,8 +332,13 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
     assert summary.outcomes[WINDOW_TEXT_SOURCE].rejected == 2
     assert not spooled.exists()
     assert [p.read_bytes() for p in (spool_dir / UNREADABLE_FOLDER).iterdir()] == [kept]
-    assert "skipped 4 unusable record(s) in spool file" in caplog.text
-    assert "it has 8 unusable line(s), 2 of no readable kind" in caplog.text
+    skipped = logged(caplog, "unusable spool records skipped")
+    assert {(r["stream"], r["rejected"]) for r in skipped} == {
+        (SCREENSHOT_SOURCE, 4),
+        (WINDOW_TEXT_SOURCE, 2),
+    }
+    [aside] = logged(caplog, "spool file set aside")
+    assert "it has 8 unusable line(s), 2 of no readable kind" in str(aside["error"])
 
 
 def test_screenshot_records_never_move_the_window_text_progress(
@@ -368,7 +372,6 @@ def test_the_spool_feeds_both_streams() -> None:
 
     assert spool.streams() == [WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE]
     assert set(spool.projectors) == {WINDOW_TEXT_SOURCE, SCREENSHOT_SOURCE}
-
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can remove files from a read-only folder")
@@ -432,7 +435,8 @@ def test_one_streams_failed_read_never_sets_aside_what_the_other_stream_still_ne
 
     assert spooled.exists() and not (spool_dir / UNREADABLE_FOLDER).exists()
     assert stored(conn, failed) == []
-    assert f"cannot read spool file {FILE_NAME} for {failed}" in caplog.text
+    retried = logged(caplog, "spool file unreadable, will retry")
+    assert [(r["file"], r["stream"]) for r in retried] == [(FILE_NAME, failed)]
     summary = poll(conn, [spool], now=NOW + timedelta(minutes=1))
     assert summary.ok
     assert len(stored(conn, WINDOW_TEXT_SOURCE)) == len(CAPTURE_AGENT_LINES)

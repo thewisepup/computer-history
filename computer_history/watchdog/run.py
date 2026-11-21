@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from computer_history.alerts import NOTIFICATION_TITLE
 from computer_history.host import Host, HostError
 from computer_history.sources import (
     AWApi,
@@ -17,7 +18,7 @@ from computer_history.sources import (
     read_backend_heartbeat,
     watcher_ends,
 )
-from computer_history.watchdog.alerts import NOTIFICATION_TITLE, Notice, due_to_log, notices
+from computer_history.watchdog.alerts import Notice, due_to_log, notices
 from computer_history.watchdog.checks import (
     Check,
     Finding,

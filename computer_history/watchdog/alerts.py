@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
-NOTIFICATION_TITLE = "Computer History"
 NOTIFY_EVERY = timedelta(hours=1)
 LOG_EVERY = timedelta(hours=1)
 SUBJECTS = {

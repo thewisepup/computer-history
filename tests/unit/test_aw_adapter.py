@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import logging
 import sqlite3
 from datetime import timedelta
 from email.message import Message
@@ -11,6 +12,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 from fake_aw import T0, FakeAW, at
+from log_records import logged
 from projectors import AW
 
 from computer_history.sources import (
@@ -324,9 +326,10 @@ def test_poll_writes_observations_and_signals(conn: sqlite3.Connection) -> None:
         (f"{WEB_BUCKET}/5", "github.com", "https://www.github.com/", "GitHub"),
         (f"{WEB_BUCKET}/6", "news.ycombinator.com", "https://news.ycombinator.com/", "HN"),
     ]
-    assert conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[
-        0
-    ] == 0
+    assert (
+        conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[0]
+        == 0
+    )
 
 
 def test_payload_is_stored_verbatim_up_to_json_round_trip(conn: sqlite3.Connection) -> None:
@@ -490,9 +493,7 @@ def test_range_never_stores_a_start_clipped_first_copy(conn: sqlite3.Connection)
     long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})
     fake.add(WINDOW_BUCKET, 60, 10, {"app": "Next"})
     assert ingest_range(conn, fake, at(30), at(90), now=at(120)).inserted == 1
-    assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == [
-        "Next"
-    ]
+    assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == ["Next"]
     ingest_range(conn, fake, at(0), at(30), now=at(120))
     assert json.loads(rows(conn, WINDOW_SOURCE)[0]["payload"]) == long_event
 
@@ -690,6 +691,8 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         capture_spool,
         commit,
         contract,
+        cycle_report,
+        ingest_health,
         projection,
         runner,
     )
@@ -700,6 +703,8 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         projection,
         runner,
         backend_heartbeat,
+        ingest_health,
+        cycle_report,
         backfill,
         aw,
         capture_spool,
@@ -711,3 +716,29 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     for module in modules:
         for name in module.__all__:
             assert getattr(sources, name) is getattr(module, name)
+
+
+@pytest.mark.parametrize(
+    ("raw_id", "logged_id"),
+    [(7, 7), ("short-id", "short-id"), ("x" * 500, None), ([1, 2], None)],
+    ids=["int", "short-str", "long-str", "list"],
+)
+def test_a_malformed_event_warns_with_its_error_type_and_only_a_short_id(
+    caplog: pytest.LogCaptureFixture, raw_id: object, logged_id: object
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    fake = FakeAW({WINDOW_BUCKET: "currentwindow"})
+    fake.events[WINDOW_BUCKET].append({"id": raw_id, "timestamp": "never", "data": {}})
+
+    pulled = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(30))
+
+    assert pulled.observations == ()
+    warnings = logged(caplog, "malformed event skipped")
+    assert warnings and all(
+        (w["event_id"], w["error"], w["levelno"]) == (logged_id, "ValueError", logging.WARNING)
+        for w in warnings
+    )
+    details = logged(caplog, "malformed event detail")
+    assert details and all(
+        d["levelno"] == logging.DEBUG and d["raw_id"] == repr(raw_id) for d in details
+    )

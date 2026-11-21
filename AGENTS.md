@@ -15,6 +15,10 @@ summaries.
 - `computer_history/` — the rewrite. Each package's `__init__.py` opens with
   its flow diagram; `computer_history/cli/README.md` shows every command with
   examples.
+- `computer_history/logs/` — logging for every command: text to stderr, JSON
+  lines to `~/Library/Logs/computer-history/computer-history.jsonl`, read back
+  with `computer-history logs`. `CODING_STANDARDS.md` has the logging rules;
+  `computer_history/alerts.py` posts the macOS notifications.
 - `computer_history/synthetic/` — synthetic datasets: a persona's timeline,
   rendered per source and built through the real backfill and poll, with a
   manifest of true answers that tests check against.
@@ -56,7 +60,8 @@ LaunchAgent running `ingest --watch` from it. Agents never run `install` or
 `uninstall`; tests drive them through the fake host adapter
 (`tests/fake_host.py`).
 
-`.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
+`.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check
+computer_history tests` and `.venv/bin/python -m ruff format --check
 computer_history tests` must pass. Tests sit in four folders, and the folder
 decides where a test runs:
 
@@ -112,8 +117,9 @@ on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
 every pull.
 
 Two commands cover the capture agent, and neither runs in the pre-commit hook.
-CI runs both on macOS on every pull request: `macos-capture-agent-tests` and
-`macos-capture-agent-e2e`. Run them yourself after changing
+CI runs both on macOS: `macos-capture-agent-e2e` on every pull request, and
+`macos-capture-agent-tests` on every push to `main` and on pull requests that
+can reach the agent (`docs/agents/checks.md` lists the paths). Run them yourself after changing
 the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash

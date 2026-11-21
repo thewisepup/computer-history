@@ -17,7 +17,8 @@ run.py          one run, under a lock: read the thresholds and the last state,
                        when watching resumed
 """
 
-from computer_history.watchdog.alerts import NOTIFICATION_TITLE, Notice
+from computer_history.alerts import NOTIFICATION_TITLE
+from computer_history.watchdog.alerts import Notice
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 from computer_history.watchdog.reopening import REOPEN_LIMIT, Reopening, recent_reopens
 from computer_history.watchdog.run import WatchdogRun, WatchPaths, stopped, watch_once

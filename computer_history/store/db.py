@@ -46,9 +46,7 @@ class WalUnavailable(RuntimeError):
     """SQLite would not switch the database to WAL journaling."""
 
 
-def connect(
-    db_path: str | os.PathLike[str], *, create: bool = True
-) -> sqlite3.Connection:
+def connect(db_path: str | os.PathLike[str], *, create: bool = True) -> sqlite3.Connection:
     """Open the database for writing and bring its schema up to date.
 
     Creates the file first unless create is False.

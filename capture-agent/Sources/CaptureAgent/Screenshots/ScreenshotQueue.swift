@@ -36,17 +36,19 @@ final class ScreenshotQueue: Sendable {
     private let timeout: TimeInterval
     private let spool: any SpoolAppender
     private let counts: CaptureCounts
+    private let log: AgentLog
     private let state = QueueState()
 
     init(
         recognize: @escaping @Sendable (URL) throws -> String, capBytes: Int, timeout: TimeInterval, spool: any SpoolAppender,
-        counts: CaptureCounts
+        counts: CaptureCounts, log: AgentLog
     ) {
         self.recognize = recognize
         self.capBytes = capBytes
         self.timeout = timeout
         self.spool = spool
         self.counts = counts
+        self.log = log
     }
 
     func add(_ screenshot: QueuedScreenshot) {
@@ -84,6 +86,7 @@ final class ScreenshotQueue: Sendable {
             } catch {
                 kept.fail()
                 counts.recordRecognitionFailed(error)
+                log.debug(.ocr, "text recognition failed for \(image.lastPathComponent): \(error)")
             }
             return record(kept.value)
         }

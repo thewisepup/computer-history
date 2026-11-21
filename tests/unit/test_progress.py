@@ -293,4 +293,3 @@ def test_migrated_cursor_resumes_like_progress_written_today(tmp_path: Path, pre
         assert progress.settled_until == at(70)
     finally:
         conn.close()
-

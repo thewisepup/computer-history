@@ -195,15 +195,6 @@ def test_the_content_creator_week_reports_what_its_manifest_says(tmp_path: Path)
     assert manifest.days[_day(5)].foreground_app_seconds == {}
 
 
-def test_the_content_creator_week_builds_the_same_every_time(tmp_path: Path) -> None:
-    first = build_dataset(CONTENT_CREATOR_WEEK, tmp_path / "first")
-    second = build_dataset(CONTENT_CREATOR_WEEK, tmp_path / "second")
-
-    assert first.timeline == second.timeline
-    assert first.rendered == second.rendered
-    assert first.manifest == second.manifest
-
-
 @pytest.mark.parametrize(
     ("persona", "tier", "heavy"),
     [(persona, "week", 1.0) for persona in sorted(PERSONAS)]

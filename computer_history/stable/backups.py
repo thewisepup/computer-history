@@ -19,7 +19,7 @@ from computer_history.stable.launch_agents import (
     start_agent,
     stop_agent,
 )
-from computer_history.stable.layout import Layout
+from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.store import (
     DatabaseCopy,
     DatabaseExists,
@@ -39,7 +39,6 @@ DAILY_BACKUP_MAX_AGE_DAYS = 1
 DAILY_NAME = re.compile(r"^history-(\d{4}-\d{2}-\d{2})\.db$")
 PRE_UPDATE_NAME = re.compile(r"^history-.+\.db$")
 SQLITE_HEADER = b"SQLite format 3\x00"
-NOTHING_CHANGED = "nothing was changed"
 COPY_FAILURES = (OSError, sqlite3.Error, RuntimeError)
 STOPPED_FOR_RESTORE = (DAILY_BACKUP, BACKEND)
 

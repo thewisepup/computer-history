@@ -20,6 +20,7 @@ jobs:
           cache: pip
       - run: python -m pip install -e '.[test,dev]'
       - run: python -m ruff check computer_history tests
+      - run: python -m ruff format --check computer_history tests
 
   unit:
     runs-on: ubuntu-24.04
@@ -118,11 +119,33 @@ jobs:
   macos-capture-agent-tests:
     runs-on: macos-26
     timeout-minutes: 20
+    env:
+      REACHES: '^(capture-agent/|fixtures/spool/|\.github/workflows/ci\.yml$)'
     steps:
+      - id: reach
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          pr="repos/$GITHUB_REPOSITORY/pulls/$PR"
+          if ! changed="$(gh api "$pr" --jq .changed_files)" || [ "$changed" -gt 3000 ] \
+            || ! files="$(gh api --paginate "$pr/files" --jq '.[] | .filename, (.previous_filename // empty)')"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif grep -qE "$REACHES" <<<"$files"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Skipped::No changed file matches $REACHES"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.reach.outputs.run != 'false'
       - run: swift --version
+        if: steps.reach.outputs.run != 'false'
       - run: capture-agent/scripts/test.sh
+        if: steps.reach.outputs.run != 'false'
       - name: Release build of the signed app bundle, signed ad hoc
+        if: steps.reach.outputs.run != 'false'
         run: CODESIGN_IDENTITY=- capture-agent/scripts/build.sh
 
   macos-capture-agent-e2e:

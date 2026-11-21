@@ -6,6 +6,7 @@ from pathlib import Path
 from computer_history.host import COMMAND_NAME
 from computer_history.store import DATABASE_NAME, VERSIONS_FOLDER_NAME, live_folder
 
+NOTHING_CHANGED = "nothing was changed"
 CURRENT_POINTER_NAME = "current"
 PREVIOUS_POINTER_NAME = "previous"
 VENV_FOLDER_NAME = "venv"

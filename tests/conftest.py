@@ -6,7 +6,10 @@ import pytest
 from fake_host import FakeHost
 from hypothesis import HealthCheck, settings
 
+from computer_history.alerts import NOTIFY_ENV_VAR
 from computer_history.cli import app as cli_app
+from computer_history.logs import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
+from computer_history.logs import reset as reset_logging
 from computer_history.store import DB_ENV_VAR, connect
 from computer_history.store import db as store_db
 from computer_history.synthetic import CACHE_ENV_VAR
@@ -46,6 +49,16 @@ def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def no_live_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_app, "LiveHost", FakeHost)
+
+
+@pytest.fixture(autouse=True)
+def log_dir(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
+    folder = tmp_path_factory.mktemp("logs")
+    monkeypatch.setenv(LOG_DIR_ENV_VAR, str(folder))
+    monkeypatch.setenv(NOTIFY_ENV_VAR, "0")
+    monkeypatch.delenv(LOG_LEVEL_ENV_VAR, raising=False)
+    yield folder
+    reset_logging()
 
 
 @pytest.fixture(autouse=True)

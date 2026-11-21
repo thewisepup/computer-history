@@ -1,7 +1,6 @@
 import AppKit
 import CaptureAgent
 import Foundation
-import os
 import ServiceManagement
 
 func finish(_ outcome: CommandOutcome) -> Never {
@@ -19,8 +18,7 @@ let pause = settings.pause
 
 switch AgentCommand(arguments: Array(CommandLine.arguments.dropFirst())) {
 case .run:
-    let logger = Logger(subsystem: AgentIdentity.bundleIdentifier, category: "agent")
-    let log: @Sendable (String) -> Void = { logger.notice("\($0, privacy: .public)") }
+    let log = AgentLog.unified()
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
     let counts = CaptureCounts()
     let captureStop = CaptureStop()
@@ -62,7 +60,7 @@ case .checkConfig:
 case .requestScreenRecording:
     finish(requestScreenRecording(open: NSWorkspace.shared.open))
 case .scriptedSession(let script):
-    finish(runScriptedSession(script: URL(fileURLWithPath: script), settings: settings, homes: userHomes(), log: { print($0) }))
+    finish(runScriptedSession(script: URL(fileURLWithPath: script), settings: settings, homes: userHomes(), log: .standardOutput))
 case .usage:
     finish(.usage)
 }

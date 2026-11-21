@@ -11,7 +11,7 @@ at the Mac, with a screenshot of that window saved beside the database.
 | Installed at | `~/Applications/ComputerHistoryAgent.app` |
 | Started by | `SMAppService`, from `Contents/Library/LaunchAgents/` inside the bundle (KeepAlive) |
 | Signed with | `Computer History Code Signing` from the login keychain, hardened runtime |
-| Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent` |
+| Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent`, five categories (see [Logs](#logs)) |
 | Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db` |
 | Spool | `spool/` in the folder |
 | Screenshots | `screenshots/` in the folder |
@@ -32,10 +32,11 @@ scripts/uninstall.sh   # unregister the login item, stop the agent, delete the a
 ```
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
-alone it cannot find the `Testing` module, so use `scripts/test.sh`. On every pull request,
-CI's `macos-capture-agent-tests` job runs `scripts/test.sh` and
-`scripts/build.sh` (signed ad hoc, with `CODESIGN_IDENTITY=-`), and
-`macos-capture-agent-e2e` runs `scripts/e2e.sh`. The pre-commit hook runs neither, so run them
+alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's
+`macos-capture-agent-tests` job runs `scripts/test.sh` and `scripts/build.sh`
+(signed ad hoc, with `CODESIGN_IDENTITY=-`) on every push to `main` and on pull
+requests that can reach the agent (`docs/agents/checks.md` lists the paths), and
+`macos-capture-agent-e2e` runs `scripts/e2e.sh` on every pull request. The pre-commit hook runs neither, so run them
 after changing this folder, `fixtures/spool/` or the end-to-end tests.
 
 The installed binary takes the same commands directly:
@@ -449,11 +450,44 @@ Plain `pytest` skips both agent tests unless `CAPTURE_AGENT_BINARY` names a buil
 
 ## Logs
 
+The agent writes to the unified log under the subsystem
+`io.github.thewisepup.computer-history.agent`, in five categories:
+
+| Category | Carries |
+|---|---|
+| `lifecycle` | start, the config report, the paused state at start, the minute heartbeat, stop |
+| `capture` | silence starting, changing and ending; one debug record per capture written |
+| `spool` | spool ready, a leftover file finished, failures to start or finish the spool |
+| `screenshots` | each try of the missing Screen Recording grant reminder |
+| `ocr` | one debug record per text recognition that failed or got no answer in time |
+
+| Level | Records |
+|---|---|
+| `error` | the spool failing to start or finish a file, the reminder time not saved |
+| `notice` | start, the config report, the paused state, the minute heartbeat, stop, each reminder try |
+| `info` | silence changes, spool ready, a leftover file finished |
+| `debug` | each capture (bundle id, trigger, text bytes, private window title), each failed recognition |
+
+macOS keeps `notice` and `error` on disk. `info` stays in memory and reaches
+disk only when an error flushes it, and `debug` is collected only while a
+`log stream --level debug` runs. To keep `info` on disk, for `log show
+--info` an hour later: `sudo log config --subsystem
+io.github.thewisepup.computer-history.agent --mode persist:info`.
+
+Window titles, window text and recognized text never go in a message. The
+capture debug record carries the window title as a private argument, which
+the log shows as `<private>` unless a configuration profile enables private
+data for the subsystem. Bundle ids, counts, paths and error descriptions are
+public. `scripted-session` prints each message to stdout instead, without the
+private argument.
+
 `log` is a zsh builtin, so call `/usr/bin/log`:
 
 ```bash
 /usr/bin/log stream --style compact --predicate 'subsystem == "io.github.thewisepup.computer-history.agent"'
-/usr/bin/log show --last 1h --style compact --predicate 'subsystem == "io.github.thewisepup.computer-history.agent"'
+/usr/bin/log stream --style compact --level debug --predicate 'subsystem == "io.github.thewisepup.computer-history.agent" && category == "capture"'
+/usr/bin/log show --last 1h --style compact --info --predicate 'subsystem == "io.github.thewisepup.computer-history.agent" && category == "spool"'
+/usr/bin/log show --last 1d --style compact --predicate 'subsystem == "io.github.thewisepup.computer-history.agent" && logType == "error"'
 launchctl print "gui/$(id -u)/io.github.thewisepup.computer-history.agent"
 ```
 
@@ -474,8 +508,10 @@ posted a reminder`, `..., asked macOS to allow notifications for the
 reminder`, `..., the notification centre did not answer within 2s`, or, once
 per run, `..., notifications unavailable (<reason>), status is the only
 warning`. `could not save the reminder time to <path> (<error>), a restart may
-remind again` appears at most once per run. The log never holds window titles or text. After a crash,
-start also logs `spool finished leftover file <name>`.
+remind again` appears at most once per run. After a crash, start also logs
+`spool finished leftover file <name>`. At debug, each capture logs `captured
+com.apple.TextEdit on heartbeat, 1832 text bytes <private>` and each failed
+recognition `text recognition failed for <image>.jpg: <error>`.
 
 ## Spool
 

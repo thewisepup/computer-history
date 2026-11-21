@@ -17,10 +17,8 @@ from computer_history.stable.launch_agents import (
     remove_agent,
     stopgap_plist,
 )
-from computer_history.stable.layout import Layout
+from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.versions import make_current, pointed, replace_symlink, version_name
-
-NOTHING_CHANGED = "nothing was changed"
 
 
 class InstallFailed(Exception):

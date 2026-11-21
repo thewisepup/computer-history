@@ -1,7 +1,8 @@
 #!/bin/bash
 # chv: drive the computer-history CLI against an isolated, seeded verification run.
-# Every run has its own database, spool and fake ActivityWatch port; nothing here
-# reads or writes ~/Library/Application Support/ComputerHistory or 127.0.0.1:5600.
+# Every run has its own database, spool, log folder and fake ActivityWatch port; nothing here
+# reads or writes ~/Library/Application Support/ComputerHistory, ~/Library/Logs/computer-history
+# or 127.0.0.1:5600, and no run posts a notification.
 set -euo pipefail
 
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
@@ -23,6 +24,7 @@ need_run() {
   DB="$STATE/history.db"
   SPOOL="$STATE/spool"
   AW_URL="http://127.0.0.1:$(cat "$STATE/aw.port")/api/0"
+  ISOLATED=(COMPUTER_HISTORY_LOG_DIR="$EVIDENCE/logs" COMPUTER_HISTORY_NOTIFY=0)
 }
 
 # A pid is ours only if it is alive and its command line names this run.
@@ -37,14 +39,14 @@ next_evidence() {
   printf '%s/%02d-%s.txt' "$EVIDENCE" "$((n + 1))" "$label"
 }
 
-# Run a command with COMPUTER_HISTORY_* stripped, write a transcript, mirror it, keep its exit code.
+# Run a command with COMPUTER_HISTORY_* replaced by the run's own, write a transcript, keep its exit code.
 record() {
   local label="$1"; shift
   local out err code file
   file="$(next_evidence "$label")"
   out="$(mktemp)"; err="$(mktemp)"
   set +e
-  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') "$@" >"$out" 2>"$err"
+  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') "${ISOLATED[@]}" "$@" >"$out" 2>"$err"
   code=$?
   set -e
   {
@@ -156,7 +158,7 @@ cmd_watch_start() {
   need_run
   [ ! -f "$STATE/watch.pid" ] || die "a watch is already recorded for this run"
   local log; log="$(next_evidence watch)"
-  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') \
+  env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') "${ISOLATED[@]}" \
     nohup "$CLI" --db-path "$DB" ingest --aw-url "$AW_URL" --watch >"$log" 2>&1 &
   echo $! >"$STATE/watch.pid"
   echo "chv: ingest --watch pid $(cat "$STATE/watch.pid") logging to $log" >&2

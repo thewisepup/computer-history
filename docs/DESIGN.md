@@ -85,7 +85,11 @@ computer_history/
                 # keeps ingest from deleting spool files during an update)
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backend_heartbeat (the file beside the database that
-                # ingest --watch rewrites after each cycle), backfill (plan + run in chunks), projection (routes each
+                # ingest --watch rewrites after each cycle),
+                # ingest_health (the watch loop's failure streak, saved beside
+                # the database, and its alerts), cycle_report (each ingest
+                # cycle's one log record),
+                # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
@@ -150,6 +154,10 @@ computer_history/
                 # three times an hour), state (the file and lock beside the
                 # database), run (one run, under the lock)
   text.py       # text/URL normalization shared by every source
+  logs/         # config (one setup per run: run id, stderr text, JSON lines),
+                # rotation (the JSON file, shared across processes), formatters,
+                # query (read back for `logs`), units (outcomes, progress cadence)
+  alerts.py     # macOS notifications for states someone has to act on
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
   api/          # FastAPI routes under /api

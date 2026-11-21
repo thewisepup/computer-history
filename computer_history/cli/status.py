@@ -29,13 +29,16 @@ from computer_history.sources import (
     ActivityWatch,
     AWClient,
     CaptureHealth,
+    IngestHealth,
     Liveness,
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
     backend_heartbeat_path,
     capture_health,
+    health_path,
     read_backend_heartbeat,
+    read_health,
     resolve_spool_path,
     screenshot_health,
 )
@@ -106,6 +109,10 @@ def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now:
     except SourceUnavailable as exc:
         streams, aw_error = [], str(exc)
 
+    banner, ingest_line = _ingest(db_path, now)
+    if banner is not None:
+        print(banner)
+        print()
     if aw_error is not None:
         print(f"!! ActivityWatch is UNREACHABLE at {args.aw_url}: nothing new can be ingested.")
         print(f"!! {aw_error}")
@@ -114,6 +121,7 @@ def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now:
     else:
         names = ", ".join(streams) or "none of window/AFK/web"
         aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
+    aw_line += "\n" + ingest_line
 
     store = open_store(db_path, Purpose.READ)
     if store.state is StoreState.MISSING:
@@ -286,6 +294,33 @@ def _print_watchdog(now: datetime) -> None:
             f"  warning: the watchdog last ran {duration((now - state.ran_at).total_seconds())}"
             " ago; it runs every minute while its LaunchAgent is loaded"
         )
+
+
+def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
+    path = health_path(db_path)
+    try:
+        health = read_health(path)
+    except (OSError, ValueError) as exc:
+        return None, f"Ingest:        cannot read {path}: {exc}"
+    if health is None:
+        return None, "Ingest:        no `ingest --watch` has reported yet"
+    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.updated_at, now)}"
+    if health.stale(now):
+        line += (
+            f"; NOT REPORTING for {duration((now - health.updated_at).total_seconds())}"
+            " (is `ingest --watch` running?)"
+        )
+    if not health.consecutive_failures:
+        return None, line
+    last = "never" if health.last_success_at is None else ago(health.last_success_at, now)
+    banner = f"!! ingest is {_ingest_state(health)}: {printable(health.last_error or '')}"
+    return banner, f"{line}\n  last success  {last}"
+
+
+def _ingest_state(health: IngestHealth) -> str:
+    if not health.consecutive_failures or health.failing_since is None:
+        return "ok"
+    return f"FAILING since {when(health.failing_since)} ({health.consecutive_failures:,} cycles)"
 
 
 def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:

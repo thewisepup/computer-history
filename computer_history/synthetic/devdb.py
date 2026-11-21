@@ -42,9 +42,7 @@ class DevDatabase:
     copied: tuple[Path, ...]
 
 
-def live_folders(
-    explicit_db: str | os.PathLike[str] | None, profile: Profile
-) -> tuple[Path, ...]:
+def live_folders(explicit_db: str | os.PathLike[str] | None, profile: Profile) -> tuple[Path, ...]:
     """The live folder, the default, configured and given databases' folders, and the spool."""
     default = default_db_path(profile)
     configured = (configured_db_path(None, profile), configured_db_path(explicit_db, profile))

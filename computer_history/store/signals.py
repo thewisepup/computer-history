@@ -11,6 +11,7 @@ from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from computer_history.logs import progress_step
 from computer_history.store.db import transaction
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ MAX_FAILURE_RATIO = 0.5
 MIN_KEPT_RATIO = 0.5
 SHRINK_CHECK_MIN_SIGNALS = 50
 MAX_LOGGED_FAILURES = 20
+MIN_PROGRESS_STEP = 10_000
 
 
 @dataclass(frozen=True)
@@ -130,11 +132,17 @@ def rebuild_signals(
         before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
         total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
         conn.execute("DELETE FROM signals")
+        step = progress_step(total, at_least=MIN_PROGRESS_STEP)
         rows = conn.execute(
             "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id"
         )
         for observation_id, source, started_at, ended_at, payload in rows:
             scanned += 1
+            if scanned % step == 0:
+                log.info(
+                    "rebuild progress",
+                    extra={"scanned": scanned, "observations": total, "projected": projected},
+                )
             try:
                 signal = project(source, payload)
             except UnclaimedSource as exc:
@@ -144,11 +152,16 @@ def rebuild_signals(
                 if len(failed_ids) < MAX_LOGGED_FAILURES:
                     failed_ids.append(observation_id)
                     log.warning(
-                        "rebuild-signals: skipping observation %d (%s): cannot project its"
-                        " payload: %r",
-                        observation_id,
-                        source,
-                        exc,
+                        "observation skipped: its payload cannot be projected",
+                        extra={
+                            "observation_id": observation_id,
+                            "source": source,
+                            "error": type(exc).__name__,
+                        },
+                    )
+                    log.debug(
+                        "projection error",
+                        extra={"observation_id": observation_id, "error": repr(exc)},
                     )
                 check_failures(total)
                 continue
@@ -163,8 +176,8 @@ def rebuild_signals(
             write_signals(conn, batch)
         if failed > MAX_LOGGED_FAILURES:
             log.warning(
-                "rebuild-signals: %d more observations skipped (not logged individually)",
-                failed - MAX_LOGGED_FAILURES,
+                "more observations skipped, not logged one by one",
+                extra={"unlogged": failed - MAX_LOGGED_FAILURES},
             )
         check_failures(total)
         if (

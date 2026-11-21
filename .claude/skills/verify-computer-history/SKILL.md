@@ -16,7 +16,10 @@ port, so runs sit side by side with the live setup and with each other.
 
 All driving goes through one helper, `scripts/chv`, run from the repo root.
 Its commands are the only stable handles; it strips `COMPUTER_HISTORY_*`
-from the environment and passes `--db-path` and `--aw-url` itself.
+from the environment and passes `--db-path` and `--aw-url` itself. It points
+`COMPUTER_HISTORY_LOG_DIR` at the run's evidence folder (`logs/`, so
+`$C cli logs` reads this run's JSON log) and sets `COMPUTER_HISTORY_NOTIFY=0`,
+so a run never writes the live log or posts a notification.
 
 ```bash
 C=.claude/skills/verify-computer-history/scripts/chv

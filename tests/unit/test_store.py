@@ -276,7 +276,6 @@ def test_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     assert resolve_db_path("~/x.db", Profile.DEV) == tmp_path / "x.db"
 
 
-
 def insert_observation(
     conn: sqlite3.Connection,
     *,

@@ -13,7 +13,7 @@ public struct AgentLifecycle: Sendable {
     let counts: CaptureCounts
     let startCapturing: @Sendable () -> Void
     let stopCapturing: @Sendable (_ deadline: DispatchTime) -> Int?
-    let log: @Sendable (String) -> Void
+    let log: AgentLog
 
     public init(
         report: [String],
@@ -23,7 +23,7 @@ public struct AgentLifecycle: Sendable {
         counts: CaptureCounts,
         startCapturing: @escaping @Sendable () -> Void,
         stopCapturing: @escaping @Sendable (_ deadline: DispatchTime) -> Int?,
-        log: @escaping @Sendable (String) -> Void
+        log: AgentLog
     ) {
         self.report = report
         self.isPaused = isPaused
@@ -64,24 +64,24 @@ public struct AgentLifecycle: Sendable {
     func start() -> Start {
         let spoolStart = Result { try spool.start() }
         if case .failure(let error as SpoolWriter.InUse) = spoolStart {
-            log("spool failed to start at \(spool.directory.path): \(error), exiting")
+            log.error(.spool, "spool failed to start at \(spool.directory.path): \(error), exiting")
             return .spoolHeldByAnotherAgent
         }
         if accessibilityTrusted(true) {
-            log("started, accessibility granted")
+            log.notice(.lifecycle, "started, accessibility granted")
         } else {
-            log("started, accessibility missing, asked macOS to prompt for it")
+            log.notice(.lifecycle, "started, accessibility missing, asked macOS to prompt for it")
         }
-        report.forEach(log)
+        report.forEach { log.notice(.lifecycle, $0) }
         if isPaused() {
-            log("capture is paused, run `\(AgentIdentity.executableName) resume` to capture again")
+            log.notice(.lifecycle, "capture is paused, run `\(AgentIdentity.executableName) resume` to capture again")
         }
         switch spoolStart {
         case .success(let leftover):
-            log("spool ready at \(spool.directory.path)")
-            if let leftover { log("spool finished leftover file \(leftover.lastPathComponent)") }
+            log.info(.spool, "spool ready at \(spool.directory.path)")
+            if let leftover { log.info(.spool, "spool finished leftover file \(leftover.lastPathComponent)") }
         case .failure(let error):
-            log("spool failed to start at \(spool.directory.path): \(error)")
+            log.error(.spool, "spool failed to start at \(spool.directory.path): \(error)")
         }
         return .started
     }
@@ -90,18 +90,18 @@ public struct AgentLifecycle: Sendable {
     func stop() {
         let dropped = stopCapturing(.now() + Self.stopDrainSeconds)
         finishSpoolFile()
-        log(dropped.map { "stopping, \($0) screenshot records dropped" } ?? "stopping, the capture thread did not finish in time")
+        log.notice(.lifecycle, dropped.map { "stopping, \($0) screenshot records dropped" } ?? "stopping, the capture thread did not finish in time")
     }
 
     func finishSpoolFile() {
         do {
             try spool.finish()
         } catch {
-            log("spool failed to finish the open file: \(error)")
+            log.error(.spool, "spool failed to finish the open file: \(error)")
         }
     }
 
     func logMinute() {
-        log("heartbeat, accessibility \(accessibilityTrusted(false) ? "granted" : "missing"), last minute: \(counts.take())")
+        log.notice(.lifecycle, "heartbeat, accessibility \(accessibilityTrusted(false) ? "granted" : "missing"), last minute: \(counts.take())")
     }
 }

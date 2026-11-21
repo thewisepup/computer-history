@@ -69,21 +69,24 @@ class CaptureSpool:
             return self._empty(partial(self._drop, stream, path), more)
         except OSError as exc:
             return self._empty(partial(self._unreadable_by, stream, path, str(exc)), more)
-        read = _read_records(lines, now, stream)
+        read = _read_records(lines, now, stream, path.name)
         if read.rejected:
             log.warning(
-                "skipped %d unusable record(s) in spool file %s for %s (first, line %d: %s)",
-                read.rejected,
-                path.name,
-                stream,
-                *read.first_problem,
+                "unusable spool records skipped",
+                extra={
+                    "file": path.name,
+                    "stream": stream,
+                    "rejected": read.rejected,
+                    "line": read.first_problem[0],
+                    "error": read.first_problem[1],
+                },
             )
         finish: Finish = remove_finished
         if read.file_unusable:
             kept = "its usable lines are stored" if read.file_usable else "no line is usable"
             finish = partial(
                 _move_aside,
-                reason=f"it has {read.file_unusable} unusable line(s),"
+                error=f"it has {read.file_unusable} unusable line(s),"
                 f" {read.file_kindless} of no readable kind ({kept})",
             )
         newest = None if read.latest is None else utc_iso(read.latest)
@@ -119,12 +122,13 @@ class CaptureSpool:
         stored_by_any = any(key[0] == path for key in self._stored)
         if stored_by_any or len(failed) < len(STREAM_KINDS):
             log.warning(
-                "cannot read spool file %s for %s, will retry: %s", path.name, stream, problem
+                "spool file unreadable, will retry",
+                extra={"file": path.name, "stream": stream, "error": problem},
             )
             self._drop(stream, path)
             return
         del self._unreadable[path]
-        self._finish(stream, path, partial(_move_aside, reason=f"cannot read it: {problem}"))
+        self._finish(stream, path, partial(_move_aside, error=f"cannot read it: {problem}"))
 
     def _finish(self, stream: str, path: Path, finish: Finish) -> None:
         self._drop(stream, path)
@@ -160,7 +164,7 @@ class _Read:
     file_kindless: int
 
 
-def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
+def _read_records(lines: list[bytes], now: datetime, stream: str, name: str) -> _Read:
     kinds = STREAM_KINDS[stream]
     observations: list[Observation] = []
     rejected = usable = unusable = kindless = 0
@@ -178,8 +182,12 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
             kindless += kind is None
             if kind in kinds:
                 rejected += 1
-                if rejected == 1:
-                    first_problem = (number, str(exc))
+                if not first_problem[0]:
+                    first_problem = (number, _problem(exc))
+            log.debug(
+                "unusable spool record",
+                extra={"file": name, "stream": stream, "line": number, "error": str(exc)},
+            )
             continue
         usable += 1
         if record.kind not in kinds:
@@ -192,7 +200,14 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
     return _Read(tuple(observations), rejected, latest, first_problem, usable, unusable, kindless)
 
 
-def _move_aside(path: Path, *, reason: str) -> None:
+def _problem(exc: UnicodeDecodeError | InvalidRecord) -> str:
+    return exc.problem if isinstance(exc, InvalidRecord) else "not UTF-8"
+
+
+def _move_aside(path: Path, *, error: str) -> None:
     target = set_aside(path)
     if target is not None:
-        log.warning("moved spool file %s to %s: %s", path.name, target, reason)
+        log.warning(
+            "spool file set aside",
+            extra={"file": path.name, "target": str(target), "error": error},
+        )

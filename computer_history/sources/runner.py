@@ -55,6 +55,7 @@ class CycleSummary:
     at: datetime
     outcomes: dict[str, IngestOutcome] = field(default_factory=dict[str, IngestOutcome])
     failures: tuple[StreamFailure, ...] = ()
+    duration_s: float = field(default=0.0, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -62,13 +63,18 @@ class CycleSummary:
 
 
 def poll(
-    conn: sqlite3.Connection, sources: Sequence[Source], *, now: datetime | None = None
+    conn: sqlite3.Connection,
+    sources: Sequence[Source],
+    *,
+    now: datetime | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> CycleSummary:
     """Poll every stream of every source once, pulling again while a pull has more, one commit each.
 
     An unavailable source skips the rest of its streams, a busy database ends the cycle, and a
     stream whose observations cannot be projected is skipped.
     """
+    began = monotonic()
     at = datetime.now(UTC) if now is None else now
     project = projector_for(sources)
     outcomes: dict[str, IngestOutcome] = {}
@@ -91,7 +97,7 @@ def poll(
             failures.append(failure)
             if failure.kind is FailureKind.DATABASE_BUSY:
                 break
-    return CycleSummary(at, outcomes, tuple(failures))
+    return CycleSummary(at, outcomes, tuple(failures), monotonic() - began)
 
 
 def _claim(seen: set[str], streams: list[str]) -> None:
@@ -147,8 +153,7 @@ def watch(
     monotonic = monotonic or time.monotonic
     sleep = sleep or time.sleep
     while True:
-        began = monotonic()
-        summary = poll(conn, sources, now=clock())
+        summary = poll(conn, sources, now=clock(), monotonic=monotonic)
         if hold is not None and summary.ok and hold.active:
             hold.release()
             log.info("a cycle completed: spool files are deleted again once stored")
@@ -160,7 +165,7 @@ def watch(
                 _first_failure(summary),
                 sources_unavailable=_only_sources_unavailable(summary),
             )
-        delay = max(0.0, interval - (monotonic() - began))
+        delay = max(0.0, interval - summary.duration_s)
         report(summary, delay)
         sleep(delay)
 

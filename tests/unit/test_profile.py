@@ -60,9 +60,7 @@ def test_a_marked_version_of_the_stable_install_is_stable_and_uses_the_live_fold
     assert not dev.exists()
 
 
-def test_a_version_without_the_marker_is_dev(
-    run: RunCli, live: Path, dev: Path
-) -> None:
+def test_a_version_without_the_marker_is_dev(run: RunCli, live: Path, dev: Path) -> None:
     code, out, _ = run(installed(live, "1a2b3c4", marked=False), "status", *UNREACHABLE_AW)
 
     assert code == 0
@@ -139,14 +137,10 @@ def test_dev_is_refused_the_live_spool_and_screenshots(
     assert not dev.exists()
 
 
-def test_stable_is_not_walled_off_from_its_own_folder(
-    run: RunCli, live: Path
-) -> None:
+def test_stable_is_not_walled_off_from_its_own_folder(run: RunCli, live: Path) -> None:
     code = installed(live, "1a2b3c4", marked=True)
 
-    status, _, err = run(
-        code, "status", "--db-path", str(live / DATABASE_NAME), *UNREACHABLE_AW
-    )
+    status, _, err = run(code, "status", "--db-path", str(live / DATABASE_NAME), *UNREACHABLE_AW)
 
     assert status == 0
     assert "refused" not in err

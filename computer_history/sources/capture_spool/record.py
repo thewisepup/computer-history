@@ -105,11 +105,17 @@ SCREENSHOT_RECORD_FIELDS = (
 
 
 class InvalidRecord(ValueError):
-    """A spool line that is not a record this backend can use, and the kind it names if known."""
+    """A spool line that is not a record this backend can use, and the kind it names if known.
 
-    def __init__(self, message: str, kind: str | None = None) -> None:
+    problem says what is wrong without quoting the line.
+    """
+
+    def __init__(
+        self, message: str, kind: str | None = None, *, problem: str | None = None
+    ) -> None:
         super().__init__(message)
         self.kind = kind
+        self.problem = message if problem is None else problem
 
 
 @dataclass(frozen=True)
@@ -130,7 +136,7 @@ def parse_record(line: str) -> ParsedRecord:
     try:
         data: JsonValue = json.loads(line)
     except ValueError as exc:
-        raise InvalidRecord(f"not JSON: {exc}") from exc
+        raise InvalidRecord(f"not JSON: {exc}", problem="not JSON") from exc
     if not isinstance(data, dict):
         raise InvalidRecord("not a JSON object")
     kind = data.get("kind")
@@ -144,16 +150,19 @@ def parse_record(line: str) -> ParsedRecord:
 def _checked(data: dict[str, Any], kind: Any) -> ParsedRecord:
     version = data.get("version")
     if type(version) is not int or version != SPOOL_VERSION:
-        raise InvalidRecord(f"unknown version {version!r}")
+        raise InvalidRecord(f"unknown version {version!r}", problem="unknown version")
     record_id = data.get("id")
     if not isinstance(record_id, str) or not _ID.fullmatch(record_id):
-        raise InvalidRecord(f"bad id {record_id!r}")
+        raise InvalidRecord(f"bad id {record_id!r}", problem="bad id")
     if kind not in KINDS:
-        raise InvalidRecord(f"unknown kind {kind!r}")
+        raise InvalidRecord(f"unknown kind {kind!r}", problem="unknown kind")
     for key, expected in _TYPED_FIELDS.items():
         value = data.get(key)
         if value is not None and type(value) is not expected:
-            raise InvalidRecord(f"{key} is not a {expected.__name__}: {value!r}")
+            raise InvalidRecord(
+                f"{key} is not a {expected.__name__}: {value!r}",
+                problem=f"{key} is not a {expected.__name__}",
+            )
     if kind == SCREENSHOT_KIND:
         _check_screenshot(data)
     return ParsedRecord(record_id, _captured_at(data.get("captured_at")), kind, data)
@@ -162,10 +171,10 @@ def _checked(data: dict[str, Any], kind: Any) -> ParsedRecord:
 def _check_screenshot(data: dict[str, Any]) -> None:
     status = data.get("status")
     if status not in SCREENSHOT_STATUSES:
-        raise InvalidRecord(f"unknown status {status!r}")
+        raise InvalidRecord(f"unknown status {status!r}", problem="unknown status")
     capture_id = data.get("capture_id")
     if not isinstance(capture_id, str) or not _ID.fullmatch(capture_id):
-        raise InvalidRecord(f"bad capture_id {capture_id!r}")
+        raise InvalidRecord(f"bad capture_id {capture_id!r}", problem="bad capture_id")
     needed = _SCREENSHOT_NEEDS[status]
     for key in _SCREENSHOT_IMAGE_FIELDS:
         present = data.get(key) is not None
@@ -174,13 +183,15 @@ def _check_screenshot(data: dict[str, Any]) -> None:
         if key not in needed and present:
             raise InvalidRecord(f"a {status} screenshot has {key}")
     if data.get("image_bytes") is not None and data["image_bytes"] < 0:
-        raise InvalidRecord(f"image_bytes is negative: {data['image_bytes']!r}")
+        raise InvalidRecord(
+            f"image_bytes is negative: {data['image_bytes']!r}", problem="image_bytes is negative"
+        )
 
 
 def _captured_at(value: Any) -> datetime:
     if not isinstance(value, str):
-        raise InvalidRecord(f"bad captured_at {value!r}")
+        raise InvalidRecord(f"bad captured_at {value!r}", problem="bad captured_at")
     try:
         return to_utc(value)
     except (ValueError, OverflowError) as exc:
-        raise InvalidRecord(f"bad captured_at {value!r}") from exc
+        raise InvalidRecord(f"bad captured_at {value!r}", problem="bad captured_at") from exc

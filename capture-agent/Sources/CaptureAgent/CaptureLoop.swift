@@ -9,7 +9,7 @@ final class CaptureLoop<M: Mac> {
     private let writer: RecordWriter
     private var screenshots: (stage: CaptureScreenshot<M>, queue: ScreenshotQueue)?
     private let counts: CaptureCounts
-    private let log: (String) -> Void
+    private let log: AgentLog
 
     init(
         settings: AgentSettings,
@@ -18,7 +18,7 @@ final class CaptureLoop<M: Mac> {
         images: any ImageStore,
         recognize: @escaping @Sendable (URL) throws -> String,
         counts: CaptureCounts,
-        log: @escaping (String) -> Void
+        log: AgentLog
     ) {
         self.decision = CaptureDecision(
             settings: settings.capture,
@@ -58,7 +58,8 @@ final class CaptureLoop<M: Mac> {
                 capBytes: settings.windowText.textCapBytes,
                 timeout: settings.screenshots.recognitionTimeout,
                 spool: spool,
-                counts: counts
+                counts: counts,
+                log: log
             )
             self.screenshots = (stage, queue)
         }
@@ -130,6 +131,11 @@ final class CaptureLoop<M: Mac> {
         )
         guard writer.write(record, if: awake) else { return }
         counts.recordWritten(record)
+        log.debug(
+            .capture,
+            "captured \(application.bundleIdentifier ?? "an app without a bundle id") on \(trigger.rawValue), \(window.fullLength) text bytes",
+            private: window.title
+        )
         guard let shot = screenshots?.stage.take(for: record, of: application) else { return }
         screenshots?.queue.add(shot)
     }
@@ -144,9 +150,9 @@ final class CaptureLoop<M: Mac> {
 
     private func logSilence() {
         if decision.silence.isEmpty {
-            log("capturing again")
+            log.info(.capture, "capturing again")
         } else {
-            log("silent: " + Silence.allCases.filter(decision.silence.contains).map(\.rawValue).joined(separator: ", "))
+            log.info(.capture, "silent: " + Silence.allCases.filter(decision.silence.contains).map(\.rawValue).joined(separator: ", "))
         }
     }
 }
@@ -186,7 +192,7 @@ public func startCaptureThread<M: Mac & Sendable>(
     recognize: @escaping @Sendable (URL) throws -> String,
     counts: CaptureCounts,
     stop: CaptureStop,
-    log: @escaping @Sendable (String) -> Void
+    log: AgentLog
 ) {
     let thread = Thread {
         let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, recognize: recognize, counts: counts, log: log)

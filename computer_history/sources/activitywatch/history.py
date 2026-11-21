@@ -22,7 +22,9 @@ def history_floor(buckets: Mapping[str, JsonValue], source: AWSource) -> datetim
         value = meta.get("created") if isinstance(meta, Mapping) else None
         when = _created_time(value)
         if when is None:
-            log.warning("bucket %s has no usable 'created' time (%r)", bucket_id, value)
+            log.warning(
+                "bucket has no usable created time", extra={"bucket": bucket_id, "bucket_created": repr(value)}
+            )
         else:
             created.append(when)
     if not created:
@@ -58,11 +60,8 @@ def _event_before(client: AWApi, bucket_id: str, start: datetime) -> tuple[bool,
             began = to_utc(raw["timestamp"])
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             log.warning(
-                "malformed ActivityWatch event in %s before %s: %s; treating it as"
-                " history the backfill does not cover",
-                bucket_id,
-                start.isoformat(),
-                exc,
+                "malformed event before the start, taken as uncovered history",
+                extra={"bucket": bucket_id, "start": start.isoformat(), "error": repr(exc)},
             )
             return True, None
         if began < start:

@@ -10,6 +10,8 @@ import PackageDescription
 ///     LoginItem.swift       install, uninstall and status through SMAppService, with the pause state
 ///     PauseSwitch.swift     the capture-paused file the pause and resume commands set
 ///     AgentIdentity.swift   bundle id and names shared by binary, bundle and login item
+///     AgentLog.swift        the log: categories, levels, a public message and a private detail,
+///                           to the unified log or, for scripted sessions, stdout
 ///     AgentLifecycle.swift  on start: exit if another agent holds the spool, else Accessibility check,
 ///           |               spool recovery, capture thread; then the minute log line and spool finish;
 ///           |               on SIGTERM, stop capturing, drain the screenshot queue briefly, finish, exit

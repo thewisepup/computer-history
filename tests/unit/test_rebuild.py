@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -10,20 +11,24 @@ import pytest
 from cli_output import after_profile_line
 from db_states import corrupt_payloads
 from fake_aw import FakeAW, at
+from log_records import logged
 from projectors import AW
 
 from computer_history import cli
+from computer_history.logs import PROGRESS_RECORDS
 from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
     ActivityWatch,
     poll,
+    projection,
 )
 from computer_history.store import (
     RebuildAborted,
     connect,
     rebuild_signals,
+    table_counts,
     transaction,
 )
 from computer_history.store import signals as signals_module
@@ -114,9 +119,10 @@ def test_rebuild_reproduces_ingested_signals_row_for_row(
     assert observation_rows(conn) == observations
     assert result.signals_before == result.signals_after == 7
     assert result.skipped == 0 and result.failed_ids == ()
-    assert conn.execute(
-        "SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)
-    ).fetchone()[0] == 0
+    assert (
+        conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[0]
+        == 0
+    )
     assert not conn.in_transaction
 
 
@@ -229,7 +235,8 @@ def test_malformed_payload_is_skipped_counted_and_logged(
     assert result.skipped == 1 and result.failed_ids == (bad,)
     assert result.signals_after == len(expected) - 1
     assert signal_rows(conn) == [row for row in expected if row[0] != bad]
-    assert any(f"observation {bad} " in r.getMessage() for r in caplog.records)
+    skipped = logged(caplog, "observation skipped: its payload cannot be projected")
+    assert [r["observation_id"] for r in skipped] == [bad]
 
 
 def test_malformed_afk_payload_is_not_a_failure(ingested: sqlite3.Connection) -> None:
@@ -258,9 +265,9 @@ def test_only_the_first_failures_are_logged_individually(
         result = rebuild_signals(conn, AW)
     assert result.skipped == 3
     assert result.failed_ids == (min(bad),)
-    messages = [r.getMessage() for r in caplog.records]
-    assert sum("skipping observation" in m for m in messages) == 1
-    assert any("2 more observations skipped" in m for m in messages)
+    assert len(logged(caplog, "observation skipped: its payload cannot be projected")) == 1
+    [more] = logged(caplog, "more observations skipped, not logged one by one")
+    assert more["unlogged"] == 2
 
 
 def test_more_than_half_failing_aborts_and_rolls_back(ingested: sqlite3.Connection) -> None:
@@ -342,9 +349,7 @@ def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
 
 def test_allow_shrink_overrides_the_shrink_check(big: sqlite3.Connection) -> None:
     conn = big
-    result = rebuild_signals(
-        conn, lambda source, payload: None, allow_shrink=True
-    )
+    result = rebuild_signals(conn, lambda source, payload: None, allow_shrink=True)
     assert (result.signals_before, result.signals_after) == (WINDOW_EVENTS, 0)
 
 
@@ -486,3 +491,80 @@ def test_cli_rebuild_signals_allow_shrink(
     code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals", "--allow-shrink")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
+
+
+def test_cli_rebuild_logs_its_start_and_its_end_with_the_counts(
+    capsys: pytest.CaptureFixture[str], db_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    conn = connect(db_path)
+    try:
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
+    finally:
+        conn.close()
+
+    run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    [started] = logged(caplog, "rebuild started")
+    assert started["allow_shrink"] is False
+    [finished] = logged(caplog, "rebuild finished")
+    assert (finished["outcome"], finished["signals_before"], finished["signals_after"]) == (
+        "ok",
+        7,
+        7,
+    )
+    assert isinstance(finished["duration_ms"], int)
+
+
+def test_cli_rebuild_logs_an_abort_as_an_error_then_its_end(
+    capsys: pytest.CaptureFixture[str], db_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    conn = connect(db_path)
+    try:
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
+        for obs_id in [row[0] for row in signal_rows(conn)]:
+            corrupt_payload(conn, obs_id)
+    finally:
+        conn.close()
+
+    run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    [aborted] = logged(caplog, "rebuild finished")
+    failed = aborted["failed"]
+    assert aborted["levelno"] == logging.ERROR and isinstance(failed, int) and failed > 0
+    assert aborted["outcome"] == "aborted" and aborted["exc_info"] is None
+    assert aborted["name"] == projection.__name__
+
+
+def test_cli_rebuild_logs_a_database_failure_with_its_traceback(
+    capsys: pytest.CaptureFixture[str],
+    db_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect(db_path).close()
+
+    def locked(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(projection, "rebuild_signals", locked)
+
+    code, _, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    assert code == 1 and "Traceback" not in err
+    [failed] = logged(caplog, "rebuild finished")
+    assert failed["levelno"] == logging.ERROR and failed["exc_info"] is not None
+    assert failed["outcome"] == "failed"
+
+
+def test_rebuild_logs_progress_at_each_fifth_of_the_observations(
+    big: sqlite3.Connection, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(signals_module, "MIN_PROGRESS_STEP", 1)
+    total = table_counts(big)["observations"]
+
+    rebuild_signals(big, AW)
+
+    step = math.ceil(total / PROGRESS_RECORDS)
+    scanned = [r["scanned"] for r in logged(caplog, "rebuild progress")]
+    assert scanned == list(range(step, total + 1, step))
