@@ -11,13 +11,16 @@ app.py         parser + dispatch: one entry per command
   |
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop), with
-  |                the backend heartbeat after each cycle
+  |                the backend heartbeat after each cycle, and spool deletion
+  |                held until a cycle completes while update asks for it
   +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts,
-  |                the install, its LaunchAgents, the backend's last cycle, the backups
-  |                and the watchdog's findings
+  |                the install and its last update, its LaunchAgents, the backend's
+  |                last cycle, the backups and the watchdog's findings
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
+  +-- update.py    update (to the newest passing commit, falling back on its own)
+  |                and rollback (to the previous version)
   +-- backup.py    backup (the day's backup, seven days kept) and restore (a backup
   |                put in place, the stable backend stopped and started around it)
   +-- watchdog.py  one watchdog run: check, notify, reopen ActivityWatch, and its
@@ -187,6 +190,92 @@ install failed: uv is not installed (install it with `brew install uv`) (nothing
 logs and the backups. Both commands reach launchctl, GitHub and `uv` only through the host
 adapter (`computer_history/host/`), so tests run them against a fake.
 
+## update and rollback — moving the stable install
+
+```bash
+computer-history update      # to the newest main commit that passed the release gate
+computer-history rollback    # back to the previous version; no network
+```
+
+`update` finds the newest `main` commit the release gate passes, as `install`
+does. When that is already `current` it says `Already up to date` and
+changes nothing. Otherwise it builds the commit beside the current version
+into `versions/<short commit>/` and smokes it (`--help`); a failed build or
+smoke removes that folder and changes nothing, as does being offline. Then it
+boots out the backend, takes the pre-update backup
+(`backups/pre-update/history-<local time>-<old version>.db`, the same SQLite
+online backup and integrity check as the daily one), writes
+`spool-deletion-held` beside the database, points `previous` at the old
+version and `current` at the new one, and loads the backend again. Only the
+backend restarts: the daily backup, the watchdog and the ActivityWatch login
+agent keep running (a fallback that restores the backup stops and starts the
+daily backup around it, as `restore` does).
+
+The new backend's `ingest --watch` sees `spool-deletion-held` and keeps every
+spool file it stores until a cycle completes with no failure; then it removes
+the file, and the next cycle reads the kept files again (all `skipped`, since
+`(source, source_id)` is unique) and deletes them as usual. `update` waits up
+to 300s for a heartbeat newer than the restart:
+
+- **ok**: it removes `spool-deletion-held`, deletes the version `previous`
+  pointed at before (one previous version is kept), logs `updated` and exits 0.
+- **failed, crashed or none in time** (a crash is launchd reporting a
+  different process, or none, after it had one): it boots the new backend out,
+  points `current` and `previous` back where they were, removes the hold,
+  restores the pre-update backup only when the database's schema version is no
+  longer the backup's (through `restore`, so the replaced database is set
+  aside, never deleted), loads the backend on the old version (which reads the
+  kept spool files again harmlessly), deletes the new version's folder,
+  posts a notification, logs `fell back` with the reason and exits 1.
+
+`rollback` swaps `current` and `previous` and restarts the backend; it needs
+no network and no build, and running it twice returns to where it started.
+It does not restore a backup: if the version you return to cannot open the
+database because the newer one migrated it, `restore` the pre-update backup.
+With no previous version it fails and changes nothing.
+
+Every update, fallback and rollback adds a JSON line to `update-log.jsonl`
+in the live folder (`{"at": ..., "action": "updated" | "fell back" | "rolled
+back", "from": ..., "to": ..., "reason": ...}`); `status` shows the last one.
+
+Real output through the CLI with the test suite's fake host adapter scripting
+check results, a clean first cycle and a crash, in a temporary home:
+
+```
+$ computer-history update
+Profile stable (version 572c48b), stable install .../ComputerHistory
+Already up to date: version 572c48b is current
+$ computer-history update
+Profile stable (version 572c48b), stable install .../ComputerHistory
+Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests, macos-capture-agent-e2e
+  skipped 9f0e1d2: unit failure
+Updated to version 8d23e3a (commit 8d23e3a222222222222222222222222222222222) from 572c48b
+  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T190300-572c48b.db (schema v5)
+  first cycle   completed; the backend deletes stored spool files again
+  current       .../ComputerHistory/current -> .../ComputerHistory/versions/8d23e3a
+  previous      572c48b (rollback returns to it)
+$ computer-history update          # exit 1
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests, macos-capture-agent-e2e
+Update to version 9f0e1d2 fell back to 8d23e3a: the backend crashed before its first ingest cycle completed
+  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T190301-8d23e3a.db (schema v5)
+  database      kept as it is (the schema did not change)
+  backend       restarted on 8d23e3a; it reads the spool files it kept again
+$ computer-history update          # exit 1
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+update failed: could not list main's newest commits from GitHub: offline (nothing was changed)
+$ computer-history rollback
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Rolled back to version 572c48b from 8d23e3a
+  previous      8d23e3a (rollback again returns to it)
+  backend       restarted
+```
+
+A failed first cycle says why, from the heartbeat (`its first ingest cycle
+failed: aw-window: ...`), and a schema change reads `restored <backup> (the
+new version changed the schema)`. A notification, restore or log write that
+fails does not stop the fallback; it is listed as a `warning:` line.
+
 ## backup and restore — the daily backup and putting one back
 
 ```bash
@@ -214,7 +303,7 @@ never the spool or the screenshots.
 slept when it wakes, and a Mac that was off takes the day's backup at login.
 Its log is `~/Library/Logs/computer-history/backup.log`.
 
-`update` (a later ticket) takes its own backup before it switches versions,
+`update` takes its own backup before it switches versions,
 into `backups/pre-update/history-<local time>-<version>.db`; the daily pruning
 never removes those.
 
@@ -367,7 +456,9 @@ ingested.
 `ax-text` and `screenshot` are the capture agent's spool, read in the same
 poll. Each stream stores its own records from each finished `*.jsonl` file in
 one commit, oldest first; the file is deleted once both streams have stored
-it. The agent's `open.part` and `agent.lock` are never touched. A stream's
+it. While `spool-deletion-held` sits beside the database (`update` writes it),
+`--watch` keeps stored files until a cycle completes with no failure, then
+removes the hold and deletes them once the next cycle has read them again. The agent's `open.part` and `agent.lock` are never touched. A stream's
 `rejected` counts lines of its own kinds that are not usable records (failing
 validation, or an unknown format version); a line whose kind cannot be read
 (not JSON, or a kind this backend does not know) belongs to neither stream and
@@ -427,7 +518,8 @@ Rows:
 Stable install:
   this run      stable
   current       572c48b, installed 2026-11-20 17:22 (2h 5m ago)
-  previous      none
+  previous      1f2e3d4, installed 2026-11-19 16:02 (1d 3h ago)
+  last update   updated 1f2e3d4 -> 572c48b, 2026-11-20 17:22 (2h 5m ago)
 
 Stable install's LaunchAgents:
   backend          loaded, running (pid 4242)  io.github.thewisepup.computer-history.ingest
@@ -460,6 +552,9 @@ install, whichever profile runs `status`; the backups are the database's own:
 
 - **Stable install**: this run's profile, and the version `current` and
   `previous` point at, with when its build finished; `none` before `install`.
+  `last update` is the update log's last line: `updated <from> -> <to>`,
+  `rolled back <from> -> <to>`, or `fell back <tried> -> <kept>, ...: <reason>`
+  (`none yet` before the first, `unreadable update log: ...` for a damaged one).
 - **Stable install's LaunchAgents**: what launchd says about the backend, the
   daily backup, the watchdog, the ActivityWatch login agent and the capture
   agent (the backup, the watchdog and the ActivityWatch opener are usually

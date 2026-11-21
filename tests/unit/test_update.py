@@ -476,3 +476,31 @@ def test_held_spool_files_are_read_again_harmlessly_after_a_fallback(
     assert stored_ids(layout.live / DATABASE_NAME) == stored
     assert code == 1, err
     assert "  ax-text     inserted      0  skipped      1  held back   0" in out
+
+
+def test_update_with_no_stable_install_says_to_install(
+    run: RunCli, live: Path, checkout: Path
+) -> None:
+    host = FakeHost(checks={NEWER: gate_runs()})
+
+    code, _, err = run(checkout, "update", host=host)
+
+    assert code == 1
+    assert err == f"update failed: there is no stable install in {live}; run install first\n"
+    assert changes(host) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    ['{"at": "2026-11-20T17:22:03", "action": "updated", "from": "a", "to": "b"}', "not json"],
+    ids=["naive time", "not json"],
+)
+def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, line: str) -> None:
+    layout.update_log.write_text(line + "\n")
+
+    _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
+
+    assert section(out, INSTALL)[-1] == (
+        f"  last update   unreadable update log: the last line of {layout.update_log} is not an"
+        " update log entry"
+    )

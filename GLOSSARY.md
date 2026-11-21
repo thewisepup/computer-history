@@ -66,6 +66,22 @@ _Avoid_: Prod folder, real folder
 The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable. `install` builds it from a commit that passed the release gate, and `current` points at the version in use.
 _Avoid_: Release, production build
 
+**Update**:
+Moving the stable install's `current` to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes a cycle on it with spool deletion held.
+_Avoid_: Upgrade, deploy, release
+
+**Fallback**:
+What an update does on its own when the new version's backend crashes, fails its first cycle or completes none in time: the old version back as `current`, the pre-update backup restored only when the schema changed.
+_Avoid_: Revert, auto-rollback
+
+**Rollback**:
+Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored.
+_Avoid_: Downgrade, revert
+
+**Update log**:
+`update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
+_Avoid_: Changelog, audit log
+
 **Profile**:
 Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
 _Avoid_: Mode, environment
