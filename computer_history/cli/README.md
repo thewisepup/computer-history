@@ -14,6 +14,7 @@ app.py         parser + dispatch: one entry per command
   +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
+  +-- logs.py      the JSON log's records, filtered, as text or raw lines
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
   |                dev perf: the performance gate against the committed baseline;
   |                dev bench: wall-clock timings against this machine's last ones
@@ -492,6 +493,42 @@ it. It exits 0 either way; only a run that can't happen at all exits 1. The nigh
 CI run keeps no baseline, since each night lands on a different VM, so there it
 reports medians only.
 
+## logs — what the commands did
+
+```bash
+computer-history logs --since 1h               # 30m, 2h, 1d, or an ISO date/datetime
+computer-history logs --level error            # this level and above
+computer-history logs --run bef0fb32           # one run: one command invocation
+computer-history logs --logger sources         # a logger and those below it
+computer-history logs --level error --json     # the raw JSON lines
+```
+
+Every command logs to stderr as text and to `computer-history.jsonl` in
+`$COMPUTER_HISTORY_LOG_DIR`, else `~/Library/Logs/computer-history/`. The file
+rotates at 10 MB and keeps 5 old files; `logs` reads them all, oldest first.
+Each record carries `ts` (UTC), `level`, `logger`, `msg`, `run` (an id per
+invocation), `cmd`, its fields, and `exc` for a traceback. Real output:
+
+```
+2026-11-20 16:12:54 INFO    cli.ingest [ingest --watch bef0fb32]  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=21
+2026-11-20 16:13:54 ERROR   cli.ingest [ingest --watch bef0fb32]  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=1
+  | Traceback (most recent call last):
+  |   File ".../computer_history/sources/runner.py", line 88, in poll
+  |     _poll_stream(conn, source, stream, project, outcomes, now=at)
+  ...
+  | sqlite3.OperationalError: no such table: ingest_progress
+```
+
+```json
+{"ts": "2026-11-21T00:13:54.903+00:00", "level": "error", "logger": "computer_history.cli.ingest", "msg": "cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress", "run": "bef0fb32", "cmd": "ingest --watch", "duration_ms": 1, "streams": {}, "failures": [{"stream": "aw-afk", "kind": "database busy", "error": "no such table: ingest_progress"}], "retry_s": 60, "streak": 1, "exc": "Traceback (most recent call last):\n ..."}
+```
+
+Text output shows only plain fields; nested ones (`streams`, `failures`) are in
+the JSON. Control characters in any value are escaped, so a record is one
+line. Window titles, URLs and captured text appear only in DEBUG records. A
+command that crashes logs `command crashed` as CRITICAL with its traceback and
+exits 1. With no log yet, `logs` says `no log records yet in <folder>`.
+
 ## When the database can't be used
 
 Every command opens the store the same way and refuses, with exit code 1 and
@@ -516,6 +553,16 @@ is created by `ingest` and `backfill` (only once planning succeeds), shown as
 computer-history --db-path /tmp/scratch.db ingest   # or $COMPUTER_HISTORY_DB
 computer-history status --aw-url http://127.0.0.1:5666/api/0
 computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
+computer-history --log-level debug ingest           # or $COMPUTER_HISTORY_LOG_LEVEL
+```
+
+`--log-level` (`debug`, `info`, `warning`, `error`) sets the lowest level
+logged, to stderr and to the JSON log. Without it the file gets INFO and
+stderr WARNING, since each command prints its own report; `ingest --watch`
+logs INFO to stderr too, as stderr is its log. At DEBUG, stderr shows
+tracebacks; otherwise it shows an exception's last line and the JSON log keeps
+the traceback.
+
 Every command but `dev` takes `--db-path`; the networked ones (`ingest`, `status`,
 `backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch

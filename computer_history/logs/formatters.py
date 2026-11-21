@@ -59,7 +59,10 @@ class TextFormatter(_DocFormatter):
 def text_line(
     doc: Mapping[str, object], *, with_run: bool = False, tracebacks: bool = True
 ) -> str:
-    """One JSON log record as a text line, with its traceback indented below or its last line."""
+    """One JSON log record as a text line, its traceback indented below it.
+
+    Without tracebacks, only a crash keeps its traceback and other records show its last line.
+    """
     ts = datetime.fromisoformat(str(doc.get("ts"))).astimezone().strftime(_TEXT_TIME)
     level = str(doc.get("level", "")).upper()
     logger = str(doc.get("logger", "")).removeprefix(_PACKAGE_PREFIX)
@@ -75,7 +78,7 @@ def text_line(
     if fields:
         line += f"  {fields}"
     exc = doc.get("exc")
-    if isinstance(exc, str) and tracebacks:
+    if isinstance(exc, str) and (tracebacks or doc.get("level") == "critical"):
         line += "".join(f"\n  | {escape(part)}" for part in exc.splitlines())
     elif isinstance(exc, str):
         line += f"  exc={_value(exc.splitlines()[-1] if exc else exc)}"

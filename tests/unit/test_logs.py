@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from computer_history.cli import app as cli_app
 from computer_history.cli import main
 from computer_history.logs import (
     LOG_BACKUPS,
@@ -181,3 +182,20 @@ def test_the_log_file_rotates_within_its_bound(
     assert len(files) == LOG_BACKUPS + 1 and files[-1].name == LOG_FILE_NAME
     assert all(path.stat().st_size <= 2_000 for path in files)
     assert records(log_dir)[-1]["n"] == 499
+
+
+def test_a_crashing_command_logs_its_traceback_and_exits_one(
+    log_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def crash(args: object) -> int:
+        raise RuntimeError("no such table: ingest_progress")
+
+    monkeypatch.setitem(cli_app.HANDLERS, "status", crash)
+
+    assert main(["status"]) == 1
+
+    err = capsys.readouterr().err
+    assert "CRITICAL cli.app  command crashed" in err
+    assert "  | RuntimeError: no such table: ingest_progress" in err
+    [crashed] = records(log_dir)
+    assert crashed["level"] == "critical" and "RuntimeError" in str(crashed["exc"])

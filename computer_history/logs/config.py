@@ -71,7 +71,7 @@ def configure(command: str, *, level: int, stderr_level: int, log_dir: Path) -> 
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         file = logging.handlers.RotatingFileHandler(
-            path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUPS, encoding="utf-8"
+            path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUPS, encoding="utf-8", delay=True
         )
     except OSError as exc:
         log.warning("log file unavailable", extra={"path": str(path), "error": str(exc)})
