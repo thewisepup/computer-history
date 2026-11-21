@@ -33,12 +33,16 @@ Finish = Callable[[Path], object]
 
 
 class CaptureSpool:
-    """Reads the capture agent's finished spool files for the ingest runner, oldest first."""
+    """Reads the capture agent's finished spool files for the ingest runner, oldest first.
+
+    While deletion is held, stored files stay in the spool and are read again once it resumes.
+    """
 
     projectors = PROJECTORS
 
-    def __init__(self, folder: Path) -> None:
+    def __init__(self, folder: Path, *, hold_deletion: bool = False) -> None:
         self.folder = folder
+        self.holding_deletion = hold_deletion
         self._listed: dict[str, deque[Path]] = {stream: deque() for stream in STREAM_KINDS}
         self._stored: dict[tuple[Path, FileIdentity], set[str]] = {}
         self._unreadable: dict[Path, set[str]] = {}
@@ -46,6 +50,9 @@ class CaptureSpool:
 
     def streams(self) -> list[str]:
         return list(STREAM_KINDS)
+
+    def resume_deletion(self) -> None:
+        self.holding_deletion = False
 
     def pull_after(self, stream: str, position: str | None, *, now: datetime) -> Pull:
         """The oldest finished file's records for the stream, and the latest capture time by now."""
@@ -127,6 +134,8 @@ class CaptureSpool:
 
     def _finish(self, stream: str, path: Path, finish: Finish) -> None:
         self._drop(stream, path)
+        if self.holding_deletion:
+            return
         try:
             finish(path)
         except SpoolError:

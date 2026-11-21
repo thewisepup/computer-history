@@ -16,6 +16,7 @@ from computer_history.cli.install import cmd_install, cmd_uninstall
 from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
+from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.host import Host, LiveHost
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 from computer_history.store import (
@@ -30,7 +31,7 @@ CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 DATABASE_COMMANDS = frozenset(
     {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore"}
 )
-INSTALL_COMMANDS = frozenset({"install", "uninstall"})
+INSTALL_COMMANDS = frozenset({"install", "uninstall", "update", "rollback"})
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -50,6 +51,12 @@ COMMANDS = {
         "Put a backup in the database's place: the stable install stops its backend first and"
         " starts it again after. The current database is set aside, never deleted."
     ),
+    "update": (
+        "Move the stable install to the newest main commit that passed the release gate: back"
+        " up the database, restart the backend on it, and fall back on its own if its first"
+        " ingest cycle does not complete."
+    ),
+    "rollback": "Switch the stable install back to its previous version (no network needed).",
     "install": (
         "Set up the stable install from the newest main commit that passed the release gate,"
         " and start the backend at login from it (safe to re-run)."
@@ -69,6 +76,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "backfill": cmd_backfill,
     "backup": cmd_backup,
     "restore": cmd_restore,
+    "update": cmd_update,
+    "rollback": cmd_rollback,
     "install": cmd_install,
     "uninstall": cmd_uninstall,
     "dev": cmd_dev,

@@ -27,6 +27,7 @@ from computer_history.store.db import (
     load_migrations,
     migrate,
     schema_version,
+    stored_schema_version,
     supported_version,
     transaction,
 )
@@ -59,6 +60,7 @@ from computer_history.store.paths import (
     resolve_dev_db_path,
     running_code,
     sidecars,
+    spool_hold_path,
 )
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.screenshots import (
@@ -168,8 +170,10 @@ __all__ = [
     "screenshot_totals",
     "sidecars",
     "source_summary",
+    "spool_hold_path",
     "sqlite_build",
     "status_reads",
+    "stored_schema_version",
     "supported_version",
     "table_counts",
     "to_utc",

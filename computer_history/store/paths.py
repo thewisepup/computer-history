@@ -13,6 +13,7 @@ DEV_FOLDER_NAME = "ComputerHistory-dev"
 VERSIONS_FOLDER_NAME = "versions"
 INSTALL_MARKER_NAME = "installed"
 SHORT_COMMIT_LENGTH = 7
+SPOOL_HOLD_NAME = "spool-deletion-held"
 SHARED_MEMORY_SUFFIX = "-shm"
 SIDECARS = ("-wal", SHARED_MEMORY_SUFFIX, "-journal")
 
@@ -71,6 +72,11 @@ def sidecars(db_path: Path) -> tuple[Path, ...]:
 def existing_database_files(db_path: Path) -> list[Path]:
     """The database file and its journal files that already exist, dangling links included."""
     return [path for path in (db_path, *sidecars(db_path)) if path.exists() or path.is_symlink()]
+
+
+def spool_hold_path(db_path: Path) -> Path:
+    """The file beside the database telling the backend to keep spool files until a cycle is ok."""
+    return db_path.parent / SPOOL_HOLD_NAME
 
 
 def default_db_path(profile: Profile) -> Path:

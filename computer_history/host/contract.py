@@ -40,7 +40,7 @@ class JobState:
 
 
 class Host(Protocol):
-    """Everything that touches macOS or the network: launchctl, GitHub and building with uv."""
+    """Everything that touches macOS or the network: launchctl, GitHub, uv and notifications."""
 
     def main_commits(self, limit: int) -> list[str]:
         """The newest commits on main, newest first."""
@@ -67,4 +67,8 @@ class Host(Protocol):
 
     def unload(self, label: str) -> None:
         """Boot a loaded LaunchAgent out of the login session, stopping its process."""
+        ...
+
+    def notify(self, title: str, message: str) -> None:
+        """Post a user notification."""
         ...

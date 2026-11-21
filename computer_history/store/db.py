@@ -110,6 +110,15 @@ def schema_version(conn: sqlite3.Connection) -> int:
     return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
+def stored_schema_version(db_path: Path) -> int:
+    """The schema version a database file holds, read without migrating it."""
+    conn = connect_readonly(db_path)
+    try:
+        return schema_version(conn)
+    finally:
+        conn.close()
+
+
 def supported_version() -> int:
     """The schema version this code migrates databases to."""
     return load_migrations()[-1].version

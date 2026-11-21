@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import plistlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 from computer_history.host import CheckOutcome, CheckRun, HostError, JobBusy, JobState
-from computer_history.stable import PACKAGES_FILE_NAME, RELEASE_GATE, STOPGAP_LABEL, Layout
+from computer_history.sources import write_backend_heartbeat
+from computer_history.stable import (
+    BACKEND,
+    PACKAGES_FILE_NAME,
+    RELEASE_GATE,
+    STOPGAP_LABEL,
+    Layout,
+)
 
 FAKE_PYTHON = "python3.12"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
@@ -32,8 +40,30 @@ def write_stopgap_plist(layout: Layout) -> Path:
     return plist
 
 
+BackendStart = Callable[["FakeHost"], None]
+
+
+def completes_a_cycle(heartbeat: Path, *, ok: bool = True) -> BackendStart:
+    """A backend that runs its first ingest cycle at once and writes the heartbeat for it."""
+
+    def start(_: FakeHost) -> None:
+        write_backend_heartbeat(heartbeat, datetime.now(UTC), ok)
+
+    return start
+
+
+def crashes(host: FakeHost) -> None:
+    """A backend whose process exits after launchd is first asked about it."""
+    host.crashing = True
+
+
+def stays_silent(_: FakeHost) -> None:
+    """A backend that runs but never completes a cycle."""
+
+
 class FakeHost:
-    """Commits and check runs as scripted, a build that lays out a venv, and launchd as a dict.
+    """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, the
+    backend's starts as scripted, and notifications as a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -50,6 +80,8 @@ class FakeHost:
         job_error: str | None = None,
         unload_lingers: int = 0,
         busy_loads: int = 0,
+        backend_starts: Iterable[BackendStart] = (),
+        notify_error: str | None = None,
     ) -> None:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
@@ -60,6 +92,10 @@ class FakeHost:
         self.unload_lingers = unload_lingers
         self.busy_loads = busy_loads
         self.lingering: dict[str, int] = {}
+        self.backend_starts = list(backend_starts)
+        self.crashing = False
+        self.notify_error = notify_error
+        self.notifications: list[tuple[str, str]] = []
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -92,7 +128,11 @@ class FakeHost:
         if self.lingering.get(label, 0) > 0:
             self.lingering[label] -= 1
             return JobState(loaded=True)
-        return self.jobs.get(label, JobState(loaded=False))
+        state = self.jobs.get(label, JobState(loaded=False))
+        if label == BACKEND.label and self.crashing and state.loaded:
+            self.crashing = False
+            self.jobs[label] = JobState(loaded=True)
+        return state
 
     def load(self, plist: Path) -> None:
         label = str(plistlib.loads(plist.read_bytes())["Label"])
@@ -106,9 +146,17 @@ class FakeHost:
         if label in self.jobs:
             raise HostError(f"{label} is already loaded")
         self.jobs[label] = JobState(loaded=True, pid=200 + len(self.calls))
+        if label == BACKEND.label and self.backend_starts:
+            self.backend_starts.pop(0)(self)
 
     def unload(self, label: str) -> None:
         self.calls.append(("unload", label))
         if self.jobs.pop(label, None) is None:
             raise HostError(f"{label} is not loaded")
         self.lingering[label] = self.unload_lingers
+
+    def notify(self, title: str, message: str) -> None:
+        self.calls.append(("notify", message))
+        if self.notify_error is not None:
+            raise HostError(self.notify_error)
+        self.notifications.append((title, message))

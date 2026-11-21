@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.host import Host, HostError
-from computer_history.stable.gate import COMMITS_SEARCHED, GateVerdict, newest_passing
+from computer_history.stable.gate import GateVerdict, newest_passing, none_passed
 from computer_history.stable.launch_agents import (
     STABLE_AGENTS,
     STOPGAP_LABEL,
@@ -64,7 +64,7 @@ def install(
         try:
             search = newest_passing(host)
             if search.chosen is None:
-                raise InstallFailed(f"{_none_passed(search.skipped)} ({NOTHING_CHANGED})")
+                raise InstallFailed(f"{none_passed(search.skipped)} ({NOTHING_CHANGED})")
             built, skipped = search.chosen.commit, search.skipped
             make_current(host, layout, built)
         except (HostError, OSError) as exc:
@@ -118,13 +118,6 @@ def uninstall(host: Host, layout: Layout) -> UninstallReport:
     except (HostError, OSError) as exc:
         raise InstallFailed(f"{exc} (run uninstall again to finish)") from exc
     return UninstallReport(tuple(removed))
-
-
-def _none_passed(skipped: tuple[GateVerdict, ...]) -> str:
-    found = f"no commit among the newest {COMMITS_SEARCHED} on main passed the release gate"
-    if not skipped:
-        return f"{found}: main has no commits"
-    return f"{found}; the newest, {skipped[0].commit}, has {skipped[0].summary}"
 
 
 def _ours(layout: Layout) -> bool:

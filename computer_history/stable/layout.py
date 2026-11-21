@@ -10,6 +10,7 @@ CURRENT_POINTER_NAME = "current"
 PREVIOUS_POINTER_NAME = "previous"
 VENV_FOLDER_NAME = "venv"
 PACKAGES_FILE_NAME = "packages.txt"
+UPDATE_LOG_NAME = "update-log.jsonl"
 LABEL_PREFIX = "io.github.thewisepup.computer-history"
 CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
 CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
@@ -17,7 +18,8 @@ CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
 
 @dataclass(frozen=True)
 class Layout:
-    """Where the stable install keeps its versions, pointers, PATH link, LaunchAgents and logs."""
+    """Where the stable install keeps its versions, pointers, update log, PATH link, LaunchAgents
+    and logs."""
 
     live: Path
     home: Path
@@ -33,6 +35,10 @@ class Layout:
     @property
     def previous(self) -> Path:
         return self.live / PREVIOUS_POINTER_NAME
+
+    @property
+    def update_log(self) -> Path:
+        return self.live / UPDATE_LOG_NAME
 
     @property
     def link(self) -> Path:
