@@ -70,7 +70,7 @@ def install(
     try:
         layout.link.parent.mkdir(parents=True, exist_ok=True)
         replace_symlink(layout.link, layout.command(layout.current))
-        retired = remove_agent(host, STOPGAP_LABEL, stopgap_plist(layout))
+        retired = remove_agent(host, STOPGAP_LABEL, stopgap_plist(layout), sleep=sleep)
         for agent in STABLE_AGENTS:
             load_agent(host, layout, agent, sleep=sleep)
     except (HostError, OSError) as exc:
@@ -93,7 +93,9 @@ def link_on_path(link: Path, path: str) -> bool:
     )
 
 
-def uninstall(host: Host, layout: Layout) -> UninstallReport:
+def uninstall(
+    host: Host, layout: Layout, *, sleep: Callable[[float], None] = time.sleep
+) -> UninstallReport:
     """Boot out and remove the LaunchAgents, the PATH link, the pointers and every version.
 
     The database, spool, screenshots, config and logs stay.
@@ -101,7 +103,7 @@ def uninstall(host: Host, layout: Layout) -> UninstallReport:
     removed: list[Path] = []
     try:
         for agent in STABLE_AGENTS:
-            if remove_agent(host, agent.label, agent.plist(layout)):
+            if remove_agent(host, agent.label, agent.plist(layout), sleep=sleep):
                 removed.append(agent.plist(layout))
         if _ours(layout):
             layout.link.unlink()

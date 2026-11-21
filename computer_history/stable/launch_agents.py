@@ -157,11 +157,15 @@ def start_agent(host: Host, plist: Path, *, sleep: Callable[[float], None] = tim
             sleep(LOAD_RETRY_SECONDS)
 
 
-def remove_agent(host: Host, label: str, plist: Path) -> bool:
-    """Boot out a LaunchAgent and delete its plist; returns whether there was anything to remove."""
+def remove_agent(
+    host: Host, label: str, plist: Path, *, sleep: Callable[[float], None] = time.sleep
+) -> bool:
+    """Boot out a LaunchAgent, wait until launchd no longer has it, and delete its plist.
+
+    Returns whether there was anything to remove.
+    """
     found = plist.exists()
-    if host.job(label).loaded:
-        host.unload(label)
+    if stop_if_loaded(host, label, sleep=sleep):
         found = True
     plist.unlink(missing_ok=True)
     return found

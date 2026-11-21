@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -29,7 +31,7 @@ from computer_history.stable import (
     stable_layout,
     version_name,
 )
-from computer_history.stable.updates import waiting
+from computer_history.stable.updates import preparing, waiting
 from computer_history.store import DATABASE_NAME, sidecars, spool_hold_path
 
 OLDEST = "a" * 40
@@ -593,6 +595,12 @@ def test_a_fallback_that_cannot_stop_the_new_backend_keeps_its_folder(
         " ".join(out)
     )
     assert f"  warning: kept {new_folder}, since its backend or a pointer may still use it" in out
+    hold = spool_hold_path(layout.database)
+    assert hold.exists()
+    assert (
+        f"  warning: kept the spool hold {hold}, since the new backend may still run; the"
+        " backend's next ok cycle removes it"
+    ) in out
 
 
 def test_a_fallback_that_cannot_point_current_back_keeps_the_new_version_runnable(
@@ -671,3 +679,58 @@ def test_a_rollback_that_cannot_point_previous_keeps_current_on_the_newer_versio
     )
     assert layout.current.resolve().name == version_name(NEWER)
     assert layout.previous.resolve().name == version_name(OLDER)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM], ids=["ctrl-c", "sigterm"])
+def test_an_interrupt_during_the_pre_update_backup_changes_nothing_and_restarts_the_backend(
+    run: RunCli, layout: Layout, monkeypatch: pytest.MonkeyPatch, signum: signal.Signals
+) -> None:
+    def interrupted_backup(*args: object, **kwargs: object) -> None:
+        os.kill(os.getpid(), signum)
+
+    monkeypatch.setattr(preparing, "take_pre_update_backup", interrupted_backup)
+    host = updating(layout)
+    before = install_state(layout)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 130
+    assert out[1:] == []
+    assert err == "update interrupted before switching versions (nothing was changed)\n"
+    assert install_state(layout) == before
+    assert host.jobs[BACKEND.label].loaded
+
+
+class InterruptedFallback(FakeHost):
+    """A host whose second start of the backend, the fallback's, arrives with a Ctrl-C."""
+
+    def __init__(self, **options: object) -> None:
+        super().__init__(**options)  # type: ignore[arg-type]
+        self.backend_loads = 0
+
+    def load(self, plist: Path) -> None:
+        super().load(plist)
+        if plist.name == f"{BACKEND.label}.plist":
+            self.backend_loads += 1
+            if self.backend_loads == 2:
+                os.kill(os.getpid(), signal.SIGINT)
+
+
+def test_an_interrupt_during_a_fallback_lets_it_finish_then_exits_130(
+    run: RunCli, layout: Layout
+) -> None:
+    host = InterruptedFallback(
+        checks={NEWER: gate_runs(), OLDER: gate_runs()},
+        loaded=[BACKEND.label],
+        backend_starts=[crashes],
+    )
+
+    code, out, _ = run(stable_code(layout), "update", host=host)
+
+    assert code == 130
+    assert out[2].startswith(f"Update to version {version_name(NEWER)} fell back: ")
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert sorted(path.name for path in layout.versions.iterdir()) == [version_name(OLDER)]
+    assert log_lines(layout)[-1]["action"] == "fell back"
+    assert len(host.notifications) == 1
+    assert host.jobs[BACKEND.label].loaded

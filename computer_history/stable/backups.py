@@ -15,6 +15,7 @@ from computer_history.host import Host, HostError
 from computer_history.stable.launch_agents import (
     BACKEND,
     DAILY_BACKUP,
+    WATCHDOG,
     LaunchAgent,
     start_agent,
     stop_agent,
@@ -40,7 +41,7 @@ DAILY_NAME = re.compile(r"^history-(\d{4}-\d{2}-\d{2})\.db$")
 PRE_UPDATE_NAME = re.compile(r"^history-.+\.db$")
 SQLITE_HEADER = b"SQLite format 3\x00"
 COPY_FAILURES = (OSError, sqlite3.Error, RuntimeError)
-STOPPED_FOR_RESTORE = (DAILY_BACKUP, BACKEND)
+STOPPED_FOR_RESTORE = (DAILY_BACKUP, WATCHDOG, BACKEND)
 
 
 class BackupFailed(Exception):
@@ -239,7 +240,8 @@ def restore_backup(
 ) -> Restored:
     """Put a day's daily backup, or a backup file, in the database's place, setting it aside.
 
-    For the live database the backend and the daily backup are stopped first and started after.
+    For the live database the backend, the watchdog and the daily backup are stopped first and
+    started after.
     """
     source = find_daily_backup(database, backup) if isinstance(backup, date) else backup
     if not source.is_file():
@@ -290,7 +292,9 @@ def _unchanged(
         return f"{NOTHING_CHANGED} to the database, but {failed}; run install to start them"
     if not stopped:
         return NOTHING_CHANGED
-    return f"{NOTHING_CHANGED}; {' and '.join(agent.name for agent in stopped)} started again"
+    names = [agent.name for agent in stopped]
+    started = " and ".join(filter(None, (", ".join(names[:-1]), names[-1])))
+    return f"{NOTHING_CHANGED}; {started} started again"
 
 
 def _start_again(
