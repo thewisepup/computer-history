@@ -283,6 +283,20 @@ range covers all its history); existing progress is never moved. A source
 whose progress has no settled time is backfilled up to now and its progress
 is left alone.
 
+The JSON log gets one `backfill started` record (streams, chunks, range), a
+`backfill progress` record at each fifth of the chunks (about 4 for a 51-day
+backfill of three sources), `backfill failed` with its traceback if it stops,
+and `backfill finished` with the totals and `duration_ms` however it ends.
+Each chunk is a DEBUG record. Real output (`computer-history logs --logger
+sources.backfill`):
+
+```
+2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill started  chunks=3 start=2026-11-17T08:00:00+00:00 end=2026-11-21T00:20:54.952761+00:00
+2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill progress  chunks_done=1 chunks=3 inserted=0
+2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill progress  chunks_done=2 chunks=3 inserted=0
+2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill finished  outcome=ok chunks_done=3 chunks=3 inserted=0 skipped=25 held_back=0 duration_ms=4
+```
+
 ## rebuild-signals — regenerate the derived layer
 
 ```bash
@@ -309,6 +323,11 @@ for:
 rebuild-signals aborted: no source adapter projects 'screenshot', the source of 12 stored observations (first id: 7); rolled back, signals unchanged
   this computer-history has no adapter for that source; rebuild with the version that ingested it
 ```
+
+The JSON log gets `rebuild started`, a `rebuild progress` record at each fifth
+of the observations (only past 10,000 of them), `rebuild aborted` or `rebuild
+failed` as an ERROR, and `rebuild finished` with the counts, `outcome` and
+`duration_ms`.
 
 ## dev build-db — a database of synthetic history
 

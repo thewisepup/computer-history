@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -13,6 +14,7 @@ from log_records import logged
 from projectors import AW
 
 from computer_history import cli
+from computer_history.cli import rebuild as cli_rebuild
 from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
@@ -24,6 +26,7 @@ from computer_history.store import (
     RebuildAborted,
     connect,
     rebuild_signals,
+    table_counts,
     transaction,
 )
 from computer_history.store import signals as signals_module
@@ -486,3 +489,79 @@ def test_cli_rebuild_signals_allow_shrink(
     code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals", "--allow-shrink")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
+
+
+def test_cli_rebuild_logs_its_start_and_its_end_with_the_counts(
+    capsys: pytest.CaptureFixture[str], db_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    conn = connect(db_path)
+    try:
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
+    finally:
+        conn.close()
+
+    run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    [started] = logged(caplog, "rebuild started")
+    assert started["allow_shrink"] is False
+    [finished] = logged(caplog, "rebuild finished")
+    assert (finished["outcome"], finished["signals_before"], finished["signals_after"]) == (
+        "ok",
+        7,
+        7,
+    )
+    assert isinstance(finished["duration_ms"], int)
+
+
+def test_cli_rebuild_logs_an_abort_as_an_error_then_its_end(
+    capsys: pytest.CaptureFixture[str], db_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    conn = connect(db_path)
+    try:
+        poll(conn, [ActivityWatch(fixture_aw())], now=at(30))
+        for obs_id in [row[0] for row in signal_rows(conn)]:
+            corrupt_payload(conn, obs_id)
+    finally:
+        conn.close()
+
+    run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    [aborted] = logged(caplog, "rebuild aborted")
+    failed = aborted["failed"]
+    assert aborted["levelno"] == logging.ERROR and isinstance(failed, int) and failed > 0
+    assert [r["outcome"] for r in logged(caplog, "rebuild finished")] == ["aborted"]
+
+
+def test_cli_rebuild_logs_a_database_failure_with_its_traceback(
+    capsys: pytest.CaptureFixture[str],
+    db_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect(db_path).close()
+
+    def locked(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(cli_rebuild, "reproject_signals", locked)
+
+    code, _, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
+
+    assert code == 1 and "Traceback" not in err
+    [failed] = logged(caplog, "rebuild failed")
+    assert failed["levelno"] == logging.ERROR and failed["exc_info"] is not None
+    assert [r["outcome"] for r in logged(caplog, "rebuild finished")] == ["failed"]
+
+
+def test_rebuild_logs_progress_at_each_fifth_of_the_observations(
+    big: sqlite3.Connection, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(signals_module, "MIN_PROGRESS_STEP", 1)
+    total = table_counts(big)["observations"]
+
+    rebuild_signals(big, AW)
+
+    step = math.ceil(total / signals_module.PROGRESS_RECORDS)
+    scanned = [r["scanned"] for r in logged(caplog, "rebuild progress")]
+    assert scanned == list(range(step, total + 1, step))

@@ -65,6 +65,7 @@ from computer_history.sources.agent_health import (
 )
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
+    PROGRESS_RECORDS,
     BackfillPlan,
     BackfillProgress,
     BackfillResult,
@@ -197,6 +198,7 @@ __all__ = [
     "read_health",
     "write_health",
     "BACKFILL_CHUNK",
+    "PROGRESS_RECORDS",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",

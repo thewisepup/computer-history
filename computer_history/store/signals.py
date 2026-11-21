@@ -6,6 +6,7 @@ Signals come from a projector the caller passes. Observations are only read, nev
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ MAX_FAILURE_RATIO = 0.5
 MIN_KEPT_RATIO = 0.5
 SHRINK_CHECK_MIN_SIGNALS = 50
 MAX_LOGGED_FAILURES = 20
+PROGRESS_RECORDS = 5
+MIN_PROGRESS_STEP = 10_000
 
 
 @dataclass(frozen=True)
@@ -130,11 +133,17 @@ def rebuild_signals(
         before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
         total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
         conn.execute("DELETE FROM signals")
+        step = max(MIN_PROGRESS_STEP, math.ceil(total / PROGRESS_RECORDS))
         rows = conn.execute(
             "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id"
         )
         for observation_id, source, started_at, ended_at, payload in rows:
             scanned += 1
+            if scanned % step == 0:
+                log.info(
+                    "rebuild progress",
+                    extra={"scanned": scanned, "observations": total, "projected": projected},
+                )
             try:
                 signal = project(source, payload)
             except UnclaimedSource as exc:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import math
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -19,6 +21,7 @@ from computer_history.store import Progress, Projector, UnclaimedSource, get_pro
 
 __all__ = [
     "BACKFILL_CHUNK",
+    "PROGRESS_RECORDS",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",
@@ -32,6 +35,9 @@ __all__ = [
 ]
 
 BACKFILL_CHUNK = timedelta(days=7)
+PROGRESS_RECORDS = 5
+
+log = logging.getLogger(__name__)
 
 Clock = Callable[[], datetime]
 
@@ -225,19 +231,87 @@ def run_backfill(
     project = projector_for([source])
     results: list[BackfillResult] = []
     stream = None
+    total = sum(len(plan.chunks) for plan in plans)
+    step = max(1, math.ceil(total / PROGRESS_RECORDS))
+    began = clock()
+    outcome = "crashed"
+    planned = [plan for plan in plans if plan.chunks]
+    log.info(
+        "backfill started",
+        extra={
+            "streams": [plan.stream for plan in planned],
+            "chunks": total,
+            "start": min((p.chunks[0].start for p in planned), default=began).isoformat(),
+            "end": max((p.chunks[-1].end for p in planned), default=began).isoformat(),
+        },
+    )
+
+    def chunk_done(done: ChunkDone) -> None:
+        log.debug(
+            "chunk committed",
+            extra={
+                "stream": done.stream,
+                "chunk": done.index + 1,
+                "of": done.total,
+                "start": done.chunk.start.isoformat(),
+                "inserted": done.inserted,
+                "skipped": done.skipped,
+                "held_back": done.held_back,
+                "duration_ms": round(done.seconds * 1000),
+            },
+        )
+        committed = sum(result.chunks_done for result in results)
+        if committed % step == 0 and committed < total:
+            log.info(
+                "backfill progress",
+                extra={
+                    "chunks_done": committed,
+                    "chunks": total,
+                    "inserted": sum(result.inserted for result in results),
+                },
+            )
+        if on_chunk is not None:
+            on_chunk(done)
+
     try:
         for plan in plans:
             if not plan.chunks:
                 continue
             stream = plan.stream
             results.append(BackfillResult(plan))
-            _backfill_stream(conn, source, project, results[-1], clock, on_chunk)
+            _backfill_stream(conn, source, project, results[-1], clock, chunk_done)
             if on_stream is not None:
                 on_stream(results[-1])
+        outcome = "ok"
     except (SourceUnavailable, sqlite3.Error, UnclaimedSource, StrayObservation) as exc:
+        outcome = "failed"
+        log.exception("backfill failed", extra={"stream": stream})
         return BackfillRun(_committed(results), failure_of(stream, exc))
     except KeyboardInterrupt:
+        outcome = "interrupted"
+        log.warning("backfill interrupted", extra={"stream": stream})
         return BackfillRun(_committed(results), interrupted=True)
+    finally:
+        log.info(
+            "backfill finished",
+            extra={
+                "outcome": outcome,
+                "chunks_done": sum(result.chunks_done for result in results),
+                "chunks": total,
+                "inserted": sum(result.inserted for result in results),
+                "skipped": sum(result.skipped for result in results),
+                "held_back": sum(result.held_back for result in results),
+                "duration_ms": round((clock() - began).total_seconds() * 1000),
+                "streams": {
+                    result.stream: {
+                        "chunks_done": result.chunks_done,
+                        "inserted": result.inserted,
+                        "progress": None if result.progress is None else result.progress.value,
+                    }
+                    for result in results
+                },
+            },
+        )
     return BackfillRun(tuple(results))
 
 
