@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import plistlib
+import shutil
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+import computer_history.store
 from computer_history.host import CheckOutcome, CheckRun, HostError, JobBusy, JobState
 from computer_history.sources import IngestHealth, write_health
 from computer_history.stable import (
@@ -18,6 +20,7 @@ from computer_history.stable import (
 )
 
 FAKE_PYTHON = "python3.12"
+MIGRATIONS = Path(computer_history.store.__file__).parent / "migrations"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
 
 
@@ -139,6 +142,7 @@ class FakeHost:
             raise HostError(self.build_error)
         (venv / "bin" / "computer-history").write_text("#!/bin/sh\n")
         installed_package(venv).mkdir(parents=True)
+        shutil.copytree(MIGRATIONS, installed_package(venv) / "store" / "migrations")
         if self.build_blocks_packages:
             (venv.parent / PACKAGES_FILE_NAME).mkdir()
         return f"computer-history @ git+https://example.invalid/repo@{commit}\n"

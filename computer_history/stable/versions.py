@@ -12,8 +12,11 @@ from computer_history.store import (
     INSTALL_MARKER_NAME,
     SHORT_COMMIT_LENGTH,
     VERSIONS_FOLDER_NAME,
+    load_migrations,
     replace_atomically,
 )
+
+PACKAGE_MIGRATIONS = "lib/python*/site-packages/computer_history/store/migrations"
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,18 @@ def pointed(pointer: Path) -> InstalledVersion | None:
     if not marker.is_file():
         return None
     return InstalledVersion(marker.parent.name, datetime.fromtimestamp(marker.stat().st_mtime, UTC))
+
+
+def supported_schema(layout: Layout, name: str) -> int | None:
+    """The newest schema version a version folder's code migrates to, or None if it can't tell."""
+    found = sorted((layout.versions / name / VENV_FOLDER_NAME).glob(PACKAGE_MIGRATIONS))
+    if not found:
+        return None
+    try:
+        migrations = load_migrations(found[-1])
+    except (OSError, RuntimeError):
+        return None
+    return migrations[-1].version if migrations else None
 
 
 def replace_symlink(link: Path, target: Path) -> None:

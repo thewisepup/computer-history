@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import signal
@@ -734,3 +735,54 @@ def test_an_interrupt_during_a_fallback_lets_it_finish_then_exits_130(
     assert log_lines(layout)[-1]["action"] == "fell back"
     assert len(host.notifications) == 1
     assert host.jobs[BACKEND.label].loaded
+
+
+def test_rollback_refuses_a_database_the_previous_version_cannot_open(
+    run: RunCli, layout: Layout
+) -> None:
+    def migrates(host: FakeHost) -> None:
+        newer_db(layout.database)
+        completes_a_cycle(health(layout))(host)
+
+    assert run(stable_code(layout), "update", host=updating(layout, migrates))[0] == 0
+    (backup,) = pre_update_backups(layout)
+    host = FakeHost(loaded=[BACKEND.label])
+    before = install_state(layout)
+
+    code, _, err = run(stable_code(layout), "rollback", host=host)
+
+    assert code == 1
+    assert err == (
+        f"rollback failed: the database is at schema v{SUPPORTED + 1}, newer than version"
+        f" {version_name(OLDER)} can open (v{SUPPORTED}); put its pre-update backup back first"
+        f" with `computer-history restore {backup}`, then roll back (nothing was changed)\n"
+    )
+    assert install_state(layout) == before
+    assert changes(host) == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [("install",), ("uninstall",), ("update",), ("rollback",), ("restore", "2026-11-20")],
+    ids=["install", "uninstall", "update", "rollback", "restore"],
+)
+def test_a_second_install_command_is_refused_while_one_holds_the_live_folder(
+    run: RunCli, layout: Layout, argv: tuple[str, ...]
+) -> None:
+    host = updating(layout, completes_a_cycle(health(layout)))
+    before = install_state(layout)
+    held = os.open(layout.live, os.O_RDONLY)
+    try:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        code, out, err = run(stable_code(layout), *argv, host=host)
+    finally:
+        os.close(held)
+
+    assert code == 1
+    assert out[1:] == []
+    assert err == (
+        f"{argv[0]} refused: another install, uninstall, update, rollback or restore is using"
+        f" {layout.live}; run it again once that one has finished\n"
+    )
+    assert install_state(layout) == before
+    assert changes(host) == []

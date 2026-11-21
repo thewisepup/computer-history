@@ -203,6 +203,16 @@ def _kept(path: Path, found: os.stat_result, day: date | None) -> KeptBackup:
     return KeptBackup(path, day, datetime.fromtimestamp(found.st_mtime, UTC), found.st_size)
 
 
+def pre_update_backup_of(database: Path, version: str) -> Path | None:
+    """The newest pre-update backup taken while a version was current, or None if there is none."""
+    kept = [
+        backup
+        for backup in backup_inventory(database).pre_update
+        if backup.path.name.endswith(f"-{version}.db")
+    ]
+    return kept[-1].path if kept else None
+
+
 def find_daily_backup(database: Path, day: date) -> Path:
     """The daily backup of a day, or RestoreFailed naming the days that are kept."""
     days = daily_backups(database)
