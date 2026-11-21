@@ -224,7 +224,7 @@ Sources:
   ...
 Coverage gaps (unobserved: nothing recorded) of 5m or more ...
   warning: no aw-web coverage from 2026-11-17 10:45 to 2026-11-17 12:25 (1h 39m)
-  ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused):
+  ax-text from 2026-11-17 10:09 to 2026-11-18 10:09 (unobserved: aw-afk shows you active, no record within 1m, not paused or asleep):
   warning: no ax-text coverage from 2026-11-18 08:02 to 2026-11-18 08:40 (38m), while you were active
   warning: no ax-text coverage from 2026-11-18 09:15 to 2026-11-18 09:27 (12m), cannot be judged: no aw-afk data
   screenshot: not checked (coverage is judged from ax-text records)
@@ -233,7 +233,7 @@ Capture agent:
   last capture  2026-11-18 10:09 (40s ago)
   alive         yes (last record 2026-11-18 10:10 (12s ago))
   spool         2 finished files waiting (oldest 1m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
-  today         812 captures stored, 14 excluded, 3 cut off, 1 timed out
+  today         812 captures stored, 14 excluded, 3 cut off, 1 timed out, 2 slept, 2 woke
   paused        no
   app agreement 1,602 of 1,615 captures match aw-window (13 differ, 41 without aw-window data)
                 5 x Discord -> Google Chrome
@@ -291,7 +291,11 @@ moved 30s ago)` instead.
 
 `ax-text` captures are instants, so its gaps follow their own rule. A record
 of any kind explains the minute on either side of it (twice the agent's 30s
-heartbeat), and a pause explains the time until the next record. A stretch of
+heartbeat). A pause explains the time until the next record, normally its
+`resumed`. A sleep (a `slept` record) explains the time until its `woke`, or,
+if that was lost, until the next record or the first `aw-afk` active stretch
+after it, whichever comes first. A pause or sleep from before the range counts
+too. A stretch of
 5m or more is unobserved when `aw-afk` shows you active and nothing explains
 it; where `aw-afk` has no data and nothing explains it, the stretch *cannot be
 judged*, never idle or active. The range ends at the last stored record while
@@ -302,7 +306,7 @@ it is reachable, even before it is stored.
 The capture agent section:
 
 - **last capture**: the newest capture, stored or still in the spool
-  (excluded and pause records are not captures).
+  (excluded, pause and sleep records are not captures).
 - **alive**: `yes` when the newest record, stored or still in the spool, is
   at most 5 minutes old; `NO` when `aw-afk` shows you active for over a minute
   since it; `paused` while capture is paused; otherwise `cannot tell`.
@@ -310,11 +314,10 @@ The capture agent section:
   oldest has waited, then the files set aside in `unreadable/`. `open.part`
   and `agent.lock` are not counted. The spool path resolves as for `ingest`.
 - **today**: the stored captures and excluded records since local midnight,
-  and how many of those captures were cut off or timed out. Records still in
-  the spool count once ingested.
+  how many of those captures were cut off or timed out, and the `slept` and
+  `woke` records. Records still in the spool count once ingested.
 - **paused**: `yes, since ...` when the newest record, stored or still in the
-  spool, is `paused`: a `resumed`, a capture or an excluded record ends a
-  pause.
+  spool, is `paused`: any later record ends a pause.
 - **app agreement**: each stored capture in the `ax-text` coverage range,
   checked against the app `aw-window` shows in front at its capture time. A
   capture matches when an `aw-window` span within 2s of it (the window

@@ -9,7 +9,9 @@ from typing import NamedTuple
 from computer_history.sources.capture_spool.record import (
     CAPTURE_KIND,
     EXCLUDED_KIND,
+    SLEPT_KIND,
     WINDOW_TEXT_SOURCE,
+    WOKE_KIND,
 )
 from computer_history.store import latest_payload_value, payload_values
 from computer_history.text import clean_text_or_none
@@ -33,6 +35,8 @@ class DayCounts:
     excluded: int = 0
     cut_off: int = 0
     timed_out: int = 0
+    slept: int = 0
+    woke: int = 0
 
 
 def stored_records(conn: sqlite3.Connection, start: datetime, end: datetime) -> list[StoredRecord]:
@@ -63,15 +67,19 @@ def newest_stored(
 
 
 def day_counts(records: Iterable[StoredRecord], since: datetime) -> DayCounts:
-    """Count the captures and excluded records from a time on, and captures cut off or timed out."""
-    captures = excluded = cut_off = timed_out = 0
+    """Count each kind of record from a time on, and the captures cut off or timed out."""
+    captures = excluded = cut_off = timed_out = slept = woke = 0
     for record in records:
         if record.at < since:
             continue
         if record.kind == EXCLUDED_KIND:
             excluded += 1
+        elif record.kind == SLEPT_KIND:
+            slept += 1
+        elif record.kind == WOKE_KIND:
+            woke += 1
         elif record.kind == CAPTURE_KIND:
             captures += 1
             cut_off += record.cut_off
             timed_out += record.timed_out
-    return DayCounts(captures, excluded, cut_off, timed_out)
+    return DayCounts(captures, excluded, cut_off, timed_out, slept, woke)

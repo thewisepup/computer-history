@@ -440,6 +440,22 @@ settings are provisional until they are measured on real screens (#38).
 - Denylist: listed apps produce an "excluded" record with no text.
   `pause` / `resume` each write a record. Both make the gap explained, not
   unobserved.
+- Sleep and wake: the agent writes a `slept` record from macOS's will-sleep
+  notification, synchronously before the Mac sleeps, and a `woke` record from
+  did-wake when it recorded that sleep. Both are instants with no app, window,
+  text or screenshot, in record format version 1. Neither is written while
+  capture is paused, since the pause already explains the time. Window text
+  records are written one at a time, and a capture or excluded record is
+  written only if the Mac is still awake at that moment, so none lands after
+  the `slept` record. In `status` coverage a `slept` record explains the time
+  until its `woke`, or, if that was lost to a crash or power loss, until the
+  next record or the first `aw-afk` active stretch after it, whichever comes
+  first. Ingest stores both as observations, with a signal whose extras name
+  only the kind.
+- Upgrade order: update the backend before installing an agent that writes
+  `slept` and `woke`. An older backend stores a file's other records, counts
+  these lines as unusable and sets the file aside in `spool/unreadable/`, so
+  they are kept on disk but never stored.
 - Screenshots: every capture takes one, in the same tick, right after its
   capture record is written, of the focused window only: a ScreenCaptureKit
   still of the on-screen window whose frame matches the accessibility frame

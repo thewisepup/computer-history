@@ -60,6 +60,8 @@ Review findings ratchet into rules:
   module uses it (tests count); a helper only its own module calls stays
   `_private` (`_within` in `store/paths.py`). Ruff's RUF022 keeps every
   `__all__` sorted.
+- **S12** A change to what a module handles updates its line in the package's
+  flow diagram in the same commit.
 
 ## Architecture
 

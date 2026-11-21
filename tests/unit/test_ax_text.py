@@ -16,8 +16,10 @@ from fake_aw import FakeAW
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
+    CAPTURE_KIND,
     MAX_TEXT_LENGTH,
     MAX_WINDOW_TEXT_LENGTH,
+    MOMENT_KINDS,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
@@ -40,7 +42,7 @@ from computer_history.sources import (
     watch,
 )
 from computer_history.sources.capture_spool import adapter as spool_adapter
-from computer_history.store import Profile, connect, get_progress, table_counts, utc_iso
+from computer_history.store import Profile, Signal, connect, get_progress, table_counts, utc_iso
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = [
@@ -48,7 +50,9 @@ FIXTURE_LINES = [
     for line in FIXTURE.read_text(encoding="utf-8").splitlines()
     if json.loads(line)["kind"] != SCREENSHOT_KIND
 ]
-FIXTURE_CAPTURES = sum(json.loads(line)["kind"] == "capture" for line in FIXTURE_LINES)
+FIXTURE_SIGNALS = sum(
+    json.loads(line)["kind"] in (CAPTURE_KIND, *MOMENT_KINDS) for line in FIXTURE_LINES
+)
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
@@ -119,7 +123,7 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
 
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
-    latest = datetime(2026, 11, 18, 9, 15, 42, 999000, tzinfo=UTC)
+    latest = datetime(2026, 11, 18, 10, 5, 12, 345000, tzinfo=UTC)
     assert summary.ok
     assert summary.outcomes == {
         WINDOW_TEXT_SOURCE: IngestOutcome(len(FIXTURE_LINES), 0, 0, latest),
@@ -142,7 +146,12 @@ def test_the_fixture_ingests_to_its_observations_and_signals(
         None,
     ]
     captures = [r for r in records if r["kind"] == "capture"]
+    rows, sleep_rows = rows[:-2], rows[-2:]
     assert len(rows) == len(captures) == len(expected_text)
+    assert [(row[0], row[2], row[4:]) for row in sleep_rows] == [
+        (r["id"], utc_iso(r["captured_at"]), (None,) * 5 + (json.dumps({"kind": r["kind"]}),))
+        for r in records[-2:]
+    ]
     extra_keys = (
         "bundle_id",
         "trigger",
@@ -181,6 +190,13 @@ def test_excluded_paused_and_resumed_records_have_no_signal() -> None:
     assert project(WINDOW_TEXT_SOURCE, kinds["capture"]) is not None
 
 
+def test_slept_and_woke_records_become_signals_naming_only_their_kind() -> None:
+    project = projector_for([CaptureSpool])
+    kinds = {json.loads(line)["kind"]: line for line in FIXTURE_LINES}
+    for kind in MOMENT_KINDS:
+        assert project(WINDOW_TEXT_SOURCE, kinds[kind]) == Signal(extras=f'{{"kind": "{kind}"}}')
+
+
 def test_rebuild_reprojects_the_spool_to_identical_signals(
     conn: sqlite3.Connection, spool_dir: Path
 ) -> None:
@@ -188,7 +204,7 @@ def test_rebuild_reprojects_the_spool_to_identical_signals(
     write_file(spool_dir, file_name(2), [record(1, T0, text="x" * 20_000)])
     poll(conn, [CaptureSpool(spool_dir)], now=NOW)
     before = signals(conn)
-    assert len(before) == FIXTURE_CAPTURES + 1
+    assert len(before) == FIXTURE_SIGNALS + 1
 
     result = reproject_signals(conn)
 

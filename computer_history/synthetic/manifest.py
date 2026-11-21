@@ -29,7 +29,7 @@ from computer_history.synthetic.timeline import (
 )
 from computer_history.text import extract_domain
 
-GENERATOR_VERSION = 5
+GENERATOR_VERSION = 6
 
 Piece = tuple[datetime, datetime, str]
 
@@ -115,7 +115,7 @@ def true_answers(
         captures=_captures(records),
         screenshots=screenshot_counts(agent_screenshots(records)),
         unobserved=unobserved(timeline, afk, records),
-        explained=explained(timeline),
+        explained=explained(timeline, records, afk),
         content_digest=content_digest,
     )
 
