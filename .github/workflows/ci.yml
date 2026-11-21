@@ -128,9 +128,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          if ! files="$(gh pr diff "$PR" --name-only --repo "$GITHUB_REPOSITORY")"; then
+          pr="repos/$GITHUB_REPOSITORY/pulls/$PR"
+          if ! changed="$(gh api "$pr" --jq .changed_files)" || [ "$changed" -gt 3000 ] \
+            || ! files="$(gh api --paginate "$pr/files" --jq '.[] | .filename, (.previous_filename // empty)')"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif printf '%s\n' "$files" | grep -qE "$REACHES"; then
+          elif grep -qE "$REACHES" <<<"$files"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice title=Skipped::No changed file matches $REACHES"
