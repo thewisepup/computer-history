@@ -4,9 +4,22 @@ Only this package knows SQL. Commands open the database with open_store,
 which reports its state. Ingest writes through insert_observations, the only
 way a source's progress moves. It and rebuild_signals both turn a stored
 payload into its signal with the projector the caller passes, and status and
-backfill use the read queries. content_digest hashes what the database holds.
+backfill use the read queries. content_digest hashes what the database holds,
+backup_database copies it while other connections keep writing, and
+restore_database puts a copy back, setting the database it replaces aside.
+SpoolHold is the file beside the database that keeps ingest from deleting
+spool files while an update waits for the backend's first cycle.
 """
 
+from computer_history.store.backup import (
+    DatabaseCopy,
+    DatabaseExists,
+    DatabaseInUse,
+    IntegrityCheckFailed,
+    RestoredCopy,
+    backup_database,
+    restore_database,
+)
 from computer_history.store.contents import content_digest
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
@@ -16,6 +29,7 @@ from computer_history.store.db import (
     load_migrations,
     migrate,
     schema_version,
+    stored_schema_version,
     supported_version,
     transaction,
 )
@@ -28,7 +42,30 @@ from computer_history.store.introspection import (
 )
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
-from computer_history.store.paths import DB_ENV_VAR, default_db_path, resolve_db_path
+from computer_history.store.paths import (
+    DATABASE_NAME,
+    DB_ENV_VAR,
+    DEV_FOLDER_NAME,
+    INSTALL_MARKER_NAME,
+    LIVE_FOLDER_NAME,
+    SHORT_COMMIT_LENGTH,
+    VERSIONS_FOLDER_NAME,
+    LiveDatabaseRefused,
+    Profile,
+    RunningCode,
+    configured_db_path,
+    data_folder,
+    default_db_path,
+    existing_database_files,
+    live_folder,
+    refuse_live,
+    refuse_live_in_dev,
+    replace_atomically,
+    resolve_db_path,
+    resolve_dev_db_path,
+    running_code,
+    sidecars,
+)
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.screenshots import (
     SCREENSHOT_STATUS_INDEX,
@@ -46,6 +83,7 @@ from computer_history.store.signals import (
     UnclaimedSource,
     rebuild_signals,
 )
+from computer_history.store.spool_hold import SpoolHold, spool_hold_path
 from computer_history.store.status import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -66,42 +104,62 @@ from computer_history.store.timefmt import to_utc, utc_iso
 
 __all__ = [
     "BUSY_TIMEOUT_SECONDS",
+    "DATABASE_NAME",
     "DB_ENV_VAR",
-    "SCREENSHOT_STATUS_INDEX",
+    "DEV_FOLDER_NAME",
+    "INSTALL_MARKER_NAME",
+    "LIVE_FOLDER_NAME",
     "MIN_GAP_SECONDS",
+    "SCREENSHOT_STATUS_INDEX",
+    "SHORT_COMMIT_LENGTH",
     "STATUS_WINDOW",
+    "VERSIONS_FOLDER_NAME",
     "Coverage",
+    "DatabaseCopy",
+    "DatabaseExists",
+    "DatabaseInUse",
     "DbstatUnavailable",
     "Gap",
     "InsertResult",
+    "IntegrityCheckFailed",
+    "LiveDatabaseRefused",
     "Migration",
     "NewestScreenshot",
     "Observation",
     "OpenedStore",
     "PayloadValues",
+    "Profile",
     "Progress",
     "ProgressUpdate",
     "Projector",
     "Purpose",
     "RebuildAborted",
     "RebuildResult",
+    "RestoredCopy",
+    "RunningCode",
     "Signal",
     "SourceCoverage",
     "SourceSummary",
-    "StatusTotal",
+    "SpoolHold",
     "SqliteBuild",
     "StatusReads",
+    "StatusTotal",
     "StoreState",
     "UnclaimedSource",
+    "backup_database",
+    "configured_db_path",
     "connect",
     "connect_immutable",
     "content_digest",
+    "data_folder",
     "default_db_path",
+    "existing_database_files",
     "find_gaps",
     "first_screenshot_at",
     "get_progress",
     "insert_observations",
     "latest_payload_value",
+    "live_folder",
     "load_migrations",
     "migrate",
     "newest_screenshot",
@@ -109,14 +167,23 @@ __all__ = [
     "page_counts",
     "payload_values",
     "rebuild_signals",
+    "refuse_live",
+    "refuse_live_in_dev",
+    "replace_atomically",
     "resolve_db_path",
-    "screenshot_totals",
+    "resolve_dev_db_path",
+    "restore_database",
+    "running_code",
     "scanned_tables",
     "schema_version",
-    "supported_version",
+    "screenshot_totals",
+    "sidecars",
     "source_summary",
-    "status_reads",
+    "spool_hold_path",
     "sqlite_build",
+    "status_reads",
+    "stored_schema_version",
+    "supported_version",
     "table_counts",
     "to_utc",
     "transaction",

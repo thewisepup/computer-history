@@ -6,9 +6,9 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from computer_history.alerts import desktop_notifier
 from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.cli.sources import source_failed, unavailable_on
+from computer_history.host import Host, HostError
 from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
     ActivityWatch,
@@ -29,15 +29,16 @@ from computer_history.sources import (
     watch,
     write_health,
 )
-from computer_history.store import Purpose, open_store, resolve_db_path
+from computer_history.store import Purpose, SpoolHold, open_store
 
 log = logging.getLogger(__name__)
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
-    spool_path = resolve_spool_path(args.spool_path, db_path)
-    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path)]
+    db_path: Path = args.database
+    spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
+    hold = SpoolHold.beside(db_path)
+    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path, hold=hold)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn
     if conn is None:
@@ -45,10 +46,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     with store:
         if args.watch:
             health = health_path(db_path)
-            post = desktop_notifier()
             streak = FailureStreak(
                 save=partial(write_health, health),
-                notify=None if post is None else lambda alert: post(alert_text(alert)),
+                notify=partial(_notify, args.host),
                 health=_saved(health),
             )
             log.info(
@@ -60,20 +60,31 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                     "interval_s": POLL_INTERVAL_SECONDS,
                 },
             )
+            if hold.active:
+                log.info("spool files are kept until a cycle is ok (%s is there)", hold.path)
             try:
-                watch(conn, sources, report=CycleReporter(cycle_line, streak=streak))
+                watch(
+                    conn,
+                    sources,
+                    report=CycleReporter(cycle_line, streak=streak),
+                    hold=hold,
+                )
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0
         summary = poll(conn, sources)
     CycleReporter(cycle_line, shown=True)(summary)
-    return _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
+    code = _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
+    if hold.active:
+        print(f"  spool files kept: {hold.path} holds their deletion while an update runs")
+    return code
 
 
-def alert_text(alert: StreakAlert) -> str:
-    if alert.ended:
-        return "ingest recovered."
-    return f"ingest failing for {alert.failures:,} cycles. Run `computer-history status`."
+def _notify(host: Host, alert: StreakAlert) -> None:
+    try:
+        host.notify(alert.message)
+    except HostError as exc:
+        log.warning("notification not shown", extra={"error": str(exc)})
 
 
 def _saved(path: Path) -> IngestHealth | None:

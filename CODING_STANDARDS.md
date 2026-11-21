@@ -56,15 +56,25 @@ Review findings ratchet into rules:
   beside the owner of the resource (`started` in `synthetic/operations.py`).
 - **S10** A threshold constant is named for what it bounds
   (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
+- **S11** A name joins a package's `__all__` only when code outside its
+  module uses it (tests count); a helper only its own module calls stays
+  `_private` (`_within` in `store/paths.py`). Ruff's RUF022 keeps every
+  `__all__` sorted.
+- **S12** A change to what a module handles updates its line in the package's
+  flow diagram in the same commit.
 
 ## Architecture
 
-- **A1** **[checked]** Layers depend downward only: `store/` never imports
-  `sources/`, `synthetic/` or `cli/`; `sources/` never imports `synthetic/` or
-  `cli/`; `synthetic/` never imports `cli/`.
+- **A1** **[checked]** Layers depend downward only: `host/` imports no other
+  package; `store/` never imports `sources/`, `synthetic/`, `stable/`,
+  `watchdog/` or `cli/`; `sources/` never imports `synthetic/`, `stable/`,
+  `watchdog/` or `cli/`; `synthetic/` never imports `stable/`, `watchdog/` or
+  `cli/`; `stable/` never imports `sources/`, `synthetic/`, `watchdog/` or
+  `cli/`; `watchdog/` never imports `synthetic/`, `stable/` or `cli/`.
 - **A2** **[checked]** Only `store/` runs SQL.
-- **A3** **[checked]** Only `cli/` opens connections and constructs clients;
-  everything below takes them as parameters. `synthetic/` may also `connect`
+- **A3** **[checked]** Only `cli/` opens connections and constructs clients
+  (the host adapter's `LiveHost` among them); everything below takes them as
+  parameters. `synthetic/` may also `connect`
   to a scratch database it builds, or `connect_immutable` to a cached one, by
   path, never the live one.
 - **A4** Inject the I/O edges (`conn`, `client`, clock, sleep) and nothing else;
@@ -84,6 +94,13 @@ Review findings ratchet into rules:
 - **A10** A factory parameter that every production caller fills with a
   placeholder is removed, and the value is set once, where it becomes known.
 - **A11** A Bool flag that picks between two counters becomes two methods.
+- **A12** A command's failures reach the CLI as one domain exception the layer
+  below raises (`InstallFailed`, `BackupFailed`, `RestoreFailed`), carrying
+  the message to print; the CLI never catches a tuple of library exceptions
+  (`OSError`, `sqlite3.Error`) itself.
+- **A13** A file or link rewritten in place (a state file, a pointer, the PATH
+  link) goes through the one atomic-write helper, `replace_atomically` in
+  `store/paths.py`, never its own staged write and `os.replace`.
 
 ## Logging
 
@@ -177,3 +194,5 @@ Review findings ratchet into rules:
   names every CI and nightly job.
 - **H14** A narrowing assert repeated on a store read in tests becomes one helper
   beside the test fixtures (`stored_progress` in `tests/db_states.py`).
+- **H15** A constant a lower layer defines is imported, never restated under
+  another name or value (`synthetic/` takes `DATABASE_NAME` from `store/`).

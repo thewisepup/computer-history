@@ -63,4 +63,4 @@ reportUnnecessaryComparison = "error"
 reportUnnecessaryIsInstance = "error"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "RUF022"]

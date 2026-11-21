@@ -288,3 +288,121 @@ extension LoopFixture {
     fixture.run(for: 2)
     #expect(try fixture.kinds() == ["excluded"])
 }
+
+@Test func sleepWritesASleptRecordAndWakeAWokeRecordWithNothingBetween() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    let sleptAt = SpoolTime(fixture.mac.now()).iso8601
+    fixture.mac.presence.asleep = true
+    fixture.run(for: 600)
+    #expect(try fixture.kinds() == ["capture", "slept"])
+    let wokeAt = SpoolTime(fixture.mac.now()).iso8601
+    fixture.mac.presence.asleep = false
+    fixture.run(for: 2)
+    #expect(try fixture.kinds() == ["capture", "slept", "woke", "capture"])
+    let records = try fixture.withoutScreenshots()
+    #expect(records[1]["captured_at"] as? String == sleptAt)
+    #expect(records[2]["captured_at"] as? String == wokeAt)
+    for record in records[1...2] {
+        for key in ["trigger", "app_name", "bundle_id", "window_title", "text", "full_text_bytes"] {
+            #expect(record[key] is NSNull, "\(record["kind"]!) \(key)")
+        }
+    }
+    #expect(fixture.logged == ["silent: asleep", "capturing again"])
+}
+
+@Test func sleepWhilePausedWritesNoSleptOrWokeRecord() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    try fixture.pause.pause()
+    fixture.run(for: 1)
+    fixture.mac.presence.asleep = true
+    fixture.run(for: 60)
+    fixture.mac.presence.asleep = false
+    fixture.run(for: 2)
+    #expect(try fixture.kinds() == ["capture", "paused"])
+    #expect(try fixture.resumeAndRun(for: 2) == ["capture", "paused", "resumed", "capture"])
+}
+
+@Test func aWakeWithoutARecordedSleepWritesNoWokeRecord() throws {
+    let fixture = LoopFixture()
+    try fixture.pause.pause()
+    fixture.restart()
+    fixture.mac.presence.asleep = true
+    fixture.run(for: 1)
+    try fixture.pause.resume()
+    fixture.mac.presence.asleep = false
+    fixture.run(for: 2)
+    #expect(try fixture.kinds() == ["resumed", "capture"])
+}
+
+@Test func aSleepAfterALostWakeIsStillRecorded() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    fixture.mac.sleepChanged(.willSleep)
+    fixture.mac.sleepChanged(.willSleep)
+    fixture.mac.sleepChanged(.didWake)
+    fixture.mac.sleepChanged(.didWake)
+    #expect(try fixture.kinds() == ["capture", "slept", "slept", "woke"])
+}
+
+@Test func aCaptureDueAsTheMacFallsAsleepIsNotWrittenAfterTheSleptRecord() throws {
+    let fixture = LoopFixture()
+    var slept = false
+    fixture.mac.onCall = { _ in
+        guard fixture.mac.clock >= 1, !slept else { return }
+        slept = true
+        fixture.mac.presence.asleep = true
+    }
+    fixture.run(for: 60)
+    #expect(slept)
+    #expect(try fixture.kinds() == ["slept"])
+}
+
+@Test func anExclusionDueAsTheMacFallsAsleepIsNotWrittenAfterTheSleptRecord() throws {
+    let fixture = LoopFixture()
+    fixture.mac.focused = onePassword
+    var slept = false
+    fixture.mac.onCall = { _ in
+        guard fixture.mac.clock >= 1, !slept else { return }
+        slept = true
+        fixture.mac.presence.asleep = true
+    }
+    fixture.run(for: 60)
+    #expect(slept)
+    #expect(try fixture.kinds() == ["slept"])
+}
+
+@Test func aCaptureWhoseReadSpansTheSleepIsNotWrittenAfterTheSleptRecord() throws {
+    let fixture = LoopFixture()
+    fixture.mac.onCall = { call in
+        if call == "hello.AXValue", !fixture.mac.presence.asleep { fixture.mac.presence.asleep = true }
+    }
+    fixture.run(for: 60)
+    #expect(try fixture.kinds() == ["slept"])
+    #expect(try fixture.screenshotRecords().isEmpty)
+}
+
+@Test func theMacStillReportsAsleepWhileItsWakeIsHandled() {
+    let mac = ScriptedMac()
+    let seen = Seen()
+    mac.onSleepChange { change, _ in seen.add("\(change) \(mac.samplePresence().asleep)") }
+    mac.presence.asleep = true
+    mac.presence.asleep = false
+    #expect(seen.values == ["willSleep true", "didWake true"])
+    #expect(!mac.samplePresence().asleep)
+}
+
+@Test func aLoopThatStoppedRecordingSleepWritesNoSleepRecord() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    fixture.loop.stopRecordingSleep()
+    fixture.mac.presence.asleep = true
+    fixture.mac.presence.asleep = false
+    #expect(try fixture.kinds() == ["capture"])
+}
+
+private final class Seen: @unchecked Sendable {
+    private(set) var values: [String] = []
+    func add(_ value: String) { values.append(value) }
+}

@@ -21,12 +21,16 @@ from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    SLEPT_KIND,
     WINDOW_TEXT_SOURCE,
     AppAgreement,
     Coverage,
     DayCounts,
+    Liveness,
+    Span,
     SpoolBacklog,
     SpoolError,
+    StoredRecord,
     app_agreement,
     capture_coverage,
     day_counts,
@@ -38,7 +42,13 @@ from computer_history.sources.capture_spool import (
 from computer_history.sources.contract import SourceUnavailable
 from computer_history.store import SourceSummary, to_utc
 
-__all__ = ["CaptureHealth", "capture_health"]
+__all__ = [
+    "CaptureHealth",
+    "CaptureLiveness",
+    "active_spans",
+    "capture_health",
+    "capture_liveness",
+]
 
 
 @dataclass(frozen=True)
@@ -50,7 +60,7 @@ class CaptureHealth:
     spool_error: str | None
     last_capture: datetime | None = None
     last_record: datetime | None = None
-    alive: str = "unknown"
+    alive: Liveness = Liveness.UNKNOWN
     paused_since: datetime | None = None
     today: DayCounts = DayCounts()
     coverage: Coverage | None = None
@@ -92,9 +102,13 @@ def capture_health(
 
     records = stored_records(conn, read_from, now)
     before = newest_stored(conn, until=read_from)
+    earlier = None if before is None else StoredRecord(*before)
     paused = newest[1] == PAUSED_KIND
     buckets = _buckets(client)
-    afk = _afk_spans(conn, client, buckets, min(read_from, newest[0]), now)
+    afk_from = min(read_from, newest[0])
+    if earlier is not None and earlier.kind == SLEPT_KIND:
+        afk_from = min(afk_from, earlier.at)
+    afk = _afk_spans(conn, client, buckets, afk_from, now)
     active = [(s.start, s.end) for s in afk if not s.afk]
     coverage = agreement = None
     if start < end:
@@ -110,7 +124,7 @@ def capture_health(
             known=[(s.start, s.end) for s in afk],
             start=start,
             end=end,
-            paused_at_start=before is not None and before[1] == PAUSED_KIND,
+            before=earlier,
             min_gap_seconds=min_gap_seconds,
         )
     return CaptureHealth(
@@ -177,3 +191,55 @@ def _app_spans(
         except SourceUnavailable:
             pass
     return spans
+
+
+@dataclass(frozen=True)
+class CaptureLiveness:
+    """The agent's newest record, stored or still in the spool, and whether it looks alive."""
+
+    last_record: datetime | None
+    alive: Liveness
+    spool_error: str | None = None
+
+
+def active_spans(
+    conn: sqlite3.Connection | None, client: AWApi | None, start: datetime, end: datetime
+) -> list[Span]:
+    """Collect the stretches aw-afk shows the user active, stored and in ActivityWatch's newest."""
+    stored = [] if conn is None else stored_afk_spans(conn, start, end)
+    if client is not None and (buckets := _buckets(client)) is not None:
+        try:
+            stored.extend(newest_afk_spans(client, buckets))
+        except SourceUnavailable:
+            pass
+    return [(span.start, span.end) for span in stored if not span.afk]
+
+
+def capture_liveness(
+    conn: sqlite3.Connection | None,
+    spool_folder: Path,
+    *,
+    now: datetime,
+    active: Iterable[Span],
+    watched_since: datetime,
+    alive_within: timedelta,
+) -> CaptureLiveness:
+    """Judge the agent alive from its newest record, counting silence from watched_since on."""
+    now = to_utc(now)
+    try:
+        unstored, spool_error = spool_backlog(spool_folder).newest, None
+    except SpoolError as exc:
+        unstored, spool_error = None, str(exc)
+    stored = None if conn is None else newest_stored(conn, until=now)
+    found = [record for record in (stored, unstored) if record is not None]
+    if not found:
+        return CaptureLiveness(None, Liveness.UNKNOWN, spool_error)
+    at, kind = max(found, key=lambda record: record[0])
+    alive = liveness(
+        max(at, watched_since),
+        now=now,
+        paused=kind == PAUSED_KIND,
+        active=active,
+        alive_within=alive_within,
+    )
+    return CaptureLiveness(at, alive, spool_error)

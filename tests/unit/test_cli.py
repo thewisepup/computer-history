@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import after_profile_line
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
 from projectors import no_signal
@@ -401,7 +402,7 @@ def test_status_with_aw_down_still_reports_store(capsys, use_aw, db_path: Path) 
     use_aw(DownAW())
     code, out, err = run(capsys, "--db-path", str(db_path), "status")
     assert code == 0
-    first_line = out.splitlines()[0]
+    first_line = after_profile_line(out).splitlines()[0]
     assert "ActivityWatch is UNREACHABLE at http://127.0.0.1:5600/api/0" in first_line
     assert UNREACHABLE in out
     assert "ActivityWatch: no" in out
@@ -568,7 +569,7 @@ def test_writing_commands_report_a_locked_db_at_open(
     with write_locked(db_path):
         code, out, err = run(capsys, "--db-path", str(db_path), *command)
     assert code == 1
-    assert out == ""
+    assert after_profile_line(out) == ""
     assert f"cannot open {db_path}: database is locked" in err
     assert f"Is another process writing to {db_path}?" in err
     assert "Traceback" not in err
@@ -599,7 +600,7 @@ def test_backfill_dry_run_refuses_an_outdated_db(
     outdated_db(db_path)
     code, out, err = run(capsys, "--db-path", str(db_path), "backfill", "--dry-run")
     assert code == 1
-    assert out == ""
+    assert after_profile_line(out) == ""
     assert f"cannot read {db_path}: this CLI uses schema v{SUPPORTED}" in err
     assert "`computer-history ingest` will migrate the database" in err
     assert user_version(db_path) == SUPPORTED - 1

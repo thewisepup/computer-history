@@ -6,6 +6,11 @@ public enum Silence: String, CaseIterable, Sendable {
     case paused, idle, locked, asleep
 }
 
+/// The Mac going to sleep or waking.
+public enum SleepChange: Sendable {
+    case willSleep, didWake
+}
+
 /// Whether the user is at the Mac: seconds since the last input, and whether the screen is locked or the Mac asleep.
 public struct Presence: Equatable, Sendable {
     public var idleSeconds: TimeInterval
@@ -31,6 +36,7 @@ public struct Presence: Equatable, Sendable {
 public final class LivePresence: @unchecked Sendable {
     private let lock = NSLock()
     private var sleptAt: TimeInterval?
+    private var sleepChanged: (@Sendable (SleepChange, Date) -> Void)?
     private var observers: [any NSObjectProtocol] = []
 
     /// Starts listening for sleep and wake, which arrive on the main run loop.
@@ -38,12 +44,17 @@ public final class LivePresence: @unchecked Sendable {
         let center = NSWorkspace.shared.notificationCenter
         observers = [
             center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { [weak self] _ in
-                self?.setSleptAt(ProcessInfo.processInfo.systemUptime)
+                self?.willSleep()
             },
             center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
-                self?.setSleptAt(nil)
+                self?.didWake()
             },
         ]
+    }
+
+    /// Calls the handler on the main run loop as the Mac goes to sleep, before the Mac sleeps, and as it wakes.
+    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) {
+        lock.withLock { sleepChanged = handler }
     }
 
     deinit {
@@ -65,8 +76,17 @@ public final class LivePresence: @unchecked Sendable {
         return Presence(idleSeconds: idleSeconds, locked: locked, asleep: asleep)
     }
 
-    private func setSleptAt(_ value: TimeInterval?) {
-        lock.withLock { sleptAt = value }
+    private func willSleep() {
+        let handler = lock.withLock {
+            sleptAt = ProcessInfo.processInfo.systemUptime
+            return sleepChanged
+        }
+        handler?(.willSleep, Date())
+    }
+
+    private func didWake() {
+        lock.withLock { sleepChanged }?(.didWake, Date())
+        lock.withLock { sleptAt = nil }
     }
 }
 

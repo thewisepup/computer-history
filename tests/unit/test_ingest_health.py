@@ -8,15 +8,17 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from cli_output import UNREACHABLE_AW, RunCli
+from fake_host import FakeHost
 from log_records import logged
 
 from computer_history import cli
+from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import ingest as cli_ingest
-from computer_history.cli import status as cli_status
+from computer_history.host import ALERT_REPEAT
 from computer_history.logs import LOG_FILE_NAME, configure
 from computer_history.sources import (
     ALERT_AFTER_FAILURES,
-    ALERT_REPEAT,
     HEALTH_STALE_AFTER,
     CycleReporter,
     CycleSummary,
@@ -30,6 +32,7 @@ from computer_history.sources import (
     failure_of,
     health_path,
     read_health,
+    runner,
     write_health,
 )
 
@@ -126,11 +129,30 @@ def test_a_restart_mid_streak_neither_notifies_again_early_nor_misses_the_recove
     assert seen.saved[-1].alerted_at is None
 
 
-def test_the_cli_turns_alerts_into_notification_text() -> None:
-    assert cli_ingest.alert_text(StreakAlert(5)) == (
-        "ingest failing for 5 cycles. Run `computer-history status`."
+def test_an_alert_names_the_streak_and_never_its_error() -> None:
+    assert StreakAlert(5).message == "ingest failing for 5 cycles. Run `computer-history status`."
+    assert StreakAlert(5, ended=True).message == "ingest recovered."
+
+
+def test_a_watch_loops_failure_streak_notifies_through_the_host(
+    run: RunCli, checkout: Path, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cycles = [ALERT_AFTER_FAILURES]
+
+    def next_cycle(_: float) -> None:
+        cycles[0] -= 1
+        if cycles[0] <= 0:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.time, "sleep", next_cycle)
+    host = FakeHost()
+
+    code, _, err = run(
+        checkout, "ingest", "--watch", "--db-path", str(db_path), *UNREACHABLE_AW, host=host
     )
-    assert cli_ingest.alert_text(StreakAlert(5, ended=True)) == "ingest recovered."
+
+    assert code == 0, err
+    assert host.notifications == [StreakAlert(ALERT_AFTER_FAILURES).message]
 
 
 def test_a_restarted_watch_continues_the_saved_streak() -> None:
@@ -175,12 +197,21 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     [
         "not json",
         "[1, 2]",
-        '{"updated_at": "2026-11-19"}',
-        '{"updated_at": "2026-11-19T20:07:00", "consecutive_failures": 0}',
-        '{"updated_at": "2026-11-19T20:07:00+00:00", "consecutive_failures": 1,'
+        '{"cycle_at": "2026-11-19"}',
+        '{"cycle_at": "2026-11-19T20:07:00", "consecutive_failures": 0}',
+        '{"cycle_at": "2026-11-19T20:07:00+00:00", "consecutive_failures": 1,'
         ' "failing_since": "2026-11-19T20:00:00"}',
+        '{"cycle_at": "2026-11-19T20:07:00+00:00", "consecutive_failures": 1,'
+        ' "sources_unavailable": "yes"}',
     ],
-    ids=["not-json", "not-an-object", "incomplete", "naive-update", "naive-since"],
+    ids=[
+        "not-json",
+        "not-an-object",
+        "incomplete",
+        "naive-cycle",
+        "naive-since",
+        "unavailable-not-a-bool",
+    ],
 )
 def test_an_unreadable_health_file_raises_value_error(tmp_path: Path, text: str) -> None:
     path = tmp_path / "ingest-health.json"
@@ -277,9 +308,11 @@ def status_lines(
     monkeypatch: pytest.MonkeyPatch,
     now: datetime,
 ) -> list[str]:
-    monkeypatch.setattr(cli_status, "utc_now", lambda: now)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: now)
     assert cli.main(["status", "--db-path", str(db_path), "--aw-url", UNREACHABLE]) == 0
-    return capsys.readouterr().out.splitlines()
+    profile, *lines = capsys.readouterr().out.splitlines()
+    assert profile.startswith("Profile ")
+    return lines
 
 
 def test_status_reports_a_failing_ingest_first(

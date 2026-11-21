@@ -16,9 +16,10 @@ summaries.
   its flow diagram; `computer_history/cli/README.md` shows every command with
   examples.
 - `computer_history/logs/` — logging for every command: text to stderr, JSON
-  lines to `~/Library/Logs/computer-history/computer-history.jsonl`, read back
-  with `computer-history logs`. `CODING_STANDARDS.md` has the logging rules;
-  `computer_history/alerts.py` posts the macOS notifications.
+  lines to `~/Library/Logs/computer-history/computer-history.jsonl` (dev runs
+  use `computer-history-dev/`), read back with `computer-history logs`.
+  `CODING_STANDARDS.md` has the logging rules; every macOS notification goes
+  through the host adapter's `notify` (`computer_history/host/`).
 - `computer_history/synthetic/` — synthetic datasets: a persona's timeline,
   rendered per source and built through the real backfill and poll, with a
   manifest of true answers that tests check against.
@@ -44,11 +45,21 @@ summaries.
 ## Setup and checks
 
 ```bash
-brew install gitleaks
+brew install gitleaks uv
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
 git config core.hooksPath .githooks
 ```
+
+The checkout is **dev**: its `.venv/bin/computer-history` uses
+`~/Library/Application Support/ComputerHistory-dev/` and is refused the live
+folder. Brandon's real data is collected by the **stable** install, which
+`.venv/bin/computer-history install` sets up once (it needs `uv`): the newest
+`main` commit whose release-gate checks passed, built under the live folder's
+`versions/`, linked as `~/.local/bin/computer-history`, with the backend
+LaunchAgent running `ingest --watch` from it. Agents never run `install` or
+`uninstall`; tests drive them through the fake host adapter
+(`tests/fake_host.py`).
 
 `.venv/bin/python -m pytest`, `.venv/bin/python -m ruff check
 computer_history tests` and `.venv/bin/python -m ruff format --check
@@ -92,6 +103,15 @@ passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/unit/test_aw_ingest_properties.py`.
 
+Every run from a checkout or worktree is **dev**: it uses
+`~/Library/Application Support/ComputerHistory-dev/` (database, spool,
+screenshots) and is refused the live folder's database, spool and screenshots
+however they are passed; `computer-history dev snapshot` is the one way to
+copy the live database (only the database) into dev's. Only code in a marked
+version folder of the stable install, under the live folder's `versions/`, is
+**stable** and uses the live folder. Every command's first line names the profile; the CLI README's
+"Profiles" section has the details.
+
 Agents that edit code work in their own git worktree, never in the main
 checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
 on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
@@ -117,6 +137,18 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
   `~/Library/Application Support/ComputerHistory` raises; `scripts/mutate.sh`
   sandboxes HOME too. Anything else that runs the code on made-up data passes
   its own `--db-path` and `--spool-path`.
+- Coding agents never write to or run commands against the live data folder
+  either. `.claude/settings.json` runs `.claude/hooks/guard-live-data.py`
+  before every Bash, Edit, MultiEdit, Write and NotebookEdit call, and blocks
+  the call when the command, or the file it edits, names
+  `~/Library/Application Support/ComputerHistory/` (by `~`, `$HOME`, an
+  absolute path or any case; file paths are also followed through symlinks).
+  `ComputerHistory-dev/` and other paths pass, and so does text inside a file
+  being written. Read, Grep and Glob are not guarded. It guards against
+  accidents and is not a security boundary: a command that reaches the folder
+  without naming it, or through a symlink, still runs. It sits beside any
+  global hooks in `~/.claude/settings.json`, and Claude Code runs both. When it
+  blocks a call Brandon asked for, tell him and let him run it himself.
 - Raw observations are immutable; signals are derived and rebuildable.
 - Read-only toward ActivityWatch.
 - Coverage gaps are reported as "unobserved", never assumed idle.

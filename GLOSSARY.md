@@ -39,7 +39,7 @@ The text read out of a screenshot by on-device text recognition.
 _Avoid_: OCR text, image text
 
 **Spool record**:
-One entry the capture agent leaves in the spool: a capture, a screenshot record, an exclusion, a pause or a resume.
+One entry the capture agent leaves in the spool: a capture, a screenshot record, an exclusion, a pause, a resume, a sleep or a wake.
 _Avoid_: Event, entry, line
 
 **Exclusion**:
@@ -50,9 +50,85 @@ _Avoid_: Skip, redaction
 A spool record marking that the user stopped capture on purpose; a **Resume** marks it starting again.
 _Avoid_: Stop, mute
 
+**Sleep**:
+A spool record (`slept`) marking that the Mac went to sleep; a **Wake** (`woke`) marks it waking. Neither carries an app, a window or text.
+_Avoid_: Suspend, standby, lid closed
+
 **Spool**:
 The folder where the capture agent leaves captures for the backend to collect. Anything in it has not yet been stored.
 _Avoid_: Queue, buffer, inbox
+
+**Live folder**:
+`~/Library/Application Support/ComputerHistory/`, holding the real database, spool and screenshots the capture agent and the stable install use.
+_Avoid_: Prod folder, real folder
+
+**Stable install**:
+The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable. `install` builds it from a commit that passed the release gate, and `current` points at the version in use.
+_Avoid_: Release, production build
+
+**Update**:
+Moving the stable install's `current` forward to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes an ok cycle on it under the spool hold.
+_Avoid_: Upgrade, deploy, release
+
+**Fallback**:
+What an update does on its own when the new version's backend crashes, fails its first cycle for a reason other than an unavailable source, completes none in time, or the wait is interrupted: the old version back as `current`, the pre-update backup restored only when the schema changed.
+_Avoid_: Revert, auto-rollback
+
+**Rollback**:
+Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
+_Avoid_: Downgrade, revert
+
+**Update log**:
+`update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
+_Avoid_: Changelog, audit log
+
+**Spool hold**:
+`spool-deletion-held` beside the database, placed by an update: while it exists ingest stores spool files but deletes none, and the backend's first ok cycle removes it.
+_Avoid_: Lock, freeze, pin
+
+**Profile**:
+Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
+_Avoid_: Mode, environment
+
+**Release gate**:
+The named CI checks a `main` commit must all have passed on its push run before the stable install may hold it.
+_Avoid_: Required checks, green build
+
+**Host adapter**:
+The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
+_Avoid_: System client, platform layer
+
+**Daily backup**:
+The copy of the database the backup LaunchAgent takes once a day (or after wake, when the day's run was missed) into `backups/daily/`, checked with SQLite's integrity check; the newest seven are kept.
+_Avoid_: Snapshot, dump, archive
+
+**Pre-update backup**:
+The copy of the database an update takes before it switches versions, kept in `backups/pre-update/` apart from the dailies and named for the version that was current; a fallback restores it when the schema changed.
+_Avoid_: Checkpoint, safety copy
+
+**Restore**:
+Putting a backup in the database's place, the current database set aside (never deleted); for the live database the backend, the watchdog and the daily backup are stopped around it.
+_Avoid_: Revert, recover, rollback (for this meaning)
+
+**Watchdog**:
+The stable install's every-minute check that the capture agent, ActivityWatch and the backend are recording, which notifies Brandon of a problem and reopens ActivityWatch when it is down. It calls the backend a problem only when it has gone silent; failing cycles are the failure streak's to report.
+_Avoid_: Monitor, health check, supervisor
+
+**Finding**:
+What one watchdog run concluded about one subject: its verdict, the reason, and when the subject was last seen working.
+_Avoid_: Result, alert, status
+
+**Verdict**:
+A finding's conclusion: ok (clears a notified problem), problem (notifies, at most once an hour), or cannot tell (neither).
+_Avoid_: Health, state, level
+
+**Threshold**:
+How long a watchdog subject may stay silent before its silence is a problem, set per subject in the agent's config file.
+_Avoid_: Timeout, limit, baseline
+
+**Dev snapshot**:
+A copy of the live database taken into dev's database by `dev snapshot`, read-only and while the stable backend keeps writing; the one read of live data dev is allowed. It never includes the spool or screenshots.
+_Avoid_: Dump, export, clone
 
 **Event**:
 A stretch of activity with a start and an end, as reported by ActivityWatch.
@@ -83,8 +159,12 @@ How far ingest has stored a stream, and up to when that stream is complete.
 _Avoid_: Cursor, watermark, offset, checkpoint
 
 **Ingest health**:
-How the watch loop's recent cycles went: when one last succeeded, and the failure streak (cycles failed in a row, since when, the last error). It says nothing about coverage.
-_Avoid_: Uptime, watch heartbeat (the capture agent's heartbeat is its own record)
+`ingest-health.json` beside the database, which `ingest --watch` rewrites after every cycle: when the last cycle ran, whether it succeeded and why not (and whether every failure was an unavailable source), when one last succeeded, and the failure streak. The watchdog, update's first-cycle wait and `status` all read it. It says nothing about coverage.
+_Avoid_: Uptime, backend heartbeat, watch heartbeat (the capture agent's heartbeat is its own record)
+
+**Failure streak**:
+The run of watch-loop cycles that failed in a row. It notifies once it reaches five cycles, at most hourly while it lasts, and once when an ok cycle ends it; it never names the error.
+_Avoid_: Outage, incident, error count
 
 ### Coverage and time
 
@@ -97,7 +177,7 @@ A stretch no source can account for. Never assumed to be idle or away.
 _Avoid_: Idle, gap, missing, empty
 
 **Explained gap**:
-A stretch without text that a spool record accounts for, through an exclusion or a pause.
+A stretch without text that a spool record accounts for, through an exclusion, a pause or a sleep.
 _Avoid_: Unobserved (for this meaning)
 
 **AFK**:

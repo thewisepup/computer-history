@@ -11,6 +11,17 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from computer_history.cli.formatting import human_size
+from computer_history.store import (
+    DB_ENV_VAR,
+    DatabaseExists,
+    DatabaseInUse,
+    IntegrityCheckFailed,
+    LiveDatabaseRefused,
+    Profile,
+    backup_database,
+    default_db_path,
+)
 from computer_history.synthetic import (
     BASELINE_DIR,
     BENCH_BASELINE_NAME,
@@ -30,7 +41,6 @@ from computer_history.synthetic import (
     BenchReport,
     DatasetInputs,
     GateReport,
-    LiveDatabaseRefused,
     OutputExists,
     OutputNotAFolder,
     Timing,
@@ -72,6 +82,20 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
     build.add_argument("--out", type=Path, required=True, help="folder to copy the dataset into")
     build.add_argument(
         "--force", action="store_true", help="replace dataset files already in the folder"
+    )
+    help_text = (
+        "Copy the live database into the dev folder's database, reading it without stopping or"
+        " locking the stable backend. Copies neither the spool nor the screenshots."
+    )
+    snapshot = commands.add_parser("snapshot", help=help_text, description=help_text)
+    snapshot.add_argument(
+        "--db-path",
+        default=argparse.SUPPRESS,
+        help=f"database to copy into (default: ${DB_ENV_VAR}, else {DATABASE_NAME} in the dev"
+        " folder); never one in the live folder",
+    )
+    snapshot.add_argument(
+        "--force", action="store_true", help="replace the database already at that path"
     )
     help_text = (
         "Count the SQLite work of each operation on the gate's synthetic datasets and compare it"
@@ -170,7 +194,7 @@ def cmd_build_db(args: argparse.Namespace) -> int:
             inputs,
             args.out,
             cache=cache_root(),
-            live=live_folders(args.db_path),
+            live=live_folders(args.db_path, args.profile),
             force=args.force,
         )
     except REFUSALS as exc:
@@ -186,6 +210,28 @@ def cmd_build_db(args: argparse.Namespace) -> int:
     for path in made.copied:
         label = LABELS.get(path.name, path.name + ("/" if path.is_dir() else ""))
         print(f"  {label:<10} {path}")
+    return 0
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    live = default_db_path(Profile.STABLE)
+    try:
+        copy = backup_database(live, args.database, replace=args.force)
+    except DatabaseExists as exc:
+        print(f"dev snapshot refused: {exc}; pass --force to replace it", file=sys.stderr)
+        return 1
+    except DatabaseInUse as exc:
+        print(f"dev snapshot refused: {exc}", file=sys.stderr)
+        return 1
+    except (FileNotFoundError, IntegrityCheckFailed) as exc:
+        print(f"dev snapshot failed: {exc}", file=sys.stderr)
+        return 1
+    except FAILURES as exc:
+        print(f"dev snapshot failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Snapshot of the live database {live}")
+    print(f"  copied to {copy.target}")
+    print(f"  schema v{copy.schema}, {human_size(copy.size)}, integrity ok")
     return 0
 
 
@@ -308,6 +354,7 @@ def _timing_row(timing: Timing) -> str:
 
 DEV_HANDLERS: Mapping[str, Callable[[argparse.Namespace], int]] = {
     "build-db": cmd_build_db,
+    "snapshot": cmd_snapshot,
     "perf": cmd_perf,
     "bench": cmd_bench,
 }
