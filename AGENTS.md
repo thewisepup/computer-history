@@ -93,9 +93,10 @@ and 5,000 examples each, and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/unit/test_aw_ingest_properties.py`.
 
 Agents that edit code work in their own git worktree, never in the main
-checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
-on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after
-every pull.
+checkout. `scripts/prune-worktrees` removes clean worktrees whose work has
+landed on `origin/main`, counting only pull requests merged into `main`
+(`--dry-run` to preview); the post-merge hook runs it after every pull in the
+main checkout, never from inside a worktree.
 
 Two commands cover the capture agent, and neither runs in the pre-commit hook.
 CI runs both on macOS: `macos-capture-agent-e2e` on every pull request, and

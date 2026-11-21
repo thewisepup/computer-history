@@ -2,8 +2,10 @@
 # Removes worktrees whose work has landed on origin/main. A worktree is dead
 # only when git status shows nothing (no changes, no untracked files) and
 # either its branch tip is in origin/main and was pushed or merged through a
-# PR, or a merged PR's head is exactly that tip (a squash merge). A branch
-# never pushed is kept, since a fresh agent worktree looks merged.
+# PR into main, or a PR merged into main has exactly that tip as its head (a
+# squash merge). A PR merged into any other branch doesn't count, so work on
+# an integration branch is kept until it reaches main. A branch never pushed
+# is kept, since a fresh agent worktree looks merged.
 # --dry-run lists what would go.
 set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE
@@ -16,7 +18,7 @@ git -C "$main" fetch -q origin main || { echo "prune-worktrees: cannot fetch ori
 
 merged_pr_head() {
   command -v gh >/dev/null 2>&1 || return 0
-  (cd "$main" && gh pr list --head "$1" --state merged --json headRefOid --jq '.[].headRefOid' 2>/dev/null) || true
+  (cd "$main" && gh pr list --head "$1" --base main --state merged --json headRefOid --jq '.[].headRefOid' 2>/dev/null) || true
 }
 
 # Prints "merged" (tip is in origin/main) or "squashed" (a merged PR's head is the tip).
