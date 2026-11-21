@@ -812,7 +812,10 @@ def test_status_counts_a_sleep_and_reports_no_gap_for_it(capsys, status_aw, db_p
     out = run_status(capsys, "--db-path", str(db_path))
 
     assert "not paused or asleep):\n  ax-text: no gaps since " in out
-    assert re.search(r"today\s+59 captures stored, .*, 1 slept, 1 woke\n", out)
+    midnight = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    captures = sum(when >= midnight for when in awake)
+    slept, woke = int(ago(50) >= midnight), int(ago(20) >= midnight)
+    assert re.search(rf"today\s+{captures} captures stored, .*, {slept} slept, {woke} woke\n", out)
     assert re.search(r"paused\s+no\n", out)
 
 
