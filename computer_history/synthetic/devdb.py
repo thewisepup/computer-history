@@ -10,13 +10,14 @@ from pathlib import Path
 
 from computer_history.sources import configured_spool_path
 from computer_history.store import (
+    SIDECARS,
     Profile,
     configured_db_path,
     default_db_path,
     live_folder,
     refuse_live,
 )
-from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME, SIDECARS
+from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
 from computer_history.synthetic.generate import DatasetInputs
 

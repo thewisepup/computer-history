@@ -15,7 +15,7 @@ from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
-from computer_history.store import LiveDatabaseRefused, resolve_db_path, running_code
+from computer_history.store import LiveDatabaseRefused, Profile, resolve_db_path, running_code
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 DATABASE_COMMANDS = frozenset({"ingest", "status", "rebuild-signals", "backfill"})
@@ -31,8 +31,9 @@ COMMANDS = {
         " (idempotent: re-running adds nothing)."
     ),
     "dev": (
-        "Developer tools: build-db makes a database of synthetic history, perf runs the"
-        " performance gate, bench times each operation."
+        "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
+        " live database into the dev folder, perf runs the performance gate, bench times each"
+        " operation."
     ),
 }
 
@@ -142,9 +143,10 @@ def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> in
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
         return 1
     uses = None
-    if args.command in DATABASE_COMMANDS:
+    walled = _database_profile(args)
+    if walled is not None:
         try:
-            args.database = resolve_db_path(args.db_path, args.profile)
+            args.database = resolve_db_path(args.db_path, walled)
         except LiveDatabaseRefused as exc:
             print(profile_line(running, code, "database refused"), flush=True)
             return _refused(exc)
@@ -156,6 +158,15 @@ def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> in
         return handler(args)
     except LiveDatabaseRefused as exc:
         return _refused(exc)
+
+
+def _database_profile(args: argparse.Namespace) -> Profile | None:
+    """The profile whose database the command opens, or None for one that opens none."""
+    if args.command in DATABASE_COMMANDS:
+        return args.profile
+    if args.command == "dev" and args.dev_command == "snapshot":
+        return Profile.DEV
+    return None
 
 
 def _refused(exc: LiveDatabaseRefused) -> int:

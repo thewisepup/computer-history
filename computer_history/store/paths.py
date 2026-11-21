@@ -12,6 +12,7 @@ LIVE_FOLDER_NAME = "ComputerHistory"
 DEV_FOLDER_NAME = "ComputerHistory-dev"
 VERSIONS_FOLDER_NAME = "versions"
 INSTALL_MARKER_NAME = "installed"
+SIDECARS = ("-wal", "-shm", "-journal")
 
 
 class Profile(Enum):
@@ -58,6 +59,11 @@ def running_code(code: Path) -> RunningCode:
     if not inside or not (inside[-1] / INSTALL_MARKER_NAME).is_file():
         return RunningCode(Profile.DEV)
     return RunningCode(Profile.STABLE, inside[-1].name)
+
+
+def sidecars(db_path: Path) -> tuple[Path, ...]:
+    """The journal files SQLite keeps beside a database."""
+    return tuple(db_path.with_name(db_path.name + suffix) for suffix in SIDECARS)
 
 
 def default_db_path(profile: Profile) -> Path:
