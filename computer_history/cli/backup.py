@@ -1,41 +1,37 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
-from datetime import UTC, date, datetime
+from datetime import date
 from pathlib import Path
 
+from computer_history.cli import formatting
 from computer_history.cli.formatting import human_size
 from computer_history.stable import (
     BACKEND,
-    BackendRestart,
+    BackupFailed,
+    DailyOutcome,
     RestoreFailed,
-    find_daily_backup,
     restore_backup,
     stable_layout,
     take_daily_backup,
 )
-from computer_history.store import IntegrityCheckFailed
 
-FAILURES = (OSError, IntegrityCheckFailed)
-
-
-def utc_now() -> datetime:
-    return datetime.now(UTC)
+DAY_ARGUMENT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
-    if not args.database.is_file():
-        print(f"No database at {args.database} yet: nothing to back up")
-        return 0
     try:
-        taken = take_daily_backup(args.database, utc_now().astimezone().date())
-    except FAILURES as exc:
+        taken = take_daily_backup(args.database, formatting.utc_now().astimezone().date())
+    except BackupFailed as exc:
         print(f"backup failed: {exc}", file=sys.stderr)
         return 1
-    if taken.copy is None:
+    if taken.outcome is DailyOutcome.NO_DATABASE:
+        print(f"No database at {args.database} yet: nothing to back up")
+    elif taken.outcome is DailyOutcome.ALREADY_TAKEN:
         print(f"Today's backup is already taken: {taken.path}")
-    else:
+    elif taken.copy is not None:
         print(f"Backed up {args.database}")
         print(f"  copied to {taken.copy.target}")
         print(f"  schema v{taken.copy.schema}, {human_size(taken.copy.size)}, integrity ok")
@@ -45,36 +41,34 @@ def cmd_backup(args: argparse.Namespace) -> int:
 
 
 def backup_arg(value: str) -> date | Path:
-    """A daily backup's day (YYYY-MM-DD), or the path of a backup or set-aside database."""
+    """A daily backup's day written YYYY-MM-DD, or else the path of a backup file."""
+    if not DAY_ARGUMENT.match(value):
+        return Path(value).expanduser()
     try:
         return date.fromisoformat(value)
-    except ValueError:
-        return Path(value).expanduser()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"not a day: {value!r}") from exc
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
     try:
-        if isinstance(args.backup, date):
-            source = find_daily_backup(args.database, args.backup)
-            what = f"the daily backup of {args.backup.isoformat()}"
-        else:
-            source, what = args.backup, str(args.backup)
         restored = restore_backup(
             args.host,
             stable_layout(),
             args.database,
-            source,
-            profile=args.profile,
-            now=utc_now(),
+            args.backup,
+            now=formatting.utc_now(),
         )
     except RestoreFailed as exc:
         print(f"restore failed: {exc}", file=sys.stderr)
         return 1
+    what = f"the daily backup of {args.backup}" if isinstance(args.backup, date) else args.backup
     print(f"Restored {what} into {args.database}")
     print(f"  from          {restored.source}")
-    print(f"  set aside     {restored.aside} (never deleted)")
-    if restored.backend is BackendRestart.RESTARTED:
-        print(f"  backend       {BACKEND.label} stopped, then started again")
-    elif restored.backend is BackendRestart.NOT_LOADED:
+    if restored.aside is not None:
+        print(f"  set aside     {restored.aside} (never deleted)")
+    for agent in restored.restarted:
+        print(f"  {agent.name:<13} {agent.label} stopped, then started again")
+    if restored.managed and BACKEND not in restored.restarted:
         print(f"  backend       {BACKEND.label} was not loaded; left stopped")
     return 0

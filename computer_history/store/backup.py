@@ -6,11 +6,13 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.store import db
-from computer_history.store.paths import existing_database_files, sidecars
+from computer_history.store.paths import SHARED_MEMORY_SUFFIX, existing_database_files, sidecars
 
 PARTIAL_SUFFIX = ".partial"
 REPLACED_SUFFIX = ".replaced"
@@ -35,6 +37,14 @@ class DatabaseCopy:
     target: Path
     schema: int
     size: int
+
+
+@dataclass(frozen=True)
+class RestoredCopy:
+    """The copy put in place, and where the database it replaced was moved, when there was one."""
+
+    copy: DatabaseCopy
+    aside: Path | None
 
 
 def backup_database(source: Path, target: Path, *, replace: bool = False) -> DatabaseCopy:
@@ -64,28 +74,34 @@ def backup_database(source: Path, target: Path, *, replace: bool = False) -> Dat
     return DatabaseCopy(target, schema, target.stat().st_size)
 
 
-def restore_database(source: Path, target: Path, aside: Path) -> DatabaseCopy:
-    """Move target and its journal files aside under aside's name, then copy source into target.
-
-    Nothing may have target open, and when the copy fails target is moved back.
-    """
+def restore_database(source: Path, target: Path, aside: Path) -> RestoredCopy:
+    """Copy source into target's place, moving the database there to aside first."""
     if not source.is_file():
         raise FileNotFoundError(f"no database at {source}")
-    _refuse_in_use(target)
     if existing_database_files(aside):
         raise DatabaseExists(f"{aside.parent} already holds {aside.name}")
-    aside.parent.mkdir(parents=True, exist_ok=True)
     moved: list[tuple[Path, Path]] = []
+    with _held(target, fold_wal=True):
+        if target.exists() or target.is_symlink():
+            aside.parent.mkdir(parents=True, exist_ok=True)
+            target.rename(aside)
+            moved.append((target, aside))
+    for journal, aside_journal in zip(sidecars(target), sidecars(aside), strict=True):
+        if not (journal.exists() or journal.is_symlink()):
+            continue
+        if moved and not journal.name.endswith(SHARED_MEMORY_SUFFIX):
+            journal.rename(aside_journal)
+            moved.append((journal, aside_journal))
+        else:
+            journal.unlink()
     try:
-        for path, to in zip((target, *sidecars(target)), (aside, *sidecars(aside)), strict=True):
-            if path.exists() or path.is_symlink():
-                path.rename(to)
-                moved.append((path, to))
-        return backup_database(source, target)
+        copy = backup_database(source, target)
     except BaseException:
         for path, to in reversed(moved):
-            to.rename(path)
+            if not (path.exists() or path.is_symlink()):
+                to.rename(path)
         raise
+    return RestoredCopy(copy, aside if moved else None)
 
 
 def _refuse_existing(target: Path, replace: bool) -> None:
@@ -99,22 +115,37 @@ def _refuse_existing(target: Path, replace: bool) -> None:
 
 
 def _refuse_in_use(target: Path) -> None:
+    with _held(target):
+        pass
+
+
+@contextmanager
+def _held(target: Path, *, fold_wal: bool = False) -> Generator[None]:
+    """Hold target's exclusive lock, or raise DatabaseInUse while another connection has it open.
+
+    With fold_wal the WAL is checkpointed into the file and removed.
+    """
     if not target.is_file():
+        yield
         return
     conn = sqlite3.connect(target, isolation_level=None, timeout=0)
     try:
-        conn.execute("PRAGMA locking_mode = EXCLUSIVE")
-        conn.execute("BEGIN EXCLUSIVE")
-        conn.execute("ROLLBACK")
-    except sqlite3.OperationalError as exc:
-        if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY:
-            raise
-        raise DatabaseInUse(
-            f"another process has {target} open; stop the dev commands using it, such as"
-            " ingest --watch, and try again"
-        ) from exc
-    except sqlite3.DatabaseError:
-        pass
+        try:
+            conn.execute("PRAGMA locking_mode = EXCLUSIVE")
+            conn.execute("BEGIN EXCLUSIVE")
+            conn.execute("ROLLBACK")
+            if fold_wal:
+                conn.execute("PRAGMA journal_mode = DELETE")
+        except sqlite3.OperationalError as exc:
+            if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY:
+                raise
+            raise DatabaseInUse(
+                f"another process has {target} open; stop the commands using it, such as"
+                " ingest --watch, and try again"
+            ) from exc
+        except sqlite3.DatabaseError:
+            pass
+        yield
     finally:
         conn.close()
 
@@ -130,6 +161,7 @@ def _copy(source: Path, partial: Path) -> int:
                 raise IntegrityCheckFailed(
                     f"the copy of {source} failed its integrity check: {'; '.join(problems)}"
                 )
+            copy.execute("PRAGMA journal_mode = DELETE")
             return db.schema_version(copy)
         finally:
             copy.close()

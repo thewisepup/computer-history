@@ -113,7 +113,7 @@ def test_a_forced_snapshot_is_refused_while_another_process_has_the_dev_database
 
     assert code == 1
     assert err == (
-        f"dev snapshot refused: another process has {dev / DATABASE_NAME} open; stop the dev"
+        f"dev snapshot refused: another process has {dev / DATABASE_NAME} open; stop the"
         " commands using it, such as ingest --watch, and try again\n"
     )
     assert sorted(path.name for path in dev.iterdir()) == [DATABASE_NAME]

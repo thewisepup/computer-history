@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def duration(seconds: float) -> str:

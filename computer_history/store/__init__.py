@@ -14,6 +14,7 @@ from computer_history.store.backup import (
     DatabaseExists,
     DatabaseInUse,
     IntegrityCheckFailed,
+    RestoredCopy,
     backup_database,
     restore_database,
 )
@@ -125,6 +126,7 @@ __all__ = [
     "Purpose",
     "RebuildAborted",
     "RebuildResult",
+    "RestoredCopy",
     "RunningCode",
     "Signal",
     "SourceCoverage",

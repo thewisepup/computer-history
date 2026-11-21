@@ -725,12 +725,14 @@ in the live folder and starts the backend at login from it:
   backup of the database (the backend keeps writing), checked with
   `PRAGMA integrity_check` before it is kept, then the oldest days past seven
   removed. The database only; screenshots are not backed up.
-- **Restore** (`restore <day>` or `restore <file>`): the stable install boots
-  out the backend if it is loaded, refuses when anything else still has the
-  database open, moves the database and its WAL files into `set-aside/` under
-  the time, copies the backup in (integrity checked; the database moved back
-  on failure) and loads the backend again. Dev restores its own database and
-  never touches launchd.
+- **Restore** (`restore <day>` or `restore <file>`): for the live database it
+  boots out the daily backup and the backend if they are loaded (loading them
+  again if a boot-out fails). Holding the database's exclusive lock, so no
+  other connection can open it meanwhile, it folds the WAL in and moves the
+  file into `set-aside/` under the time; it refuses when anything else has
+  the database open. It copies the backup in (integrity checked; the database
+  moved back on failure) and loads the agents again. A restore into any other
+  database, dev's included, never touches launchd.
 - **Uninstall** boots out and removes the stable install's LaunchAgents, the
   PATH link (only when it is the install's own), the pointers and `versions/`.
   Data and logs stay.

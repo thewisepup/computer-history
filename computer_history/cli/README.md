@@ -177,7 +177,7 @@ adapter (`computer_history/host/`), so tests run them against a fake.
 ```bash
 computer-history backup                    # today's backup, unless it is taken already
 computer-history restore 2026-11-19        # put that day's backup in the database's place
-computer-history restore <backup file>     # or any backup or set-aside file, by path
+computer-history restore <backup file>     # anything not written YYYY-MM-DD is a file path
 ```
 
 `backup` copies the database with SQLite's online backup, so the backend
@@ -185,8 +185,12 @@ keeps writing while it runs, into `backups/daily/history-<day>.db` beside the
 database (the live folder's `backups/` for stable, the dev folder's for dev).
 The copy holds what was committed when it started and must pass
 `PRAGMA integrity_check` before it is kept: a copy that fails is never kept,
-and the command exits 1. Then the days older than the newest seven are
-removed. A second run on the same day keeps the day's first backup. With no
+and the command exits 1 (`backup failed: ...`), as it does for a database
+SQLite cannot read. The copy is a single file in rollback-journal mode, so
+opening it leaves no `-wal` or `-shm` beside it. Then the days older than the
+newest seven are removed, with any journal files beside them. A second run on
+the same day keeps the day's first backup; a journal file or a file that is
+not a database in its place is removed and the backup taken. With no
 database yet it takes nothing and exits 0. Only the database is backed up,
 never the spool or the screenshots.
 
@@ -199,16 +203,22 @@ Its log is `~/Library/Logs/computer-history/backup.log`.
 into `backups/pre-update/history-<local time>-<version>.db`; the daily pruning
 never removes those.
 
-`restore <day>` puts that day's daily backup in the database's place, and
-`restore <file>` any backup file. The stable install first boots out its
-backend through the host adapter, if it is loaded. When anything else still
-has the database open, such as an `ingest --watch` in a terminal, it refuses
-and starts the backend again. Otherwise it moves the database and its WAL
-files into `backups/set-aside/history-<local time>.db`, never deleting them,
-copies the backup in (integrity checked; on any failure the database is moved
-back) and loads the backend again. A backend that was not loaded is left
-stopped. A dev restore puts a backup in the dev database's place and never
-touches launchd. To undo a wrong restore, restore the set-aside file by path.
+`restore <day>` puts that day's daily backup in the database's place;
+`restore <file>` takes any backup file (only `YYYY-MM-DD` is read as a day,
+and `2026-13-01` is refused as no day). When the target is the live
+database, it first boots out the daily backup and then the backend through
+the host adapter, each only if it is loaded. If a boot-out fails or launchd
+still has the job after 5s, it loads the job again and stops with `nothing
+was changed`. When anything else still has the database open, such as an
+`ingest --watch` in a terminal, it refuses and starts the agents again.
+Otherwise, holding the database's exclusive lock, it folds the WAL into the
+file and moves it to `backups/set-aside/history-<local time>.db`, never
+deleting it, copies the backup in (integrity checked; on any failure the
+database is moved back) and loads the agents it stopped again. A backend that
+was not loaded is left stopped. A restore into any other database, a dev one
+or one passed by `--db-path`, never touches launchd, and with no database in
+the way it sets nothing aside. To undo a wrong restore, restore the set-aside
+file by path.
 What was ingested after the backup was taken is only in the set-aside copy:
 ActivityWatch's events are ingested again from where the backup's progress
 stood, but spool files were deleted once stored, so their records are not.
@@ -229,8 +239,9 @@ $ computer-history restore 2026-11-19
 Profile stable (version 572c48b), database .../ComputerHistory/history.db
 Restored the daily backup of 2026-11-19 into .../ComputerHistory/history.db
   from          .../ComputerHistory/backups/daily/history-2026-11-19.db
-  set aside     .../ComputerHistory/backups/set-aside/history-2026-11-20T181907.db (never deleted)
+  set aside     .../ComputerHistory/backups/set-aside/history-2026-11-20T183735.db (never deleted)
   backend       io.github.thewisepup.computer-history.ingest stopped, then started again
+  backup        io.github.thewisepup.computer-history.backup stopped, then started again
 $ computer-history restore 2026-01-02
 Profile stable (version 572c48b), database .../ComputerHistory/history.db
 restore failed: no daily backup of 2026-01-02; the kept ones are 2026-11-19, 2026-11-20 (nothing was changed)
@@ -370,9 +381,10 @@ whichever profile runs `status`; the backups are the database's own:
   A dev `ingest --watch` writes its own heartbeat beside the dev database,
   which no section shows.
 - **Backups**: the backups beside the database `status` reports on, read from
-  the files alone (nothing is opened): the latest daily backup's day, when it
-  was written and its size, how many days are kept, the pre-update backups
-  when there are any, and the folder. Every kept file passed the integrity
+  the files alone (nothing is opened, and a file removed while they are
+  listed is skipped): the latest daily backup's day, when it was written and
+  its size, how many days are kept, the pre-update backups when there are
+  any, and the folder. Every kept file passed the integrity
   check when it was taken, since a copy that fails is never kept. A
   `warning: no daily backup since <day>` follows when the newest is older
   than yesterday. Before the first, the section is one line:
@@ -626,8 +638,8 @@ database or its `-wal`/`-shm`/`-journal` files unless `--force`, and it checks
 again just before the copy takes its place, so a database another run creates
 meanwhile is never overwritten. `--force` replaces all of them, but only when
 no other process has the database open (`dev snapshot refused: another process
-has <path> open; stop the dev commands using it, such as ingest --watch, and
-try again`); it moves the old files aside first and puts them back if the copy
+has <path> open; stop the commands using it, such as ingest --watch, and try
+again`); it moves the old files aside first and puts them back if the copy
 can't take their place. No live database exits 1
 with `dev snapshot failed: no database at <path>`. The command never migrates:
 `status` reports a copy whose schema this checkout doesn't match, and `ingest`
