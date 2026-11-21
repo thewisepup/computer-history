@@ -1,6 +1,7 @@
 """The host adapter: the one seam to macOS and the network.
 
-    contract.py   Host (the Protocol), its answers (CheckRun, JobState) and HostError
+    contract.py   Host (the Protocol), its answers (CheckRun, JobState), HostError
+                  and JobBusy (launchd not done with a job yet)
         |
     live.py       LiveHost: launchctl in the login session, GitHub's public API
                   for check runs on main, and uv for building a stable version
@@ -14,6 +15,7 @@ from computer_history.host.contract import (
     CheckRun,
     Host,
     HostError,
+    JobBusy,
     JobState,
 )
 from computer_history.host.live import LiveHost
@@ -24,6 +26,7 @@ __all__ = [
     "CheckRun",
     "Host",
     "HostError",
+    "JobBusy",
     "JobState",
     "LiveHost",
 ]

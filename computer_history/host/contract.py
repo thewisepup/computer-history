@@ -12,6 +12,10 @@ class HostError(Exception):
     """A call to macOS or the network failed; the message says which and why."""
 
 
+class JobBusy(HostError):
+    """launchd is still busy with the job, as right after a boot-out; trying again may work."""
+
+
 class CheckOutcome(Enum):
     SUCCESS = "success"
     FAILURE = "failure"
@@ -55,7 +59,10 @@ class Host(Protocol):
         ...
 
     def load(self, plist: Path) -> None:
-        """Load a LaunchAgent from its plist into the login session."""
+        """Load a LaunchAgent from its plist into the login session.
+
+        Raises JobBusy while launchd is still booting out an earlier copy.
+        """
         ...
 
     def unload(self, label: str) -> None:

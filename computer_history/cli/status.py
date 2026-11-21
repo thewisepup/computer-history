@@ -17,7 +17,7 @@ from computer_history.cli.formatting import (
     printable,
     when,
 )
-from computer_history.host import Host, JobState
+from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
@@ -35,7 +35,7 @@ from computer_history.sources import (
     resolve_spool_path,
     screenshot_health,
 )
-from computer_history.stable import STOPGAP_LABEL, agent_statuses, pointed, stable_layout
+from computer_history.stable import AgentStatus, agent_statuses, pointed, stable_layout
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -45,6 +45,7 @@ from computer_history.store import (
     SourceCoverage,
     SourceSummary,
     StoreState,
+    default_db_path,
     open_store,
     source_summary,
     status_reads,
@@ -69,7 +70,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print()
     _print_launch_agents(args.host)
     print()
-    _print_backend(db_path, now)
+    _print_backend(now)
     return code
 
 
@@ -137,7 +138,7 @@ def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now:
 
 def _print_install(profile: Profile, now: datetime) -> None:
     layout = stable_layout()
-    print("Install:")
+    print("Stable install:")
     print(f"  this run      {profile.value}")
     for name, pointer in (("current", layout.current), ("previous", layout.previous)):
         version = pointed(pointer)
@@ -148,36 +149,40 @@ def _print_install(profile: Profile, now: datetime) -> None:
 
 
 def _print_launch_agents(host: Host) -> None:
-    print("LaunchAgents:")
-    statuses = agent_statuses(host, stable_layout())
+    print("Stable install's LaunchAgents:")
+    try:
+        statuses = agent_statuses(host, stable_layout())
+    except HostError as exc:
+        print(f"  cannot ask launchd: {exc}")
+        return
     width = max(len(status.name) for status in statuses)
     for status in statuses:
-        if status.label == STOPGAP_LABEL and status.state is None:
+        loaded = status.state is not None and status.state.loaded
+        if status.retired and not (status.installed or loaded):
             continue
-        print(f"  {status.name:<{width}}  {_job(status.state)}  {status.label}")
-        if status.label == STOPGAP_LABEL and status.state is not None and status.state.loaded:
+        print(f"  {status.name:<{width}}  {_job(status)}  {status.label}")
+        if status.retired and loaded:
             print(f"  warning: the {status.name} still runs; `computer-history install` retires it")
 
 
-def _job(state: JobState | None) -> str:
-    if state is None:
-        return "not installed"
-    if not state.loaded:
-        return "installed, not loaded"
-    if state.pid is None:
-        return "loaded, not running"
-    return f"loaded, running (pid {state.pid})"
+def _job(status: AgentStatus) -> str:
+    state = status.state
+    if state is None or not state.loaded:
+        return "installed, not loaded" if status.installed else "not installed"
+    shown = "loaded, not running" if state.pid is None else f"loaded, running (pid {state.pid})"
+    return shown if status.installed else f"{shown}, plist deleted"
 
 
-def _print_backend(db_path: Path, now: datetime) -> None:
-    print("Backend:")
+def _print_backend(now: datetime) -> None:
+    print("Stable backend:")
+    heartbeat_path = backend_heartbeat_path(default_db_path(Profile.STABLE))
     try:
-        heartbeat = read_backend_heartbeat(backend_heartbeat_path(db_path))
+        heartbeat = read_backend_heartbeat(heartbeat_path)
     except (OSError, ValueError) as exc:
         print(f"  last cycle    unreadable heartbeat: {exc}")
         return
     if heartbeat is None:
-        print("  last cycle    none yet (no heartbeat beside the database)")
+        print(f"  last cycle    none yet (no heartbeat at {heartbeat_path})")
         return
     result = "ok" if heartbeat.ok else "failed"
     print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")

@@ -94,12 +94,15 @@ backend at login from it. With no current version it finds the newest `main`
 commit that passed the **release gate** (every one of `lint`, `unit`, `data`,
 `poc`, `secrets`, `macos-capture-agent-tests` and `macos-capture-agent-e2e`
 completed successfully on its push run; `typecheck` and `perf` are ignored),
-through GitHub's public API with no token, and builds it with `uv` on a
+through GitHub's public API (no token needed; `$GITHUB_TOKEN` is sent when
+set, which lifts the 60-requests-an-hour limit a walk of up to 21 requests
+shares), and builds it with `uv` on a
 uv-managed Python 3.12 into `versions/<short commit>/`, with its frozen
 package list in `packages.txt` and the `installed` marker written last. Then
 it points `current` at it, links `~/.local/bin/computer-history` to
 `current/venv/bin/computer-history`, boots out and deletes the stopgap
-`io.github.thewisepup.computer-history.backend` LaunchAgent, and loads the
+`io.github.thewisepup.computer-history.backend` LaunchAgent (asked of launchd
+by label, so a stopgap whose plist was deleted is found too), and loads the
 backend LaunchAgent `io.github.thewisepup.computer-history.ingest`
 (`computer-history ingest --watch` from `current`, started at login,
 restarted by launchd when it exits, at most every 30s; log in
@@ -107,10 +110,15 @@ restarted by launchd when it exits, at most every 30s; log in
 screenshots and agent config stay where they are.
 
 Run again with a current version, it skips GitHub and `uv` and repairs the
-rest: the link, the plist (rewritten and reloaded) and the stopgap. Moving
+rest: the link, the plist (rewritten, the running backend booted out and
+waited for, up to 5s, and then loaded again, retried twice while launchd is
+still busy with the old copy) and the stopgap. Moving
 stable to a newer commit is `update`'s job. Offline, without `uv`, or with no
-passing commit among the newest 20, it fails with exit code 1 and changes
-nothing. A file at `~/.local/bin/computer-history` that is not the install's
+passing commit among the newest 20, or when a folder or file cannot be
+written, it fails with exit code 1 and changes nothing: whatever it created
+is removed again. A GitHub failure names the call (`could not list main's
+newest commits from GitHub: ...`), and a used-up rate limit says when it
+resets. A file at `~/.local/bin/computer-history` that is not the install's
 own link is refused, never replaced.
 
 Real output through the CLI with the test suite's fake host adapter, in a
@@ -241,33 +249,40 @@ Screenshots:
 Rows:
   ...
 
-Install:
+Stable install:
   this run      stable
   current       572c48b, installed 2026-11-20 17:22 (2h 5m ago)
   previous      none
 
-LaunchAgents:
+Stable install's LaunchAgents:
   backend          loaded, running (pid 4242)  io.github.thewisepup.computer-history.ingest
   capture agent    loaded, running (pid 812)  io.github.thewisepup.computer-history.agent
 
-Backend:
+Stable backend:
   last cycle    2026-11-20 19:27 (31s ago), ok
 ```
 
 Read-only: never creates, migrates or writes, and never changes the spool.
-The last three sections (illustrative above) come after the rest whatever
-state the database is in:
+The last three sections (illustrative above) describe the stable install,
+whichever profile runs `status`, and come after the rest whatever state the
+database is in:
 
-- **Install**: this run's profile, and the version `current` and `previous`
-  point at, with when its build finished; `none` before `install`.
-- **LaunchAgents**: what launchd says about the backend and the capture agent
-  (`loaded, running (pid N)`, `loaded, not running`, `installed, not
-  loaded`). Only an agent whose plist is installed is looked up; one without
-  is `not installed`. The stopgap backend is listed only while its plist is
-  still in `~/Library/LaunchAgents`, with a warning while it is loaded.
-- **Backend**: the last cycle the backend heartbeat beside the database
-  records, and whether it was `ok` or `failed`; `none yet` before the first
-  `ingest --watch` cycle.
+- **Stable install**: this run's profile, and the version `current` and
+  `previous` point at, with when its build finished; `none` before `install`.
+- **Stable install's LaunchAgents**: what launchd says about the backend and
+  the capture agent (`loaded, running (pid N)`, `loaded, not running`,
+  `installed, not loaded`). Only an agent whose plist is installed is looked
+  up; one without is `not installed`. The stopgap backend is looked up by
+  label whenever the live folder exists, and listed while its plist is there
+  or it is loaded (`, plist deleted` when only launchd still has it), with a
+  warning while it is loaded. When launchctl cannot be asked, the section is
+  one line, `cannot ask launchd: <reason>`, and the exit code is unchanged.
+- **Stable backend**: the last cycle the stable backend's heartbeat (beside
+  the live database) records, and whether it was `ok` or `failed`; `none yet`
+  before its first cycle, and `unreadable heartbeat: ...` for a file that is
+  not one (a time without an offset, an `ok` that is not true or false).
+  A dev `ingest --watch` writes its own heartbeat beside the dev database,
+  which no section shows.
 Gaps are reported as unobserved time, never assumed idle, and are checked up
 to each source's settled-until time. Small lag is normal — an ActivityWatch
 source is settled only up to the start of its current, still-growing event. A

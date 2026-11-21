@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from computer_history.stable import (
@@ -11,14 +12,14 @@ from computer_history.stable import (
     install,
     stable_layout,
     uninstall,
+    version_name,
 )
-from computer_history.store import SHORT_COMMIT_LENGTH
 
 
 def cmd_install(args: argparse.Namespace) -> int:
     layout = stable_layout()
     try:
-        report = install(args.host, layout)
+        report = install(args.host, layout, path=os.environ.get("PATH", ""))
     except InstallFailed as exc:
         print(f"install failed: {exc}", file=sys.stderr)
         return 1
@@ -27,7 +28,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     else:
         print(f"Release gate: {', '.join(RELEASE_GATE)}")
         for verdict in report.skipped:
-            print(f"  skipped {verdict.commit[:SHORT_COMMIT_LENGTH]}: {verdict.summary}")
+            print(f"  skipped {version_name(verdict.commit)}: {verdict.summary}")
         print(f"Installed version {report.version} (commit {report.built})")
     print(f"  current       {layout.current} -> {layout.versions / report.version}")
     print(f"  PATH link     {layout.link} -> {layout.command(layout.current)}")

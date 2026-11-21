@@ -16,7 +16,7 @@ def test_every_release_gate_check_is_a_ci_job() -> None:
     assert set(RELEASE_GATE) <= jobs
 
 
-def test_the_checks_doc_names_the_release_gate_as_mains_required_checks() -> None:
+def test_the_checks_doc_lists_the_release_gate_for_main() -> None:
     required = re.search(
         r"^`main` requires (.+?) to pass before a merge\.$",
         CHECKS_DOC.read_text(encoding="utf-8"),

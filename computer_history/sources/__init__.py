@@ -10,7 +10,7 @@
           |
       runner.py      poll every stream of every source, once or in the watch loop,
           |          pulling again while a pull says there is more
-      backend_heartbeat.py  ingest --watch's last cycle, in a file beside the database
+      backend_heartbeat.py  the watch loop's last cycle, in a file beside the database
           |
       backfill.py    plan a stream's history in chunks, then ingest them oldest first
           |
@@ -64,8 +64,6 @@ from computer_history.sources.agent_health import (
     capture_health,
 )
 from computer_history.sources.backend_heartbeat import (
-    BACKEND_HEARTBEAT_NAME,
-    BackendHeartbeat,
     backend_heartbeat_path,
     read_backend_heartbeat,
     write_backend_heartbeat,
@@ -164,7 +162,6 @@ __all__ = [
     "AFK_SOURCE",
     "AGENT_ALIVE_WITHIN",
     "APP_TOLERANCE",
-    "BACKEND_HEARTBEAT_NAME",
     "BACKFILL_CHUNK",
     "CAPTURE_KIND",
     "CAPTURE_TOLERANCE",
@@ -203,7 +200,6 @@ __all__ = [
     "AfkSpan",
     "AppAgreement",
     "AppSpan",
-    "BackendHeartbeat",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",

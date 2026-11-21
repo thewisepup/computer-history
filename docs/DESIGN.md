@@ -677,13 +677,16 @@ in the live folder and starts the backend at login from it:
   checks `main` requires on pull requests, `docs/agents/checks.md`). Failed,
   missing, still-running and cancelled all disqualify; `typecheck` and `perf`
   are not in the gate. The lookup walks the newest 20 `main` commits through
-  GitHub's public API, no token.
+  GitHub's public API, stopping at the first that passes; no token is needed,
+  and `$GITHUB_TOKEN` is sent when set.
 - **Install** with no current version builds the newest passing commit with
   `uv` (`uv venv`, `uv pip install git+...@<commit>`, a `--help` smoke run,
   `uv pip freeze`), writes the marker last and points `current` at it. A
-  failed lookup or build removes what it created, so nothing changes. With a
-  current version it skips GitHub and uv and only repairs: the PATH link, the
-  backend plist (reloaded), and the stopgap
+  failed lookup, build or file write removes what it created, so nothing
+  changes. With a current version it skips GitHub and uv and only repairs:
+  the PATH link, the
+  backend plist (reloaded: boot out, wait until launchd lets go of it, then
+  bootstrap, retried while launchd answers busy), and the stopgap
   `io.github.thewisepup.computer-history.backend` job, booted out and its plist
   deleted before the backend loads, so two backends never ingest at once.
 - **Backend LaunchAgent:** `current/venv/bin/computer-history ingest --watch`,

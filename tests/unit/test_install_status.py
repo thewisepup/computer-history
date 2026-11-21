@@ -1,34 +1,30 @@
 from __future__ import annotations
 
-import plistlib
+import json
 from pathlib import Path
 
 import pytest
+from cli_output import run_cli
 from fake_aw import FakeAW
-from fake_host import FakeHost, gate_runs
+from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
-from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
-from computer_history.sources import runner
-from computer_history.stable import BACKEND, CAPTURE_AGENT_LABEL, STOPGAP_LABEL, stable_layout
-from computer_history.store import SHORT_COMMIT_LENGTH
+from computer_history.sources import backend_heartbeat_path, runner
+from computer_history.stable import (
+    BACKEND,
+    CAPTURE_AGENT_LABEL,
+    STOPGAP_LABEL,
+    stable_layout,
+    version_name,
+)
+from computer_history.store import DATABASE_NAME
 
 COMMIT = "b" * 40
 UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
-
-
-@pytest.fixture
-def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    folder = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(folder))
-    return folder
-
-
-@pytest.fixture
-def checkout(tmp_path: Path) -> Path:
-    code = tmp_path / "checkout" / "computer_history"
-    code.mkdir(parents=True)
-    return code
+STATUS = ("status", *UNREACHABLE_AW)
+INSTALL = "Stable install:"
+AGENTS = "Stable install's LaunchAgents:"
+BACKEND_SECTION = "Stable backend:"
 
 
 @pytest.fixture
@@ -39,12 +35,13 @@ def one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner.time, "sleep", interrupt)
 
 
-def run(
-    capsys: pytest.CaptureFixture[str], code: Path, host: FakeHost, *argv: str
-) -> tuple[int, list[str], str]:
-    exit_code = cli.main(list(argv), code=code, host=host)
-    captured = capsys.readouterr()
-    return exit_code, captured.out.splitlines(), captured.err
+@pytest.fixture
+def stable_code(
+    capsys: pytest.CaptureFixture[str], live: Path, checkout: Path
+) -> tuple[Path, FakeHost]:
+    host = FakeHost(checks={COMMIT: gate_runs()})
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
+    return installed_package(stable_layout().link.resolve().parents[1]), host
 
 
 def section(out: list[str], title: str) -> list[str]:
@@ -53,79 +50,111 @@ def section(out: list[str], title: str) -> list[str]:
     return out[start:end]
 
 
-def test_status_shows_the_backends_last_completed_cycle(
+def test_dev_status_shows_the_stable_backends_last_cycle(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
-    home: Path,
+    live: Path,
     checkout: Path,
+    stable_code: tuple[Path, FakeHost],
     one_cycle: None,
-    db_path: Path,
 ) -> None:
-    host = FakeHost()
-    _, out, _ = run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
-    assert section(out, "Backend:") == [
-        "  last cycle    none yet (no heartbeat beside the database)"
+    code, host = stable_code
+    heartbeat = backend_heartbeat_path(live / DATABASE_NAME)
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
+    assert section(out, BACKEND_SECTION) == [
+        f"  last cycle    none yet (no heartbeat at {heartbeat})"
     ]
 
     monkeypatch.setattr(cli_ingest, "AWClient", lambda *args, **kwargs: FakeAW({}))
-    assert run(capsys, checkout, host, "ingest", "--watch", "--db-path", str(db_path))[0] == 0
-    _, out, _ = run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
+    assert run_cli(capsys, code, "ingest", "--watch", host=host)[0] == 0
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
 
-    (line,) = section(out, "Backend:")
+    (line,) = section(out, BACKEND_SECTION)
     assert line.startswith("  last cycle    ")
     assert line.endswith(" ago), ok")
 
 
 def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_it_failed(
-    capsys: pytest.CaptureFixture[str], home: Path, checkout: Path, one_cycle: None, db_path: Path
+    capsys: pytest.CaptureFixture[str],
+    checkout: Path,
+    stable_code: tuple[Path, FakeHost],
+    one_cycle: None,
 ) -> None:
-    host = FakeHost()
-    assert (
-        run(
-            capsys, checkout, host, "ingest", "--watch", "--db-path", str(db_path), *UNREACHABLE_AW
-        )[0]
-        == 0
-    )
+    code, host = stable_code
+    assert run_cli(capsys, code, "ingest", "--watch", *UNREACHABLE_AW, host=host)[0] == 0
 
-    _, out, _ = run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
 
-    (line,) = section(out, "Backend:")
+    (line,) = section(out, BACKEND_SECTION)
     assert line.endswith(" ago), failed")
 
 
-def test_status_shows_the_install_and_its_launch_agents(
-    capsys: pytest.CaptureFixture[str], home: Path, checkout: Path, db_path: Path
+def test_a_dev_backends_heartbeat_is_not_shown_as_stables(
+    capsys: pytest.CaptureFixture[str],
+    live: Path,
+    dev: Path,
+    checkout: Path,
+    one_cycle: None,
 ) -> None:
-    host = FakeHost(checks={COMMIT: gate_runs()})
-    assert run(capsys, checkout, host, "install")[0] == 0
+    host = FakeHost()
+    assert run_cli(capsys, checkout, "ingest", "--watch", *UNREACHABLE_AW, host=host)[0] == 0
+    assert backend_heartbeat_path(dev / DATABASE_NAME).is_file()
 
-    _, out, _ = run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
 
-    install = section(out, "Install:")
+    (line,) = section(out, BACKEND_SECTION)
+    assert line.startswith("  last cycle    none yet")
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        {"cycle_at": "2026-11-20T17:22:03", "ok": True},
+        {"cycle_at": "2026-11-20T17:22:03+00:00", "ok": "yes"},
+        {"ok": True},
+    ],
+    ids=["naive time", "ok not a bool", "no time"],
+)
+def test_an_unreadable_heartbeat_is_reported_not_trusted(
+    capsys: pytest.CaptureFixture[str], live: Path, checkout: Path, written: dict[str, object]
+) -> None:
+    backend_heartbeat_path(live / DATABASE_NAME).write_text(json.dumps(written))
+
+    code, out, _ = run_cli(capsys, checkout, *STATUS, host=FakeHost())
+
+    assert code == 0
+    (line,) = section(out, BACKEND_SECTION)
+    assert line.startswith("  last cycle    unreadable heartbeat: ")
+
+
+def test_status_shows_the_install_and_its_launch_agents(
+    capsys: pytest.CaptureFixture[str], checkout: Path, stable_code: tuple[Path, FakeHost]
+) -> None:
+    _, host = stable_code
+
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
+
+    install = section(out, INSTALL)
     assert install[0] == "  this run      dev"
-    assert install[1].startswith(f"  current       {COMMIT[:SHORT_COMMIT_LENGTH]}, installed ")
+    assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
     assert install[2:] == ["  previous      none"]
     pid = host.jobs[BACKEND.label].pid
-    assert section(out, "LaunchAgents:") == [
+    assert section(out, AGENTS) == [
         f"  backend          loaded, running (pid {pid})  {BACKEND.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
     ]
 
 
 def test_status_before_install_flags_the_stopgap_backend(
-    capsys: pytest.CaptureFixture[str], home: Path, checkout: Path, db_path: Path
+    capsys: pytest.CaptureFixture[str], live: Path, checkout: Path
 ) -> None:
-    layout = stable_layout()
-    layout.launch_agents.mkdir(parents=True)
-    (layout.launch_agents / f"{STOPGAP_LABEL}.plist").write_bytes(
-        plistlib.dumps({"Label": STOPGAP_LABEL})
-    )
+    write_stopgap_plist(stable_layout())
     host = FakeHost(loaded=[STOPGAP_LABEL])
 
-    _, out, _ = run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
 
-    assert section(out, "Install:")[1:] == ["  current       none", "  previous      none"]
-    assert section(out, "LaunchAgents:") == [
+    assert section(out, INSTALL)[1:] == ["  current       none", "  previous      none"]
+    assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
         f"  stopgap backend  loaded, running (pid 100)  {STOPGAP_LABEL}",
@@ -134,11 +163,37 @@ def test_status_before_install_flags_the_stopgap_backend(
     assert ("job", BACKEND.label) not in host.calls
 
 
-def test_status_asks_launchd_only_about_installed_agents(
+def test_status_finds_a_running_stopgap_whose_plist_was_deleted(
+    capsys: pytest.CaptureFixture[str], live: Path, checkout: Path
+) -> None:
+    host = FakeHost(loaded=[STOPGAP_LABEL])
+
+    _, out, _ = run_cli(capsys, checkout, *STATUS, host=host)
+
+    assert section(out, AGENTS)[2:] == [
+        f"  stopgap backend  loaded, running (pid 100), plist deleted  {STOPGAP_LABEL}",
+        "  warning: the stopgap backend still runs; `computer-history install` retires it",
+    ]
+
+
+def test_status_survives_launchd_not_answering(
+    capsys: pytest.CaptureFixture[str], checkout: Path, stable_code: tuple[Path, FakeHost]
+) -> None:
+    _, host = stable_code
+    host.job_error = "could not ask launchd about it: launchctl timed out"
+
+    code, out, err = run_cli(capsys, checkout, *STATUS, host=host)
+
+    assert code == 0
+    assert "Traceback" not in err
+    assert section(out, AGENTS) == [f"  cannot ask launchd: {host.job_error}"]
+
+
+def test_status_asks_launchd_nothing_without_a_live_folder_or_plists(
     capsys: pytest.CaptureFixture[str], home: Path, checkout: Path, db_path: Path
 ) -> None:
     host = FakeHost()
 
-    run(capsys, checkout, host, "status", "--db-path", str(db_path), *UNREACHABLE_AW)
+    run_cli(capsys, checkout, "status", "--db-path", str(db_path), *UNREACHABLE_AW, host=host)
 
     assert host.calls == []

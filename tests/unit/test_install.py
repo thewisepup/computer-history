@@ -1,63 +1,38 @@
 from __future__ import annotations
 
+import os
 import plistlib
 from pathlib import Path
 
 import pytest
-from fake_host import FakeHost, gate_runs, installed_package
+from cli_output import run_cli
+from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
-from computer_history import cli
 from computer_history.cli.profile import NOT_A_CHECKOUT
 from computer_history.host import CheckOutcome
 from computer_history.stable import (
     BACKEND,
+    LOAD_ATTEMPTS,
     STOPGAP_LABEL,
     Layout,
     stable_layout,
+    version_name,
 )
-from computer_history.store import DATABASE_NAME, INSTALL_MARKER_NAME, SHORT_COMMIT_LENGTH
+from computer_history.store import DATABASE_NAME, INSTALL_MARKER_NAME
 
 NEWEST = "c" * 40
 OLDER = "b" * 40
-OLDEST = "a" * 40
 
 
 @pytest.fixture
-def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    folder = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(folder))
-    return folder
-
-
-@pytest.fixture
-def layout(home: Path) -> Layout:
+def layout(live: Path) -> Layout:
     found = stable_layout()
-    found.live.mkdir(parents=True)
-    (found.live / DATABASE_NAME).write_text("real history\n")
-    (found.live / "spool").mkdir()
-    (found.live / "spool" / "1.jsonl").write_text("{}\n")
-    (found.live / "screenshots").mkdir()
-    (found.live / "agent-config.json").write_text("{}\n")
+    (live / DATABASE_NAME).write_text("real history\n")
+    (live / "spool").mkdir()
+    (live / "spool" / "1.jsonl").write_text("{}\n")
+    (live / "screenshots").mkdir()
+    (live / "agent-config.json").write_text("{}\n")
     return found
-
-
-@pytest.fixture
-def checkout(tmp_path: Path) -> Path:
-    code = tmp_path / "checkout" / "computer_history"
-    code.mkdir(parents=True)
-    return code
-
-
-def run(
-    capsys: pytest.CaptureFixture[str], code: Path, host: FakeHost, *argv: str
-) -> tuple[int, list[str], str]:
-    exit_code = cli.main(list(argv), code=code, host=host)
-    captured = capsys.readouterr()
-    return exit_code, captured.out.splitlines(), captured.err
-
-
-def short(commit: str) -> str:
-    return commit[:SHORT_COMMIT_LENGTH]
 
 
 def data_files(layout: Layout) -> dict[Path, bytes]:
@@ -68,32 +43,25 @@ def data_files(layout: Layout) -> dict[Path, bytes]:
     }
 
 
-def stopgap_plist(layout: Layout) -> Path:
-    plist = layout.launch_agents / f"{STOPGAP_LABEL}.plist"
-    plist.parent.mkdir(parents=True, exist_ok=True)
-    plist.write_bytes(plistlib.dumps({"Label": STOPGAP_LABEL}))
-    return plist
-
-
 def test_install_builds_the_newest_passing_commit_and_starts_the_backend_from_it(
     capsys: pytest.CaptureFixture[str], layout: Layout, checkout: Path
 ) -> None:
     host = FakeHost(checks={OLDER: gate_runs()}, loaded=[STOPGAP_LABEL])
-    stopgap = stopgap_plist(layout)
+    stopgap = write_stopgap_plist(layout)
     data = data_files(layout)
 
-    code, out, err = run(capsys, checkout, host, "install")
+    code, out, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 0, err
     assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), stable install {layout.live}"
-    version = layout.versions / short(OLDER)
+    version = layout.versions / version_name(OLDER)
     assert (version / INSTALL_MARKER_NAME).read_text() == ""
     assert OLDER in (version / "packages.txt").read_text()
     assert layout.current.resolve() == version
-    assert layout.link.resolve() == version / "venv" / "bin" / "computer-history"
+    assert layout.link.resolve() == layout.command(version)
     plist = plistlib.loads((layout.launch_agents / f"{BACKEND.label}.plist").read_bytes())
     assert plist["ProgramArguments"] == [
-        str(layout.current / "venv" / "bin" / "computer-history"),
+        str(layout.command(layout.current)),
         "ingest",
         "--watch",
     ]
@@ -105,20 +73,22 @@ def test_install_builds_the_newest_passing_commit_and_starts_the_backend_from_it
     assert not stopgap.exists()
     assert host.calls.index(("unload", STOPGAP_LABEL)) < host.calls.index(("load", BACKEND.label))
     assert data_files(layout) == data
-    assert f"Installed version {short(OLDER)} (commit {OLDER})" in out
+    assert f"Installed version {version_name(OLDER)} (commit {OLDER})" in out
 
 
 def test_the_installed_command_runs_as_stable_on_the_live_database(
     capsys: pytest.CaptureFixture[str], layout: Layout, checkout: Path
 ) -> None:
     host = FakeHost(checks={OLDER: gate_runs()})
-    assert run(capsys, checkout, host, "install")[0] == 0
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
     installed = installed_package(layout.link.resolve().parents[1])
 
-    _, out, _ = run(capsys, installed, host, "status", "--aw-url", "http://127.0.0.1:1/api/0")
+    _, out, _ = run_cli(
+        capsys, installed, "status", "--aw-url", "http://127.0.0.1:1/api/0", host=host
+    )
 
     assert out[0] == (
-        f"Profile stable (version {short(OLDER)}), database {layout.live / DATABASE_NAME}"
+        f"Profile stable (version {version_name(OLDER)}), database {layout.live / DATABASE_NAME}"
     )
 
 
@@ -140,13 +110,13 @@ def test_install_skips_commits_the_release_gate_does_not_pass(
 ) -> None:
     host = FakeHost(checks={NEWEST: gate_runs(**newest), OLDER: gate_runs()})
 
-    code, out, err = run(capsys, checkout, host, "install")
+    code, out, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 0, err
-    assert layout.current.resolve().name == short(OLDER)
+    assert layout.current.resolve().name == version_name(OLDER)
     ((check, outcome),) = newest.items()
     reason = "missing" if outcome is None else outcome.value
-    assert f"  skipped {short(NEWEST)}: {check} {reason}" in out
+    assert f"  skipped {version_name(NEWEST)}: {check} {reason}" in out
 
 
 def test_install_ignores_the_checks_outside_the_release_gate(
@@ -155,9 +125,9 @@ def test_install_ignores_the_checks_outside_the_release_gate(
     runs = gate_runs(typecheck=CheckOutcome.FAILURE, perf=CheckOutcome.RUNNING)
     host = FakeHost(checks={NEWEST: runs, OLDER: gate_runs()})
 
-    assert run(capsys, checkout, host, "install")[0] == 0
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
 
-    assert layout.current.resolve().name == short(NEWEST)
+    assert layout.current.resolve().name == version_name(NEWEST)
 
 
 def test_install_with_no_passing_commit_changes_nothing(
@@ -166,7 +136,7 @@ def test_install_with_no_passing_commit_changes_nothing(
     host = FakeHost(checks={NEWEST: gate_runs(unit=CheckOutcome.FAILURE)})
     before = sorted(layout.live.parent.parent.parent.rglob("*"))
 
-    code, _, err = run(capsys, checkout, host, "install")
+    code, _, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 1
     assert "no commit among the newest" in err
@@ -179,15 +149,16 @@ def test_install_with_no_passing_commit_changes_nothing(
     [
         FakeHost(offline=True),
         FakeHost(checks={OLDER: gate_runs()}, build_error="uv is not installed"),
+        FakeHost(checks={OLDER: gate_runs()}, build_blocks_packages=True),
     ],
-    ids=["offline", "uv missing"],
+    ids=["offline", "uv missing", "package list not written"],
 )
 def test_install_fails_cleanly_changing_nothing(
     capsys: pytest.CaptureFixture[str], home: Path, layout: Layout, checkout: Path, host: FakeHost
 ) -> None:
     before = sorted(home.rglob("*"))
 
-    code, _, err = run(capsys, checkout, host, "install")
+    code, _, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 1
     assert err.startswith("install failed: ")
@@ -200,20 +171,20 @@ def test_install_twice_repairs_without_rebuilding_or_reaching_github(
     capsys: pytest.CaptureFixture[str], layout: Layout, checkout: Path
 ) -> None:
     host = FakeHost(checks={OLDER: gate_runs()})
-    assert run(capsys, checkout, host, "install")[0] == 0
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
     layout.link.unlink()
     host.checks = {NEWEST: gate_runs(), **host.checks}
     host.calls.clear()
 
-    code, out, err = run(capsys, checkout, host, "install")
+    code, out, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 0, err
-    assert layout.current.resolve().name == short(OLDER)
-    assert layout.link.resolve() == layout.current.resolve() / "venv" / "bin" / "computer-history"
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert layout.link.resolve() == layout.command(layout.current.resolve())
     assert [call[0] for call in host.calls if call[0] != "job"] == ["unload", "load"]
     assert host.jobs[BACKEND.label].pid is not None
-    assert [path.name for path in layout.versions.iterdir()] == [short(OLDER)]
-    assert f"Version {short(OLDER)} is already installed and current" in out
+    assert [path.name for path in layout.versions.iterdir()] == [version_name(OLDER)]
+    assert f"Version {version_name(OLDER)} is already installed and current" in out
 
 
 def test_install_refuses_to_replace_a_command_it_did_not_link(
@@ -224,7 +195,7 @@ def test_install_refuses_to_replace_a_command_it_did_not_link(
     before = sorted(home.rglob("*"))
     host = FakeHost(checks={OLDER: gate_runs()})
 
-    code, _, err = run(capsys, checkout, host, "install")
+    code, _, err = run_cli(capsys, checkout, "install", host=host)
 
     assert code == 1
     assert f"{layout.link} already exists and is not the stable install's link" in err
@@ -237,9 +208,9 @@ def test_uninstall_removes_the_install_and_keeps_the_data(
 ) -> None:
     host = FakeHost(checks={OLDER: gate_runs()})
     data = data_files(layout)
-    assert run(capsys, checkout, host, "install")[0] == 0
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
 
-    code, out, err = run(capsys, checkout, host, "uninstall")
+    code, out, err = run_cli(capsys, checkout, "uninstall", host=host)
 
     assert code == 0, err
     assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), stable install {layout.live}"
@@ -249,7 +220,7 @@ def test_uninstall_removes_the_install_and_keeps_the_data(
     assert not layout.current.is_symlink()
     assert not layout.link.is_symlink()
     assert data_files(layout) == data
-    assert run(capsys, checkout, host, "uninstall")[0] == 0
+    assert run_cli(capsys, checkout, "uninstall", host=host)[0] == 0
 
 
 def test_uninstall_leaves_a_command_it_did_not_link(
@@ -260,6 +231,85 @@ def test_uninstall_leaves_a_command_it_did_not_link(
     layout.link.parent.mkdir(parents=True)
     layout.link.symlink_to(other)
 
-    assert run(capsys, checkout, FakeHost(), "uninstall")[0] == 0
+    assert run_cli(capsys, checkout, "uninstall", host=FakeHost())[0] == 0
 
     assert layout.link.resolve() == other
+
+
+def test_install_with_a_read_only_live_folder_changes_nothing(
+    capsys: pytest.CaptureFixture[str], home: Path, layout: Layout, checkout: Path
+) -> None:
+    before = sorted(home.rglob("*"))
+    layout.live.chmod(0o555)
+    try:
+        code, _, err = run_cli(
+            capsys, checkout, "install", host=FakeHost(checks={OLDER: gate_runs()})
+        )
+    finally:
+        layout.live.chmod(0o755)
+
+    assert code == 1
+    assert err.startswith("install failed: ") and "(nothing was changed)" in err
+    assert sorted(home.rglob("*")) == before
+
+
+def test_reinstalling_waits_for_the_running_backend_to_unload_before_loading_it_again(
+    capsys: pytest.CaptureFixture[str], layout: Layout, checkout: Path
+) -> None:
+    host = FakeHost(checks={OLDER: gate_runs()})
+    assert run_cli(capsys, checkout, "install", host=host)[0] == 0
+    host.unload_lingers, host.busy_loads = 3, LOAD_ATTEMPTS - 1
+    host.calls.clear()
+
+    code, _, err = run_cli(capsys, checkout, "install", host=host)
+
+    assert code == 0, err
+    assert host.jobs[BACKEND.label].pid is not None
+    backend = [call[0] for call in host.calls if call[1] == BACKEND.label]
+    assert backend == ["job", "unload", "job", "job", "job", "job", *["load"] * LOAD_ATTEMPTS]
+
+
+def test_install_boots_out_a_stopgap_whose_plist_was_deleted(
+    capsys: pytest.CaptureFixture[str], layout: Layout, checkout: Path
+) -> None:
+    host = FakeHost(checks={OLDER: gate_runs()}, loaded=[STOPGAP_LABEL])
+
+    code, out, err = run_cli(capsys, checkout, "install", host=host)
+
+    assert code == 0, err
+    assert STOPGAP_LABEL not in host.jobs
+    assert f"  stopgap       {STOPGAP_LABEL} booted out and removed" in out
+
+
+@pytest.mark.parametrize("spelling", ["~/.local/bin/", "{home}/.local/bin/", "{alias}/.local/bin"])
+def test_install_finds_its_link_on_path_however_path_spells_the_folder(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    home: Path,
+    layout: Layout,
+    checkout: Path,
+    spelling: str,
+) -> None:
+    alias = tmp_path / "home-alias"
+    alias.symlink_to(home)
+    entry = spelling.format(home=home, alias=alias)
+    monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", entry]))
+
+    code, out, _ = run_cli(capsys, checkout, "install", host=FakeHost(checks={OLDER: gate_runs()}))
+
+    assert code == 0
+    assert not any("is not on PATH" in line for line in out)
+
+
+def test_install_notes_when_its_link_is_not_on_path(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    layout: Layout,
+    checkout: Path,
+) -> None:
+    monkeypatch.setenv("PATH", "/usr/bin")
+
+    _, out, _ = run_cli(capsys, checkout, "install", host=FakeHost(checks={OLDER: gate_runs()}))
+
+    assert out[-1] == f"  note: {layout.link.parent} is not on PATH; add it to run computer-history"

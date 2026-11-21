@@ -10,6 +10,9 @@ CURRENT_POINTER_NAME = "current"
 PREVIOUS_POINTER_NAME = "previous"
 VENV_FOLDER_NAME = "venv"
 PACKAGES_FILE_NAME = "packages.txt"
+LABEL_PREFIX = "io.github.thewisepup.computer-history"
+CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
+CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,12 @@ class Layout:
     @property
     def launch_agents(self) -> Path:
         return self.home / "Library" / "LaunchAgents"
+
+    @property
+    def capture_agent_plist(self) -> Path:
+        """The capture agent's plist, inside the app bundle its own install script puts in place."""
+        bundle = self.home / "Applications" / CAPTURE_AGENT_APP
+        return bundle / "Contents" / "Library" / "LaunchAgents" / f"{CAPTURE_AGENT_LABEL}.plist"
 
     @property
     def logs(self) -> Path:

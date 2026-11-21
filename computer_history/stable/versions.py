@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 from dataclasses import dataclass
@@ -33,33 +34,42 @@ def pointed(pointer: Path) -> InstalledVersion | None:
     return InstalledVersion(marker.parent.name, datetime.fromtimestamp(marker.stat().st_mtime, UTC))
 
 
-def point(pointer: Path, name: str) -> None:
-    """Link a pointer in the live folder to a version folder, replacing it in one step."""
-    staged = pointer.with_name(f".{pointer.name}.new")
+def replace_symlink(link: Path, target: Path) -> None:
+    """Point a symlink at a target in one step, leaving nothing behind when that fails."""
+    staged = link.with_name(f".{link.name}.new")
     staged.unlink(missing_ok=True)
-    staged.symlink_to(Path(VERSIONS_FOLDER_NAME) / name)
-    os.replace(staged, pointer)
-
-
-def build_version(host: Host, layout: Layout, commit: str) -> bool:
-    """Build a commit into its version folder unless it is already marked; returns whether it built.
-
-    A failed build leaves no folder behind, not even the parents it created.
-    """
-    folder = layout.versions / version_name(commit)
-    if (folder / INSTALL_MARKER_NAME).is_file():
-        return False
-    created = [path for path in (layout.live, layout.versions) if not path.exists()]
-    if folder.exists():
-        shutil.rmtree(folder)
+    staged.symlink_to(target)
     try:
-        folder.mkdir(parents=True)
-        packages = host.build(commit, folder / VENV_FOLDER_NAME)
-        (folder / PACKAGES_FILE_NAME).write_text(packages, encoding="utf-8")
-        (folder / INSTALL_MARKER_NAME).write_text("")
-    except BaseException:
-        shutil.rmtree(folder, ignore_errors=True)
-        for path in reversed(created):
-            path.rmdir()
+        os.replace(staged, link)
+    except OSError:
+        staged.unlink(missing_ok=True)
         raise
-    return True
+
+
+def make_current(host: Host, layout: Layout, commit: str) -> None:
+    """Build a commit into its version folder unless it is marked already, then point current at it.
+
+    On any failure everything this created is removed again before the error goes on.
+    """
+    name = version_name(commit)
+    folder = layout.versions / name
+    marked = (folder / INSTALL_MARKER_NAME).is_file()
+    created = [path for path in (layout.live, layout.versions) if not path.exists()]
+    try:
+        if not marked:
+            if folder.exists():
+                shutil.rmtree(folder)
+            folder.mkdir(parents=True)
+            packages = host.build(commit, folder / VENV_FOLDER_NAME)
+            (folder / PACKAGES_FILE_NAME).write_text(packages, encoding="utf-8")
+            (folder / INSTALL_MARKER_NAME).write_text("")
+        replace_symlink(layout.current, Path(VERSIONS_FOLDER_NAME) / name)
+    except BaseException:
+        if not marked:
+            shutil.rmtree(folder, ignore_errors=True)
+        if layout.versions in created:
+            shutil.rmtree(layout.versions, ignore_errors=True)
+        if layout.live in created:
+            with contextlib.suppress(OSError):
+                layout.live.rmdir()
+        raise

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import plistlib
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from computer_history.host import Host, JobState
-from computer_history.stable.layout import Layout
+from computer_history.host import Host, HostError, JobBusy, JobState
+from computer_history.stable.layout import CAPTURE_AGENT_LABEL, LABEL_PREFIX, Layout
 
-LABEL_PREFIX = "io.github.thewisepup.computer-history"
 STOPGAP_LABEL = f"{LABEL_PREFIX}.backend"
-CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
-CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
 RESTART_THROTTLE_SECONDS = 30
+UNLOAD_POLL_SECONDS = 0.1
+UNLOAD_WAIT_SECONDS = 5.0
+LOAD_ATTEMPTS = 3
+LOAD_RETRY_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -47,23 +50,45 @@ STABLE_AGENTS = (BACKEND,)
 
 @dataclass(frozen=True)
 class AgentStatus:
-    """A LaunchAgent status reports on, and launchd's state for it (None: no plist installed)."""
+    """A LaunchAgent status reports on: whether its plist is installed and what launchd says.
+
+    The state is None when launchd was not asked; retired marks the stopgap backend.
+    """
 
     name: str
     label: str
-    plist: Path
+    installed: bool
     state: JobState | None
+    retired: bool = False
 
 
-def load_agent(host: Host, layout: Layout, agent: LaunchAgent) -> None:
-    """Write the agent's plist and load it, booting out the copy already loaded."""
+def load_agent(
+    host: Host, layout: Layout, agent: LaunchAgent, *, sleep: Callable[[float], None] = time.sleep
+) -> None:
+    """Write the agent's plist and load it, first booting out and waiting out the loaded copy."""
     layout.launch_agents.mkdir(parents=True, exist_ok=True)
     layout.logs.mkdir(parents=True, exist_ok=True)
     plist = agent.plist(layout)
     plist.write_bytes(agent.render(layout))
     if host.job(agent.label).loaded:
         host.unload(agent.label)
-    host.load(plist)
+        _wait_until_unloaded(host, agent.label, sleep)
+    for attempt in range(1, LOAD_ATTEMPTS + 1):
+        try:
+            host.load(plist)
+            return
+        except JobBusy:
+            if attempt == LOAD_ATTEMPTS:
+                raise
+            sleep(LOAD_RETRY_SECONDS)
+
+
+def _wait_until_unloaded(host: Host, label: str, sleep: Callable[[float], None]) -> None:
+    for _ in range(round(UNLOAD_WAIT_SECONDS / UNLOAD_POLL_SECONDS)):
+        if not host.job(label).loaded:
+            return
+        sleep(UNLOAD_POLL_SECONDS)
+    raise HostError(f"{label} was still loaded {UNLOAD_WAIT_SECONDS:g}s after booting it out")
 
 
 def remove_agent(host: Host, label: str, plist: Path) -> bool:
@@ -83,23 +108,20 @@ def stopgap_plist(layout: Layout) -> Path:
 def agent_statuses(host: Host, layout: Layout) -> list[AgentStatus]:
     """The stable install's agents, the capture agent and the stopgap backend, as launchd sees them.
 
-    Only an agent whose plist is installed is looked up in launchd.
+    Only agents with a plist are looked up, and the stopgap whenever the live folder exists.
     """
-    capture_plist = (
-        layout.home
-        / "Applications"
-        / CAPTURE_AGENT_APP
-        / "Contents"
-        / "Library"
-        / "LaunchAgents"
-        / f"{CAPTURE_AGENT_LABEL}.plist"
+    statuses = [
+        _status(host, agent.name, agent.label, agent.plist(layout).exists())
+        for agent in STABLE_AGENTS
+    ]
+    statuses.append(
+        _status(host, "capture agent", CAPTURE_AGENT_LABEL, layout.capture_agent_plist.exists())
     )
-    found = [(agent.name, agent.label, agent.plist(layout)) for agent in STABLE_AGENTS]
-    found += [
-        ("capture agent", CAPTURE_AGENT_LABEL, capture_plist),
-        ("stopgap backend", STOPGAP_LABEL, stopgap_plist(layout)),
-    ]
-    return [
-        AgentStatus(name, label, plist, host.job(label) if plist.exists() else None)
-        for name, label, plist in found
-    ]
+    stopgap = stopgap_plist(layout).exists()
+    state = host.job(STOPGAP_LABEL) if stopgap or layout.live.exists() else None
+    statuses.append(AgentStatus("stopgap backend", STOPGAP_LABEL, stopgap, state, retired=True))
+    return statuses
+
+
+def _status(host: Host, name: str, label: str, installed: bool) -> AgentStatus:
+    return AgentStatus(name, label, installed, host.job(label) if installed else None)

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 from aw_http import served_over_http
+from cli_output import run_cli
 from fake_aw import FakeAW
 
-from computer_history import cli
 from computer_history.cli import dev as cli_dev
 from computer_history.cli.profile import INSTALLED_COPY, NOT_A_CHECKOUT
 from computer_history.sources import SPOOL_ENV_VAR
@@ -19,10 +19,7 @@ from computer_history.store import (
     DB_ENV_VAR,
     INSTALL_MARKER_NAME,
     VERSIONS_FOLDER_NAME,
-    Profile,
     connect,
-    data_folder,
-    live_folder,
     table_counts,
 )
 
@@ -32,44 +29,10 @@ SCREENSHOTS_FOLDER = "screenshots"
 DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
 
-@pytest.fixture
-def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    folder = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(folder))
-    return folder
-
-
-@pytest.fixture
-def live(home: Path) -> Path:
-    folder = live_folder()
-    folder.mkdir(parents=True)
-    return folder
-
-
-@pytest.fixture
-def dev(home: Path) -> Path:
-    return data_folder(Profile.DEV)
-
-
-@pytest.fixture
-def checkout(tmp_path: Path) -> Path:
-    code = tmp_path / "checkout" / "computer_history"
-    code.mkdir(parents=True)
-    return code
-
-
-def run(
-    capsys: pytest.CaptureFixture[str], code: Path, *argv: str
-) -> tuple[int, list[str], str]:
-    exit_code = cli.main(list(argv), code=code)
-    captured = capsys.readouterr()
-    return exit_code, captured.out.splitlines(), captured.err
-
-
 def test_a_checkout_run_is_dev_and_uses_the_dev_folder(
     capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
 ) -> None:
-    code, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
+    code, out, _ = run_cli(capsys, checkout, "status", *UNREACHABLE_AW)
 
     assert code == 0
     assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
@@ -89,7 +52,9 @@ def installed(live: Path, version: str, *, marked: bool) -> Path:
 def test_a_marked_version_of_the_stable_install_is_stable_and_uses_the_live_folder(
     capsys: pytest.CaptureFixture[str], live: Path, dev: Path
 ) -> None:
-    code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=True), "ingest", *UNREACHABLE_AW)
+    code, out, _ = run_cli(
+        capsys, installed(live, "1a2b3c4", marked=True), "ingest", *UNREACHABLE_AW
+    )
 
     assert out[0] == f"Profile stable (version 1a2b3c4), database {live / DATABASE_NAME}"
     assert code == 1
@@ -100,7 +65,9 @@ def test_a_marked_version_of_the_stable_install_is_stable_and_uses_the_live_fold
 def test_a_version_without_the_marker_is_dev(
     capsys: pytest.CaptureFixture[str], live: Path, dev: Path
 ) -> None:
-    code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=False), "status", *UNREACHABLE_AW)
+    code, out, _ = run_cli(
+        capsys, installed(live, "1a2b3c4", marked=False), "status", *UNREACHABLE_AW
+    )
 
     assert code == 0
     assert out[0] == f"Profile dev ({INSTALLED_COPY}), database {dev / DATABASE_NAME}"
@@ -133,7 +100,7 @@ def test_dev_is_refused_the_live_database(
     else:
         monkeypatch.setenv(DB_ENV_VAR, str(db))
 
-    code, out, err = run(capsys, checkout, *argv)
+    code, out, err = run_cli(capsys, checkout, *argv)
 
     assert code == 1
     assert out == [f"Profile dev ({NOT_A_CHECKOUT}), database refused"]
@@ -166,7 +133,7 @@ def test_dev_is_refused_the_live_spool_and_screenshots(
     else:
         monkeypatch.setenv(SPOOL_ENV_VAR, str(spool))
 
-    code, out, err = run(capsys, checkout, *argv)
+    code, out, err = run_cli(capsys, checkout, *argv)
 
     assert code == 1
     assert out == [f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"]
@@ -181,7 +148,7 @@ def test_stable_is_not_walled_off_from_its_own_folder(
 ) -> None:
     code = installed(live, "1a2b3c4", marked=True)
 
-    status, _, err = run(
+    status, _, err = run_cli(
         capsys, code, "status", "--db-path", str(live / DATABASE_NAME), *UNREACHABLE_AW
     )
 
@@ -197,7 +164,7 @@ def test_dev_ingests_activitywatch_into_its_own_database(
     aw.add(WINDOW_BUCKET, 0, 600, {"app": "Code", "title": "cli.py"})
 
     with served_over_http(aw) as url:
-        code, out, err = run(capsys, checkout, "ingest", "--aw-url", url)
+        code, out, err = run_cli(capsys, checkout, "ingest", "--aw-url", url)
 
     assert code == 0, err
     assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
@@ -233,9 +200,9 @@ def test_a_dev_run_from_a_git_checkout_names_its_branch_and_commit(
     commit = git(repo, "rev-parse", "--short", "HEAD")
     git(repo, "checkout", "-q", "--detach")
 
-    _, detached, _ = run(capsys, code, "status", *UNREACHABLE_AW)
+    _, detached, _ = run_cli(capsys, code, "status", *UNREACHABLE_AW)
     git(repo, "checkout", "-q", "feature")
-    _, on_branch, _ = run(capsys, code, "status", *UNREACHABLE_AW)
+    _, on_branch, _ = run_cli(capsys, code, "status", *UNREACHABLE_AW)
 
     database = dev / DATABASE_NAME
     assert detached[0] == f"Profile dev (detached at {commit}), database {database}"
@@ -255,7 +222,7 @@ def test_the_checkout_named_is_the_codes_own_not_one_git_points_at(
     git(repo, "init", "-q")
     monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
 
-    _, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
+    _, out, _ = run_cli(capsys, checkout, "status", *UNREACHABLE_AW)
 
     assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
 
@@ -279,7 +246,7 @@ def test_an_unborn_branch_is_named_with_no_commit(
     git(repo, "init", "-q", "-b", "feature")
     monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
 
-    _, out, _ = run(capsys, repo / "computer_history", "dev", "perf")
+    _, out, _ = run_cli(capsys, repo / "computer_history", "dev", "perf")
 
     assert out[0] == "Profile dev (branch feature, no commits yet)"
 
@@ -297,7 +264,7 @@ def test_a_worktree_names_its_branch_even_once_refs_are_packed(
     (tree / "computer_history").mkdir()
     monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
 
-    _, out, _ = run(capsys, tree / "computer_history", "dev", "perf")
+    _, out, _ = run_cli(capsys, tree / "computer_history", "dev", "perf")
 
     assert not (repo / ".git" / "refs" / "heads" / "side").exists()
     assert out[0] == f"Profile dev (branch side at {commit})"
@@ -314,7 +281,7 @@ def test_a_copy_installed_into_a_venv_inside_a_checkout_is_not_named_as_the_chec
     code.mkdir(parents=True)
     monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
 
-    _, out, _ = run(capsys, code, "dev", "perf")
+    _, out, _ = run_cli(capsys, code, "dev", "perf")
 
     assert out[0] == f"Profile dev ({INSTALLED_COPY})"
 
@@ -335,8 +302,8 @@ def test_dev_tools_that_open_no_database_neither_resolve_nor_name_one(
     monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
     out_folder = tmp_path / "out"
 
-    perf, perf_out, perf_err = run(capsys, checkout, "dev", "perf")
-    build, build_out, build_err = run(
+    perf, perf_out, perf_err = run_cli(capsys, checkout, "dev", "perf")
+    build, build_out, build_err = run_cli(
         capsys,
         checkout,
         "dev",

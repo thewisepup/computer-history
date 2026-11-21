@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from computer_history.sources.runner import CycleSummary
-
 __all__ = [
-    "BACKEND_HEARTBEAT_NAME",
-    "BackendHeartbeat",
     "backend_heartbeat_path",
     "read_backend_heartbeat",
     "write_backend_heartbeat",
 ]
 
 BACKEND_HEARTBEAT_NAME = "backend-heartbeat.json"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,24 +31,26 @@ def backend_heartbeat_path(db_path: Path) -> Path:
     return db_path.parent / BACKEND_HEARTBEAT_NAME
 
 
-def write_backend_heartbeat(path: Path, summary: CycleSummary) -> None:
-    """Replace the heartbeat with this cycle's time and result, in one step."""
+def write_backend_heartbeat(path: Path, cycle_at: datetime, ok: bool) -> None:
+    """Replace the heartbeat with a cycle's time and result in one step, logging a failed write."""
     staged = path.with_name(f".{path.name}.new")
-    staged.write_text(
-        json.dumps({"cycle_at": summary.at.isoformat(), "ok": summary.ok}), encoding="utf-8"
-    )
-    os.replace(staged, path)
+    try:
+        staged.write_text(json.dumps({"cycle_at": cycle_at.isoformat(), "ok": ok}), "utf-8")
+        os.replace(staged, path)
+    except OSError as exc:
+        log.warning("could not write the backend heartbeat %s: %s", path, exc)
 
 
 def read_backend_heartbeat(path: Path) -> BackendHeartbeat | None:
-    """The last heartbeat, or None when none was written; raises ValueError when unreadable."""
-    try:
-        written = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    """The last heartbeat, or None when none was written."""
+    if not path.exists():
         return None
+    written = json.loads(path.read_text(encoding="utf-8"))
     try:
-        return BackendHeartbeat(
-            datetime.fromisoformat(str(written["cycle_at"])), bool(written["ok"])
-        )
+        cycle_at = datetime.fromisoformat(written["cycle_at"])
+        ok = written["ok"]
     except (KeyError, TypeError) as exc:
         raise ValueError(f"{path} is not a heartbeat") from exc
+    if cycle_at.tzinfo is None or not isinstance(ok, bool):
+        raise ValueError(f"{path} is not a heartbeat")
+    return BackendHeartbeat(cycle_at, ok)
