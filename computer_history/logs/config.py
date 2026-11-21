@@ -13,6 +13,8 @@ from computer_history.logs.rotation import SharedRotatingFileHandler
 LOG_DIR_ENV_VAR = "COMPUTER_HISTORY_LOG_DIR"
 LOG_LEVEL_ENV_VAR = "COMPUTER_HISTORY_LOG_LEVEL"
 LOG_FILE_NAME = "computer-history.jsonl"
+LOG_FOLDER_NAME = "computer-history"
+DEV_LOG_FOLDER_NAME = "computer-history-dev"
 MAX_LOG_BYTES = 10_000_000
 LOG_BACKUPS = 5
 PACKAGE_LOGGER = "computer_history"
@@ -23,15 +25,15 @@ _command = contextvars.ContextVar("command", default="-")
 log = logging.getLogger(__name__)
 
 
-def default_log_dir() -> Path:
-    """The default log folder in the user's Library/Logs."""
-    return Path.home() / "Library" / "Logs" / "computer-history"
+def default_log_dir(*, dev: bool) -> Path:
+    """The default log folder in the user's Library/Logs: stable's, or dev's beside it."""
+    return Path.home() / "Library" / "Logs" / (DEV_LOG_FOLDER_NAME if dev else LOG_FOLDER_NAME)
 
 
-def resolve_log_dir() -> Path:
-    """Pick the log folder: $COMPUTER_HISTORY_LOG_DIR, else the default, with ~ expanded."""
+def resolve_log_dir(*, dev: bool) -> Path:
+    """Pick the log folder: $COMPUTER_HISTORY_LOG_DIR, else the profile's default, ~ expanded."""
     value = os.environ.get(LOG_DIR_ENV_VAR)
-    return Path(value).expanduser() if value else default_log_dir()
+    return Path(value).expanduser() if value else default_log_dir(dev=dev)
 
 
 def resolve_level(explicit: str | None) -> int | None:

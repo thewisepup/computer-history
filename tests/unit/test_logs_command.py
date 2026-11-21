@@ -6,10 +6,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from cli_output import after_profile_line
+from cli_output import STATUS, RunCli, after_profile_line
+from fake_host import FakeHost, gate_runs, installed_package
 
 from computer_history import cli
-from computer_history.logs import LOG_FILE_NAME
+from computer_history.logs import (
+    DEV_LOG_FOLDER_NAME,
+    LOG_DIR_ENV_VAR,
+    LOG_FILE_NAME,
+    LOG_FOLDER_NAME,
+)
+from computer_history.stable import stable_layout
 
 NOW = datetime.now(UTC)
 
@@ -123,3 +130,22 @@ def test_logs_skips_lines_without_a_usable_time(
 
     assert len(shown(capsys)) == 1
     assert messages(shown(capsys, "--json", "--since", "1h")) == ["cycle ok"]
+
+
+def test_dev_and_stable_runs_log_to_their_own_folders(
+    run: RunCli, home: Path, live: Path, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(LOG_DIR_ENV_VAR)
+    host = FakeHost(checks={"b" * 40: gate_runs()})
+    logs = home / "Library" / "Logs"
+    assert run(checkout, "install", host=host)[0] == 0
+    stable_code = installed_package(stable_layout().link.resolve().parents[1])
+
+    assert (logs / DEV_LOG_FOLDER_NAME / LOG_FILE_NAME).is_file()
+    assert not (logs / LOG_FOLDER_NAME / LOG_FILE_NAME).exists()
+
+    assert run(stable_code, *STATUS, host=host)[0] == 0
+    assert (logs / LOG_FOLDER_NAME / LOG_FILE_NAME).is_file()
+    (logs / DEV_LOG_FOLDER_NAME / LOG_FILE_NAME).unlink()
+    _, _, err = run(checkout, "logs", host=host)
+    assert err.endswith(f"no log records yet in {logs / DEV_LOG_FOLDER_NAME}\n")

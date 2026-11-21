@@ -260,15 +260,16 @@ def main(
     except ValueError as exc:
         print(f"computer-history: {exc}", file=sys.stderr)
         return 2
+    running = running_code(code)
+    args.profile = running.profile
+    args.log_dir = resolve_log_dir(dev=running.profile is Profile.DEV)
     watching = getattr(args, "watch", False)
     configure(
         f"{args.command} --watch" if watching else args.command,
         level=level,
         long_running=watching,
-        log_dir=resolve_log_dir(),
+        log_dir=args.log_dir,
     )
-    running = running_code(code)
-    args.profile = running.profile
     args.host = LiveHost() if host is None else host
     handler = HANDLERS.get(args.command)
     if handler is None:
