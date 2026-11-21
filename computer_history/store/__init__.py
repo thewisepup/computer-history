@@ -5,14 +5,18 @@ which reports its state. Ingest writes through insert_observations, the only
 way a source's progress moves. It and rebuild_signals both turn a stored
 payload into its signal with the projector the caller passes, and status and
 backfill use the read queries. content_digest hashes what the database holds,
-and backup_database copies it while other connections keep writing.
+backup_database copies it while other connections keep writing, and
+restore_database puts a copy back, setting the database it replaces aside.
 """
 
 from computer_history.store.backup import (
+    DatabaseCopy,
     DatabaseExists,
     DatabaseInUse,
     IntegrityCheckFailed,
+    RestoredCopy,
     backup_database,
+    restore_database,
 )
 from computer_history.store.contents import content_digest
 from computer_history.store.db import (
@@ -102,6 +106,7 @@ __all__ = [
     "STATUS_WINDOW",
     "VERSIONS_FOLDER_NAME",
     "Coverage",
+    "DatabaseCopy",
     "DatabaseExists",
     "DatabaseInUse",
     "DbstatUnavailable",
@@ -121,6 +126,7 @@ __all__ = [
     "Purpose",
     "RebuildAborted",
     "RebuildResult",
+    "RestoredCopy",
     "RunningCode",
     "Signal",
     "SourceCoverage",
@@ -155,6 +161,7 @@ __all__ = [
     "refuse_live_in_dev",
     "resolve_db_path",
     "resolve_dev_db_path",
+    "restore_database",
     "running_code",
     "scanned_tables",
     "schema_version",

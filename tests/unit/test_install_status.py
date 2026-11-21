@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from cli_output import RunCli
+from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
 from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
@@ -13,6 +13,8 @@ from computer_history.sources import backend_heartbeat_path, runner
 from computer_history.stable import (
     BACKEND,
     CAPTURE_AGENT_LABEL,
+    DAILY_BACKUP,
+    STABLE_AGENTS,
     STOPGAP_LABEL,
     stable_layout,
     version_name,
@@ -20,8 +22,6 @@ from computer_history.stable import (
 from computer_history.store import DATABASE_NAME
 
 COMMIT = "b" * 40
-UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
-STATUS = ("status", *UNREACHABLE_AW)
 INSTALL = "Stable install:"
 AGENTS = "Stable install's LaunchAgents:"
 BACKEND_SECTION = "Stable backend:"
@@ -40,12 +40,6 @@ def stable_code(run: RunCli, live: Path, checkout: Path) -> tuple[Path, FakeHost
     host = FakeHost(checks={COMMIT: gate_runs()})
     assert run(checkout, "install", host=host)[0] == 0
     return installed_package(stable_layout().link.resolve().parents[1]), host
-
-
-def section(out: list[str], title: str) -> list[str]:
-    start = out.index(title) + 1
-    end = next((i for i in range(start, len(out)) if not out[i].startswith("  ")), len(out))
-    return out[start:end]
 
 
 def test_dev_status_shows_the_stable_backends_last_cycle(
@@ -137,8 +131,10 @@ def test_status_shows_the_install_and_its_launch_agents(
     assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
     assert install[2:] == ["  previous      none"]
     pid = host.jobs[BACKEND.label].pid
+    backup_pid = host.jobs[DAILY_BACKUP.label].pid
     assert section(out, AGENTS) == [
         f"  backend          loaded, running (pid {pid})  {BACKEND.label}",
+        f"  backup           loaded, running (pid {backup_pid})  {DAILY_BACKUP.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
     ]
 
@@ -154,6 +150,7 @@ def test_status_before_install_flags_the_stopgap_backend(
     assert section(out, INSTALL)[1:] == ["  current       none", "  previous      none"]
     assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
+        f"  backup           not installed  {DAILY_BACKUP.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
         f"  stopgap backend  loaded, running (pid 100)  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
@@ -168,7 +165,8 @@ def test_status_finds_a_running_stopgap_whose_plist_was_deleted(
 
     _, out, _ = run(checkout, *STATUS, host=host)
 
-    assert section(out, AGENTS)[2:] == [
+    capture_agent = len(STABLE_AGENTS) + 1
+    assert section(out, AGENTS)[capture_agent:] == [
         f"  stopgap backend  loaded, running (pid 100), plist deleted  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
     ]

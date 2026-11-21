@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from socket import gethostname
 
+from computer_history.cli import formatting
 from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import (
     ago,
@@ -35,7 +36,17 @@ from computer_history.sources import (
     resolve_spool_path,
     screenshot_health,
 )
-from computer_history.stable import AgentStatus, agent_statuses, pointed, stable_layout
+from computer_history.stable import (
+    DAILY_BACKUP,
+    DAILY_FOLDER_NAME,
+    DAILY_KEPT,
+    AgentStatus,
+    BackupInventory,
+    agent_statuses,
+    backup_inventory,
+    pointed,
+    stable_layout,
+)
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -56,14 +67,10 @@ MAX_APP_PAIRS_SHOWN = 3
 STATUS_AW_TIMEOUT_SECONDS = 5
 
 
-def utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
 def cmd_status(args: argparse.Namespace) -> int:
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
-    now = utc_now()
+    now = formatting.utc_now()
     code = _print_store(args, db_path, spool_path, now)
     print()
     _print_install(args.profile, now)
@@ -71,6 +78,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     _print_launch_agents(args.host)
     print()
     _print_backend(now)
+    print()
+    _print_backups(backup_inventory(db_path), now)
     return code
 
 
@@ -186,6 +195,39 @@ def _print_backend(now: datetime) -> None:
         return
     result = "ok" if heartbeat.ok else "failed"
     print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
+
+
+def _print_backups(kept: BackupInventory, now: datetime) -> None:
+    print("Backups:")
+    if not kept.daily and not kept.pre_update:
+        daily = kept.folder / DAILY_FOLDER_NAME
+        print(f"  none yet (the daily backup takes one a day into {daily})")
+        return
+    if kept.daily:
+        latest = kept.daily[-1]
+        print(
+            f"  latest        {latest.day}, taken {ago(latest.taken_at, now)},"
+            f" {human_size(latest.size)}"
+        )
+        print(
+            f"  daily         {len(kept.daily)} kept (the newest {DAILY_KEPT}), oldest"
+            f" {kept.daily[0].day}"
+        )
+    else:
+        print("  daily         none yet")
+    if kept.pre_update:
+        print(
+            f"  pre-update    {len(kept.pre_update)} kept, newest taken"
+            f" {when(kept.pre_update[-1].taken_at)}"
+        )
+    print("  integrity     each passed SQLite's integrity check before it was kept")
+    print(f"  folder        {kept.folder}")
+    if kept.overdue(now.astimezone().date()):
+        missing = f"since {kept.daily[-1].day}" if kept.daily else "taken yet"
+        print(
+            f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"
+            " and read its log"
+        )
 
 
 def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:

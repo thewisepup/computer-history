@@ -78,7 +78,8 @@ computer_history/
                 # queries), screenshots (the screenshot records' status
                 # queries, read through their own index), contents (a digest
                 # of what the database holds), backup (a checked copy taken
-                # with SQLite's online backup while others write),
+                # with SQLite's online backup while others write, and a copy
+                # put back with the database it replaces set aside),
                 # introspection (query plans, pages and the SQLite build, for
                 # the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
@@ -130,7 +131,8 @@ computer_history/
                 # commit into a marked version folder; current and previous
                 # pointers), launch_agents (plists, loading, launchd's state
                 # for status), layout (where it all lives), install (install
-                # and uninstall)
+                # and uninstall), backups (the daily and pre-update backups
+                # beside the database, and restore)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -679,6 +681,10 @@ in the live folder and starts the backend at login from it:
 ~/Library/Application Support/ComputerHistory/
   history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
   backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool}, rewritten after each cycle
+  backups/
+    daily/history-<YYYY-MM-DD>.db                    # one a day, the newest 7 kept
+    pre-update/history-<local time>-<version>.db     # taken by update, never pruned with the dailies
+    set-aside/history-<local time>.db                # the database a restore replaced, never deleted
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
@@ -687,7 +693,8 @@ in the live folder and starts the backend at login from it:
   previous -> versions/<short commit>                  # kept by update (later)
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
-~/Library/Logs/computer-history/backend.log
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
+~/Library/Logs/computer-history/backend.log, backup.log
 ```
 
 - **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
@@ -711,6 +718,21 @@ in the live folder and starts the backend at login from it:
 - **Backend LaunchAgent:** `current/venv/bin/computer-history ingest --watch`,
   `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30s. Through `current`, a
   pointer switch plus a restart moves it to another version.
+- **Daily backup LaunchAgent:** `current/venv/bin/computer-history backup`,
+  `RunAtLoad` and `StartCalendarInterval` 03:00. launchd runs a time missed
+  while the Mac slept on wake, and `RunAtLoad` covers a Mac that was off. The
+  command takes the day's backup only when there is none yet: SQLite's online
+  backup of the database (the backend keeps writing), checked with
+  `PRAGMA integrity_check` before it is kept, then the oldest days past seven
+  removed. The database only; screenshots are not backed up.
+- **Restore** (`restore <day>` or `restore <file>`): for the live database it
+  boots out the daily backup and the backend if they are loaded (loading them
+  again if a boot-out fails). Holding the database's exclusive lock, so no
+  other connection can open it meanwhile, it folds the WAL in and moves the
+  file into `set-aside/` under the time; it refuses when anything else has
+  the database open. It copies the backup in (integrity checked; the database
+  moved back on failure) and loads the agents again. A restore into any other
+  database, dev's included, never touches launchd.
 - **Uninstall** boots out and removes the stable install's LaunchAgents, the
   PATH link (only when it is the install's own), the pointers and `versions/`.
   Data and logs stay.

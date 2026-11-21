@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from cli_output import RunCli
-from projectors import payload_fields
+from db_states import damaged, integrity, left_with_a_wal, store_windows, stored_ids, writer
 
 from computer_history.cli.profile import NOT_A_CHECKOUT
 from computer_history.sources import WINDOW_SOURCE
@@ -19,55 +16,13 @@ from computer_history.store import (
     DB_ENV_VAR,
     INSTALL_MARKER_NAME,
     VERSIONS_FOLDER_NAME,
-    Observation,
     connect,
-    insert_observations,
     sidecars,
     supported_version,
 )
 from computer_history.store import db as store_db
 
-T0 = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
 SCREENSHOTS_FOLDER = "screenshots"
-
-
-def window(source_id: str, minute: int) -> Observation:
-    start = T0 + timedelta(minutes=minute)
-    payload = f'{{"app": "Code", "title": "{source_id}"}}'
-    return Observation(WINDOW_SOURCE, source_id, start, start + timedelta(minutes=1), payload)
-
-
-def store(conn: sqlite3.Connection, *source_ids: str) -> None:
-    batch = [window(source_id, minute) for minute, source_id in enumerate(source_ids)]
-    insert_observations(conn, batch, project=payload_fields)
-
-
-@contextmanager
-def writer(path: Path, *source_ids: str) -> Iterator[sqlite3.Connection]:
-    """A live backend's connection: rows committed to the WAL but not checkpointed."""
-    conn = connect(path)
-    try:
-        conn.execute("PRAGMA wal_autocheckpoint = 0")
-        store(conn, *source_ids)
-        yield conn
-    finally:
-        conn.close()
-
-
-def stored_ids(path: Path) -> list[str]:
-    conn = sqlite3.connect(path)
-    try:
-        return [row[0] for row in conn.execute("SELECT source_id FROM observations ORDER BY 1")]
-    finally:
-        conn.close()
-
-
-def integrity(path: Path) -> list[str]:
-    conn = sqlite3.connect(path)
-    try:
-        return [row[0] for row in conn.execute("PRAGMA integrity_check")]
-    finally:
-        conn.close()
 
 
 def test_a_snapshot_copies_what_the_live_database_has_committed_while_a_writer_holds_it(
@@ -84,7 +39,7 @@ def test_a_snapshot_copies_what_the_live_database_has_committed_while_a_writer_h
         code, out, err = run(checkout, "dev", "snapshot")
 
         backend.execute("COMMIT")
-        store(backend, "after")
+        store_windows(backend, "after")
 
     assert code == 0, err
     copy = dev / DATABASE_NAME
@@ -124,15 +79,6 @@ def test_a_snapshot_copies_neither_the_spool_nor_the_screenshots(
     assert set(after) - set(before) <= {path.name for path in sidecars(live / DATABASE_NAME)}
 
 
-def left_with_a_wal(path: Path, tmp_path: Path, *source_ids: str) -> None:
-    """A database whose last rows sit in a WAL file left beside it, as after a crash."""
-    scratch = tmp_path / "scratch" / DATABASE_NAME
-    with writer(scratch, *source_ids):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        for name in (DATABASE_NAME, sidecars(scratch)[0].name):
-            (path.parent / name).write_bytes((scratch.parent / name).read_bytes())
-
-
 def test_a_snapshot_replaces_an_existing_dev_database_only_when_forced(
     run: RunCli, tmp_path: Path, live: Path, dev: Path, checkout: Path
 ) -> None:
@@ -167,7 +113,7 @@ def test_a_forced_snapshot_is_refused_while_another_process_has_the_dev_database
 
     assert code == 1
     assert err == (
-        f"dev snapshot refused: another process has {dev / DATABASE_NAME} open; stop the dev"
+        f"dev snapshot refused: another process has {dev / DATABASE_NAME} open; stop the"
         " commands using it, such as ingest --watch, and try again\n"
     )
     assert sorted(path.name for path in dev.iterdir()) == [DATABASE_NAME]
@@ -229,19 +175,6 @@ def test_a_snapshot_with_no_live_database_fails_and_creates_nothing(
     assert err == f"dev snapshot failed: no database at {live / DATABASE_NAME}\n"
     assert not dev.exists()
     assert list(live.iterdir()) == []
-
-
-def damaged(path: Path) -> None:
-    """A database whose index pages no longer belong to anything, as damage from outside would."""
-    conn = sqlite3.connect(path, isolation_level=None)
-    try:
-        conn.execute("CREATE TABLE t (x)")
-        conn.execute("CREATE INDEX t_x ON t (x)")
-        conn.executemany("INSERT INTO t VALUES (?)", [(str(n) * 50,) for n in range(500)])
-        conn.execute("PRAGMA writable_schema = ON")
-        conn.execute("DELETE FROM sqlite_schema WHERE name = 't_x'")
-    finally:
-        conn.close()
 
 
 def test_a_snapshot_that_fails_its_integrity_check_leaves_nothing_behind(

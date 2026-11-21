@@ -6,10 +6,12 @@
       |                (ActivityWatch and the capture spool in one loop), with
       |                the backend heartbeat after each cycle
       +-- status.py    freshness, coverage gaps, row counts, the install, its
-      |                LaunchAgents and the backend's last cycle
+      |                LaunchAgents, the backend's last cycle and the backups
       +-- rebuild.py   rebuild-signals
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
       +-- install.py   install and uninstall the stable install, through the host adapter
+      +-- backup.py    backup (the day's backup, the oldest past seven removed) and
+      |                restore (a backup put in place, the backend stopped around it)
       +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
             |          dev snapshot (the live database copied into the dev folder),
             |          dev perf (the performance gate), dev bench (wall-clock timings)

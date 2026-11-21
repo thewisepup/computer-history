@@ -35,7 +35,8 @@ def write_stopgap_plist(layout: Layout) -> Path:
 class FakeHost:
     """Commits and check runs as scripted, a build that lays out a venv, and launchd as a dict.
 
-    A booted-out job can stay loaded for a few more lookups, and loads can fail busy first.
+    A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
+    and loads can fail busy first.
     """
 
     def __init__(
@@ -99,7 +100,10 @@ class FakeHost:
         if self.busy_loads > 0:
             self.busy_loads -= 1
             raise JobBusy(f"could not load {plist}: Bootstrap failed: 5: Input/output error")
-        if label in self.jobs or self.lingering.get(label, 0) > 0:
+        if self.lingering.get(label, 0) > 0:
+            self.lingering[label] -= 1
+            raise JobBusy(f"could not load {plist}: Bootstrap failed: 5: Input/output error")
+        if label in self.jobs:
             raise HostError(f"{label} is already loaded")
         self.jobs[label] = JobState(loaded=True, pid=200 + len(self.calls))
 

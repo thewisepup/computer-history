@@ -7,19 +7,44 @@
         |                     and the walk to the newest one that does
         +-- versions.py       build a commit into its marked version folder and point
         |                     current at it, undoing it all on failure; the pointers
-        +-- launch_agents.py  the plists, loading and removing them, and what
+        +-- launch_agents.py  the plists (kept running, or run daily), loading,
+        |                     stopping, starting and removing them, and what
         |                     launchd says about each agent for status
         +-- layout.py         where the versions, pointers, link, plists and logs live
+
+    backups.py        the daily backup (seven kept) and the pre-update one beside the
+                      database, the inventory status shows, and restore, which stops
+                      and starts the backend and the daily backup around it for the
+                      live database (uses launch_agents.py and layout.py)
 
 Everything that reaches launchctl, GitHub or uv goes through the host adapter it is given.
 """
 
+from computer_history.stable.backups import (
+    BACKUPS_FOLDER_NAME,
+    DAILY_FOLDER_NAME,
+    DAILY_KEPT,
+    PRE_UPDATE_FOLDER_NAME,
+    SET_ASIDE_FOLDER_NAME,
+    TAKEN_AT_STAMP,
+    BackupFailed,
+    BackupInventory,
+    DailyOutcome,
+    RestoreFailed,
+    backup_inventory,
+    daily_backup_path,
+    restore_backup,
+    take_daily_backup,
+    take_pre_update_backup,
+)
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.launch_agents import (
     BACKEND,
+    DAILY_BACKUP,
     LOAD_ATTEMPTS,
     RESTART_THROTTLE_SECONDS,
+    STABLE_AGENTS,
     STOPGAP_LABEL,
     AgentStatus,
     agent_statuses,
@@ -34,19 +59,36 @@ from computer_history.stable.versions import pointed, version_name
 
 __all__ = [
     "BACKEND",
+    "BACKUPS_FOLDER_NAME",
     "CAPTURE_AGENT_LABEL",
+    "DAILY_BACKUP",
+    "DAILY_FOLDER_NAME",
+    "DAILY_KEPT",
     "LOAD_ATTEMPTS",
     "PACKAGES_FILE_NAME",
+    "PRE_UPDATE_FOLDER_NAME",
     "RELEASE_GATE",
     "RESTART_THROTTLE_SECONDS",
+    "SET_ASIDE_FOLDER_NAME",
+    "STABLE_AGENTS",
     "STOPGAP_LABEL",
+    "TAKEN_AT_STAMP",
     "AgentStatus",
+    "BackupFailed",
+    "BackupInventory",
+    "DailyOutcome",
     "InstallFailed",
     "Layout",
+    "RestoreFailed",
     "agent_statuses",
+    "backup_inventory",
+    "daily_backup_path",
     "install",
     "pointed",
+    "restore_backup",
     "stable_layout",
+    "take_daily_backup",
+    "take_pre_update_backup",
     "uninstall",
     "version_name",
 ]

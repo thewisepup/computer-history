@@ -87,6 +87,10 @@ per keep-after limit while its text is read. All on Brandon's Mac.
 - [ ] Reboot test: recording resumes with no manual steps.
 - [ ] Sleep test: ingest progress advances across wake; the gap is ingested, and real
       coverage gaps are reported as warnings, never guessed.
+- [x] A daily backup of the database, seven kept and each integrity-checked,
+      and `restore` putting one back with the current database set aside.
+      *(The LaunchAgent running a missed backup after wake waits for the Mac
+      verification, #110.)*
 - [ ] From here, data accumulates unattended (the eval corpus for M5).
 
 ### M5 — Classification

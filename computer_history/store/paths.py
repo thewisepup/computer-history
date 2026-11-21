@@ -13,7 +13,8 @@ DEV_FOLDER_NAME = "ComputerHistory-dev"
 VERSIONS_FOLDER_NAME = "versions"
 INSTALL_MARKER_NAME = "installed"
 SHORT_COMMIT_LENGTH = 7
-SIDECARS = ("-wal", "-shm", "-journal")
+SHARED_MEMORY_SUFFIX = "-shm"
+SIDECARS = ("-wal", SHARED_MEMORY_SUFFIX, "-journal")
 
 
 class Profile(Enum):
