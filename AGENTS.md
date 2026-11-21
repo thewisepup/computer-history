@@ -40,11 +40,21 @@ summaries.
 ## Setup and checks
 
 ```bash
-brew install gitleaks
+brew install gitleaks uv
 /opt/homebrew/bin/python3.12 -m venv .venv
 .venv/bin/python -m pip install -e '.[test,dev]'
 git config core.hooksPath .githooks
 ```
+
+The checkout is **dev**: its `.venv/bin/computer-history` uses
+`~/Library/Application Support/ComputerHistory-dev/` and is refused the live
+folder. Brandon's real data is collected by the **stable** install, which
+`.venv/bin/computer-history install` sets up once (it needs `uv`): the newest
+`main` commit whose release-gate checks passed, built under the live folder's
+`versions/`, linked as `~/.local/bin/computer-history`, with the backend
+LaunchAgent running `ingest --watch` from it. Agents never run `install` or
+`uninstall`; tests drive them through the fake host adapter
+(`tests/fake_host.py`).
 
 `.venv/bin/python -m pytest` and `.venv/bin/python -m ruff check
 computer_history tests` must pass. Tests sit in four folders, and the folder

@@ -3,10 +3,13 @@
     app.py         parser + dispatch: one entry per command
       |
       +-- ingest.py    one poll, or the --watch loop, through the ingest runner
-      |                (ActivityWatch and the capture spool in one loop)
-      +-- status.py    freshness, coverage gaps, row counts
+      |                (ActivityWatch and the capture spool in one loop), with
+      |                the backend heartbeat after each cycle
+      +-- status.py    freshness, coverage gaps, row counts, the install, its
+      |                LaunchAgents and the backend's last cycle
       +-- rebuild.py   rebuild-signals
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
+      +-- install.py   install and uninstall the stable install, through the host adapter
       +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
             |          dev perf (the performance gate), dev bench (wall-clock timings)
             |

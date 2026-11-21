@@ -12,6 +12,7 @@ LIVE_FOLDER_NAME = "ComputerHistory"
 DEV_FOLDER_NAME = "ComputerHistory-dev"
 VERSIONS_FOLDER_NAME = "versions"
 INSTALL_MARKER_NAME = "installed"
+SHORT_COMMIT_LENGTH = 7
 
 
 class Profile(Enum):

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from computer_history.store import Profile, RunningCode
+from computer_history.store import SHORT_COMMIT_LENGTH, Profile, RunningCode
 
-SHORT_COMMIT_LENGTH = 7
 BRANCH_REF_PREFIX = "refs/heads/"
 GITDIR_PREFIX = "gitdir:"
 SYMBOLIC_REF_PREFIX = "ref:"

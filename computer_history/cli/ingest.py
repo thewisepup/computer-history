@@ -16,9 +16,11 @@ from computer_history.sources import (
     FailureKind,
     IngestOutcome,
     StreamFailure,
+    backend_heartbeat_path,
     poll,
     resolve_spool_path,
     watch,
+    write_backend_heartbeat,
 )
 from computer_history.store import Purpose, open_store
 
@@ -42,8 +44,17 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 POLL_INTERVAL_SECONDS,
                 db_path,
             )
+            heartbeat = backend_heartbeat_path(db_path)
+
+            def report(summary: CycleSummary, delay: float) -> None:
+                try:
+                    write_backend_heartbeat(heartbeat, summary)
+                except OSError as exc:
+                    log.warning("could not write the backend heartbeat %s: %s", heartbeat, exc)
+                log_cycle(summary, delay)
+
             try:
-                watch(conn, sources, report=log_cycle)
+                watch(conn, sources, report=report)
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0

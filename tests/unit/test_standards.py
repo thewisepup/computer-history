@@ -117,11 +117,31 @@ def test_no_private_names_imported_across_modules(path: Path) -> None:
 
 
 FORBIDDEN_IMPORTS = {
-    "store": ("computer_history.sources", "computer_history.synthetic", "computer_history.cli"),
-    "sources": ("computer_history.synthetic", "computer_history.cli"),
-    "synthetic": ("computer_history.cli",),
+    "host": (
+        "computer_history.store",
+        "computer_history.sources",
+        "computer_history.synthetic",
+        "computer_history.stable",
+        "computer_history.cli",
+    ),
+    "store": (
+        "computer_history.sources",
+        "computer_history.synthetic",
+        "computer_history.stable",
+        "computer_history.cli",
+    ),
+    "sources": ("computer_history.synthetic", "computer_history.stable", "computer_history.cli"),
+    "synthetic": ("computer_history.stable", "computer_history.cli"),
+    "stable": ("computer_history.sources", "computer_history.synthetic", "computer_history.cli"),
 }
-OPENERS = ("AWClient", "connect", "connect_immutable", "connect_readonly", "open_store")
+OPENERS = (
+    "AWClient",
+    "LiveHost",
+    "connect",
+    "connect_immutable",
+    "connect_readonly",
+    "open_store",
+)
 SCRATCH_DATABASE_LAYERS = ("synthetic",)
 SCRATCH_OPENERS = ("connect", "connect_immutable")
 
