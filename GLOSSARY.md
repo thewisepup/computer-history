@@ -54,6 +54,18 @@ _Avoid_: Stop, mute
 The folder where the capture agent leaves captures for the backend to collect. Anything in it has not yet been stored.
 _Avoid_: Queue, buffer, inbox
 
+**Live folder**:
+`~/Library/Application Support/ComputerHistory/`, holding the real database, spool and screenshots the capture agent and the stable install use.
+_Avoid_: Prod folder, real folder
+
+**Stable install**:
+The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable.
+_Avoid_: Release, production build
+
+**Profile**:
+Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
+_Avoid_: Mode, environment
+
 **Event**:
 A stretch of activity with a start and an end, as reported by ActivityWatch.
 _Avoid_: Capture

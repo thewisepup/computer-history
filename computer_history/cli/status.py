@@ -41,7 +41,6 @@ from computer_history.store import (
     SourceSummary,
     StoreState,
     open_store,
-    resolve_db_path,
     source_summary,
     status_reads,
 )
@@ -56,8 +55,8 @@ def utc_now() -> datetime:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
-    spool_path = resolve_spool_path(args.spool_path, db_path)
+    db_path: Path = args.database
+    spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = utc_now()
     day_start = local_midnight(now)
     client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
