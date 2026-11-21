@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from computer_history.host import (
+    OPEN_ACTIVITYWATCH,
     CheckOutcome,
     CheckRun,
     HostError,
@@ -247,3 +248,88 @@ def test_build_without_uv_is_a_host_error(monkeypatch: pytest.MonkeyPatch, tmp_p
         LiveHost().build("abc123", tmp_path / "venv")
 
     assert not (tmp_path / "venv").exists()
+
+
+@pytest.mark.parametrize(("returncode", "running"), [(0, True), (live.PGREP_NONE_FOUND, False)])
+def test_activitywatch_running_asks_pgrep_for_this_users_app(
+    monkeypatch: pytest.MonkeyPatch, returncode: int, running: bool
+) -> None:
+    ran = commands_answer(monkeypatch, returncode)
+
+    assert LiveHost().activitywatch_running() is running
+    ((command),) = ran
+    assert command[0] == live.PGREP and command[-1] == live.ACTIVITYWATCH_PROCESS
+
+
+def test_a_failed_pgrep_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands_answer(monkeypatch, 3, stderr="pgrep: internal error")
+
+    with pytest.raises(HostError, match="ActivityWatch's process: pgrep: internal error"):
+        LiveHost().activitywatch_running()
+
+
+def test_opening_activitywatch_runs_the_login_agents_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ran = commands_answer(monkeypatch)
+
+    LiveHost().open_activitywatch()
+
+    assert ran == [list(OPEN_ACTIVITYWATCH)]
+
+
+def test_a_notification_passes_its_text_as_arguments_never_as_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ran = commands_answer(monkeypatch)
+    message = 'He said "quit" & tell application "Finder" to quit'
+
+    LiveHost().notify("Computer History", message)
+
+    ((command),) = ran
+    assert command[0] == live.OSASCRIPT
+    assert command[-2:] == ["Computer History", message]
+    assert all(message not in arg for arg in command[:-1])
+
+
+def test_a_notification_osascript_refuses_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands_answer(monkeypatch, 1, stderr="execution error: Not authorized (-1743)")
+
+    with pytest.raises(HostError, match="post a notification: execution error"):
+        LiveHost().notify("Computer History", "hello")
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda host: host.activitywatch_running(),
+        lambda host: host.open_activitywatch(),
+        lambda host: host.notify("Computer History", "hello"),
+    ],
+    ids=["pgrep", "open", "osascript"],
+)
+def test_the_quick_commands_time_out_well_before_a_build(
+    monkeypatch: pytest.MonkeyPatch, call: Any
+) -> None:
+    timeouts: list[float] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        timeouts.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+
+    call(LiveHost())
+
+    assert timeouts == [live.QUICK_COMMAND_TIMEOUT_SECONDS]
+    assert live.QUICK_COMMAND_TIMEOUT_SECONDS < live.COMMAND_TIMEOUT_SECONDS
+
+
+def test_a_hung_osascript_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def hang(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(live.subprocess, "run", hang)
+
+    with pytest.raises(HostError, match="could not post a notification"):
+        LiveHost().notify("Computer History", "hello")

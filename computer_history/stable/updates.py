@@ -39,6 +39,7 @@ FIRST_CYCLE_WAIT_SECONDS = 300.0
 FIRST_CYCLE_POLL_SECONDS = 1.0
 NOTIFICATION_TITLE = "Computer History update fell back"
 NOTHING_CHANGED = "nothing was changed"
+BACKEND_LOG_HINT = "see the backend's log"
 
 
 class UpdateFailed(Exception):
@@ -57,6 +58,9 @@ class BackendCycle(Protocol):
 
     @property
     def ok(self) -> bool: ...
+
+    @property
+    def error(self) -> str | None: ...
 
 
 LastCycle = Callable[[], BackendCycle | None]
@@ -225,7 +229,9 @@ def _first_cycle(
         except (OSError, ValueError):
             cycle = None
         if cycle is not None and cycle.cycle_at >= started_at:
-            return None if cycle.ok else "its first ingest cycle failed (see the backend's log)"
+            if cycle.ok:
+                return None
+            return f"its first ingest cycle failed: {cycle.error or BACKEND_LOG_HINT}"
         try:
             job = host.job(BACKEND.label)
         except HostError as exc:

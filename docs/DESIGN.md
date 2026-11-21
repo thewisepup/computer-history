@@ -89,14 +89,18 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status, judged against aw-afk and aw-window),
+                # health for status and its liveness for the watchdog, judged
+                # against aw-afk and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for
                 # backfill), afk (stored and newest AFK spans, for status),
-                # frontmost (stored and newest aw-window app spans, for status)
-                # capture_spool/: paths (where the spool is), spool (finished files:
+                # frontmost (stored and newest aw-window app spans, for status),
+                # watchers (where this host's AFK and window buckets last
+                # advanced, for the watchdog)
+                # capture_spool/: paths (where the spool and the agent's
+                # config file are), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
                 # against format v1, and the kinds each stream takes),
                 # normalize (its projectors), adapter (CaptureSpool:
@@ -124,15 +128,23 @@ computer_history/
                 # wall-clock times against this machine's last baseline)
   host/         # the host adapter, the one seam to macOS and the network:
                 # contract (Host, its answers, HostError), live (LiveHost:
-                # launchctl, GitHub's check runs, building with uv); tests
+                # launchctl, GitHub's check runs, building with uv, pgrep and
+                # open for ActivityWatch, osascript for notifications); tests
                 # use a fake that records calls and plays back answers
   stable/       # the stable install: gate (the release gate and the walk to
                 # the newest main commit passing it), versions (build a
                 # commit into a marked version folder; current and previous
                 # pointers), launch_agents (plists, loading, launchd's state
-                # for status), layout (where it all lives), install (install
-                # and uninstall), backups (the daily and pre-update backups
-                # beside the database, and restore)
+                # for status: the backend, the daily backup, the watchdog and
+                # ActivityWatch at login), layout (where it all lives), install
+                # (install and uninstall), backups (the daily and pre-update
+                # backups beside the database, and restore)
+  watchdog/     # run every minute from stable: thresholds (from the agent's
+                # config file), checks (the capture agent, ActivityWatch, the
+                # backend), alerts (which findings notify, how often, and which
+                # errors are due a log line), reopening (ActivityWatch, at most
+                # three times an hour), state (the file and lock beside the
+                # database), run (one run, under the lock)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -680,7 +692,10 @@ in the live folder and starts the backend at login from it:
 ```
 ~/Library/Application Support/ComputerHistory/
   history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
-  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool}, rewritten after each cycle
+  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool, "error": <first failure or null>},
+                           # rewritten after each cycle
+  watchdog.json            # the watchdog's last findings and what it notified, see 8.6
+  .watchdog.lock           # held by a watchdog run, so two never overlap
   backups/
     daily/history-<YYYY-MM-DD>.db                    # one a day, the newest 7 kept
     pre-update/history-<local time>-<version>.db     # taken by update, never pruned with the dailies
@@ -694,7 +709,9 @@ in the live folder and starts the backend at login from it:
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
-~/Library/Logs/computer-history/backend.log, backup.log
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.watchdog.plist
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.activitywatch.plist
+~/Library/Logs/computer-history/backend.log, backup.log, watchdog.log, activitywatch.log
 ```
 
 - **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
@@ -733,12 +750,90 @@ in the live folder and starts the backend at login from it:
   the database open. It copies the backup in (integrity checked; the database
   moved back on failure) and loads the agents again. A restore into any other
   database, dev's included, never touches launchd.
+- **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
+  `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
+  `/dev/null` and only its stderr (notifications posted, errors, config
+  problems) to `watchdog.log`, so a run a minute doesn't grow the log.
+- **ActivityWatch LaunchAgent:** `/usr/bin/open -g -b
+  net.activitywatch.ActivityWatch` once at load, so ActivityWatch starts with
+  the login session. `open` returns at once, so it is neither kept alive nor
+  rerun; the watchdog reopens ActivityWatch after that.
 - **Uninstall** boots out and removes the stable install's LaunchAgents, the
   PATH link (only when it is the install's own), the pointers and `versions/`.
   Data and logs stay.
 - **Host adapter** (`host/`): launchctl (`print`, `bootstrap`, `bootout` in the
-  `gui/<uid>` domain), the GitHub lookup and the uv build. Nothing else in
-  the install reaches macOS or the network.
+  `gui/<uid>` domain), the GitHub lookup, the uv build, ActivityWatch's app
+  (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and
+  user notifications. Nothing else in the install or the watchdog reaches
+  macOS or the network.
+
+### 8.6 Watchdog
+
+`computer-history watchdog` runs once a minute from its LaunchAgent. Each run
+judges three subjects, notifies, and saves its findings to `watchdog.json`
+beside the database, which `status` shows under "Stable watchdog".
+
+| Subject | Problem when | Needs you active |
+|---|---|---|
+| capture agent | its newest record (stored, or still in the spool) is older than the threshold, by the same liveness `status` computes: aw-afk shows you active for over a minute since | yes |
+| ActivityWatch | unreachable for longer than the threshold, or this host's AFK or window source has not advanced for longer than it, judged by the source's most recently advanced bucket (a dead or empty sibling bucket, or one answering an error, is ignored) | no |
+| backend | its heartbeat's last cycle is older than the threshold, or its cycles have kept failing for longer than it (the notification carries the first failure the heartbeat recorded) | yes |
+
+- **Active** means aw-afk, from stored spans plus ActivityWatch's newest
+  event, shows you active for over a minute inside the threshold before now.
+  With ActivityWatch down nothing counts as active, so only its own outage
+  notifies.
+- **Pause, idle, lock and sleep never notify.** A pause and idle are what
+  liveness already says. Sleep and a stopped watchdog are handled by when
+  silence starts counting: a run that follows the previous one by more than
+  3 minutes resumes watching, and silence counts from no earlier than that
+  run. After a wake every subject gets one full threshold to show it is
+  alive; until then the finding is "cannot tell", which neither notifies nor
+  clears. A failed cycle is never "ok", so it never clears a silent backend.
+- **A database read that fails** (`sqlite3.Error`) makes the capture agent,
+  and the backend unless its heartbeat is fresh and ok, "cannot tell" for
+  that run. The state is still saved, and silence keeps counting from where
+  it started.
+- **Notifications:** a problem notifies at most once an hour per subject while
+  it stays open, and a notified problem notifies once when it clears (whether
+  or not you are active then). A clear resets the hour, so a second outage
+  gets its own notification. A notification that fails to post is not
+  recorded, so the next run tries again.
+- **One run at a time:** a run holds `.watchdog.lock` (`flock`, not blocking);
+  a run that finds it held exits quietly with code 0. The state is written
+  to a temporary file of its own and renamed over `watchdog.json`.
+- **Logging:** stdout (the findings) goes to `/dev/null` under launchd. A
+  config problem or error goes to stderr, so `watchdog.log`, at most once an
+  hour per distinct message (the state records when each was last logged);
+  every run still shows it on stdout and in `status`.
+- **Thresholds** live in the agent's config file, `agent-config.json` beside
+  the database, under a `watchdog` object the capture agent leaves alone:
+  `capture_agent_minutes`, `activitywatch_minutes`, `backend_minutes`, each 1
+  to 1440, default 5. A bad value falls back to 5 and is logged as a config
+  problem.
+- **Reopening ActivityWatch:** when ActivityWatch is unreachable and its app
+  (`aw-qt`) isn't running, the watchdog opens it, at most three times in any
+  hour. When the app runs but the server doesn't answer, opening it again
+  would only bring it forward, so the watchdog notifies instead. `pgrep`,
+  `open` and `osascript` each get 10 seconds, apart from the build's 10
+  minutes.
+- **Repairing:** `install` run again leaves the ActivityWatch login agent
+  loaded when its plist is unchanged, since reloading it would reopen
+  ActivityWatch.
+- **How a launchd-run process posts a notification.** The live adapter runs
+  `/usr/bin/osascript` with `display notification`, passing the title and
+  text as arguments to an `on run argv` handler, never spliced into the
+  script. It ships with macOS, needs no extra install or signing, and works
+  from a LaunchAgent in the `gui/<uid>` domain, which runs in the login
+  session's Aqua session. The alternatives were weaker: `terminal-notifier`
+  is an extra Homebrew dependency, PyObjC's `NSUserNotification` is
+  deprecated, and `UNUserNotificationCenter` needs a signed app bundle (the
+  capture agent's), which would tie backend alerts to the agent's manual
+  reinstall and add a new permission prompt to it. Notifications from
+  `osascript` are attributed to Script Editor. Expected, not yet proven on
+  the real Mac: the first one may ask for permission, and Focus modes or a
+  denied permission hide them while `osascript` still exits 0, so a post
+  that "succeeds" can go unseen; `status` shows the same findings either way.
 
 ## 9. Milestones
 

@@ -12,10 +12,11 @@ from computer_history.cli.profile import NOT_A_CHECKOUT
 from computer_history.host import CheckOutcome
 from computer_history.stable import (
     BACKEND,
-    DAILY_BACKUP,
     LOAD_ATTEMPTS,
+    STABLE_AGENTS,
     STOPGAP_LABEL,
     Layout,
+    Schedule,
     stable_layout,
     version_name,
 )
@@ -180,11 +181,9 @@ def test_install_twice_repairs_without_rebuilding_or_reaching_github(
     assert code == 0, err
     assert layout.current.resolve().name == version_name(OLDER)
     assert layout.link.resolve() == layout.command(layout.current.resolve())
+    rerun = [agent for agent in STABLE_AGENTS if agent.schedule is not Schedule.AT_LOAD]
     assert [call for call in host.calls if call[0] != "job"] == [
-        ("unload", BACKEND.label),
-        ("load", BACKEND.label),
-        ("unload", DAILY_BACKUP.label),
-        ("load", DAILY_BACKUP.label),
+        (step, agent.label) for agent in rerun for step in ("unload", "load")
     ]
     assert host.jobs[BACKEND.label].pid is not None
     assert [path.name for path in layout.versions.iterdir()] == [version_name(OLDER)]

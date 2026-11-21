@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Protocol
 
 COMMAND_NAME = "computer-history"
+ACTIVITYWATCH_BUNDLE_ID = "net.activitywatch.ActivityWatch"
+OPEN_ACTIVITYWATCH = ("/usr/bin/open", "-g", "-b", ACTIVITYWATCH_BUNDLE_ID)
 
 
 class HostError(Exception):
@@ -40,7 +42,8 @@ class JobState:
 
 
 class Host(Protocol):
-    """Everything that touches macOS or the network: launchctl, GitHub, uv and notifications."""
+    """Everything that touches macOS or the network: launchctl, GitHub, uv, ActivityWatch's app
+    and user notifications."""
 
     def main_commits(self, limit: int) -> list[str]:
         """The newest commits on main, newest first."""
@@ -67,6 +70,14 @@ class Host(Protocol):
 
     def unload(self, label: str) -> None:
         """Boot a loaded LaunchAgent out of the login session, stopping its process."""
+        ...
+
+    def activitywatch_running(self) -> bool:
+        """Whether the ActivityWatch app is running in this user's session."""
+        ...
+
+    def open_activitywatch(self) -> None:
+        """Open the ActivityWatch app in the background."""
         ...
 
     def notify(self, title: str, message: str) -> None:

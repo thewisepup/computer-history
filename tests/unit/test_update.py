@@ -36,6 +36,7 @@ OLDER = "b" * 40
 NEWER = "c" * 40
 NEWEST = "d" * 40
 INSTALL = "Stable install:"
+CYCLE_ERROR = "aw-window: ActivityWatch unreachable"
 SPOOL_FILE = "20261120T120000.000000Z.jsonl"
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 CAPTURE = next(line for line in FIXTURE.read_text().splitlines() if '"kind":"capture"' in line)
@@ -95,6 +96,10 @@ def log_lines(layout: Layout) -> list[dict[str, object]]:
     return [json.loads(line) for line in layout.update_log.read_text().splitlines()]
 
 
+def restarted(host: FakeHost) -> set[str]:
+    return {label for call, label in host.calls if call in ("load", "unload")}
+
+
 def changes(host: FakeHost) -> list[tuple[str, str]]:
     return [(call, label) for call, label in host.calls if call in ("build", "load", "unload")]
 
@@ -137,6 +142,7 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
     assert sorted(path.name for path in layout.versions.iterdir()) == [old, new]
     assert not spool_hold_path(layout.live / DATABASE_NAME).exists()
     assert host.calls.index(("unload", BACKEND.label)) < host.calls.index(("load", BACKEND.label))
+    assert restarted(host) == {BACKEND.label}
     assert host.notifications == []
     assert out[1:] == [
         "Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests,"
@@ -267,7 +273,7 @@ def test_an_update_whose_backup_fails_changes_nothing_and_restarts_the_backend(
     ("start", "reason"),
     [
         (crashes, "the backend crashed before its first ingest cycle completed"),
-        (None, "its first ingest cycle failed (see the backend's log)"),
+        (None, f"its first ingest cycle failed: {CYCLE_ERROR}"),
         (stays_silent, "no ingest cycle completed within 0.05s"),
     ],
     ids=["crash", "failed cycle", "timeout"],
@@ -275,7 +281,7 @@ def test_an_update_whose_backup_fails_changes_nothing_and_restarts_the_backend(
 def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_unchanged(
     run: RunCli, layout: Layout, start: BackendStart | None, reason: str
 ) -> None:
-    host = updating(layout, start or completes_a_cycle(heartbeat(layout), ok=False))
+    host = updating(layout, start or completes_a_cycle(heartbeat(layout), error=CYCLE_ERROR))
     before = {path: data for path, data in install_state(layout).items() if path.is_symlink()}
 
     code, out, err = run(stable_code(layout), "update", host=host)
@@ -288,6 +294,7 @@ def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_
     assert sorted(path.name for path in layout.versions.iterdir()) == [old]
     assert not spool_hold_path(layout.live / DATABASE_NAME).exists()
     assert host.jobs[BACKEND.label].loaded
+    assert restarted(host) == {BACKEND.label}
     assert [call for call in host.calls if call[1] == BACKEND.label][-1] == ("load", BACKEND.label)
     assert out[2] == f"Update to version {new} fell back to {old}: {reason}"
     assert out[4:] == [
@@ -320,7 +327,7 @@ def test_a_fallback_after_the_new_version_changed_the_schema_restores_the_backup
         with writer(database, "written by the new version"):
             pass
         newer_db(database)
-        completes_a_cycle(heartbeat(layout), ok=False)(host)
+        completes_a_cycle(heartbeat(layout), error=CYCLE_ERROR)(host)
 
     host = updating(layout, migrates_then_fails)
 
@@ -368,6 +375,7 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     assert layout.current.resolve() == layout.versions / old
     assert layout.previous.resolve() == layout.versions / new
     assert ("main_commits", "20") not in host.calls
+    assert restarted(host) == {BACKEND.label}
     assert host.calls.index(("unload", BACKEND.label)) < host.calls.index(("load", BACKEND.label))
     assert out[1:] == [
         f"Rolled back to version {old} from {new}",

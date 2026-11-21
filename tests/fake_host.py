@@ -43,11 +43,11 @@ def write_stopgap_plist(layout: Layout) -> Path:
 BackendStart = Callable[["FakeHost"], None]
 
 
-def completes_a_cycle(heartbeat: Path, *, ok: bool = True) -> BackendStart:
-    """A backend that runs its first ingest cycle at once and writes the heartbeat for it."""
+def completes_a_cycle(heartbeat: Path, *, error: str | None = None) -> BackendStart:
+    """A backend that runs its first ingest cycle at once, failing with the error if given one."""
 
     def start(_: FakeHost) -> None:
-        write_backend_heartbeat(heartbeat, datetime.now(UTC), ok)
+        write_backend_heartbeat(heartbeat, datetime.now(UTC), error is None, error)
 
     return start
 
@@ -63,7 +63,7 @@ def stays_silent(_: FakeHost) -> None:
 
 class FakeHost:
     """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, the
-    backend's starts as scripted, and notifications as a list.
+    backend's starts as scripted, and ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -81,6 +81,8 @@ class FakeHost:
         unload_lingers: int = 0,
         busy_loads: int = 0,
         backend_starts: Iterable[BackendStart] = (),
+        activitywatch_running: bool = True,
+        opening_starts_activitywatch: bool = True,
         notify_error: str | None = None,
     ) -> None:
         self.checks = dict(checks or {})
@@ -94,6 +96,8 @@ class FakeHost:
         self.lingering: dict[str, int] = {}
         self.backend_starts = list(backend_starts)
         self.crashing = False
+        self.running_activitywatch = activitywatch_running
+        self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
         self.notifications: list[tuple[str, str]] = []
         self.calls: list[tuple[str, str]] = []
@@ -154,6 +158,15 @@ class FakeHost:
         if self.jobs.pop(label, None) is None:
             raise HostError(f"{label} is not loaded")
         self.lingering[label] = self.unload_lingers
+
+    def activitywatch_running(self) -> bool:
+        self.calls.append(("activitywatch_running", ""))
+        return self.running_activitywatch
+
+    def open_activitywatch(self) -> None:
+        self.calls.append(("open_activitywatch", ""))
+        if self.opening_starts_activitywatch:
+            self.running_activitywatch = True
 
     def notify(self, title: str, message: str) -> None:
         self.calls.append(("notify", message))

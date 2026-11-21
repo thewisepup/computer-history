@@ -83,6 +83,7 @@ shell that sets them act on that other folder.
 | `screenshot_jpeg_quality` | `60` | whole number, 1 to 100 |
 | `screenshot_change_pixels` | `6` | whole number, 0 to 1000: a picture is a `duplicate` when fewer than this many of its thumbnail pixels (each 9x9 points of the window) changed from its window's last kept picture; `0` counts every picture as changed, which turns dedup off |
 | `screenshot_keep_after_minutes` | `10` | whole number, 1 to 1440: an unchanged window gets a new `kept` picture once its last one is older than this |
+| `watchdog` | none | an object the agent leaves alone: the backend's watchdog reads its thresholds from it (`computer_history/cli/README.md`, watchdog) |
 
 ```json
 {
