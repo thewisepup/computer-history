@@ -51,8 +51,10 @@ store CLI) and `history` (the POC, the same as `python history.py`).
 
 Raw events go into an immutable `observations` table, and normalized
 `signals` are derived from them, so signals can always be rebuilt. The
-database defaults to `~/Library/Application Support/ComputerHistory/history.db`.
-Override it with `--db-path` or `$COMPUTER_HISTORY_DB`. The networked commands
+database defaults to `~/Library/Application Support/ComputerHistory-dev/history.db`
+for a run from a checkout (dev) and to `ComputerHistory/history.db`, the live
+one, for the stable install; dev is refused the live one. Override it with
+`--db-path` or `$COMPUTER_HISTORY_DB`. The networked commands
 take `--aw-url`.
 
 [computer_history/cli/README.md](computer_history/cli/README.md) documents
@@ -257,7 +259,9 @@ authentication and explicit trusted-host configuration.
 ## Tests and checks
 
 ```sh
-.venv/bin/python -m pytest                              # the computer_history package (tests/)
+.venv/bin/python -m pytest tests/unit                   # unit tests, as the pre-commit hook runs them
+.venv/bin/python -m pytest tests/data                   # synthetic datasets and the dev commands
+.venv/bin/python -m pytest -m perf                      # the performance gate (tests/perf)
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
 .venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check: computer_history strict, tests standard

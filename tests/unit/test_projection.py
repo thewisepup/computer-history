@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import after_profile_line
 from db_states import corrupt_payloads
 from fake_aw import FakeAW
 from fake_source import FakeSource, at
@@ -309,7 +310,7 @@ def test_cli_rebuild_with_an_unclaimed_source_fails_loudly(
     code = cli.main(["--db-path", str(db_path), "rebuild-signals"])
     out, err = capsys.readouterr()
 
-    assert code == 1 and out == ""
+    assert code == 1 and after_profile_line(out) == ""
     assert "rebuild-signals aborted: no source adapter projects 'transcript'" in err
     assert "no adapter for that source" in err
     assert "malformed" not in err and "first failing" not in err

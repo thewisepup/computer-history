@@ -20,14 +20,14 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
-from computer_history.store import Purpose, open_store, resolve_db_path
+from computer_history.store import Purpose, open_store
 
 log = logging.getLogger(__name__)
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
-    spool_path = resolve_spool_path(args.spool_path, db_path)
+    db_path: Path = args.database
+    spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn

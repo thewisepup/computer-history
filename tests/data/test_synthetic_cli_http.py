@@ -27,9 +27,7 @@ from computer_history.synthetic.activitywatch import ActivityWatchRenderer, Rend
 from computer_history.synthetic.aw_api import ServedAW
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
-pytestmark = pytest.mark.dataset
-
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 CLI = Path(sys.executable).with_name("computer-history")
 LIVE_AW_PORT = urlparse(DEFAULT_AW_URL).port
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)

@@ -60,8 +60,6 @@ from computer_history.synthetic.spool import (
 )
 from computer_history.synthetic.timeline import PRECISION
 
-pytestmark = pytest.mark.dataset
-
 DAY = datetime(2026, 1, 5, tzinfo=UTC)
 PR = "https://github.com/acme/computer-history/pulls"
 LONG_PAGE = "x" * 60_000
@@ -173,7 +171,7 @@ def test_a_hand_worked_capture_session_reports_the_records_worked_out_by_hand(
     )
 
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "fixtures" / "spool" / "records.jsonl"
 DEVELOPER_DAY = DatasetInputs(persona="developer", scenario="typical", tier="day", seed=1)
 AGENT_NAME = re.compile(r"\d{8}T\d{6}\.\d{3}Z\.jsonl")

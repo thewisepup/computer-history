@@ -425,7 +425,7 @@ for `focus_element`), `title`, `subrole`, `description`, `value` (repeated
 window may also set `recognized_text`: the text the scripted recognition reads
 from each picture kept of it (otherwise empty).
 
-`scripts/e2e.sh` builds the agent and runs `tests/test_capture_e2e.py`. It
+`scripts/e2e.sh` builds the agent and runs `tests/e2e/test_capture_e2e.py`. It
 plays `e2e/crash.json`, appends a torn line to the leftover `open.part`, plays
 `e2e/session.json`, then runs the real `computer-history ingest` three times
 (twice, then once more with the finished files put back) and `status` against
@@ -441,7 +441,7 @@ the reminder's saved time, and every line of the screenshots section in
 `000`), and the images must come out byte for byte the same. It also checks
 that the agent's `check-config` and the backend name the same default folder
 and spool for a scratch home folder. It also runs the agent test in
-`tests/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
+`tests/data/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
 synthetic spool renderer writes the same captures (time, trigger, app, bundle
 id and title) as the agent.
 Plain `pytest` skips both agent tests unless `CAPTURE_AGENT_BINARY` names a built agent.

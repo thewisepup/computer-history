@@ -135,7 +135,13 @@ docs/
 
 ## 3. Data model (SQLite)
 
-One SQLite file (`~/Library/Application Support/ComputerHistory/history.db`).
+One SQLite file per profile: stable's live
+`~/Library/Application Support/ComputerHistory/history.db`, and dev's
+`~/Library/Application Support/ComputerHistory-dev/history.db`. A run is stable
+only when its code sits in a version folder under the live folder's
+`versions/` that carries the `installed` marker; anything else is dev, and
+path resolution refuses dev any database, spool or screenshots path in the
+live folder.
 Screenshots live on disk; the DB stores paths and extracted text.
 
 Global rules:

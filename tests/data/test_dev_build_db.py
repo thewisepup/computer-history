@@ -10,7 +10,7 @@ from store_answers import DATASET_FILES
 from computer_history import cli
 from computer_history.cli import dev
 from computer_history.sources import SPOOL_ENV_VAR, resolve_spool_path
-from computer_history.store import DB_ENV_VAR, connect, content_digest
+from computer_history.store import DB_ENV_VAR, Profile, connect, content_digest
 from computer_history.store.db import WalUnavailable
 from computer_history.synthetic import (
     DATABASE_NAME,
@@ -21,8 +21,6 @@ from computer_history.synthetic import (
     TIERS,
 )
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
-
-pytestmark = pytest.mark.dataset
 
 DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
@@ -273,6 +271,6 @@ def test_status_on_the_copied_database_finds_no_spool_files_waiting(
     )
     printed = capsys.readouterr().out
 
-    spool = resolve_spool_path(None, out / DATABASE_NAME)
+    spool = resolve_spool_path(None, out / DATABASE_NAME, Profile.DEV)
     assert code == 0
     assert f"0 finished files waiting, 0 in unreadable/  ({spool})" in printed

@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 from live_data_guard import LIVE_DATA_DIR
 
-from computer_history.store.paths import default_db_path
+from computer_history.store import live_folder
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 BLOCKED = 2
 
 
@@ -182,7 +182,7 @@ def test_only_bash_and_the_file_editing_tools_are_guarded(tool_name: str):
 
 
 @pytest.mark.parametrize(
-    "path", [default_db_path().parent, LIVE_DATA_DIR], ids=["default_db_path", "LIVE_DATA_DIR"]
+    "path", [live_folder(), LIVE_DATA_DIR], ids=["live_folder", "LIVE_DATA_DIR"]
 )
 def test_the_folder_the_code_uses_is_the_one_blocked(path: Path):
     assert run_hook("Bash", {"command": f"ls '{path}'"}).code == BLOCKED

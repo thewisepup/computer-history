@@ -22,7 +22,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 
 ## Tests by file
 
-### tests/test_aw_adapter.py
+### tests/unit/test_aw_adapter.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -85,7 +85,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_web_signal_domain_title_hygiene_and_extras` | keep (required) | 3 | 73 |  |
 | `test_window_signal` | keep (cover) | 0 | 45 |  |
 
-### tests/test_aw_ingest_properties.py
+### tests/unit/test_aw_ingest_properties.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_every_afk_event_is_stored_whole` | prune (scattered) | 0 | 46 | `test_latest_event_settles_once_its_end_is_older_than_the_margin[120-False]`, `test_adapter_reports_a_stream_without_buckets_as_unavailable`, `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it`, `test_event_created_during_the_pull_counts_as_latest`, `test_every_afk_event_is_stored` |
 | `test_every_window_event_is_stored_whole` | prune (scattered) | 0 | 448 | `test_latest_event_settles_once_its_end_is_older_than_the_margin[120-False]`, `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it`, `test_adapter_resumes_a_little_before_its_position`, `test_lone_surrogates_are_scrubbed`, `test_event_created_during_the_pull_counts_as_latest`, `test_every_afk_event_is_stored` |
 
-### tests/test_ax_text.py
+### tests/unit/test_ax_text.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -130,7 +130,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_the_spool_path_is_the_flag_then_the_env_var_then_beside_the_database` | prune | 0 | 3 | `test_status_on_missing_db_does_not_create_it`, `test_status_reads_the_spool_flag` |
 | `test_watch_polls_activitywatch_and_the_spool_in_one_loop` | prune (scattered) | 0 | 433 | `test_a_record_failing_validation_says_why[line7-full_text_bytes is not a int]`, `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it`, `test_a_file_that_cannot_be_removed_fails_once_and_does_not_block_later_files`, `test_watch_starts_the_next_cycle_at_once_after_a_slow_one`, `test_poll_reports_aw_errors`, `test_watch_reports_every_cycle_and_sleeps_for_the_rest_of_the_interval`, `test_poll_keeps_outcomes_committed_before_a_failure`, `test_activitywatch_down_does_not_stop_the_spool` |
 
-### tests/test_backfill.py
+### tests/unit/test_backfill.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -168,7 +168,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_unreadable_event_before_the_start_fails_safe` | keep (required) | 2 | 510 |  |
 | `test_when_arg_reads_naive_values_as_local_time` | keep (required) | 1 | 4 |  |
 
-### tests/test_capture_health.py
+### tests/unit/test_capture_health.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -227,7 +227,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_the_pairs_come_most_common_first` | keep (required) | 4 | 59 |  |
 | `test_the_spans_in_range_are_counted` | keep (required) | 1 | 34 |  |
 
-### tests/test_cli.py
+### tests/unit/test_cli.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -297,7 +297,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_writing_commands_report_a_locked_db_at_open[ingest]` | keep (protected) | 0 | 195 |  |
 | `test_writing_commands_report_a_locked_db_at_open[rebuild-signals]` | keep (cover) | 0 | 177 |  |
 
-### tests/test_progress.py
+### tests/unit/test_progress.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -323,7 +323,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_store_round_trips_an_opaque_position_with_settled_until_set_separately` | prune (scattered) | 0 | 165 | `test_mixed_new_and_duplicate_batch`, `test_backfill_reports_an_incomplete_chunk_once_and_sets_progress_from_it`, `test_a_backlog_is_listed_once_per_drain` |
 | `test_the_store_exports_no_progress_writer` | prune (kills nothing) | 0 | 0 |  |
 
-### tests/test_projection.py
+### tests/unit/test_projection.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -343,7 +343,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_unclaimed_rows_win_over_earlier_malformed_ones` | keep (required) | 2 | 393 |  |
 | `test_watch_logs_an_unprojected_stream_and_keeps_polling` | prune (scattered) | 0 | 290 | `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it`, `test_watch_starts_the_next_cycle_at_once_after_a_slow_one`, `test_poll_reports_aw_errors`, `test_an_unclaimed_source_raises_its_own_error`, `test_watch_survives_a_locked_database_and_logs_the_real_delay`, `test_cli_ingest_prints_an_unprojected_stream_and_exits_nonzero`, `test_ingest_watch_exits_zero_on_ctrl_c` |
 
-### tests/test_rebuild.py
+### tests/unit/test_rebuild.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -375,7 +375,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_shrinking_to_half_is_allowed` | keep (required) | 2 | 457 |  |
 | `test_small_stores_may_shrink` | prune (scattered) | 0 | 438 | `test_latest_event_settles_once_its_end_is_older_than_the_margin[120-False]`, `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it`, `test_adapter_reports_a_stream_without_buckets_as_unavailable`, `test_extract_domain[http://WWW.Example.COM:8080/path?q=1-example.com]`, `test_source_without_buckets_has_no_frontier`, `test_non_string_fields_and_unknown_keys_go_to_extras`, `test_event_created_during_the_pull_counts_as_latest`, `test_rebuild_reproduces_ingested_signals_row_for_row[1]`, `test_cli_rebuild_signals_on_a_fresh_db`, `test_shrinking_to_half_is_allowed` |
 
-### tests/test_runner.py
+### tests/unit/test_runner.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -401,7 +401,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_watch_reports_every_cycle_and_sleeps_for_the_rest_of_the_interval` | keep (required) | 2 | 268 |  |
 | `test_watch_starts_the_next_cycle_at_once_after_a_slow_one` | keep (required) | 1 | 87 |  |
 
-### tests/test_store.py
+### tests/unit/test_store.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -432,7 +432,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_utc_iso_canonicalizes_mixed_spellings` | prune | 0 | 9 | `test_utc_iso_rejects_naive_timestamps`, `test_gaps_accept_string_bounds_and_reject_empty_range` |
 | `test_utc_iso_rejects_naive_timestamps` | keep (required) | 1 | 5 |  |
 
-### tests/test_store_api.py
+### tests/unit/test_store_api.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|
@@ -469,7 +469,7 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `test_unclaimed_source_rolls_back_whole_batch_and_progress` | prune (scattered) | 0 | 109 | `test_fresh_db_has_full_schema`, `test_mixed_new_and_duplicate_batch`, `test_bad_progress_updates_are_rejected[no-position]`, `test_progress_does_not_move_outside_a_batch_transaction`, `test_an_unclaimed_source_raises_its_own_error`, `test_poll_writes_each_stream_with_its_progress_and_resumes_after_it` |
 | `test_zero_length_observation_does_not_split_a_gap` | prune (scattered) | 0 | 134 | `test_gaps_accept_string_bounds_and_reject_empty_range`, `test_mixed_new_and_duplicate_batch`, `test_a_backlog_is_listed_once_per_drain` |
 
-### tests/test_store_open.py
+### tests/unit/test_store_open.py
 
 | test | verdict | unique kills | kills | still killed by |
 |---|---|---|---|---|

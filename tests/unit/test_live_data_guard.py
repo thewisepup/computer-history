@@ -10,17 +10,22 @@ from urllib.parse import quote
 import pytest
 from live_data_guard import GUARDED_ENV_VARS, LIVE_DATA_DIR, LiveDataTouched
 
-from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR
-from computer_history.store import DB_ENV_VAR, connect, default_db_path
-from computer_history.store import db as store_db
-from computer_history.store.paths import resolve_db_path
+from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR, configured_spool_path
+from computer_history.store import (
+    DB_ENV_VAR,
+    Profile,
+    configured_db_path,
+    connect,
+    default_db_path,
+    resolve_db_path,
+)
 
 PROBE = LIVE_DATA_DIR / "test-guard-probe-that-never-exists.db"
 
 
 def test_home_is_a_sandbox_and_defaults_land_in_it() -> None:
     assert Path.home() != LIVE_DATA_DIR.parents[2]
-    assert not default_db_path().is_relative_to(LIVE_DATA_DIR)
+    assert not default_db_path(Profile.STABLE).is_relative_to(LIVE_DATA_DIR)
     assert not any(os.environ.get(name) for name in GUARDED_ENV_VARS)
 
 
@@ -28,8 +33,18 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HOME", str(LIVE_DATA_DIR.parents[2]))
-    assert default_db_path() == LIVE_DATA_DIR / "history.db"
+    assert default_db_path(Profile.STABLE) == LIVE_DATA_DIR / "history.db"
     assert set(GUARDED_ENV_VARS) == {DB_ENV_VAR, SPOOL_ENV_VAR}
+
+
+def test_dev_defaults_never_resolve_under_the_real_live_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(LIVE_DATA_DIR.parents[2]))
+    db = configured_db_path(None, Profile.DEV)
+    live = os.path.abspath(LIVE_DATA_DIR).casefold() + os.sep
+    for path in (db, db.parent, configured_spool_path(None, db)):
+        assert not (os.path.abspath(path).casefold() + os.sep).startswith(live), path
 
 
 @pytest.mark.parametrize(
@@ -70,7 +85,7 @@ def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: 
     env = {**os.environ, "HOME": str(tmp_path)}
     run = subprocess.run(
         [sys.executable, "-c", script],
-        cwd=Path(__file__).parent,
+        cwd=Path(__file__).resolve().parents[1],
         env=env,
         capture_output=True,
         text=True,
@@ -80,11 +95,10 @@ def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: 
     assert not PROBE.exists()
 
 
-def test_a_path_dropping_bug_lands_in_the_sandbox_not_the_live_db(
+def test_a_run_given_no_database_path_lands_in_the_sandbox_not_the_live_db(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(store_db, "resolve_db_path", lambda explicit=None: resolve_db_path(None))
-    connect(tmp_path / "meant-for-this.db").close()
-    assert default_db_path().exists()
-    assert not (tmp_path / "meant-for-this.db").exists()
+    connect(resolve_db_path(None, Profile.STABLE)).close()
+    assert default_db_path(Profile.STABLE).exists()
+    assert default_db_path(Profile.STABLE).is_relative_to(tmp_path)

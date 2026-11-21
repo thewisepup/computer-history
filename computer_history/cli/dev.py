@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from computer_history.store import LiveDatabaseRefused
 from computer_history.synthetic import (
     BASELINE_DIR,
     BENCH_BASELINE_NAME,
@@ -30,7 +31,6 @@ from computer_history.synthetic import (
     BenchReport,
     DatasetInputs,
     GateReport,
-    LiveDatabaseRefused,
     OutputExists,
     OutputNotAFolder,
     Timing,
@@ -170,7 +170,7 @@ def cmd_build_db(args: argparse.Namespace) -> int:
             inputs,
             args.out,
             cache=cache_root(),
-            live=live_folders(args.db_path),
+            live=live_folders(args.db_path, args.profile),
             force=args.force,
         )
     except REFUSALS as exc:

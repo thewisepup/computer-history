@@ -7,6 +7,7 @@ import pytest
 from computer_history.store import (
     DB_ENV_VAR,
     Migration,
+    Profile,
     connect,
     default_db_path,
     load_migrations,
@@ -30,7 +31,7 @@ TABLES = {
     "classification_runs",
 }
 VIEWS = {"block_evidence_v"}
-DEFAULT_TAIL = Path("Application Support", "ComputerHistory", "history.db")
+DEFAULT_TAIL = Path("Application Support", "ComputerHistory-dev", "history.db")
 LATEST = len(load_migrations())
 
 
@@ -250,35 +251,30 @@ def test_migrate_rejects_unsorted_or_gapped_caller_lists(conn: sqlite3.Connectio
 
 def test_path_flag_wins_over_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(DB_ENV_VAR, str(tmp_path / "env.db"))
-    assert resolve_db_path(tmp_path / "flag.db") == tmp_path / "flag.db"
+    assert resolve_db_path(tmp_path / "flag.db", Profile.DEV) == tmp_path / "flag.db"
 
 
 def test_path_env_wins_over_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(DB_ENV_VAR, str(tmp_path / "env.db"))
-    assert resolve_db_path() == tmp_path / "env.db"
-    assert resolve_db_path(None) == tmp_path / "env.db"
+    assert resolve_db_path(None, Profile.DEV) == tmp_path / "env.db"
 
 
 def test_path_default_under_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert resolve_db_path() == tmp_path / "Library" / DEFAULT_TAIL
+    assert resolve_db_path(None, Profile.DEV) == tmp_path / "Library" / DEFAULT_TAIL
 
 
 def test_path_empty_values_count_as_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv(DB_ENV_VAR, "")
-    assert resolve_db_path("") == default_db_path() == tmp_path / "Library" / DEFAULT_TAIL
+    default = default_db_path(Profile.DEV)
+    assert resolve_db_path("", Profile.DEV) == default == tmp_path / "Library" / DEFAULT_TAIL
 
 
 def test_path_expands_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert resolve_db_path("~/x.db") == tmp_path / "x.db"
+    assert resolve_db_path("~/x.db", Profile.DEV) == tmp_path / "x.db"
 
-
-def test_connect_uses_env_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv(DB_ENV_VAR, str(tmp_path / "env.db"))
-    connect().close()
-    assert (tmp_path / "env.db").is_file()
 
 
 def insert_observation(

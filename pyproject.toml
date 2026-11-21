@@ -32,8 +32,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-m 'not perf'"
 markers = [
-    "perf: the performance gate, run with -m perf or computer-history dev perf",
-    "dataset: builds synthetic datasets or runs the dev perf and bench commands; CI runs it, the pre-commit hook leaves it out",
+    "perf: set on tests/perf (the performance gate), which addopts leaves out; run with -m perf or computer-history dev perf",
     "schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see",
 ]
 
@@ -42,11 +41,11 @@ source_paths = ["computer_history/"]
 also_copy = ["fixtures/"]
 pytest_add_cli_args_test_selection = [
     "tests/",
-    "--ignore=tests/test_standards.py",
-    "--ignore=tests/test_spool_fixture.py",
-    "--ignore=tests/test_capture_e2e.py",
-    "--ignore=tests/test_synthetic_cli_http.py",
-    "--ignore=tests/test_synthetic_coverage.py",
+    "--ignore=tests/unit/test_standards.py",
+    "--ignore=tests/unit/test_spool_fixture.py",
+    "--ignore=tests/e2e/test_capture_e2e.py",
+    "--ignore=tests/data/test_synthetic_cli_http.py",
+    "--ignore=tests/data/test_synthetic_coverage.py",
 ]
 
 [tool.ruff]
@@ -64,4 +63,4 @@ reportUnnecessaryComparison = "error"
 reportUnnecessaryIsInstance = "error"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "RUF022"]
