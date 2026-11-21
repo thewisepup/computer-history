@@ -13,8 +13,6 @@ from computer_history import cli, synthetic
 from computer_history.cli import dev
 from computer_history.synthetic import CACHE_ENV_VAR, OPERATIONS, SMALLEST_DATASET, baseline_file
 
-pytestmark = pytest.mark.dataset
-
 
 @pytest.fixture(scope="module")
 def shared_cache(tmp_path_factory: pytest.TempPathFactory) -> Path:

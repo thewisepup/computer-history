@@ -22,8 +22,6 @@ from computer_history.synthetic import (
 )
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
 
-pytestmark = pytest.mark.dataset
-
 DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
 
