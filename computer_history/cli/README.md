@@ -7,24 +7,27 @@ package only parses arguments, builds the clients, source adapters and
 connection, calls one function, and formats the result.
 
 ```
-app.py         parser + dispatch: one entry per command
-  |
+app.py         parser + dispatch: one entry per command, the profile's log
+  |              folder, and the install lock around the commands that change
+  |              the stable install
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop), with
-  |                the backend heartbeat after each cycle, and spool deletion
-  |                held until a cycle completes while update asks for it
-  +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts,
-  |                the install and its last update, its LaunchAgents, the backend's
-  |                last cycle, the backups and the watchdog's findings
+  |                the ingest health file and the failure streak's notification
+  |                after each cycle, and spool deletion held until a cycle
+  |                completes while update asks for it
+  +-- status.py    the given database's ingest, freshness, coverage gaps, capture
+  |                agent, screenshots, row counts and backups, then the stable
+  |                install, its last update, its LaunchAgents and the watchdog's findings
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
   +-- update.py    update (to the newest passing commit, falling back on its own)
-  |                and rollback (to the previous version)
+  |                and rollback (to the previous version, if it opens the database)
   +-- backup.py    backup (the day's backup, seven days kept) and restore (a backup
-  |                put in place, the stable backend stopped and started around it)
+  |                put in place, the stable backend, watchdog and daily backup
+  |                stopped and started around it)
   +-- watchdog.py  one watchdog run: check, notify, reopen ActivityWatch, and its
-  |                findings as lines, which status shows too
+  |                findings as lines (formatting.py formats them, for status too)
   +-- logs.py      the JSON log's records, filtered, as text or raw lines
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
   |                dev snapshot: the live database copied into the dev folder;
@@ -215,44 +218,65 @@ after the backup and before the switch removes the backup and the built
 folder and starts the backend again, so `nothing was changed` holds. Only the
 backend restarts: the daily backup, the watchdog and the ActivityWatch login
 agent keep running (a fallback that restores the backup stops and starts the
-daily backup around it, as `restore` does).
+daily backup and the watchdog around it, as `restore` does).
 
 While the hold exists, every ingest (the backend's `--watch` and a one-shot
 `ingest` alike) stores spool files but deletes or sets aside none. The
 backend's first cycle with no failure removes the hold; the next cycle reads
 the kept files again (all `skipped`, since `(source, source_id)` is unique)
 and deletes them as usual. `update` waits up to `--wait` seconds (600 by
-default; **a long migration needs a longer wait**) for a heartbeat newer than
-the restart:
+default; **a long migration needs a longer wait**; a deadline on the
+monotonic clock) for a cycle in `ingest-health.json` newer than the restart:
 
 - **ok**: it deletes the version `previous` pointed at before (one previous
   version is kept), logs `updated` and exits 0.
 - **failed only because a source was unavailable** (ActivityWatch down, the
-  heartbeat's `sources_unavailable`): not a reason to fall back; it keeps
+  file's `sources_unavailable`): not a reason to fall back; it keeps
   waiting for a cycle that succeeds or fails for another reason. If the
   sources stay down for the whole wait, it falls back with that reason.
 - **failed, crashed, none in time or interrupted** (a crash is launchd
   reporting a different process, or none, after it had one; Ctrl-C or a
-  SIGTERM during the wait counts as interrupted): it boots the new backend
-  out, points `current` and then `previous` back, removes the hold, restores
-  the pre-update backup only when the database's schema version is no longer
-  the backup's (through `restore`, so the replaced database is set aside,
-  never deleted), loads the backend on the old version (which reads the kept
+  SIGTERM during the switch or the wait counts as interrupted): it boots the
+  new backend out, points `current` and then `previous` back, restores the
+  pre-update backup only when the database's schema version is no longer the
+  backup's (through `restore`, so the replaced database is set aside, never
+  deleted), then removes the hold (it keeps it, with a warning, when the new
+  backend could not be confirmed stopped; the next ok cycle removes it), loads
+  the backend on the old version (which reads the kept
   spool files again harmlessly), posts a notification (`Update to 9f0e1d2
   fell back: the backend crashed before its first ingest cycle; back on
   8d23e3a.`), logs `fell back` with the reason and exits 1 (130 when
   interrupted). It deletes the new version's folder only when the new backend
   was confirmed stopped and both pointers went back; otherwise it keeps the
   folder so whatever still names it runs. Each step that fails is printed as
-  a `warning:` line and the rest still run.
+  a `warning:` line and the rest still run. A Ctrl-C or SIGTERM during a
+  fallback is noted and the fallback runs to its end, then `update` exits 130.
+
+Ctrl-C or SIGTERM before the switch (during the build, the backend's stop,
+the backup or the hold) undoes what `update` did, starts the backend again and
+exits 130: `update interrupted before switching versions (nothing was
+changed)`.
 
 `rollback` points `current` at the previous version, then `previous` at the
 one it left, and restarts the backend; it needs no network and no build, and
 running it twice returns to where it started. If `previous` cannot be
 pointed, it points `current` back, so both versions stay referenced. It does
-not restore a backup: if the version you return to cannot open the database
-because the newer one migrated it, `restore` the pre-update backup. With no
-previous version it fails and changes nothing.
+not restore a backup. When the database's schema is newer than the previous
+version can open (the newest migration in that version's own package), it
+refuses and changes nothing, naming the pre-update backup to restore first
+(illustrative):
+
+```
+rollback failed: the database is at schema v6, newer than version 572c48b can open (v5); put its pre-update backup back first with `computer-history restore .../backups/pre-update/history-2026-11-20T191952-572c48b.db`, then roll back (nothing was changed)
+```
+
+With no previous version it fails and changes nothing.
+
+`install`, `uninstall`, `update`, `rollback` and a stable `restore` take turns:
+each holds an exclusive lock on the live folder while it runs, and a second
+one exits 1 at once (`update refused: another install, uninstall, update,
+rollback or restore is using .../ComputerHistory; run it again once that one
+has finished`).
 
 Every update, fallback and rollback adds a JSON line to `update-log.jsonl`
 in the live folder (`{"at": ..., "action": "updated" | "fell back" | "rolled
@@ -298,7 +322,7 @@ Rolled back to version 572c48b from 8d23e3a
   backend       restarted
 ```
 
-A failed first cycle says why, from the heartbeat (`the backend's first
+A failed first cycle says why, from `ingest-health.json` (`the backend's first
 ingest cycle failed: ...`), and a schema change reads `restored <backup> (the
 new version changed the schema)`.
 
@@ -336,8 +360,9 @@ never removes those.
 `restore <day>` puts that day's daily backup in the database's place;
 `restore <file>` takes any backup file (only `YYYY-MM-DD` is read as a day,
 and `2026-13-01` is refused as no day). When the target is the live
-database, it first boots out the daily backup and then the backend through
-the host adapter, each only if it is loaded. If a boot-out fails or launchd
+database, it first boots out the daily backup, the watchdog and then the
+backend through the host adapter, each only if it is loaded, so none of their
+connections makes it refuse. If a boot-out fails or launchd
 still has the job after 5s, it loads the job again and stops with `nothing
 was changed`. When anything else still has the database open, such as an
 `ingest --watch` in a terminal, it refuses and starts the agents again.
@@ -371,6 +396,7 @@ Restored the daily backup of 2026-11-19 into .../ComputerHistory/history.db
   from          .../ComputerHistory/backups/daily/history-2026-11-19.db
   set aside     .../ComputerHistory/backups/set-aside/history-2026-11-20T183735.db (never deleted)
   backend       io.github.thewisepup.computer-history.ingest stopped, then started again
+  watchdog      io.github.thewisepup.computer-history.watchdog stopped, then started again
   backup        io.github.thewisepup.computer-history.backup stopped, then started again
 $ computer-history restore 2026-01-02
 Profile stable (version 572c48b), database .../ComputerHistory/history.db
@@ -399,10 +425,11 @@ its findings to `watchdog.json` beside the database, and exits 0:
   empty or erroring sibling bucket is ignored). A problem whether or not you are active. When it is unreachable
   and its app (`aw-qt`) isn't running, the watchdog opens it, at most three
   times in any hour.
-- **backend**: the last cycle in its heartbeat, silent or failing for longer
-  than the threshold (`cycles are failing`, with the first failure the
-  heartbeat recorded). A problem only while you are active; a failed cycle
-  never clears a silent backend.
+- **backend**: the last cycle in `ingest-health.json`, a problem only when it
+  is older than the threshold while you are active: the backend is silent or
+  dead. Cycles that run but fail are `ok: running, but its cycles fail
+  (ingest alerts on that)`, with the last error, since `ingest --watch`'s own
+  failure streak notifies of them; such a cycle clears a silent backend.
 
 Each is silent after 5 minutes unless the agent's config file beside the
 database (`agent-config.json`) says otherwise:
@@ -497,28 +524,28 @@ the database (a file, not a table, so a broken database cannot hide it):
 
 ```json
 {
-  "updated_at": "2026-11-21T01:18:32.801132+00:00",
+  "cycle_at": "2026-11-21T01:18:32.801132+00:00",
   "consecutive_failures": 0,
   "failing_since": null,
   "last_success_at": "2026-11-21T01:18:32.801132+00:00",
   "last_error": null,
-  "alerted_at": null
+  "alerted_at": null,
+  "sources_unavailable": false
 }
 ```
+
+`sources_unavailable` is true when every failure of the last cycle was a source
+it could not read, such as ActivityWatch down. The watchdog, `update`'s wait
+for the first cycle and `status` all read this one file.
 
 A restarted watch continues the saved streak, including when it last
 notified, so a restart neither notifies again early nor misses the recovery. After 5 failed cycles in a row
 it posts a macOS notification (`ingest failing for 5 cycles. Run
 \`computer-history status\`.`), again at most hourly while the failures last,
-and `ingest recovered.` once a cycle succeeds. Notifications never name
-captured content; `COMPUTER_HISTORY_NOTIFY=0` turns them off.
-
-After each cycle the watch also rewrites `backend-heartbeat.json` beside the
-database, `{"cycle_at": "<UTC ISO>", "ok": true, "error": null,
-"sources_unavailable": false}` (`ok` false and the first failure in `error`
-when the cycle had one; `sources_unavailable` true when every failure was a
-source it could not read, such as ActivityWatch down); `status`, the watchdog
-and `update` read it.
+and `ingest recovered.` once a cycle succeeds. They are posted through the
+host adapter, like every notification, under the one title `Computer
+History`; they never name captured content, and `COMPUTER_HISTORY_NOTIFY=0`
+turns them off.
 
 `ax-text` and `screenshot` are the capture agent's spool, read in the same
 poll. Each stream stores its own records from each finished `*.jsonl` file in
@@ -584,6 +611,13 @@ Screenshots:
 Rows:
   ...
 
+Backups:
+  latest        2026-11-20, taken 2026-11-20 08:14 (11h 13m ago), 18.8 MB
+  daily         7 kept (the newest 7), oldest 2026-11-14
+  pre-update    1 kept, newest taken 2026-11-19 16:02
+  integrity     each passed SQLite's integrity check before it was kept
+  folder        .../ComputerHistory/backups
+
 Stable install:
   this run      stable
   current       572c48b, installed 2026-11-20 17:22 (2h 5m ago)
@@ -596,16 +630,6 @@ Stable install's LaunchAgents:
   watchdog         loaded, not running  io.github.thewisepup.computer-history.watchdog
   activitywatch    loaded, not running  io.github.thewisepup.computer-history.activitywatch
   capture agent    loaded, running (pid 812)  io.github.thewisepup.computer-history.agent
-
-Stable backend:
-  last cycle    2026-11-20 19:27 (31s ago), ok
-
-Backups:
-  latest        2026-11-20, taken 2026-11-20 08:14 (11h 13m ago), 18.8 MB
-  daily         7 kept (the newest 7), oldest 2026-11-14
-  pre-update    1 kept, newest taken 2026-11-19 16:02
-  integrity     each passed SQLite's integrity check before it was kept
-  folder        .../ComputerHistory/backups
 
 Stable watchdog:
   last run       2026-11-20 19:27 (30s ago)
@@ -632,10 +656,22 @@ A health file not updated for over 5 minutes adds `NOT REPORTING for <time>
 --watch\` has reported yet`.
 
 Read-only: never creates, migrates or writes, and never changes the spool.
-The last five sections (illustrative above) come after the rest whatever
-state the database is in. The first three and the last describe the stable
-install, whichever profile runs `status`; the backups are the database's own:
+The last four sections (illustrative above) come after the rest whatever
+state the database is in. The backups, like everything before them, are the
+given database's own, read beside it; the three `Stable` sections describe
+the stable install whichever profile runs `status` or database it is given.
+The backend's last cycle is the `Ingest:` line, read beside the database too,
+so a dev `status` shows dev's backend, not stable's:
 
+- **Backups**: the backups beside the database `status` reports on, read from
+  the files alone (nothing is opened, and a file removed while they are
+  listed is skipped): the latest daily backup's day, when it was written and
+  its size, how many days are kept, the pre-update backups when there are
+  any, and the folder. Every kept file passed the integrity
+  check when it was taken, since a copy that fails is never kept. A
+  `warning: no daily backup since <day>` follows when the newest is older
+  than yesterday. Before the first, the section is one line:
+  `none yet (the daily backup takes one a day into .../backups/daily)`.
 - **Stable install**: this run's profile, and the version `current` and
   `previous` point at, with when its build finished; `none` before `install`.
   `last update` is the update log's last line: `updated <from> -> <to>`,
@@ -651,22 +687,6 @@ install, whichever profile runs `status`; the backups are the database's own:
   or it is loaded (`, plist deleted` when only launchd still has it), with a
   warning while it is loaded. When launchctl cannot be asked, the section is
   one line, `cannot ask launchd: <reason>`, and the exit code is unchanged.
-- **Stable backend**: the last cycle the stable backend's heartbeat (beside
-  the live database) records, and whether it was `ok` or `failed` (with its
-  first failure, `failed: aw-window: ...`); `none yet`
-  before its first cycle, and `unreadable heartbeat: ...` for a file that is
-  not one (a time without an offset, an `ok` that is not true or false).
-  A dev `ingest --watch` writes its own heartbeat beside the dev database,
-  which no section shows.
-- **Backups**: the backups beside the database `status` reports on, read from
-  the files alone (nothing is opened, and a file removed while they are
-  listed is skipped): the latest daily backup's day, when it was written and
-  its size, how many days are kept, the pre-update backups when there are
-  any, and the folder. Every kept file passed the integrity
-  check when it was taken, since a copy that fails is never kept. A
-  `warning: no daily backup since <day>` follows when the newest is older
-  than yesterday. Before the first, the section is one line:
-  `none yet (the daily backup takes one a day into .../backups/daily)`.
 - **Stable watchdog**: the stable watchdog's last run and its findings from
   `watchdog.json` beside the live database, with when a current problem was
   last notified, any ActivityWatch reopens in the last hour, and errors from
@@ -1078,7 +1098,10 @@ computer-history logs --level error --json     # the raw JSON lines
 ```
 
 Every command logs to stderr as text and to `computer-history.jsonl` in
-`$COMPUTER_HISTORY_LOG_DIR`, else `~/Library/Logs/computer-history/`. The file
+`$COMPUTER_HISTORY_LOG_DIR`, else `~/Library/Logs/computer-history/` for
+stable and `~/Library/Logs/computer-history-dev/` for dev, so a checkout's
+runs never mix into the stable backend's log; `logs` reads its own profile's
+folder. The file
 rotates at 10 MB and keeps 5 old files; every running command appends to it,
 taking turns through `computer-history.jsonl.lock`, and whichever rotates it
 first, the others follow. `logs` reads them all, oldest first, and skips a

@@ -25,8 +25,8 @@
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
-                      and starts the backend and the daily backup around it for the
-                      live database (uses launch_agents.py and layout.py)
+                      and starts the backend, the watchdog and the daily backup around
+                      it for the live database (uses launch_agents.py and layout.py)
 
 Everything that reaches launchctl, GitHub or uv goes through the host adapter it is given.
 """
