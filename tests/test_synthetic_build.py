@@ -161,7 +161,7 @@ HAND_WORKED_TOTALS = Totals(
     afk_seconds=179.999,
 )
 
-HAND_WORKED_COUNTS = {"aw-afk": 3, "aw-web": 1, "aw-window": 2, "ax-text": 60, "screenshot": 60}
+HAND_WORKED_COUNTS = {"aw-afk": 3, "aw-web": 1, "aw-window": 2, "ax-text": 63, "screenshot": 60}
 
 
 def test_a_hand_worked_morning_reports_the_numbers_worked_out_by_hand(tmp_path: Path) -> None:

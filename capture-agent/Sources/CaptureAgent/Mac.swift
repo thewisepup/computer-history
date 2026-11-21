@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the capture loop asks of the Mac: the clocks, the user's presence, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, a picture of the focused window, and posting a notification.
+/// Everything the capture loop asks of the Mac: the clocks, the user's presence and its sleep and wake, the Accessibility grant, the focused and frontmost apps, the accessibility tree, whether its bundle ships Electron, a picture of the focused window, and posting a notification.
 public protocol Mac {
     associatedtype Element: AccessibilityElement
 
@@ -8,6 +8,8 @@ public protocol Mac {
     func now() -> Date
     func sleep(_ seconds: TimeInterval)
     func samplePresence() -> Presence
+    /// Calls the handler, replacing any earlier one, as the Mac goes to sleep and as it wakes, with the time; samplePresence reports asleep before a sleep's call.
+    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void)
     func accessibilityTrusted() -> Bool
     func focusedApplication() -> FocusedApplication?
     func frontmostApplication() -> FocusedApplication?
@@ -33,6 +35,7 @@ public struct LiveMac: Mac, Sendable {
     public func now() -> Date { Date() }
     public func sleep(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
     public func samplePresence() -> Presence { presence.sample() }
+    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) { presence.onSleepChange(handler) }
     public func accessibilityTrusted() -> Bool { isAccessibilityTrusted(prompt: false) }
     public func focusedApplication() -> FocusedApplication? { CaptureAgent.focusedApplication(orFrontmost: frontmost.application) }
     public func frontmostApplication() -> FocusedApplication? { frontmost.application() }

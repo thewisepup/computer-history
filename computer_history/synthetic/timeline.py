@@ -17,7 +17,7 @@ PRECISION = timedelta(milliseconds=1)
 
 class StretchKind(Enum):
     ACTIVE = "active"  # an app is in front, whether or not the user is there
-    ASLEEP = "asleep"  # the Mac is asleep or locked
+    ASLEEP = "asleep"  # the Mac is asleep
 
 
 @dataclass(frozen=True)

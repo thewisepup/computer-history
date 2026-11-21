@@ -12,6 +12,7 @@ from computer_history.sources import (
     CAPTURE_TOLERANCE,
     EXCLUDED_KIND,
     PAUSED_KIND,
+    SLEPT_KIND,
     WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
 )
@@ -27,7 +28,7 @@ EXPLAINED_KINDS = {FaultKind.PAUSED: PAUSED_KIND, FaultKind.EXCLUDED: EXCLUDED_K
 
 @dataclass(frozen=True)
 class ExplainedGap:
-    """A stretch with no captured text that a record explains: a pause or an excluded app."""
+    """A stretch with no captured text that a record explains: a pause, an excluded app or sleep."""
 
     start: datetime
     end: datetime
@@ -51,10 +52,18 @@ def unobserved(
     }
 
 
-def explained(timeline: Timeline) -> tuple[ExplainedGap, ...]:
-    """Each pause and each excluded app's time in front, oldest first."""
+def explained(timeline: Timeline, records: Sequence[Capture]) -> tuple[ExplainedGap, ...]:
+    """Each pause, excluded app's time in front and recorded sleep, oldest first.
+
+    A sleep lasts until the next record, which is its woke record unless that was lost.
+    """
     faults = timeline.faults_of(*EXPLAINED_KINDS)
-    return tuple(ExplainedGap(f.start, f.end, EXPLAINED_KINDS[f.kind]) for f in faults)
+    gaps = [ExplainedGap(f.start, f.end, EXPLAINED_KINDS[f.kind]) for f in faults]
+    for record, after in zip(records, [*records[1:], None], strict=True):
+        if record.kind == SLEPT_KIND:
+            end = timeline.end if after is None else after.at
+            gaps.append(ExplainedGap(record.at, end, SLEPT_KIND))
+    return tuple(sorted(gaps, key=lambda gap: (gap.start, gap.end)))
 
 
 def _missed_by_agent(timeline: Timeline, records: Sequence[Capture]) -> list[Span]:
@@ -63,6 +72,8 @@ def _missed_by_agent(timeline: Timeline, records: Sequence[Capture]) -> list[Spa
     for fault in timeline.faults_of(FaultKind.AGENT_DOWN, FaultKind.PERMISSION_LOST):
         before = bisect_right(times, fault.start) - 1
         after = bisect_left(times, fault.end)
+        if before >= 0 and records[before].kind == SLEPT_KIND:
+            continue
         start = timeline.start if before < 0 else times[before] + CAPTURE_TOLERANCE
         end = timeline.end if after == len(times) else times[after] - CAPTURE_TOLERANCE
         missed.append((start, end))

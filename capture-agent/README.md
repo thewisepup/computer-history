@@ -201,11 +201,24 @@ or the session is switched away (`CGSessionCopyCurrentDictionary`), or between
 last reason clears. Without the Accessibility grant no `capture` record is
 written; `excluded` records still are, since they touch no window.
 
+## Sleep and wake
+
+The `willSleep` notification writes a `slept` record at that moment, on the
+main thread and before the handler returns, so it is in `open.part` before
+the Mac sleeps. `didWake` writes a `woke` record, but only after a sleep that
+wrote a `slept` record. Neither is written while capture is paused, since the
+pause already explains the time; a failed write is counted with the other
+failed writes. A capture or excluded record whose tick sampled presence just
+before the Mac fell asleep is dropped, so no record is later than its `slept`
+record. A lost `didWake` (a crash or power loss) leaves no `woke` record; the
+backend ends the sleep at the next record. The scripted Mac sends both
+notifications when a script's `presence` changes `asleep`.
+
 ## Screenshots
 
 Right after each `capture` record is written, the capture thread takes its
 screenshot and queues one `screenshot` record for it (see Text recognition).
-`excluded`, `paused` and `resumed` records get none, and a capture record that
+`excluded`, `paused`, `resumed`, `slept` and `woke` records get none, and a capture record that
 could not be written gets none.
 
 Before the picture it checks again that capture is not paused, the user is
@@ -278,7 +291,7 @@ recognition. The image is saved before its record is queued; the queue holds
 the record and the image's path, never the picture. Every screenshot record
 goes through it, whatever its status, so a capture's screenshot record reaches
 the spool after its capture record, in capture order, with the capture's time,
-possibly after later `capture`, `paused` or `resumed` records.
+possibly after later `capture`, `paused`, `resumed`, `slept` or `woke` records.
 
 For a `kept` record the queue reads the text in the saved JPEG with Vision:
 accurate mode, English (`en-US`), language correction on, one line per
@@ -393,7 +406,7 @@ in time order, each `at` seconds after the start with exactly one action:
 | `"set_title": {"app": ..., "window": ..., "title": ...}` | the window's title changes |
 | `"focus_element": {"app": ..., "window": ..., "element": ...}` | the app's focused element becomes the element with that `id` in that window; `{"app": ...}` alone clears it |
 | `"window_image": "picture" \| "no-permission" \| "failed"` | what a picture of the focused window gives from now on: the fixture image (the start), a missing grant, or a failure |
-| `"presence": {"idle_seconds": ..., "locked": ..., "asleep": ...}` | presence; missing keys are 0 or false |
+| `"presence": {"idle_seconds": ..., "locked": ..., "asleep": ...}` | presence; missing keys are 0 or false; a change of `asleep` sends the will-sleep or did-wake notification |
 | `"pause": true`, `"resume": true` | creates or deletes `capture-paused`, as the commands do |
 | `"end": true` | finishes the open spool file and exits |
 | `"crash": true` | exits leaving `open.part` unfinished, as a crash would |
@@ -482,7 +495,7 @@ another agent is writing to <folder>, exiting`, asks for no Accessibility
 prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
 or so, until the lock is free.
 
-A capture, exclusion, pause or resume record has every key below, sorted,
+A capture, exclusion, pause, resume, slept or woke record has every key below, sorted,
 with `null` where a key does not apply:
 
 | Key | Value |
@@ -490,9 +503,9 @@ with `null` where a key does not apply:
 | `version` | format version, `1` |
 | `id` | lowercase UUID; becomes the observation's `source_id` |
 | `captured_at` | UTC ISO-8601 with milliseconds, `2026-11-18T09:00:05.250Z` |
-| `kind` | `capture`, `excluded`, `paused` or `resumed` |
-| `trigger` | `app`, `window`, `title` or `heartbeat`; `null` for `paused` and `resumed` |
-| `app_name` | the focused app; `null` for `paused` and `resumed` |
+| `kind` | `capture`, `excluded`, `paused`, `resumed`, `slept` or `woke` |
+| `trigger` | `app`, `window`, `title` or `heartbeat`; `null` for `paused`, `resumed`, `slept` and `woke` |
+| `app_name` | the focused app; `null` for `paused`, `resumed`, `slept` and `woke` |
 | `bundle_id` | the focused app's bundle id, or `null` |
 | `window_title` | `capture` only |
 | `text` | `capture` only: the window's text, possibly cut off or partial |

@@ -64,6 +64,7 @@ final class CaptureLoop<M: Mac> {
         }
         self.counts = counts
         self.log = log
+        mac.onSleepChange(SleepRecords(spool: spool, pause: settings.pause, counts: counts).receive)
     }
 
     func run(while keepGoing: () -> Bool) {
@@ -98,7 +99,9 @@ final class CaptureLoop<M: Mac> {
         case .resumed:
             if write(SpoolRecord.resumed(at: mac.now())) { decision.recordedPause(false) }
         case .excluded(let application, let trigger):
-            if write(SpoolRecord.excluded(at: mac.now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
+            let excludedAt = mac.now()
+            guard !mac.samplePresence().asleep else { return }
+            if write(SpoolRecord.excluded(at: excludedAt, trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
                 counts.recordExcluded()
             }
         case .capture(let application, let trigger):
@@ -106,8 +109,10 @@ final class CaptureLoop<M: Mac> {
         }
     }
 
+    /// Writes nothing if the Mac fell asleep after the tick sampled presence, so no record is later than its slept record.
     private func capture(_ application: FocusedApplication, trigger: SpoolRecord.Trigger) {
         let capturedAt = mac.now()
+        guard !mac.samplePresence().asleep else { return }
         let started = mac.uptime()
         let window = reader.read(application)
         counts.recordRead(seconds: mac.uptime() - started)

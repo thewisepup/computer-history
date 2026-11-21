@@ -13,7 +13,10 @@ from computer_history.sources import (
     HEARTBEAT_SECONDS,
     PAUSED_KIND,
     RESUMED_KIND,
+    SLEPT_KIND,
+    WOKE_KIND,
 )
+from computer_history.synthetic.spans import merge
 from computer_history.synthetic.timeline import (
     AGENT_FAULTS,
     PRECISION,
@@ -53,8 +56,8 @@ class Capture(NamedTuple):
 def agent_captures(timeline: Timeline) -> list[Capture]:
     """The records the agent writes, oldest first, for an agent running from the range start.
 
-    A focus change captures once it settles, and a heartbeat follows the last capture while
-    the user is present.
+    A focus change captures once it settles, a heartbeat follows the last capture while the user
+    is present, and the Mac falling asleep and waking write slept and woke records.
     """
     captures: list[Capture] = []
     pending: str | None = None
@@ -100,7 +103,20 @@ def agent_captures(timeline: Timeline) -> list[Capture]:
             kind = EXCLUDED_KIND if excluded else CAPTURE_KIND
             captures.append(Capture(due, trigger, stretch, kind))
             pending, last, heartbeat_due = None, due, due + HEARTBEAT
-    return sorted([*captures, *_pause_records(timeline)], key=lambda capture: capture.at)
+    records = [*captures, *_sleep_records(timeline), *_pause_records(timeline)]
+    return sorted(records, key=lambda capture: capture.at)
+
+
+def _sleep_records(timeline: Timeline) -> Iterator[Capture]:
+    """A slept record unless paused or down, and its woke record unless the agent went down."""
+    paused = timeline.faults_of(FaultKind.PAUSED)
+    down = timeline.faults_of(FaultKind.AGENT_DOWN)
+    for start, end in merge((s.start, s.end) for s in timeline.stretches if not s.active):
+        if any(f.start <= start < f.end for f in (*paused, *down)):
+            continue
+        yield Capture(start, None, None, SLEPT_KIND)
+        if end < timeline.end and not any(f.start <= end and start < f.end for f in down):
+            yield Capture(end, None, None, WOKE_KIND)
 
 
 def _pause_records(timeline: Timeline) -> Iterator[Capture]:

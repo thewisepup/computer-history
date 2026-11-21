@@ -4,13 +4,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from computer_history.sources.capture_spool.record import PAUSED_KIND
+from computer_history.sources.capture_spool.record import PAUSED_KIND, SLEPT_KIND
 from computer_history.sources.capture_spool.window_text import StoredRecord
 from computer_history.store import Gap
 
 HEARTBEAT_SECONDS = 30
 CAPTURE_TOLERANCE = timedelta(seconds=2 * HEARTBEAT_SECONDS)
 AGENT_ALIVE_WITHIN = timedelta(minutes=5)
+SILENT_KINDS = (PAUSED_KIND, SLEPT_KIND)
 
 Span = tuple[datetime, datetime]
 
@@ -32,16 +33,17 @@ def capture_coverage(
     known: Iterable[Span],
     start: datetime,
     end: datetime,
-    paused_at_start: bool,
+    silent_at_start: bool,
     min_gap_seconds: float = 0,
 ) -> Coverage:
-    """The active stretches no record or pause explains, and the stretches without aw-afk data.
+    """The active stretches no record, pause or sleep explains, and those without aw-afk data.
 
-    A record explains the tolerance on either side of it, and a pause lasts until the next record.
+    A record explains the tolerance on either side of it, and a pause or a sleep lasts until the
+    next record.
     """
     explained = _merge(
         [(r.at - CAPTURE_TOLERANCE, r.at + CAPTURE_TOLERANCE) for r in records]
-        + _paused_spans(records, start, end, paused_at_start)
+        + _silent_spans(records, start, end, silent_at_start)
     )
     window = [(start, end)]
     unobserved = _subtract(_clip(_merge(active), start, end), explained)
@@ -66,19 +68,19 @@ def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterab
     return "no" if attended > CAPTURE_TOLERANCE else "unknown"
 
 
-def _paused_spans(
-    records: Sequence[StoredRecord], start: datetime, end: datetime, paused_at_start: bool
+def _silent_spans(
+    records: Sequence[StoredRecord], start: datetime, end: datetime, silent_at_start: bool
 ) -> list[Span]:
     spans: list[Span] = []
-    paused_from = start if paused_at_start else None
+    silent_from = start if silent_at_start else None
     for record in sorted(records, key=lambda r: r.at):
-        if record.kind == PAUSED_KIND:
-            paused_from = record.at if paused_from is None else paused_from
-        elif paused_from is not None:
-            spans.append((paused_from, record.at))
-            paused_from = None
-    if paused_from is not None:
-        spans.append((paused_from, end))
+        if record.kind in SILENT_KINDS:
+            silent_from = record.at if silent_from is None else silent_from
+        elif silent_from is not None:
+            spans.append((silent_from, record.at))
+            silent_from = None
+    if silent_from is not None:
+        spans.append((silent_from, end))
     return _clip(spans, start, end)
 
 

@@ -545,3 +545,90 @@ def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(
     assert Path(agent["folder"]) == db.parent
     assert Path(agent["spool"]) == resolve_spool_path(None, db)
     assert not (home / "Library").exists()
+
+
+def _sleep_script(start: datetime) -> dict:
+    return {
+        "start": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "apps": {
+            "notes": {
+                "name": "TextEdit",
+                "bundle_id": "com.apple.TextEdit",
+                "focused_window": "notes",
+                "windows": {
+                    "notes": {
+                        "role": "AXWindow",
+                        "title": "Notes",
+                        "children": [{"role": "AXStaticText", "value": "before and after"}],
+                    }
+                },
+            }
+        },
+        "steps": [
+            {"at": 0, "focus": "notes"},
+            {"at": 45, "presence": {"asleep": True}},
+            {"at": 270, "presence": {}},
+            {"at": 275, "end": True},
+        ],
+    }
+
+
+@pytest.fixture(scope="module")
+def slept(tmp_path_factory: pytest.TempPathFactory):
+    folder = tmp_path_factory.mktemp("sleep-e2e")
+    db = folder / "history.db"
+    start = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=280)
+    script = folder / "sleep.json"
+    script.write_text(json.dumps(_sleep_script(start)), encoding="utf-8")
+    (folder / "agent-config.json").write_text('{"screenshots": false}', encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["COMPUTER_HISTORY_DB"] = str(db)
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "scripted-session", str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    server = ThreadingHTTPServer(("127.0.0.1", 0), EmptyActivityWatch)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    aw_url = f"http://127.0.0.1:{server.server_port}/api/0"
+    try:
+        ingest = _cli("ingest", db=db, aw_url=aw_url)
+        assert ingest.returncode == 0, ingest.stderr
+        status = _cli("status", db=db, aw_url=aw_url)
+        status_at = datetime.now(UTC)
+    finally:
+        server.shutdown()
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute(
+            "SELECT o.payload, s.extras FROM observations o"
+            " LEFT JOIN signals s ON s.observation_id = o.id"
+            " WHERE o.source = 'ax-text' ORDER BY o.started_at"
+        ).fetchall()
+    return start, [(json.loads(payload), extras) for payload, extras in rows], status, status_at
+
+
+def test_the_agent_records_sleep_and_wake_and_status_counts_and_explains_them(slept) -> None:
+    start, rows, status, status_at = slept
+    records = [record for record, _ in rows]
+    lines = CONTRACT.read_text("utf-8").splitlines()
+    contract = {r["kind"]: set(r) for r in map(json.loads, lines)}
+
+    assert [r["kind"] for r in records] == ["capture", "capture", "slept", "woke", "capture"]
+    sleep, wake = records[2], records[3]
+    assert to_utc(sleep["captured_at"]) - start == timedelta(seconds=45)
+    assert to_utc(wake["captured_at"]) - start == timedelta(seconds=270)
+    for record, extras in rows[2:4]:
+        assert set(record) == contract[record["kind"]]
+        filled = sorted(key for key, value in record.items() if value is not None)
+        assert filled == ["captured_at", "id", "kind", "version"]
+        assert json.loads(extras) == {"kind": record["kind"]}
+
+    assert status.returncode == 0, status.stderr
+    midnight = local_midnight(status_at)
+    today = [to_utc(r["captured_at"]) >= midnight for r in records]
+    slept_today, woke_today = today[2], today[3]
+    assert re.search(rf", {int(slept_today)} slept, {int(woke_today)} woke\n", status.stdout)
+    assert re.search(r"not paused or asleep\):\n  ax-text: no gaps since ", status.stdout)

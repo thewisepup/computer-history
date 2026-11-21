@@ -206,7 +206,7 @@ func aChangeDuringTheTextReadTakesNoPictureAndRecordsAFailedScreenshot(change: S
         }
     }
     fixture.run(for: 1.5)
-    let records = try fixture.records()
+    let records = try fixture.records().filter { $0["kind"] as? String != "slept" }
     #expect(records.map { $0["kind"] as? String } == ["capture", "screenshot"])
     #expect(records.first?["text"] as? String == "hello")
     #expect(records.last?["status"] as? String == "failed")

@@ -72,7 +72,7 @@ def coverage(
     idle: Sequence[tuple[float, float]] = (),
     start: float = -60,
     end: float = 0,
-    paused_at_start: bool = False,
+    silent_at_start: bool = False,
 ):
     known = [*active, *idle]
     return capture_coverage(
@@ -81,7 +81,7 @@ def coverage(
         known=[(at(a), at(b)) for a, b in known],
         start=at(start),
         end=at(end),
-        paused_at_start=paused_at_start,
+        silent_at_start=silent_at_start,
         min_gap_seconds=60,
     )
 
@@ -128,9 +128,41 @@ def test_a_pause_with_no_resume_explains_the_rest_of_the_range() -> None:
 
 def test_a_pause_from_before_the_range_explains_its_start() -> None:
     records = [StoredRecord(at(-30), "resumed"), *heartbeats(-30, 0)]
-    assert coverage(records, active=[(-60, 0)], paused_at_start=True).unobserved == ()
+    assert coverage(records, active=[(-60, 0)], silent_at_start=True).unobserved == ()
     unpaused = coverage(records, active=[(-60, 0)]).unobserved
     assert unpaused == gaps((-60, -30 - CAPTURE_TOLERANCE.total_seconds() / 60))
+
+
+def test_a_sleep_explains_the_stretch_until_the_wake() -> None:
+    records = [
+        *heartbeats(-60, -40),
+        StoredRecord(at(-40), "slept"),
+        StoredRecord(at(-20), "woke"),
+        *heartbeats(-20, 0),
+    ]
+    result = coverage(records, active=[(-60, -40), (-20, 0)])
+    assert result.unobserved == () and result.unjudged == ()
+
+
+def test_a_sleep_explains_active_time_aw_afk_reports_inside_it() -> None:
+    records = [*heartbeats(-60, -40), StoredRecord(at(-40), "slept")]
+    records += [StoredRecord(at(-20), "woke"), *heartbeats(-20, 0)]
+    assert coverage(records, active=[(-60, 0)]).unobserved == ()
+
+
+def test_a_sleep_whose_woke_was_lost_ends_at_the_next_record() -> None:
+    records = [*heartbeats(-60, -50), StoredRecord(at(-50), "slept"), *heartbeats(-30, -25)]
+    result = coverage(records, active=[(-60, -50), (-30, 0)])
+    tolerance = CAPTURE_TOLERANCE.total_seconds() / 60
+    assert result.unjudged == ()
+    assert result.unobserved == gaps((-25 + tolerance, 0))
+
+
+def test_a_sleep_from_before_the_range_explains_its_start() -> None:
+    records = [StoredRecord(at(-30), "woke"), *heartbeats(-30, 0)]
+    assert coverage(records, active=[(-30, 0)], silent_at_start=True).unjudged == ()
+    awake = coverage(records, active=[(-30, 0)]).unjudged
+    assert awake == gaps((-60, -30 - CAPTURE_TOLERANCE.total_seconds() / 60))
 
 
 def test_excluded_records_explain_time_like_captures() -> None:
@@ -320,6 +352,9 @@ def test_a_missing_spool_holds_nothing(tmp_path: Path) -> None:
     assert backlog.newest is None
 
 
+SILENT_EDGES = ("paused", "resumed", "slept", "woke")
+
+
 def spool_line(n: int, when: datetime, kind: str = "capture", **fields: Any) -> str:
     content = kind == "capture"
     data = {
@@ -327,8 +362,8 @@ def spool_line(n: int, when: datetime, kind: str = "capture", **fields: Any) -> 
         "id": f"00000000-0000-4000-8000-{n:012x}",
         "captured_at": when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z",
         "kind": kind,
-        "trigger": None if kind in ("paused", "resumed") else "heartbeat",
-        "app_name": None if kind in ("paused", "resumed") else "Editor",
+        "trigger": None if kind in SILENT_EDGES else "heartbeat",
+        "app_name": None if kind in SILENT_EDGES else "Editor",
         "bundle_id": None,
         "window_title": "w" if content else None,
         "text": "t" if content else None,
@@ -435,10 +470,14 @@ def test_counts_today_by_kind_and_flag(conn, tmp_path: Path) -> None:
             spool_line(6, at(-6), kind="excluded"),
             spool_line(7, at(-5), kind="paused"),
             spool_line(8, at(-4), kind="resumed"),
+            spool_line(9, at(-3), kind="slept"),
+            spool_line(10, at(-2), kind="woke"),
+            spool_line(11, yesterday, kind="slept"),
         ],
     )
     today = health(conn, tmp_path).today
     assert (today.captures, today.excluded, today.cut_off, today.timed_out) == (4, 1, 2, 2)
+    assert (today.slept, today.woke) == (1, 1)
 
 
 def test_last_capture_ignores_later_records_of_other_kinds(conn, tmp_path: Path) -> None:
@@ -479,6 +518,16 @@ def test_a_capture_after_a_pause_without_a_resume_ends_the_pause(conn, tmp_path:
     assert result.coverage is not None
     expected = [(at(-100) + CAPTURE_TOLERANCE, NOW)]
     assert [(g.start, g.end) for g in result.coverage.unobserved] == expected
+
+
+def test_a_sleep_before_the_window_explains_the_window_start(conn, tmp_path: Path) -> None:
+    store_records(conn, [spool_line(1, at(-30 * 60)), spool_line(2, at(-25 * 60), kind="slept")])
+    store_records(conn, [spool_line(3, at(-10), kind="woke"), spool_line(4, at(-9))])
+    store_afk(conn, [(at(-10), NOW, "not-afk")])
+    result = health(conn, tmp_path)
+    assert result.coverage is not None and result.coverage.start == at(-24 * 60)
+    assert result.coverage.unjudged == () and result.coverage.unobserved != ()
+    assert result.paused_since is None
 
 
 def test_a_pause_still_in_the_spool_counts(conn, tmp_path: Path) -> None:
@@ -646,7 +695,9 @@ def test_status_reports_every_capture_agent_line(capsys, status_aw, db_path: Pat
         rf"\s+\({re.escape(str(spool))}\)",
         out,
     )
-    assert re.search(r"today\s+3 captures stored, 1 excluded, 1 cut off, 1 timed out", out)
+    assert re.search(
+        r"today\s+3 captures stored, 1 excluded, 1 cut off, 1 timed out, 0 slept, 0 woke\n", out
+    )
     assert re.search(r"paused\s+no\n", out)
     assert "still-growing" not in out
 
@@ -695,6 +746,28 @@ def test_status_reports_paused_and_unobserved_capture_gaps(
     assert re.search(r"paused\s+yes, since \S+ \S+ \(20m( \d+s)? ago\)", out)
     assert "alive         paused" in out
     assert "idle" not in out.lower()
+
+
+def test_status_counts_a_sleep_and_reports_no_gap_for_it(capsys, status_aw, db_path: Path) -> None:
+    now = datetime.now(UTC)
+
+    def ago(minutes: float) -> datetime:
+        return now - timedelta(minutes=minutes)
+
+    awake = [ago(60 - i / 2) for i in range(20)] + [ago(20 - i / 2) for i in range(39)]
+    conn = connect(db_path)
+    store_records(conn, [spool_line(i, when) for i, when in enumerate(awake)])
+    store_records(conn, [spool_line(98, ago(50), kind="slept")])
+    store_records(conn, [spool_line(99, ago(20), kind="woke")])
+    store_afk(conn, [(ago(60), ago(50), "not-afk"), (ago(20), now, "not-afk")])
+    conn.close()
+    status_aw(FakeAW({}))
+
+    out = run_status(capsys, "--db-path", str(db_path))
+
+    assert "not paused or asleep):\n  ax-text: no gaps since " in out
+    assert re.search(r"today\s+59 captures stored, .*, 1 slept, 1 woke\n", out)
+    assert re.search(r"paused\s+no\n", out)
 
 
 def test_status_reports_app_agreement_with_names_only(capsys, status_aw, db_path: Path) -> None:

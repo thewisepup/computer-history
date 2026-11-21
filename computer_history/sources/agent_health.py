@@ -21,6 +21,7 @@ from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
+    SILENT_KINDS,
     WINDOW_TEXT_SOURCE,
     AppAgreement,
     Coverage,
@@ -112,7 +113,7 @@ def capture_health(
             known=[(s.start, s.end) for s in afk],
             start=start,
             end=end,
-            paused_at_start=before is not None and before[1] == PAUSED_KIND,
+            silent_at_start=before is not None and before[1] in SILENT_KINDS,
             min_gap_seconds=min_gap_seconds,
         )
     return CaptureHealth(

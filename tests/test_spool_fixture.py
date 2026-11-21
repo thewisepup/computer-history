@@ -56,7 +56,14 @@ def test_every_capture_agent_line_parses_with_the_documented_keys() -> None:
     assert records
     for record in records:
         assert set(record) == CAPTURE_KEYS
-    assert {r["kind"] for r in records} == {"capture", "excluded", "paused", "resumed"}
+    assert {r["kind"] for r in records} == {
+        "capture",
+        "excluded",
+        "paused",
+        "resumed",
+        "slept",
+        "woke",
+    }
     assert {r["trigger"] for r in records} - {None} == {"app", "window", "title", "heartbeat"}
 
 
@@ -81,7 +88,15 @@ def test_every_fixture_line_is_a_record_the_backend_reads() -> None:
     parsed = [parse_record(line) for line in FIXTURE_LINES]
 
     assert [p.id for p in parsed] == [json.loads(line)["id"] for line in FIXTURE_LINES]
-    assert {p.kind for p in parsed} == {"capture", "excluded", "paused", "resumed", SCREENSHOT_KIND}
+    assert {p.kind for p in parsed} == {
+        "capture",
+        "excluded",
+        "paused",
+        "resumed",
+        "slept",
+        "woke",
+        SCREENSHOT_KIND,
+    }
 
 
 def screenshot_line(**fields: object) -> str:
