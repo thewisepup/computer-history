@@ -91,6 +91,11 @@ per keep-after limit while its text is read. All on Brandon's Mac.
       and `restore` putting one back with the current database set aside.
       *(The LaunchAgent running a missed backup after wake waits for the Mac
       verification, #110.)*
+- [x] `update` moves stable to the newest commit the release gate passes,
+      backing up first and falling back on its own when the new backend
+      crashes or its first cycle fails or times out; `rollback` goes back one
+      version without the network. *(One real update and one forced fallback
+      wait for the Mac verification, #110.)*
 - [ ] From here, data accumulates unattended (the eval corpus for M5).
 
 ### M5 — Classification

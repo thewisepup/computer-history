@@ -21,7 +21,7 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
-from computer_history.store import Purpose, open_store
+from computer_history.store import Purpose, SpoolHold, open_store
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,8 @@ log = logging.getLogger(__name__)
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
-    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path)]
+    hold = SpoolHold.beside(db_path)
+    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path, hold=hold)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn
     if conn is None:
@@ -43,13 +44,24 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 POLL_INTERVAL_SECONDS,
                 db_path,
             )
+            if hold.active:
+                log.info("spool files are kept until a cycle is ok (%s is there)", hold.path)
             try:
-                watch(conn, sources, report=log_cycle, heartbeat=backend_heartbeat_path(db_path))
+                watch(
+                    conn,
+                    sources,
+                    report=log_cycle,
+                    heartbeat=backend_heartbeat_path(db_path),
+                    hold=hold,
+                )
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0
         summary = poll(conn, sources)
-    return _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
+    code = _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
+    if hold.active:
+        print(f"  spool files kept: {hold.path} holds their deletion while an update runs")
+    return code
 
 
 def log_cycle(summary: CycleSummary, delay: float) -> None:

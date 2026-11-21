@@ -7,6 +7,8 @@ payload into its signal with the projector the caller passes, and status and
 backfill use the read queries. content_digest hashes what the database holds,
 backup_database copies it while other connections keep writing, and
 restore_database puts a copy back, setting the database it replaces aside.
+SpoolHold is the file beside the database that keeps ingest from deleting
+spool files while an update waits for the backend's first cycle.
 """
 
 from computer_history.store.backup import (
@@ -27,6 +29,7 @@ from computer_history.store.db import (
     load_migrations,
     migrate,
     schema_version,
+    stored_schema_version,
     supported_version,
     transaction,
 )
@@ -77,6 +80,7 @@ from computer_history.store.signals import (
     UnclaimedSource,
     rebuild_signals,
 )
+from computer_history.store.spool_hold import SpoolHold, spool_hold_path
 from computer_history.store.status import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -131,6 +135,7 @@ __all__ = [
     "Signal",
     "SourceCoverage",
     "SourceSummary",
+    "SpoolHold",
     "SqliteBuild",
     "StatusReads",
     "StatusTotal",
@@ -168,8 +173,10 @@ __all__ = [
     "screenshot_totals",
     "sidecars",
     "source_summary",
+    "spool_hold_path",
     "sqlite_build",
     "status_reads",
+    "stored_schema_version",
     "supported_version",
     "table_counts",
     "to_utc",

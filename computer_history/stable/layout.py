@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.host import COMMAND_NAME
-from computer_history.store import VERSIONS_FOLDER_NAME, live_folder
+from computer_history.store import DATABASE_NAME, VERSIONS_FOLDER_NAME, live_folder
 
 CURRENT_POINTER_NAME = "current"
 PREVIOUS_POINTER_NAME = "previous"
 VENV_FOLDER_NAME = "venv"
 PACKAGES_FILE_NAME = "packages.txt"
+UPDATE_LOG_NAME = "update-log.jsonl"
 LABEL_PREFIX = "io.github.thewisepup.computer-history"
 CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
 CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
@@ -17,10 +18,15 @@ CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
 
 @dataclass(frozen=True)
 class Layout:
-    """Where the stable install keeps its versions, pointers, PATH link, LaunchAgents and logs."""
+    """Where the stable install keeps its versions, pointers, update log, PATH link, LaunchAgents
+    and logs."""
 
     live: Path
     home: Path
+
+    @property
+    def database(self) -> Path:
+        return self.live / DATABASE_NAME
 
     @property
     def versions(self) -> Path:
@@ -33,6 +39,10 @@ class Layout:
     @property
     def previous(self) -> Path:
         return self.live / PREVIOUS_POINTER_NAME
+
+    @property
+    def update_log(self) -> Path:
+        return self.live / UPDATE_LOG_NAME
 
     @property
     def link(self) -> Path:

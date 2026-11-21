@@ -14,6 +14,12 @@
         |                     launchd says about each agent for status
         +-- layout.py         where the versions, pointers, link, plists and logs live
 
+    updates/          update (build the newest passing commit, back up, switch, wait
+        |             for the backend's first ok cycle with spool deletion held, and
+        |             fall back on its own) and rollback (current and previous swapped),
+        |             one module per stage
+        +-- update_log.py  one line per update, fallback and rollback, read by status
+
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
                       and starts the backend and the daily backup around it for the
@@ -62,6 +68,19 @@ from computer_history.stable.layout import (
     Layout,
     stable_layout,
 )
+from computer_history.stable.update_log import (
+    UpdateAction,
+    UpdateLogEntry,
+    last_update_log_entry,
+)
+from computer_history.stable.updates import (
+    FIRST_CYCLE_WAIT_SECONDS,
+    RollbackFailed,
+    UpdateFailed,
+    UpdateReport,
+    rollback,
+    update,
+)
 from computer_history.stable.versions import pointed, version_name
 
 __all__ = [
@@ -73,6 +92,7 @@ __all__ = [
     "DAILY_FOLDER_NAME",
     "DAILY_KEPT",
     "EVERY_MINUTE_SECONDS",
+    "FIRST_CYCLE_WAIT_SECONDS",
     "LOAD_ATTEMPTS",
     "PACKAGES_FILE_NAME",
     "PRE_UPDATE_FOLDER_NAME",
@@ -91,16 +111,24 @@ __all__ = [
     "LaunchAgent",
     "Layout",
     "RestoreFailed",
+    "RollbackFailed",
     "Schedule",
+    "UpdateAction",
+    "UpdateFailed",
+    "UpdateLogEntry",
+    "UpdateReport",
     "agent_statuses",
     "backup_inventory",
     "daily_backup_path",
     "install",
+    "last_update_log_entry",
     "pointed",
     "restore_backup",
+    "rollback",
     "stable_layout",
     "take_daily_backup",
     "take_pre_update_backup",
     "uninstall",
+    "update",
     "version_name",
 ]

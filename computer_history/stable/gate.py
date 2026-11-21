@@ -66,3 +66,11 @@ def newest_passing(host: Host, *, limit: int = COMMITS_SEARCHED) -> GateSearch:
             return GateSearch(verdict, tuple(skipped))
         skipped.append(verdict)
     return GateSearch(None, tuple(skipped))
+
+
+def none_passed(skipped: tuple[GateVerdict, ...]) -> str:
+    """Why no commit was chosen: main is empty, or what the newest commit failed."""
+    found = f"no commit among the newest {COMMITS_SEARCHED} on main passed the release gate"
+    if not skipped:
+        return f"{found}: main has no commits"
+    return f"{found}; the newest, {skipped[0].commit}, has {skipped[0].summary}"

@@ -81,7 +81,8 @@ computer_history/
                 # with SQLite's online backup while others write, and a copy
                 # put back with the database it replaces set aside),
                 # introspection (query plans, pages and the SQLite build, for
-                # the cost meter), timefmt, paths
+                # the cost meter), timefmt, paths, spool_hold (the file that
+                # keeps ingest from deleting spool files during an update)
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backend_heartbeat (the file beside the database that
                 # ingest --watch rewrites after each cycle), backfill (plan + run in chunks), projection (routes each
@@ -138,7 +139,10 @@ computer_history/
                 # for status: the backend, the daily backup, the watchdog and
                 # ActivityWatch at login), layout (where it all lives), install
                 # (install and uninstall), backups (the daily and pre-update
-                # backups beside the database, and restore)
+                # backups beside the database, and restore), updates/ (update
+                # by stage: updating, preparing, waiting, falling_back; and
+                # rolling_back), update_log (one line per update, fallback and
+                # rollback)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
                 # backend), alerts (which findings notify, how often, and which
@@ -558,7 +562,8 @@ settings are provisional until they are measured on real screens (#38).
   unusable line, or that neither stream can read, is moved into
   `spool/unreadable/`, never deleted. A file only one stream failed to read is
   left for it to retry. The filesystem is the
-  queue; backend downtime just accumulates files.
+  queue; backend downtime just accumulates files. While `update` holds
+  deletion (8.5), stored files stay until the backend's first ok cycle.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
   whether to set the apps' accessibility flag is measured in M2); periodic
   macOS Screen Recording re-confirmation (accepted; a lost grant shows as
@@ -692,8 +697,11 @@ in the live folder and starts the backend at login from it:
 ```
 ~/Library/Application Support/ComputerHistory/
   history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
-  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool, "error": <first failure or null>},
+  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool, "error": <first failure or null>,
+                           #  "sources_unavailable": bool (every failure was an unreadable source)},
                            # rewritten after each cycle
+  update-log.jsonl         # one JSON line per update, fallback and rollback; status shows the last
+  spool-deletion-held      # placed by update: ingest keeps stored spool files until the backend's ok cycle
   watchdog.json            # the watchdog's last findings and what it notified, see 8.6
   .watchdog.lock           # held by a watchdog run, so two never overlap
   backups/
@@ -705,7 +713,7 @@ in the live folder and starts the backend at login from it:
     packages.txt           # uv pip freeze of that venv
     installed              # empty marker, written last: the version is complete
   current -> versions/<short commit>
-  previous -> versions/<short commit>                  # kept by update (later)
+  previous -> versions/<short commit>                  # the version update or rollback left; one is kept
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
@@ -750,6 +758,42 @@ in the live folder and starts the backend at login from it:
   the database open. It copies the backup in (integrity checked; the database
   moved back on failure) and loads the agents again. A restore into any other
   database, dev's included, never touches launchd.
+- **Update** walks the gate as install does and only moves forward: it stops
+  at `already up to date` when that commit is `current` or comes after
+  `current` in the walk (older on `main`). Otherwise: build it beside the
+  current version (a failed build or smoke, or no network, changes nothing);
+  boot the backend out; take the pre-update backup (the daily backup's
+  function, kept apart); place the spool hold; point `previous` at the old
+  version and `current` at the new; load the backend. A failure after the
+  backup and before the switch removes the backup and the build and starts
+  the backend again. Only the backend restarts. It then waits up to
+  `--wait` seconds (600 by default) for a heartbeat newer than the restart. An
+  ok cycle deletes the version `previous` named before (one previous is kept)
+  and logs `updated`. A cycle that failed only because a source was
+  unavailable (the heartbeat's `sources_unavailable`) is waited through; a
+  wait that ends with the sources still down falls back with that reason. A
+  failed cycle, a crash (launchd reports another process, or none, after it
+  had one), no cycle in time, or Ctrl-C or SIGTERM during the wait falls back:
+  boot out, `current` then `previous` put back, the hold removed, the backup
+  restored (through restore, setting the database aside) only when the
+  database's schema version is no longer the backup's, the backend loaded on
+  the old version, a notification posted and `fell back` logged with the
+  reason. The new version's folder is deleted only when its backend was
+  confirmed stopped and both pointers went back. Update exits 1 after a
+  fallback, 130 after an interrupted one.
+- **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
+  `spool-deletion-held` sits beside the database, every ingest stores spool
+  files as usual but deletes or sets aside none. `ingest --watch` removes the
+  hold after a cycle with no failure, and the next cycle reads the kept files
+  again (all duplicates, since `(source, source_id)` is unique) and deletes
+  them. After a fallback the old version reads them again the same way, so a
+  fallback loses no capture even when the backup is restored.
+- **Rollback** points `current` at the previous version, then `previous` at
+  the one it left (pointing `current` back if that fails, so both stay
+  referenced), and restarts the backend: no network, no build, no backup
+  restored (`restore` the pre-update backup if the older version cannot open
+  a database the newer one migrated). With no previous version it changes
+  nothing.
 - **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
   `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
   `/dev/null` and only its stderr (notifications posted, errors, config

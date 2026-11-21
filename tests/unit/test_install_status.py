@@ -136,7 +136,7 @@ def test_status_shows_the_install_and_its_launch_agents(
     install = section(out, INSTALL)
     assert install[0] == "  this run      dev"
     assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
-    assert install[2:] == ["  previous      none"]
+    assert install[2:] == ["  previous      none", "  last update   none yet"]
     pids = {agent: host.jobs[agent.label].pid for agent in STABLE_AGENTS}
     assert section(out, AGENTS) == [
         f"  backend          loaded, running (pid {pids[BACKEND]})  {BACKEND.label}",
@@ -156,7 +156,11 @@ def test_status_before_install_flags_the_stopgap_backend(
 
     _, out, _ = run(checkout, *STATUS, host=host)
 
-    assert section(out, INSTALL)[1:] == ["  current       none", "  previous      none"]
+    assert section(out, INSTALL)[1:] == [
+        "  current       none",
+        "  previous      none",
+        "  last update   none yet",
+    ]
     assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
         f"  backup           not installed  {DAILY_BACKUP.label}",

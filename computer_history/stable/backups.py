@@ -21,7 +21,6 @@ from computer_history.stable.launch_agents import (
 )
 from computer_history.stable.layout import Layout
 from computer_history.store import (
-    DATABASE_NAME,
     DatabaseCopy,
     DatabaseExists,
     backup_database,
@@ -264,7 +263,7 @@ def restore_backup(
 
 
 def _is_live(database: Path, layout: Layout) -> bool:
-    live = layout.live / DATABASE_NAME
+    live = layout.database
     if database.resolve() == live.resolve():
         return True
     return database.exists() and live.exists() and os.path.samefile(database, live)

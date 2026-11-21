@@ -4,13 +4,16 @@
       |
       +-- ingest.py    one poll, or the --watch loop, through the ingest runner
       |                (ActivityWatch and the capture spool in one loop), with
-      |                the backend heartbeat after each cycle
-      +-- status.py    freshness, coverage gaps, row counts, the install, its
-      |                LaunchAgents, the backend's last cycle, the backups and the
-      |                watchdog's findings
+      |                the backend heartbeat after each cycle, and spool deletion
+      |                held until a cycle completes while update asks for it
+      +-- status.py    freshness, coverage gaps, row counts, the install and its
+      |                last update, its LaunchAgents, the backend's last cycle, the
+      |                backups and the watchdog's findings
       +-- rebuild.py   rebuild-signals
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
       +-- install.py   install and uninstall the stable install, through the host adapter
+      +-- update.py    update (to the newest passing commit, falling back on its own)
+      |                and rollback (to the previous version)
       +-- backup.py    backup (the day's backup, the oldest past seven removed) and
       |                restore (a backup put in place, the backend stopped around it)
       +-- watchdog.py  one watchdog run: check, notify, reopen ActivityWatch, and its

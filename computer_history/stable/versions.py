@@ -46,27 +46,43 @@ def replace_symlink(link: Path, target: Path) -> None:
         raise
 
 
+def point(pointer: Path, name: str) -> None:
+    """Point current or previous at a version folder, by a path relative to the live folder."""
+    replace_symlink(pointer, Path(VERSIONS_FOLDER_NAME) / name)
+
+
+def build_version(host: Host, layout: Layout, commit: str) -> bool:
+    """Build a commit into its marked version folder unless marked already; True if it built one."""
+    folder = layout.versions / version_name(commit)
+    if (folder / INSTALL_MARKER_NAME).is_file():
+        return False
+    try:
+        if folder.exists():
+            shutil.rmtree(folder)
+        folder.mkdir(parents=True)
+        packages = host.build(commit, folder / VENV_FOLDER_NAME)
+        (folder / PACKAGES_FILE_NAME).write_text(packages, encoding="utf-8")
+        (folder / INSTALL_MARKER_NAME).write_text("")
+    except BaseException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return True
+
+
 def make_current(host: Host, layout: Layout, commit: str) -> None:
     """Build a commit into its version folder unless it is marked already, then point current at it.
 
     On any failure everything this created is removed again before the error goes on.
     """
     name = version_name(commit)
-    folder = layout.versions / name
-    marked = (folder / INSTALL_MARKER_NAME).is_file()
     created = [path for path in (layout.live, layout.versions) if not path.exists()]
+    built = False
     try:
-        if not marked:
-            if folder.exists():
-                shutil.rmtree(folder)
-            folder.mkdir(parents=True)
-            packages = host.build(commit, folder / VENV_FOLDER_NAME)
-            (folder / PACKAGES_FILE_NAME).write_text(packages, encoding="utf-8")
-            (folder / INSTALL_MARKER_NAME).write_text("")
-        replace_symlink(layout.current, Path(VERSIONS_FOLDER_NAME) / name)
+        built = build_version(host, layout, commit)
+        point(layout.current, name)
     except BaseException:
-        if not marked:
-            shutil.rmtree(folder, ignore_errors=True)
+        if built:
+            shutil.rmtree(layout.versions / name, ignore_errors=True)
         if layout.versions in created:
             shutil.rmtree(layout.versions, ignore_errors=True)
         if layout.live in created:

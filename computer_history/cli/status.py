@@ -45,8 +45,10 @@ from computer_history.stable import (
     DAILY_KEPT,
     AgentStatus,
     BackupInventory,
+    UpdateAction,
     agent_statuses,
     backup_inventory,
+    last_update_log_entry,
     pointed,
     stable_layout,
 )
@@ -166,6 +168,20 @@ def _print_install(profile: Profile, now: datetime) -> None:
             print(f"  {name:<13} none")
         else:
             print(f"  {name:<13} {version.name}, installed {ago(version.installed_at, now)}")
+    print(f"  last update   {_last_update(layout.update_log, now)}")
+
+
+def _last_update(log: Path, now: datetime) -> str:
+    try:
+        entry = last_update_log_entry(log)
+    except (OSError, ValueError) as exc:
+        return f"unreadable update log: {exc}"
+    if entry is None:
+        return "none yet"
+    moved = f"{entry.from_version} -> {entry.to_version}"
+    if entry.action is UpdateAction.FELL_BACK:
+        return f"fell back {moved}, {ago(entry.at, now)}: {entry.reason}"
+    return f"{entry.action.value} {moved}, {ago(entry.at, now)}"
 
 
 def _print_launch_agents(host: Host) -> None:

@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import plistlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 from computer_history.host import CheckOutcome, CheckRun, HostError, JobBusy, JobState
-from computer_history.stable import PACKAGES_FILE_NAME, RELEASE_GATE, STOPGAP_LABEL, Layout
+from computer_history.sources import write_backend_heartbeat
+from computer_history.stable import (
+    BACKEND,
+    PACKAGES_FILE_NAME,
+    RELEASE_GATE,
+    STOPGAP_LABEL,
+    Layout,
+)
 
 FAKE_PYTHON = "python3.12"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
@@ -32,9 +40,48 @@ def write_stopgap_plist(layout: Layout) -> Path:
     return plist
 
 
+BackendStart = Callable[["FakeHost"], None]
+
+
+def completes_a_cycle(
+    heartbeat: Path, *, error: str | None = None, sources_unavailable: bool = False
+) -> BackendStart:
+    """A backend that runs its first ingest cycle at once, failing with the error if given one."""
+
+    def start(_: FakeHost) -> None:
+        write_backend_heartbeat(
+            heartbeat,
+            datetime.now(UTC),
+            error is None,
+            error,
+            sources_unavailable=sources_unavailable,
+        )
+
+    return start
+
+
+def then(first: BackendStart, *later: BackendStart) -> BackendStart:
+    """A backend that does first at start, then each later step at the next lookups of it."""
+
+    def start(host: FakeHost) -> None:
+        first(host)
+        host.later.extend(later)
+
+    return start
+
+
+def crashes(host: FakeHost) -> None:
+    """A backend whose process exits after launchd is first asked about it."""
+    host.crashing = True
+
+
+def stays_silent(_: FakeHost) -> None:
+    """A backend that runs but never completes a cycle."""
+
+
 class FakeHost:
-    """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, and
-    ActivityWatch's app and notifications as flags and a list.
+    """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, the
+    backend's starts as scripted, and ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -51,6 +98,7 @@ class FakeHost:
         job_error: str | None = None,
         unload_lingers: int = 0,
         busy_loads: int = 0,
+        backend_starts: Iterable[BackendStart] = (),
         activitywatch_running: bool = True,
         opening_starts_activitywatch: bool = True,
         notify_error: str | None = None,
@@ -64,6 +112,9 @@ class FakeHost:
         self.unload_lingers = unload_lingers
         self.busy_loads = busy_loads
         self.lingering: dict[str, int] = {}
+        self.backend_starts = list(backend_starts)
+        self.crashing = False
+        self.later: list[BackendStart] = []
         self.running_activitywatch = activitywatch_running
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
@@ -100,7 +151,13 @@ class FakeHost:
         if self.lingering.get(label, 0) > 0:
             self.lingering[label] -= 1
             return JobState(loaded=True)
-        return self.jobs.get(label, JobState(loaded=False))
+        if label == BACKEND.label and self.later:
+            self.later.pop(0)(self)
+        state = self.jobs.get(label, JobState(loaded=False))
+        if label == BACKEND.label and self.crashing and state.loaded:
+            self.crashing = False
+            self.jobs[label] = JobState(loaded=True)
+        return state
 
     def load(self, plist: Path) -> None:
         label = str(plistlib.loads(plist.read_bytes())["Label"])
@@ -114,6 +171,8 @@ class FakeHost:
         if label in self.jobs:
             raise HostError(f"{label} is already loaded")
         self.jobs[label] = JobState(loaded=True, pid=200 + len(self.calls))
+        if label == BACKEND.label and self.backend_starts:
+            self.backend_starts.pop(0)(self)
 
     def unload(self, label: str) -> None:
         self.calls.append(("unload", label))
