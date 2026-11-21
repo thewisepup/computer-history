@@ -55,6 +55,8 @@ Review findings ratchet into rules:
   beside the owner of the resource (`started` in `synthetic/operations.py`).
 - **S10** A threshold constant is named for what it bounds
   (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
+- **S11** A change to what a module handles updates its line in the package's
+  flow diagram in the same commit.
 
 ## Architecture
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -33,20 +34,23 @@ def capture_coverage(
     known: Iterable[Span],
     start: datetime,
     end: datetime,
-    silent_at_start: bool,
+    before: StoredRecord | None,
     min_gap_seconds: float = 0,
 ) -> Coverage:
     """The active stretches no record, pause or sleep explains, and those without aw-afk data.
 
-    A record explains the tolerance on either side of it, and a pause or a sleep lasts until the
-    next record.
+    A record explains the tolerance on either side of it, a pause lasts until the next record
+    after it, the newest one before the range included, and a sleep until the next record or the
+    first active stretch starting after it, whichever comes first.
     """
+    active = _merge(active)
+    earlier = [] if before is None else [before]
     explained = _merge(
         [(r.at - CAPTURE_TOLERANCE, r.at + CAPTURE_TOLERANCE) for r in records]
-        + _silent_spans(records, start, end, silent_at_start)
+        + _silent_spans([*earlier, *records], active, start, end)
     )
     window = [(start, end)]
-    unobserved = _subtract(_clip(_merge(active), start, end), explained)
+    unobserved = _subtract(_clip(active, start, end), explained)
     unjudged = _subtract(_subtract(window, _merge(known)), explained)
     return Coverage(
         start, end, _gaps(unobserved, min_gap_seconds), _gaps(unjudged, min_gap_seconds)
@@ -69,18 +73,21 @@ def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterab
 
 
 def _silent_spans(
-    records: Sequence[StoredRecord], start: datetime, end: datetime, silent_at_start: bool
+    records: Sequence[StoredRecord], active: Sequence[Span], start: datetime, end: datetime
 ) -> list[Span]:
+    ordered = sorted(records, key=lambda r: r.at)
+    times = [r.at for r in ordered]
+    starts = [a for a, _ in active]
     spans: list[Span] = []
-    silent_from = start if silent_at_start else None
-    for record in sorted(records, key=lambda r: r.at):
-        if record.kind in SILENT_KINDS:
-            silent_from = record.at if silent_from is None else silent_from
-        elif silent_from is not None:
-            spans.append((silent_from, record.at))
-            silent_from = None
-    if silent_from is not None:
-        spans.append((silent_from, end))
+    for record in ordered:
+        if record.kind not in SILENT_KINDS:
+            continue
+        later = bisect_right(times, record.at)
+        until = times[later] if later < len(times) else end
+        if record.kind == SLEPT_KIND:
+            awake = bisect_right(starts, record.at)
+            until = min(until, starts[awake]) if awake < len(starts) else until
+        spans.append((record.at, until))
     return _clip(spans, start, end)
 
 

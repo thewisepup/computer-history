@@ -21,13 +21,14 @@ from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     CAPTURE_TOLERANCE,
     PAUSED_KIND,
-    SILENT_KINDS,
+    SLEPT_KIND,
     WINDOW_TEXT_SOURCE,
     AppAgreement,
     Coverage,
     DayCounts,
     SpoolBacklog,
     SpoolError,
+    StoredRecord,
     app_agreement,
     capture_coverage,
     day_counts,
@@ -93,9 +94,13 @@ def capture_health(
 
     records = stored_records(conn, read_from, now)
     before = newest_stored(conn, until=read_from)
+    earlier = None if before is None else StoredRecord(*before)
     paused = newest[1] == PAUSED_KIND
     buckets = _buckets(client)
-    afk = _afk_spans(conn, client, buckets, min(read_from, newest[0]), now)
+    afk_from = min(read_from, newest[0])
+    if earlier is not None and earlier.kind == SLEPT_KIND:
+        afk_from = min(afk_from, earlier.at)
+    afk = _afk_spans(conn, client, buckets, afk_from, now)
     active = [(s.start, s.end) for s in afk if not s.afk]
     coverage = agreement = None
     if start < end:
@@ -113,7 +118,7 @@ def capture_health(
             known=[(s.start, s.end) for s in afk],
             start=start,
             end=end,
-            silent_at_start=before is not None and before[1] in SILENT_KINDS,
+            before=earlier,
             min_gap_seconds=min_gap_seconds,
         )
     return CaptureHealth(

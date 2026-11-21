@@ -371,3 +371,37 @@ extension LoopFixture {
     #expect(slept)
     #expect(try fixture.kinds() == ["slept"])
 }
+
+@Test func aCaptureWhoseReadSpansTheSleepIsNotWrittenAfterTheSleptRecord() throws {
+    let fixture = LoopFixture()
+    fixture.mac.onCall = { call in
+        if call == "hello.AXValue", !fixture.mac.presence.asleep { fixture.mac.presence.asleep = true }
+    }
+    fixture.run(for: 60)
+    #expect(try fixture.kinds() == ["slept"])
+    #expect(try fixture.screenshotRecords().isEmpty)
+}
+
+@Test func theMacStillReportsAsleepWhileItsWakeIsHandled() {
+    let mac = ScriptedMac()
+    let seen = Seen()
+    mac.onSleepChange { change, _ in seen.add("\(change) \(mac.samplePresence().asleep)") }
+    mac.presence.asleep = true
+    mac.presence.asleep = false
+    #expect(seen.values == ["willSleep true", "didWake true"])
+    #expect(!mac.samplePresence().asleep)
+}
+
+@Test func aLoopThatStoppedRecordingSleepWritesNoSleepRecord() throws {
+    let fixture = LoopFixture()
+    fixture.run(for: 2)
+    fixture.loop.stopRecordingSleep()
+    fixture.mac.presence.asleep = true
+    fixture.mac.presence.asleep = false
+    #expect(try fixture.kinds() == ["capture"])
+}
+
+private final class Seen: @unchecked Sendable {
+    private(set) var values: [String] = []
+    func add(_ value: String) { values.append(value) }
+}

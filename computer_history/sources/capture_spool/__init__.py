@@ -6,24 +6,25 @@
           |          read with what tells the file apart, removed once stored, or set
           |          aside into unreadable/
       record.py      one line -> a checked record of format v1 (InvalidRecord otherwise);
-          |          the kinds each stream takes
+          |          the kinds each stream takes, and the Mac's sleep and wake moments
           |
       adapter.py     CaptureSpool, two streams over the same files: ax-text (captures,
-                     exclusions, pauses, resumes) and screenshot. Each pull reads one file
-                     for one stream, its position that stream's latest capture time; the
-                     after-commit step removes the file, or sets it aside if any line was
-                     unusable, only once both streams stored that same file; more while
-                     the stream's listed files remain
+                     exclusions, pauses, resumes, sleeps, wakes) and screenshot. Each pull
+                     reads one file for one stream, its position that stream's latest
+                     capture time; the after-commit step removes the file, or sets it
+                     aside if any line was unusable, only once both streams stored that
+                     same file; more while the stream's listed files remain
                      normalize.py: its projectors, stored record -> signal: app, title
                      and capped text (window text, or recognized text for screenshot),
-                     the rest in extras
+                     the rest in extras; a sleep or wake's kind alone, in extras
 
     For status: backlog.py   what waits in the spool and its newest record, changing nothing
                 window_text.py
                              the stored window text records' kinds, apps and flags, the newest,
                              the day's counts
                 coverage.py  records judged against attended time: stretches no record
-                             explains within the heartbeat tolerance, and liveness
+                             explains within the heartbeat tolerance and no pause or
+                             sleep explains, and liveness
                 agreement.py each capture's app judged against the app aw-window shows
                              in front, within its polling tolerance
                 screenshots.py
@@ -45,7 +46,6 @@ from computer_history.sources.capture_spool.coverage import (
     AGENT_ALIVE_WITHIN,
     CAPTURE_TOLERANCE,
     HEARTBEAT_SECONDS,
-    SILENT_KINDS,
     Coverage,
     capture_coverage,
     liveness,
@@ -60,6 +60,7 @@ from computer_history.sources.capture_spool.record import (
     DUPLICATE_STATUS,
     EXCLUDED_KIND,
     KEPT_STATUS,
+    MOMENT_KINDS,
     PAUSED_KIND,
     RESUMED_KIND,
     SCREENSHOT_KIND,
@@ -106,9 +107,9 @@ __all__ = [
     "HEARTBEAT_SECONDS",
     "MAX_WINDOW_TEXT_LENGTH",
     "MAX_RECOGNIZED_TEXT_LENGTH",
+    "MOMENT_KINDS",
     "PAUSED_KIND",
     "RESUMED_KIND",
-    "SILENT_KINDS",
     "SLEPT_KIND",
     "SCREENSHOT_KIND",
     "SCREENSHOT_RECORD_FIELDS",

@@ -8,7 +8,12 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var callTimeout: TimeInterval = 0.25
     var presence = Presence(idleSeconds: 0, locked: false, asleep: false) {
         didSet {
-            if presence.asleep != oldValue.asleep { sleepChanged(presence.asleep ? .willSleep : .didWake) }
+            guard presence.asleep != oldValue.asleep else { return }
+            guard !presence.asleep else { return sleepChanged(.willSleep) }
+            let awake = presence
+            presence.asleep = true
+            sleepChanged(.didWake)
+            presence = awake
         }
     }
     var trusted = true

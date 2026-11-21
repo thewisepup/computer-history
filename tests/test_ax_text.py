@@ -16,8 +16,10 @@ from fake_aw import FakeAW
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
+    CAPTURE_KIND,
     MAX_TEXT_LENGTH,
     MAX_WINDOW_TEXT_LENGTH,
+    MOMENT_KINDS,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     SPOOL_ENV_VAR,
@@ -49,7 +51,7 @@ FIXTURE_LINES = [
     if json.loads(line)["kind"] != SCREENSHOT_KIND
 ]
 FIXTURE_SIGNALS = sum(
-    json.loads(line)["kind"] in ("capture", "slept", "woke") for line in FIXTURE_LINES
+    json.loads(line)["kind"] in (CAPTURE_KIND, *MOMENT_KINDS) for line in FIXTURE_LINES
 )
 T0 = datetime(2026, 11, 18, 9, 0, tzinfo=UTC)
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
@@ -191,7 +193,7 @@ def test_excluded_paused_and_resumed_records_have_no_signal() -> None:
 def test_slept_and_woke_records_become_signals_naming_only_their_kind() -> None:
     project = projector_for([CaptureSpool])
     kinds = {json.loads(line)["kind"]: line for line in FIXTURE_LINES}
-    for kind in ("slept", "woke"):
+    for kind in MOMENT_KINDS:
         assert project(WINDOW_TEXT_SOURCE, kinds[kind]) == Signal(extras=f'{{"kind": "{kind}"}}')
 
 

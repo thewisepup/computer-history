@@ -8,7 +8,7 @@ public protocol Mac {
     func now() -> Date
     func sleep(_ seconds: TimeInterval)
     func samplePresence() -> Presence
-    /// Calls the handler, replacing any earlier one, as the Mac goes to sleep and as it wakes, with the time; samplePresence reports asleep before a sleep's call.
+    /// Calls the handler, replacing any earlier one, with the time as the Mac goes to sleep and as it wakes.
     func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void)
     func accessibilityTrusted() -> Bool
     func focusedApplication() -> FocusedApplication?

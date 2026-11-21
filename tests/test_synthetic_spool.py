@@ -19,10 +19,14 @@ import pytest
 from store_answers import DATASET_FILES
 
 from computer_history.sources import (
+    CAPTURE_KIND,
+    EXCLUDED_KIND,
+    MOMENT_KINDS,
     SCREENSHOT_KIND,
     SCREENSHOT_RECORD_FIELDS,
     WINDOW_TEXT_RECORD_FIELDS,
     WINDOW_TEXT_SOURCE,
+    WOKE_KIND,
     day_counts,
     parse_record,
     screenshot_health,
@@ -260,7 +264,7 @@ def test_stored_captures_equal_the_manifest_and_fall_in_their_apps_stretches(
     kinds = [r.kind for r in records if r.kind is not None]
     apps = [r.app for r in records if r.app is not None]
     assert len(kinds) == len(records)
-    assert len(apps) == sum(kind in ("capture", "excluded") for kind in kinds)
+    assert len(apps) == sum(kind in (CAPTURE_KIND, EXCLUDED_KIND) for kind in kinds)
     triggers = Counter(row.values[0] for row in values if row.values[0] is not None)
     stored = CaptureCounts(
         kinds=dict(sorted(Counter(kinds).items())),
@@ -273,8 +277,8 @@ def test_stored_captures_equal_the_manifest_and_fall_in_their_apps_stretches(
     assert set(stored.triggers) == {"app", "window", "title", "heartbeat"}
     for record, row in zip(records, values, strict=True):
         stretch = _stretch_at(dataset.timeline, record.at)
-        if record.kind in ("slept", "woke"):
-            assert stretch.active == (record.kind == "woke") and record.app is None
+        if record.kind in MOMENT_KINDS:
+            assert stretch.active == (record.kind == WOKE_KIND) and record.app is None
             continue
         assert stretch.active and (record.app, row.values[1]) == (stretch.app, stretch.title)
 
@@ -393,7 +397,7 @@ def test_sleep_and_wake_are_recorded_with_nothing_captured_between() -> None:
         (t(7, 31), "heartbeat", "Notion", "plan"),
     ]
     kinds = [c.kind for c in agent_captures(Timeline(t(0), t(7, 40), "UTC", SLEEPY))]
-    assert [k for k in kinds if k != "capture"] == ["slept", "woke", "slept", "woke"]
+    assert [k for k in kinds if k != CAPTURE_KIND] == ["slept", "woke", "slept", "woke"]
 
 
 def test_a_minute_that_ends_asleep_is_finished_on_waking() -> None:
@@ -424,7 +428,7 @@ def test_no_sleep_is_recorded_while_paused_and_no_wake_while_the_agent_is_down()
         ),
     )
     records = agent_captures(timeline)
-    assert [(c.at, c.kind) for c in records if c.kind not in ("capture",)] == [
+    assert [(c.at, c.kind) for c in records if c.kind != CAPTURE_KIND] == [
         (at(9, 5), "paused"),
         (at(9, 25), "resumed"),
         (at(9, 30), "slept"),

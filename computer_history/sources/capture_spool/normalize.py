@@ -6,10 +6,9 @@ from types import MappingProxyType
 
 from computer_history.sources.capture_spool.record import (
     CAPTURE_KIND,
+    MOMENT_KINDS,
     SCREENSHOT_SOURCE,
-    SLEPT_KIND,
     WINDOW_TEXT_SOURCE,
-    WOKE_KIND,
     parse_record,
 )
 from computer_history.sources.contract import StreamProjector
@@ -35,7 +34,7 @@ def project_capture(payload: str) -> Signal | None:
     A slept or woke signal carries only its kind, in extras.
     """
     record = parse_record(payload)
-    if record.kind in (SLEPT_KIND, WOKE_KIND):
+    if record.kind in MOMENT_KINDS:
         return Signal(extras=json.dumps({"kind": record.kind}))
     if record.kind != CAPTURE_KIND:
         return None

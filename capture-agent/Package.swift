@@ -17,6 +17,7 @@ import PackageDescription
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture queues its screenshot record
 ///     SleepRecords.swift    the slept and woke records, written from the sleep and wake notifications
+///     RecordWriter.swift    appends window text records one at a time and counts failed writes
 ///     Screenshots/CaptureScreenshot.swift   the screenshot stage: password-field check, picture,
 ///           |     duplicate check, image saved, and the screenshot record that names the capture;
 ///           |     a missing grant posts the reminder, a picture taken clears it

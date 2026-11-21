@@ -208,11 +208,19 @@ main thread and before the handler returns, so it is in `open.part` before
 the Mac sleeps. `didWake` writes a `woke` record, but only after a sleep that
 wrote a `slept` record. Neither is written while capture is paused, since the
 pause already explains the time; a failed write is counted with the other
-failed writes. A capture or excluded record whose tick sampled presence just
-before the Mac fell asleep is dropped, so no record is later than its `slept`
-record. A lost `didWake` (a crash or power loss) leaves no `woke` record; the
-backend ends the sleep at the next record. The scripted Mac sends both
-notifications when a script's `presence` changes `asleep`.
+failed writes. Window text records are written one at a time, and a capture
+or excluded record is written only if the Mac is still awake at that moment,
+so none lands after the `slept` record, whenever it was read. Once the capture
+loop stops, sleep and wake write nothing. A lost `didWake` (a crash or power
+loss) leaves no `woke` record; the backend ends the sleep at the next record
+or where `aw-afk` next shows you active. The scripted Mac sends both
+notifications when a script's `presence` changes `asleep`, and reports asleep
+while it sends `didWake`, as macOS does.
+
+Update the backend before installing an agent that writes these records: an
+older backend counts `slept` and `woke` lines as unusable and sets their files
+aside in `spool/unreadable/` after storing the other records, so those lines
+are kept but never stored.
 
 ## Screenshots
 

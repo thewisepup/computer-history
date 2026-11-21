@@ -39,7 +39,7 @@ The text read out of a screenshot by on-device text recognition.
 _Avoid_: OCR text, image text
 
 **Spool record**:
-One entry the capture agent leaves in the spool: a capture, a screenshot record, an exclusion, a pause or a resume.
+One entry the capture agent leaves in the spool: a capture, a screenshot record, an exclusion, a pause, a resume, a sleep or a wake.
 _Avoid_: Event, entry, line
 
 **Exclusion**:
@@ -49,6 +49,10 @@ _Avoid_: Skip, redaction
 **Pause**:
 A spool record marking that the user stopped capture on purpose; a **Resume** marks it starting again.
 _Avoid_: Stop, mute
+
+**Sleep**:
+A spool record (`slept`) marking that the Mac went to sleep; a **Wake** (`woke`) marks it waking. Neither carries an app, a window or text.
+_Avoid_: Suspend, standby, lid closed
 
 **Spool**:
 The folder where the capture agent leaves captures for the backend to collect. Anything in it has not yet been stored.
@@ -93,7 +97,7 @@ A stretch no source can account for. Never assumed to be idle or away.
 _Avoid_: Idle, gap, missing, empty
 
 **Explained gap**:
-A stretch without text that a spool record accounts for, through an exclusion or a pause.
+A stretch without text that a spool record accounts for, through an exclusion, a pause or a sleep.
 _Avoid_: Unobserved (for this meaning)
 
 **AFK**:

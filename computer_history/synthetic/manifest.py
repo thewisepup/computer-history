@@ -115,7 +115,7 @@ def true_answers(
         captures=_captures(records),
         screenshots=screenshot_counts(agent_screenshots(records)),
         unobserved=unobserved(timeline, afk, records),
-        explained=explained(timeline, records),
+        explained=explained(timeline, records, afk),
         content_digest=content_digest,
     )
 

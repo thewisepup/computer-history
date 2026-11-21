@@ -120,9 +120,11 @@ moved 30s ago)` instead.
 
 `ax-text` captures are instants, so its gaps follow their own rule. A record
 of any kind explains the minute on either side of it (twice the agent's 30s
-heartbeat), and a pause or a sleep (a `slept` record) explains the time until
-the next record: normally the `resumed` or `woke` record, or any later record if
-that one was lost. A stretch of
+heartbeat). A pause explains the time until the next record, normally its
+`resumed`. A sleep (a `slept` record) explains the time until its `woke`, or,
+if that was lost, until the next record or the first `aw-afk` active stretch
+after it, whichever comes first. A pause or sleep from before the range counts
+too. A stretch of
 5m or more is unobserved when `aw-afk` shows you active and nothing explains
 it; where `aw-afk` has no data and nothing explains it, the stretch *cannot be
 judged*, never idle or active. The range ends at the last stored record while

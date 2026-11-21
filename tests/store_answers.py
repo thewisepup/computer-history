@@ -97,7 +97,7 @@ def stored_gaps(dataset: Dataset) -> tuple[dict[str, tuple[Gap, ...]], list, lis
         known=[(s.start, s.end) for s in afk],
         start=start,
         end=end,
-        silent_at_start=False,
+        before=None,
         min_gap_seconds=1,
     )
     return {**gaps, WINDOW_TEXT_SOURCE: coverage.unobserved}, records, afk
