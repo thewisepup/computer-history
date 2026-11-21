@@ -6,10 +6,10 @@ import sys
 
 from computer_history.host import COMMAND_NAME
 from computer_history.stable import (
+    EVERY_MINUTE_SECONDS,
     RELEASE_GATE,
     RESTART_THROTTLE_SECONDS,
     STOPGAP_LABEL,
-    WATCHDOG_INTERVAL_SECONDS,
     InstallFailed,
     LaunchAgent,
     Schedule,
@@ -51,7 +51,7 @@ def _runs(agent: LaunchAgent) -> str:
         case Schedule.KEEP_ALIVE:
             return f"{command}, restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
         case Schedule.EVERY_MINUTE:
-            return f"{command}, every {WATCHDOG_INTERVAL_SECONDS}s"
+            return f"{command}, every {EVERY_MINUTE_SECONDS}s"
         case Schedule.AT_LOAD:
             return f"{command}, once at login"
 

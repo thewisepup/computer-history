@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import plistlib
+import sqlite3
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,11 +22,21 @@ from computer_history.sources import (
     CAPTURE_KIND,
     PAUSED_KIND,
     SPOOL_VERSION,
+    WINDOW_SOURCE,
     AWError,
+    agent_config_path,
+    agent_health,
+    backend_heartbeat_path,
     write_backend_heartbeat,
 )
 from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_layout
-from computer_history.watchdog import NOTIFICATION_TITLE, REOPEN_LIMIT
+from computer_history.store import DATABASE_NAME
+from computer_history.watchdog import (
+    NOTIFICATION_TITLE,
+    REOPEN_LIMIT,
+    watchdog_lock_path,
+    watchdog_state_path,
+)
 
 COMMIT = "b" * 40
 HOST = "test-host.local"
@@ -42,16 +54,29 @@ class UnreachableAW(FakeAW):
         raise AWError("ActivityWatch unreachable at http://127.0.0.1:5600/api/0: refused")
 
 
+class WatchedAW(FakeAW):
+    """The fake ActivityWatch, where a bucket listed as missing answers its events with a 404."""
+
+    def __init__(self, buckets: dict[str, str]) -> None:
+        super().__init__(buckets)
+        self.missing: set[str] = set()
+
+    def get_events(self, bucket_id: str, **query: object) -> list[dict[str, object]]:
+        if bucket_id in self.missing:
+            raise AWError(f"ActivityWatch answered 404 for {bucket_id}")
+        return super().get_events(bucket_id, **query)  # type: ignore[arg-type]
+
+
 class Mac:
     """A Mac on a minute clock: ActivityWatch's watchers, the capture agent's spool and the
     backend's heartbeat, each kept going or stopped by the test."""
 
     def __init__(self, folder: Path, run: RunCli, checkout: Path, host: FakeHost) -> None:
-        self.db = folder / "history.db"
+        self.db = folder / DATABASE_NAME
         self.spool = folder / "spool"
         self.spool.mkdir(parents=True, exist_ok=True)
         self.run_cli, self.checkout, self.host = run, checkout, host
-        self.aw = FakeAW({AFK_BUCKET: "afkstatus", WINDOW_BUCKET: "currentwindow"})
+        self.aw = WatchedAW({AFK_BUCKET: "afkstatus", WINDOW_BUCKET: "currentwindow"})
         self.reachable = True
         self.minute = 0.0
         self.records = 0
@@ -73,6 +98,7 @@ class Mac:
         active: bool = True,
         record: str | None = CAPTURE_KIND,
         cycle: bool = True,
+        failing: str | None = None,
         afk_watcher: bool = True,
         window_watcher: bool = True,
     ) -> None:
@@ -88,7 +114,8 @@ class Mac:
             if record is not None:
                 self.record(record)
             if cycle:
-                write_backend_heartbeat(self.db.parent / "backend-heartbeat.json", self.now, True)
+                heartbeat = backend_heartbeat_path(self.db)
+                write_backend_heartbeat(heartbeat, self.now, failing is None, failing)
             self.watch()
 
     def watched(self, bucket: str, start: float, seconds: float, data: dict[str, str]) -> None:
@@ -304,13 +331,13 @@ def test_a_watcher_bucket_not_advancing_notifies_and_names_it(mac: Mac) -> None:
     mac.run(minutes(3, 10), window_watcher=False)
 
     assert mac.notified == [
-        f"ActivityWatch has recorded nothing for over 5 min in {WINDOW_BUCKET}."
+        f"ActivityWatch has recorded nothing for over 5 min in {WINDOW_SOURCE}."
     ]
 
 
 def test_thresholds_come_from_the_config_file(mac: Mac) -> None:
     config = {"watchdog": {"capture_agent_minutes": 10, "backend_minutes": "soon"}}
-    (mac.db.parent / "agent-config.json").write_text(json.dumps(config))
+    agent_config_path(mac.db).write_text(json.dumps(config))
 
     mac.run(minutes(0, 2))
     mac.run(minutes(3, 20), record=None, cycle=False)
@@ -318,10 +345,12 @@ def test_thresholds_come_from_the_config_file(mac: Mac) -> None:
     assert mac.notified_at(BACKEND_SILENT) == [8]
     capture = "The capture agent has recorded nothing for over 10 min while you were active."
     assert mac.notified_at(capture) == [13]
-    assert (
+    problem = (
         "config problem: watchdog.backend_minutes must be a number of minutes from 1 to 1440,"
         " using 5"
-    ) in mac.errors[-1]
+    )
+    assert [problem in err for err in mac.errors] == [True] + [False] * 20
+    assert f"  {problem}" in mac.outputs[-1]
     assert mac.outputs[-1][1].startswith("Watchdog (silent after: capture agent 10m,")
 
 
@@ -330,7 +359,8 @@ def test_a_notification_that_fails_to_post_is_tried_again_next_run(mac: Mac) -> 
     mac.host.notify_error = "could not post a notification: osascript failed"
     mac.run(minutes(3, 8), record=None)
     assert mac.notified == []
-    assert "error: could not post a notification: osascript failed" in mac.errors[-1]
+    failed = "error: could not post a notification: osascript failed"
+    assert [failed in err for err in mac.errors] == [False] * 8 + [True]
 
     mac.host.notify_error = None
     mac.run([9], record=None)
@@ -346,7 +376,7 @@ def test_status_shows_the_stable_watchdogs_findings(
     stable = installed_package(stable_layout().link.resolve().parents[1])
     _, out, _ = run(checkout, "status", "--aw-url", "http://127.0.0.1:1/api/0", host=host)
     assert section(out, "Stable watchdog:") == [
-        f"  last run       none yet (no state at {live / 'watchdog.json'})"
+        f"  last run       none yet (no state at {watchdog_state_path(live / DATABASE_NAME)})"
     ]
 
     mac = on_the_clock(monkeypatch, Mac(live, run, stable, host))
@@ -381,3 +411,138 @@ def test_a_notified_problem_that_turns_to_cannot_tell_is_not_cleared(mac: Mac) -
     mac.run([21])
 
     assert mac.notified == [CAPTURE_SILENT, CAPTURE_BACK]
+
+
+def test_a_bucket_answering_404_has_no_end_and_never_makes_activitywatch_unreachable(
+    mac: Mac,
+) -> None:
+    gone = f"aw-watcher-window-gone_{HOST}"
+    mac.aw.create_bucket(gone, "currentwindow", T0)
+    mac.aw.missing.add(gone)
+
+    mac.run(minutes(0, 10))
+
+    assert mac.host.notifications == []
+    assert mac.outputs[-1][3].startswith("  ActivityWatch  ok: recording")
+
+    mac.aw.missing.add(WINDOW_BUCKET)
+    mac.run(minutes(11, 20))
+
+    assert mac.notified == [
+        f"ActivityWatch has recorded nothing for over 5 min in {WINDOW_SOURCE}."
+    ]
+    assert mac.outputs[-1][3].startswith("  ActivityWatch  PROBLEM: not advancing")
+
+
+def test_an_old_or_empty_bucket_beside_a_live_one_is_no_problem(mac: Mac) -> None:
+    old = f"aw-watcher-window-old_{HOST}"
+    mac.aw.create_bucket(old, "currentwindow", T0 - timedelta(days=30))
+    mac.aw.add(old, -30 * 24 * 60, 60, {"app": "Editor", "title": "w"})
+    mac.aw.create_bucket(f"aw-watcher-afk-empty_{HOST}", "afkstatus", T0)
+
+    mac.run(minutes(0, 20))
+
+    assert mac.host.notifications == []
+
+
+def test_cycles_failing_past_the_threshold_notify_with_the_reason(mac: Mac) -> None:
+    reason = "aw-window: ActivityWatch answered 500"
+    mac.run(minutes(0, 2))
+    mac.run(minutes(3, 10), failing=reason)
+
+    message = f"The backend's ingest cycles have been failing for over 5 min: {reason}"
+    assert mac.notified == [message]
+    assert mac.notified_at(message) == [9]
+    assert mac.outputs[-1][4].startswith("  backend        PROBLEM: cycles are failing")
+
+
+def test_a_failed_cycle_never_clears_a_silent_backend(mac: Mac) -> None:
+    mac.run(minutes(0, 2))
+    mac.run(minutes(3, 8), cycle=False)
+    mac.run(minutes(9, 11), failing="database is locked")
+    assert mac.notified == [BACKEND_SILENT]
+
+    mac.run([12])
+
+    assert mac.notified == [BACKEND_SILENT, "The backend is finishing ingest cycles again."]
+
+
+def test_a_database_read_error_cannot_tell_and_keeps_the_silence_counting(
+    monkeypatch: pytest.MonkeyPatch, mac: Mac
+) -> None:
+    unreachable = "http://127.0.0.1:1/api/0"
+    assert mac.run_cli(
+        mac.checkout, "ingest", "--db-path", str(mac.db), "--aw-url", unreachable
+    )[0] in (0, 1)
+    mac.run(minutes(0, 2))
+    mac.run(minutes(3, 5), record=None)
+
+    def broken(*_: object, **__: object) -> object:
+        raise sqlite3.DatabaseError("database disk image is malformed")
+
+    with monkeypatch.context() as broken_store:
+        broken_store.setattr(agent_health, "stored_afk_spans", broken)
+        mac.run(minutes(6, 7), record=None)
+    assert mac.host.notifications == []
+    assert mac.outputs[-1][2] == (
+        "  capture agent  cannot tell: cannot be read"
+        " (database read failed: database disk image is malformed)"
+    )
+    assert mac.outputs[-1][4].startswith("  backend        ok: recording")
+
+    mac.run([8], record=None)
+
+    assert mac.notified == [CAPTURE_SILENT]
+
+
+def test_a_second_outage_after_a_clear_gets_its_own_notification(mac: Mac) -> None:
+    mac.run(minutes(0, 2))
+    mac.run(minutes(3, 8), record=None)
+    mac.run(minutes(9, 10))
+    mac.run(minutes(11, 17), record=None)
+
+    assert mac.notified == [CAPTURE_SILENT, CAPTURE_BACK, CAPTURE_SILENT]
+    assert mac.notified_at(f"notified: {CAPTURE_SILENT}") == [8, 16]
+
+
+def test_a_run_that_cannot_take_the_lock_exits_quietly(mac: Mac) -> None:
+    mac.run(minutes(0, 2))
+    saved = watchdog_state_path(mac.db).read_bytes()
+
+    with watchdog_lock_path(mac.db).open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        mac.minute = 3
+        out = mac.watch()
+
+    assert out[1:] == [] and mac.errors[-1] == ""
+    assert watchdog_state_path(mac.db).read_bytes() == saved
+    assert mac.watch()[1].startswith("Watchdog")
+
+
+def test_a_repeated_error_is_logged_once_an_hour_but_shown_every_run(mac: Mac) -> None:
+    mac.host.notify_error = "could not post a notification: osascript failed"
+    mac.run(minutes(0, 2))
+    mac.run(minutes(3, 70), record=None)
+
+    failed = f"error: {mac.host.notify_error}"
+    logged = [minute for minute, err in zip(mac.ran_at, mac.errors, strict=True) if failed in err]
+    assert logged == [8, 68]
+    assert mac.notified_at(f"  {failed}") == list(minutes(8, 70))
+
+
+def test_a_repair_install_leaves_the_loaded_activitywatch_agent_alone(
+    run: RunCli, live: Path, checkout: Path
+) -> None:
+    host = FakeHost(checks={COMMIT: gate_runs()})
+    assert run(checkout, "install", host=host)[0] == 0
+    host.calls.clear()
+
+    assert run(checkout, "install", host=host)[0] == 0
+
+    assert ("unload", ACTIVITYWATCH_AT_LOGIN.label) not in host.calls
+    assert ("unload", WATCHDOG.label) in host.calls
+
+    ACTIVITYWATCH_AT_LOGIN.plist(stable_layout()).write_bytes(plistlib.dumps({"Label": "old"}))
+    assert run(checkout, "install", host=host)[0] == 0
+
+    assert ("unload", ACTIVITYWATCH_AT_LOGIN.label) in host.calls

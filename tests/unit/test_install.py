@@ -16,6 +16,7 @@ from computer_history.stable import (
     STABLE_AGENTS,
     STOPGAP_LABEL,
     Layout,
+    Schedule,
     stable_layout,
     version_name,
 )
@@ -181,7 +182,8 @@ def test_install_twice_repairs_without_rebuilding_or_reaching_github(
     assert layout.current.resolve().name == version_name(OLDER)
     assert layout.link.resolve() == layout.command(layout.current.resolve())
     reloads = [call[0] for call in host.calls if call[0] != "job"]
-    assert reloads == ["unload", "load"] * len(STABLE_AGENTS)
+    rerun = [agent for agent in STABLE_AGENTS if agent.schedule is not Schedule.AT_LOAD]
+    assert reloads == ["unload", "load"] * len(rerun)
     assert host.jobs[BACKEND.label].pid is not None
     assert [path.name for path in layout.versions.iterdir()] == [version_name(OLDER)]
     assert f"Version {version_name(OLDER)} is already installed and current" in out

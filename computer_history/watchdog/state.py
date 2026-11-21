@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -10,14 +14,12 @@ from typing import Any
 from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
 WATCHDOG_STATE_NAME = "watchdog.json"
+WATCHDOG_LOCK_NAME = ".watchdog.lock"
 
 
 @dataclass(frozen=True)
 class WatchdogState:
-    """What the watchdog remembers between runs, and the findings of its last run.
-
-    Notified holds each check's last problem notification, and open the problems not yet cleared.
-    """
+    """What the watchdog remembers between runs, and the findings and errors of its last run."""
 
     ran_at: datetime | None = None
     watching_since: datetime | None = None
@@ -26,16 +28,38 @@ class WatchdogState:
     open: frozenset[Check] = frozenset()
     reopened: tuple[datetime, ...] = ()
     unreachable_since: datetime | None = None
+    failing_since: datetime | None = None
+    logged: dict[str, datetime] = field(default_factory=lambda: {})
     errors: tuple[str, ...] = ()
 
 
 def watchdog_state_path(db_path: Path) -> Path:
-    """The watchdog's state file sits beside the database it watches."""
+    """Find the watchdog's state file beside the database it watches."""
     return db_path.parent / WATCHDOG_STATE_NAME
 
 
+def watchdog_lock_path(db_path: Path) -> Path:
+    """Find the lock file a watchdog run holds, beside the database it watches."""
+    return db_path.parent / WATCHDOG_LOCK_NAME
+
+
+@contextmanager
+def holding(lock: Path) -> Generator[bool, None, None]:
+    """Hold the lock file for the duration, yielding False when another run already holds it."""
+    with lock.open("a") as held:
+        try:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(held, fcntl.LOCK_UN)
+
+
 def read_watchdog_state(path: Path) -> WatchdogState | None:
-    """The state the last run wrote, or None when no run wrote one."""
+    """Read the state the last run saved, or None when no run saved one."""
     if not path.exists():
         return None
     try:
@@ -48,6 +72,8 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
             open=frozenset(Check(name) for name in saved["open"]),
             reopened=tuple(_required(at) for at in saved["reopened"]),
             unreachable_since=_time(saved["unreachable_since"]),
+            failing_since=_time(saved["failing_since"]),
+            logged={str(message): _required(at) for message, at in saved["logged"].items()},
             errors=tuple(str(error) for error in saved["errors"]),
         )
     except (KeyError, TypeError, AttributeError) as exc:
@@ -55,7 +81,7 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
 
 
 def write_watchdog_state(path: Path, state: WatchdogState) -> None:
-    """Replace the state file in one step."""
+    """Replace the state file in one step, through a temporary file of its own."""
     saved = {
         "ran_at": _iso(state.ran_at),
         "watching_since": _iso(state.watching_since),
@@ -73,11 +99,20 @@ def write_watchdog_state(path: Path, state: WatchdogState) -> None:
         "open": sorted(check.value for check in state.open),
         "reopened": [at.isoformat() for at in state.reopened],
         "unreachable_since": _iso(state.unreachable_since),
+        "failing_since": _iso(state.failing_since),
+        "logged": {message: at.isoformat() for message, at in state.logged.items()},
         "errors": list(state.errors),
     }
-    staged = path.with_name(f".{path.name}.new")
-    staged.write_text(json.dumps(saved, indent=1), encoding="utf-8")
-    os.replace(staged, path)
+    staged = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    )
+    try:
+        with staged:
+            staged.write(json.dumps(saved, indent=1))
+        os.replace(staged.name, path)
+    except BaseException:
+        Path(staged.name).unlink(missing_ok=True)
+        raise
 
 
 def _finding(saved: dict[str, Any]) -> Finding:

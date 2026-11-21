@@ -12,7 +12,7 @@ from computer_history.stable.layout import CAPTURE_AGENT_LABEL, LABEL_PREFIX, La
 
 STOPGAP_LABEL = f"{LABEL_PREFIX}.backend"
 RESTART_THROTTLE_SECONDS = 30
-WATCHDOG_INTERVAL_SECONDS = 60
+EVERY_MINUTE_SECONDS = 60
 DISCARDED = "/dev/null"
 UNLOAD_POLL_SECONDS = 0.1
 UNLOAD_WAIT_SECONDS = 5.0
@@ -28,10 +28,7 @@ class Schedule(Enum):
 
 @dataclass(frozen=True)
 class LaunchAgent:
-    """A LaunchAgent the stable install runs: the current version's command with these arguments.
-
-    A program, when given, runs instead of the command, and stdout goes to the log unless quiet.
-    """
+    """A LaunchAgent the stable install runs: the current command or a program, on a schedule."""
 
     name: str
     label: str
@@ -57,7 +54,7 @@ class LaunchAgent:
         if self.schedule is Schedule.KEEP_ALIVE:
             plist |= {"KeepAlive": True, "ThrottleInterval": RESTART_THROTTLE_SECONDS}
         elif self.schedule is Schedule.EVERY_MINUTE:
-            plist["StartInterval"] = WATCHDOG_INTERVAL_SECONDS
+            plist["StartInterval"] = EVERY_MINUTE_SECONDS
         return plistlib.dumps(plist)
 
 
@@ -92,12 +89,19 @@ class AgentStatus:
 def load_agent(
     host: Host, layout: Layout, agent: LaunchAgent, *, sleep: Callable[[float], None] = time.sleep
 ) -> None:
-    """Write the agent's plist and load it, first booting out and waiting out the loaded copy."""
+    """Write the agent's plist and load it, first booting out and waiting out the loaded copy.
+
+    An agent that runs only at load stays as it is when it is loaded from the same plist.
+    """
     layout.launch_agents.mkdir(parents=True, exist_ok=True)
     layout.logs.mkdir(parents=True, exist_ok=True)
     plist = agent.plist(layout)
-    plist.write_bytes(agent.render(layout))
-    if host.job(agent.label).loaded:
+    rendered = agent.render(layout)
+    loaded = host.job(agent.label).loaded
+    if loaded and agent.schedule is Schedule.AT_LOAD and _holds(plist, rendered):
+        return
+    plist.write_bytes(rendered)
+    if loaded:
         host.unload(agent.label)
         _wait_until_unloaded(host, agent.label, sleep)
     for attempt in range(1, LOAD_ATTEMPTS + 1):
@@ -108,6 +112,10 @@ def load_agent(
             if attempt == LOAD_ATTEMPTS:
                 raise
             sleep(LOAD_RETRY_SECONDS)
+
+
+def _holds(plist: Path, rendered: bytes) -> bool:
+    return plist.is_file() and plist.read_bytes() == rendered
 
 
 def _wait_until_unloaded(host: Host, label: str, sleep: Callable[[float], None]) -> None:

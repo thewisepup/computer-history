@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from socket import gethostname
 
+from computer_history.cli.clock import AW_CHECK_TIMEOUT_SECONDS, utc_now
 from computer_history.cli.formatting import ago, duration
 from computer_history.sources import (
     AWClient,
@@ -24,14 +25,9 @@ from computer_history.watchdog import (
     WatchdogRun,
     WatchPaths,
     watch_once,
+    watchdog_lock_path,
     watchdog_state_path,
 )
-
-WATCHDOG_AW_TIMEOUT_SECONDS = 5
-
-
-def utc_now() -> datetime:
-    return datetime.now(UTC)
 
 
 def cmd_watchdog(args: argparse.Namespace) -> int:
@@ -41,21 +37,23 @@ def cmd_watchdog(args: argparse.Namespace) -> int:
         heartbeat=backend_heartbeat_path(db_path),
         config=agent_config_path(db_path),
         state=watchdog_state_path(db_path),
+        lock=watchdog_lock_path(db_path),
     )
     now = utc_now()
-    client = AWClient(args.aw_url, timeout=WATCHDOG_AW_TIMEOUT_SECONDS)
+    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     with open_store(db_path, Purpose.READ) as store:
         if store.state not in (StoreState.READY, StoreState.MISSING):
             print(f"note: the database is {store.state.value}; judging from the spool alone")
         conn = store.conn if store.state is StoreState.READY else None
         report = watch_once(args.host, conn, client, paths, now=now, hostname=gethostname())
-    _print_run(report, now)
+    if report is not None:
+        _print_run(report, now)
     return 0
 
 
 def _print_run(report: WatchdogRun, now: datetime) -> None:
-    for problem in report.thresholds.problems:
-        print(f"config problem: {problem}", file=sys.stderr)
+    for message in report.to_log:
+        print(message, file=sys.stderr)
     limits = ", ".join(
         f"{check.value} {duration(after.total_seconds())}"
         for check, after in report.thresholds.silent_after.items()
@@ -65,21 +63,21 @@ def _print_run(report: WatchdogRun, now: datetime) -> None:
         print(line)
     for notice in report.posted:
         print(f"  {'cleared' if notice.cleared else 'notified'}: {notice.message}")
-    if report.reopened:
+    reopening = report.reopening
+    if reopening is not None and reopening.reopened:
         print("  reopened ActivityWatch")
-    if report.reopen_refused:
+    if reopening is not None and reopening.refused:
         print(f"  did not reopen ActivityWatch: reopened {REOPEN_LIMIT} times in the last hour")
+    for problem in report.thresholds.problems:
+        print(f"  config problem: {problem}")
     for error in report.state.errors:
-        print(f"error: {error}", file=sys.stderr)
+        print(f"  error: {error}")
 
 
 def finding_lines(
     findings: tuple[Finding, ...], now: datetime, notified: Mapping[Check, datetime] | None = None
 ) -> list[str]:
-    """One line per finding: the check, its verdict, why, and when its subject was last seen.
-
-    A problem among those notified also says when it was last notified.
-    """
+    """Format each finding as a line, with when a notified problem was last notified."""
     width = max((len(found.check.value) for found in findings), default=0)
     lines: list[str] = []
     for found in findings:

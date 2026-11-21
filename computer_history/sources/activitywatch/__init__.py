@@ -18,8 +18,8 @@
                      bucket's newest, still-growing event
       frontmost.py   the app in front on this host, for status: its stored aw-window
                      spans plus each of its window buckets' newest, still-growing event
-      watchers.py    where each of this host's AFK and window buckets last advanced,
-                     for the watchdog
+      watchers.py    where this host's AFK and window sources last advanced, by
+                     their most recent bucket, for the watchdog
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.

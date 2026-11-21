@@ -146,7 +146,14 @@ def watch(
         began = monotonic()
         summary = poll(conn, sources, now=clock())
         if heartbeat is not None:
-            write_backend_heartbeat(heartbeat, summary.at, summary.ok)
+            write_backend_heartbeat(heartbeat, summary.at, summary.ok, _first_failure(summary))
         delay = max(0.0, interval - (monotonic() - began))
         report(summary, delay)
         sleep(delay)
+
+
+def _first_failure(summary: CycleSummary) -> str | None:
+    if not summary.failures:
+        return None
+    failure = summary.failures[0]
+    return failure.error if failure.stream is None else f"{failure.stream}: {failure.error}"

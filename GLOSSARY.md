@@ -75,12 +75,28 @@ The named CI checks a `main` commit must all have passed on its push run before 
 _Avoid_: Required checks, green build
 
 **Host adapter**:
-The one seam to macOS and the network (launchctl, GitHub, building with uv), live on the Mac and a fake in tests.
+The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests.
 _Avoid_: System client, platform layer
 
 **Backend heartbeat**:
 The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time and whether it succeeded. Not the capture agent's heartbeat record.
 _Avoid_: Ping, liveness file
+
+**Watchdog**:
+The stable install's every-minute check that the capture agent, ActivityWatch and the backend are recording, which notifies Brandon of a problem and reopens ActivityWatch when it is down.
+_Avoid_: Monitor, health check, supervisor
+
+**Finding**:
+What one watchdog run concluded about one subject: its verdict, the reason, and when the subject was last seen working.
+_Avoid_: Result, alert, status
+
+**Verdict**:
+A finding's conclusion: ok (clears a notified problem), problem (notifies, at most once an hour), or cannot tell (neither).
+_Avoid_: Health, state, level
+
+**Threshold**:
+How long a watchdog subject may stay silent before its silence is a problem, set per subject in the agent's config file.
+_Avoid_: Timeout, limit, baseline
 
 **Dev snapshot**:
 A copy of the live database taken into dev's database by `dev snapshot`, read-only and while the stable backend keeps writing; the one read of live data dev is allowed. It never includes the spool or screenshots.

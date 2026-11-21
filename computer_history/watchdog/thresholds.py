@@ -32,10 +32,7 @@ class Thresholds:
 
 
 def read_thresholds(config: Path) -> Thresholds:
-    """The thresholds in the config file's watchdog object, with a default for each one missing.
-
-    A value that is unusable falls back to its default and is named among the problems.
-    """
+    """Read each threshold from the config file's watchdog object, falling back to the default."""
     silent_after = _defaults()
     try:
         whole = json.loads(config.read_text(encoding="utf-8"))

@@ -11,7 +11,8 @@ from computer_history.sources.activitywatch.discovery import (
     discover_sources,
 )
 from computer_history.sources.activitywatch.frontmost import on_host
-from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times, newest_events
+from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times
+from computer_history.sources.contract import SourceUnavailable
 
 WATCHED_SOURCES = (AFK_SOURCE, WINDOW_SOURCE)
 
@@ -19,26 +20,23 @@ WATCHED_SOURCES = (AFK_SOURCE, WINDOW_SOURCE)
 def watcher_ends(
     client: AWApi, buckets: Mapping[str, Any], *, hostname: str
 ) -> dict[str, datetime | None]:
-    """Where the newest event of each of the host's AFK and window buckets ends.
-
-    A bucket with no usable event ends at None.
-    """
-    watched = {
-        source.name: source.bucket_ids
-        for source in discover_sources(client, buckets=buckets)
-        if source.name in WATCHED_SOURCES
-    }
-    ends: dict[str, datetime | None] = {
-        bucket_id: None
-        for bucket_ids in watched.values()
-        for bucket_id in bucket_ids
-        if on_host(bucket_id, hostname)
-    }
-    for source in WATCHED_SOURCES:
-        for bucket_id, raw in newest_events(client, source, buckets):
-            if bucket_id in ends:
-                try:
-                    ends[bucket_id] = event_times(raw)[1]
-                except MALFORMED_EVENT:
-                    continue
+    """Where each of this host's AFK and window sources last advanced, by its newest bucket."""
+    ends: dict[str, datetime | None] = {}
+    for source in discover_sources(client, buckets=buckets):
+        on_this_host = [bucket for bucket in source.bucket_ids if on_host(bucket, hostname)]
+        if source.name not in WATCHED_SOURCES or not on_this_host:
+            continue
+        found = [end for bucket in on_this_host if (end := _newest_end(client, bucket))]
+        ends[source.name] = max(found, default=None)
     return ends
+
+
+def _newest_end(client: AWApi, bucket_id: str) -> datetime | None:
+    try:
+        newest = client.get_events(bucket_id, limit=1)
+    except SourceUnavailable:
+        return None
+    try:
+        return event_times(newest[0])[1] if newest else None
+    except MALFORMED_EVENT:
+        return None

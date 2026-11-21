@@ -139,9 +139,10 @@ computer_history/
                 # and uninstall)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
-                # backend), alerts (which findings notify, and how often),
-                # state (the file beside the database), run (one run, with
-                # the ActivityWatch reopen)
+                # backend), alerts (which findings notify, how often, and which
+                # errors are due a log line), reopening (ActivityWatch, at most
+                # three times an hour), state (the file and lock beside the
+                # database), run (one run, under the lock)
   text.py       # text/URL normalization shared by every source
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
@@ -689,8 +690,10 @@ in the live folder and starts the backend at login from it:
 ```
 ~/Library/Application Support/ComputerHistory/
   history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
-  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool}, rewritten after each cycle
+  backend-heartbeat.json   # {"cycle_at": <UTC ISO>, "ok": bool, "error": <first failure or null>},
+                           # rewritten after each cycle
   watchdog.json            # the watchdog's last findings and what it notified, see 8.6
+  .watchdog.lock           # held by a watchdog run, so two never overlap
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
@@ -751,8 +754,8 @@ beside the database, which `status` shows under "Stable watchdog".
 | Subject | Problem when | Needs you active |
 |---|---|---|
 | capture agent | its newest record (stored, or still in the spool) is older than the threshold, by the same liveness `status` computes: aw-afk shows you active for over a minute since | yes |
-| ActivityWatch | unreachable for longer than the threshold, or one of this host's AFK or window buckets has not advanced for longer than it | no |
-| backend | its heartbeat's last cycle is older than the threshold (a failing cycle still counts as a cycle: its usual cause, ActivityWatch down, has its own notification) | yes |
+| ActivityWatch | unreachable for longer than the threshold, or this host's AFK or window source has not advanced for longer than it, judged by the source's most recently advanced bucket (a dead or empty sibling bucket, or one answering an error, is ignored) | no |
+| backend | its heartbeat's last cycle is older than the threshold, or its cycles have kept failing for longer than it (the notification carries the first failure the heartbeat recorded) | yes |
 
 - **Active** means aw-afk, from stored spans plus ActivityWatch's newest
   event, shows you active for over a minute inside the threshold before now.
@@ -764,11 +767,23 @@ beside the database, which `status` shows under "Stable watchdog".
   3 minutes resumes watching, and silence counts from no earlier than that
   run. After a wake every subject gets one full threshold to show it is
   alive; until then the finding is "cannot tell", which neither notifies nor
-  clears.
-- **Notifications:** a problem notifies at most once an hour per subject, and
-  a notified problem notifies once when it clears (whether or not you are
-  active then). A notification that fails to post is not recorded, so the
-  next run tries again.
+  clears. A failed cycle is never "ok", so it never clears a silent backend.
+- **A database read that fails** (`sqlite3.Error`) makes the capture agent,
+  and the backend unless its heartbeat is fresh and ok, "cannot tell" for
+  that run. The state is still saved, and silence keeps counting from where
+  it started.
+- **Notifications:** a problem notifies at most once an hour per subject while
+  it stays open, and a notified problem notifies once when it clears (whether
+  or not you are active then). A clear resets the hour, so a second outage
+  gets its own notification. A notification that fails to post is not
+  recorded, so the next run tries again.
+- **One run at a time:** a run holds `.watchdog.lock` (`flock`, not blocking);
+  a run that finds it held exits quietly with code 0. The state is written
+  to a temporary file of its own and renamed over `watchdog.json`.
+- **Logging:** stdout (the findings) goes to `/dev/null` under launchd. A
+  config problem or error goes to stderr, so `watchdog.log`, at most once an
+  hour per distinct message (the state records when each was last logged);
+  every run still shows it on stdout and in `status`.
 - **Thresholds** live in the agent's config file, `agent-config.json` beside
   the database, under a `watchdog` object the capture agent leaves alone:
   `capture_agent_minutes`, `activitywatch_minutes`, `backend_minutes`, each 1
@@ -777,7 +792,12 @@ beside the database, which `status` shows under "Stable watchdog".
 - **Reopening ActivityWatch:** when ActivityWatch is unreachable and its app
   (`aw-qt`) isn't running, the watchdog opens it, at most three times in any
   hour. When the app runs but the server doesn't answer, opening it again
-  would only bring it forward, so the watchdog notifies instead.
+  would only bring it forward, so the watchdog notifies instead. `pgrep`,
+  `open` and `osascript` each get 10 seconds, apart from the build's 10
+  minutes.
+- **Repairing:** `install` run again leaves the ActivityWatch login agent
+  loaded when its plist is unchanged, since reloading it would reopen
+  ActivityWatch.
 - **How a launchd-run process posts a notification.** The live adapter runs
   `/usr/bin/osascript` with `display notification`, passing the title and
   text as arguments to an `on run argv` handler, never spliced into the

@@ -17,6 +17,7 @@
             |          dev perf (the performance gate), dev bench (wall-clock timings)
             |
     profile.py (the first line: profile, version or checkout, database),
+    clock.py (the clock and ActivityWatch timeout status and the watchdog share),
     db.py and sources.py (unusable database / source messages),
     formatting.py (durations, times, sizes, app names)
 """

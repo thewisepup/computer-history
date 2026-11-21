@@ -27,6 +27,7 @@ app.py         parser + dispatch: one entry per command
         |
 db.py and sources.py (unusable database / source messages),
 profile.py (the first line: profile, version or checkout, database),
+clock.py (the clock and ActivityWatch timeout status and the watchdog share),
 formatting.py (durations, times, sizes)
 ```
 
@@ -193,12 +194,15 @@ its findings to `watchdog.json` beside the database, and exits 0:
 - **capture agent**: its newest record, stored or still in the spool, by the
   liveness `status` uses. A problem only while aw-afk shows you active;
   paused or idle is `cannot tell`.
-- **ActivityWatch**: reachable, and each of this host's AFK and window buckets
-  advancing. A problem whether or not you are active. When it is unreachable
+- **ActivityWatch**: reachable, and this host's AFK and window sources each
+  advancing, judged by the source's most recently advanced bucket (an old,
+  empty or erroring sibling bucket is ignored). A problem whether or not you are active. When it is unreachable
   and its app (`aw-qt`) isn't running, the watchdog opens it, at most three
   times in any hour.
-- **backend**: the last cycle in its heartbeat. A problem only while you are
-  active.
+- **backend**: the last cycle in its heartbeat, silent or failing for longer
+  than the threshold (`cycles are failing`, with the first failure the
+  heartbeat recorded). A problem only while you are active; a failed cycle
+  never clears a silent backend.
 
 Each is silent after 5 minutes unless the agent's config file beside the
 database (`agent-config.json`) says otherwise:
@@ -207,9 +211,13 @@ database (`agent-config.json`) says otherwise:
 {"watchdog": {"capture_agent_minutes": 10, "activitywatch_minutes": 5, "backend_minutes": 15}}
 ```
 
-Values run from 1 to 1440 minutes; a bad one falls back to 5 and is printed to
-stderr as `config problem: watchdog.backend_minutes must be a number of
-minutes from 1 to 1440, using 5`. After a sleep (or any run more than 3
+Values run from 1 to 1440 minutes; a bad one falls back to 5 and is shown as
+`config problem: watchdog.backend_minutes must be a number of minutes from 1
+to 1440, using 5`. Config problems and errors are shown on stdout every run
+but written to stderr, which is what `watchdog.log` keeps, at most once an
+hour per message. A run that finds another one still holding the lock
+(`.watchdog.lock` beside the database) exits 0 without a word past the
+profile line. After a sleep (or any run more than 3
 minutes after the last), silence counts from that run, so waking the Mac
 never notifies; until a subject has had one threshold to show it is alive, it
 is `cannot tell`, which neither notifies nor clears.
@@ -235,10 +243,11 @@ Watchdog (silent after: capture agent 5m, ActivityWatch 5m, backend 5m)
 ```
 
 The first run that finds it recording again prints `cleared: The capture
-agent is recording again.` Other lines a run can print: `reopened
+agent is recording again.`, and a clear resets the hourly limit, so a second
+outage notifies again. Other lines a run can print: `reopened
 ActivityWatch`, `did not reopen ActivityWatch: reopened 3 times in the last
-hour`, and on stderr `error: could not post a notification: ...` (tried again
-next run). Notifications are posted with `osascript`'s `display
+hour`, and `error: could not post a notification: ...` (tried again next
+run). Notifications are posted with `osascript`'s `display
 notification`, through the host adapter, so macOS shows them as Script
 Editor's.
 
@@ -366,7 +375,8 @@ database is in:
   warning while it is loaded. When launchctl cannot be asked, the section is
   one line, `cannot ask launchd: <reason>`, and the exit code is unchanged.
 - **Stable backend**: the last cycle the stable backend's heartbeat (beside
-  the live database) records, and whether it was `ok` or `failed`; `none yet`
+  the live database) records, and whether it was `ok` or `failed` (with its
+  first failure, `failed: aw-window: ...`); `none yet`
   before its first cycle, and `unreadable heartbeat: ...` for a file that is
   not one (a time without an offset, an `ok` that is not true or false).
   A dev `ingest --watch` writes its own heartbeat beside the dev database,

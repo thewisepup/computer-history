@@ -297,3 +297,39 @@ def test_a_notification_osascript_refuses_is_a_host_error(monkeypatch: pytest.Mo
 
     with pytest.raises(HostError, match="post a notification: execution error"):
         LiveHost().notify("Computer History", "hello")
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda host: host.activitywatch_running(),
+        lambda host: host.open_activitywatch(),
+        lambda host: host.notify("Computer History", "hello"),
+    ],
+    ids=["pgrep", "open", "osascript"],
+)
+def test_the_quick_commands_time_out_well_before_a_build(
+    monkeypatch: pytest.MonkeyPatch, call: Any
+) -> None:
+    timeouts: list[float] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        timeouts.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+
+    call(LiveHost())
+
+    assert timeouts == [live.QUICK_COMMAND_TIMEOUT_SECONDS]
+    assert live.QUICK_COMMAND_TIMEOUT_SECONDS < live.COMMAND_TIMEOUT_SECONDS
+
+
+def test_a_hung_osascript_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def hang(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(live.subprocess, "run", hang)
+
+    with pytest.raises(HostError, match="could not post a notification"):
+        LiveHost().notify("Computer History", "hello")

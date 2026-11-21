@@ -8,8 +8,7 @@ from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
 NOTIFICATION_TITLE = "Computer History"
 NOTIFY_EVERY = timedelta(hours=1)
-REOPEN_LIMIT = 3
-REOPEN_WINDOW = timedelta(hours=1)
+LOG_EVERY = timedelta(hours=1)
 SUBJECTS = {
     Check.CAPTURE_AGENT: "The capture agent",
     Check.ACTIVITYWATCH: "ActivityWatch",
@@ -39,10 +38,7 @@ def notices(
     silent_after: Mapping[Check, timedelta],
     now: datetime,
 ) -> list[Notice]:
-    """A problem notifies at most once an hour, and a notified problem notifies once when it clears.
-
-    A check that cannot tell neither notifies nor clears.
-    """
+    """Pick the problems due a notification this hour and the notified problems now cleared."""
     found: list[Notice] = []
     for finding in findings:
         check = finding.check
@@ -50,12 +46,20 @@ def notices(
             found.append(Notice(check, True, CLEARED[check]))
         last = notified.get(check)
         if finding.verdict is Verdict.PROBLEM and (last is None or now - last >= NOTIFY_EVERY):
-            found.append(Notice(check, False, problem_message(finding, silent_after[check])))
+            found.append(Notice(check, False, _problem_message(finding, silent_after[check])))
     return found
 
 
-def problem_message(finding: Finding, silent_after: timedelta) -> str:
-    """The notification text for a problem, naming the threshold it passed."""
+def due_to_log(
+    messages: Iterable[str], logged: Mapping[str, datetime], now: datetime
+) -> tuple[tuple[str, ...], dict[str, datetime]]:
+    """Pick the messages not logged in the last hour, and when each message was last logged."""
+    kept = {message: at for message, at in logged.items() if now - at < LOG_EVERY}
+    due = tuple(dict.fromkeys(message for message in messages if message not in kept))
+    return due, kept | {message: now for message in due}
+
+
+def _problem_message(finding: Finding, silent_after: timedelta) -> str:
     minutes = f"{silent_after.total_seconds() / 60:g} min"
     subject = SUBJECTS[finding.check]
     match finding.reason:
@@ -63,14 +67,12 @@ def problem_message(finding: Finding, silent_after: timedelta) -> str:
             return f"{subject} has been unreachable for over {minutes}."
         case Reason.STALLED:
             return f"{subject} has recorded nothing for over {minutes} in {finding.detail}."
+        case Reason.FAILING:
+            why = f": {finding.detail}" if finding.detail else "."
+            return f"{subject}'s ingest cycles have been failing for over {minutes}{why}"
         case _ if finding.check is Check.BACKEND:
             return (
                 f"{subject} has finished no ingest cycle for over {minutes} while you were active."
             )
         case _:
             return f"{subject} has recorded nothing for over {minutes} while you were active."
-
-
-def recent_reopens(reopened: Iterable[datetime], now: datetime) -> tuple[datetime, ...]:
-    """The reopens of ActivityWatch inside the window the limit counts."""
-    return tuple(at for at in reopened if now - at < REOPEN_WINDOW)

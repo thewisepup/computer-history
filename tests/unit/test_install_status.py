@@ -9,11 +9,12 @@ from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
 from computer_history.cli import ingest as cli_ingest
-from computer_history.sources import backend_heartbeat_path, runner
+from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat, runner
 from computer_history.stable import (
     ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
     CAPTURE_AGENT_LABEL,
+    STABLE_AGENTS,
     STOPGAP_LABEL,
     WATCHDOG,
     stable_layout,
@@ -68,8 +69,9 @@ def test_dev_status_shows_the_stable_backends_last_cycle(
     assert line.endswith(" ago), ok")
 
 
-def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_it_failed(
+def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_why_it_failed(
     run: RunCli,
+    live: Path,
     checkout: Path,
     stable_code: tuple[Path, FakeHost],
     one_cycle: None,
@@ -80,7 +82,11 @@ def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_it_failed(
     _, out, _ = run(checkout, *STATUS, host=host)
 
     (line,) = section(out, BACKEND_SECTION)
-    assert line.endswith(" ago), failed")
+    assert " ago), failed: " in line
+    heartbeat = read_backend_heartbeat(backend_heartbeat_path(live / DATABASE_NAME))
+    assert heartbeat is not None and heartbeat.error is not None
+    assert line.endswith(f" ago), failed: {heartbeat.error}")
+    assert "ActivityWatch" in heartbeat.error
 
 
 def test_a_dev_backends_heartbeat_is_not_shown_as_stables(
@@ -168,7 +174,7 @@ def test_status_finds_a_running_stopgap_whose_plist_was_deleted(
 
     _, out, _ = run(checkout, *STATUS, host=host)
 
-    assert section(out, AGENTS)[4:] == [
+    assert section(out, AGENTS)[len(STABLE_AGENTS) + 1 :] == [
         f"  stopgap backend  loaded, running (pid 100), plist deleted  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
     ]
