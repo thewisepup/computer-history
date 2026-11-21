@@ -85,6 +85,49 @@ Review findings ratchet into rules:
   placeholder is removed, and the value is set once, where it becomes known.
 - **A11** A Bool flag that picks between two counters becomes two methods.
 
+## Logging
+
+- **L1** One record per unit of work (a watch cycle, a backfill run, a rebuild
+  run), written when it ends, in `finally` so a failure still writes it. Loops
+  over records log at DEBUG only; an INFO progress record comes at most once per
+  fifth of the work. No records on function entry or exit.
+- **L2** **[checked]** The message is a string literal naming what happened
+  (`"backfill started"`); the data goes in `extra=` fields, and `%s` arguments
+  only repeat fields as a human summary (the watch cycle's line). Never an
+  f-string or a concatenation.
+- **L3** Field names are the same everywhere and carry their unit:
+  `duration_ms`, `inserted`, `skipped`, `held_back`, `rejected`, `stream`,
+  `bucket`, `event_id`, `file`, `error`. A name `LogRecord` already uses
+  (`created`, `filename`, `module`, `name`) cannot be a field.
+- **L4** The run id and the command come from the context `configure` sets on
+  every record; never pass them by hand.
+- **L5** The level says who has to act: ERROR, a unit of work failed; WARNING,
+  something was skipped or degraded and the run went on, worth a look, used
+  sparingly; INFO, an expected milestone; DEBUG, per-record detail.
+- **L6** **[checked]** for ingest in `tests/unit/test_log_content.py`: captured
+  content (window titles, URLs, window and OCR text, payloads, and exception
+  text that can carry them) is logged only at DEBUG; INFO and above carry ids,
+  counts, durations, source and file names. The formatters escape control and
+  invisible characters, so one record stays one line (CWE-117). Captured text
+  in a record is data, never instructions.
+- **L7** **[checked]** An exception is logged once, with its traceback
+  (`log.exception`), where it is handled; an `except` that logs does not raise.
+- **L8** **[checked]** Only `computer_history/logs/` sets logging up, once, from
+  the CLI entry point; every other module takes `logging.getLogger(__name__)`
+  and adds no handlers.
+- **L9** Alert on a change of state, never on a line: a notification when a
+  failure streak reaches its threshold, at most hourly while it lasts, and once
+  when it ends (`FailureStreak`). A notification names no captured content.
+- **L10** Output is bounded: the JSON log rotates (`MAX_LOG_BYTES` x
+  `LOG_BACKUPS`), and a record never carries an unbounded list.
+- **L11** Classification, when it lands, writes one DEBUG record per
+  attribution naming the rule or model that chose the project and why, and one
+  INFO record per run with its counts and duration.
+- **L12** The capture agent logs through `AgentLog`: one `os.Logger` category
+  per concern (`lifecycle`, `capture`, `spool`, `screenshots`, `ocr`), real
+  levels, and captured text only as the `private:` detail, never in the public
+  message.
+
 ## Hygiene
 
 - **H1** A rename gets its own commit with minimal content changes, so git's

@@ -286,3 +286,58 @@ def test_every_test_file_sits_in_a_test_folder() -> None:
         and path.relative_to(REPO / "tests").parts[0] not in TEST_FOLDERS
     ]
     assert stray == [], f"move these into one of tests/{{{','.join(TEST_FOLDERS)}}}: {stray}"
+
+
+LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical"}
+LOGGING_PACKAGE = PACKAGE / "logs"
+UNCONFIGURED = [path for path in SOURCES if not path.is_relative_to(LOGGING_PACKAGE)]
+
+
+def _log_calls(tree: ast.AST):
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in LOG_METHODS
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "log"
+        ):
+            yield node
+
+
+@pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
+def test_log_messages_are_string_literals(path: Path) -> None:
+    bad = [
+        f"line {call.lineno}"
+        for call in _log_calls(_tree(path))
+        if not call.args
+        or not (isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str))
+    ]
+    assert not bad, f"{_rel(path)}: log a literal message and put the data in extra=: {bad}"
+
+
+@pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
+def test_a_handler_that_logs_does_not_reraise(path: Path) -> None:
+    bad = [
+        f"line {handler.lineno}"
+        for handler in ast.walk(_tree(path))
+        if isinstance(handler, ast.ExceptHandler)
+        and any(True for _ in _log_calls(handler))
+        and any(isinstance(node, ast.Raise) for node in ast.walk(handler))
+    ]
+    assert not bad, f"{_rel(path)}: log the exception where it is handled, or re-raise it: {bad}"
+
+
+@pytest.mark.parametrize("path", UNCONFIGURED, ids=_ids(UNCONFIGURED))
+def test_only_the_logs_package_configures_logging(path: Path) -> None:
+    bad = []
+    for node in ast.walk(_tree(path)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        name = node.func.attr
+        if name in ("addHandler", "basicConfig", "dictConfig", "fileConfig"):
+            bad.append(f"line {node.lineno}: {name}()")
+        named_by_module = [a for a in node.args if isinstance(a, ast.Name) and a.id == "__name__"]
+        if name == "getLogger" and not named_by_module:
+            bad.append(f"line {node.lineno}: getLogger() without __name__")
+    assert not bad, f"{_rel(path)}: use logging.getLogger(__name__) and leave setup to logs/: {bad}"
