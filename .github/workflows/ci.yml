@@ -119,11 +119,31 @@ jobs:
   macos-capture-agent-tests:
     runs-on: macos-26
     timeout-minutes: 20
+    env:
+      REACHES: '^(capture-agent/|fixtures/spool/|\.github/workflows/ci\.yml$)'
     steps:
+      - id: reach
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if ! files="$(gh pr diff "$PR" --name-only --repo "$GITHUB_REPOSITORY")"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif printf '%s\n' "$files" | grep -qE "$REACHES"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Skipped::No changed file matches $REACHES"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.reach.outputs.run != 'false'
       - run: swift --version
+        if: steps.reach.outputs.run != 'false'
       - run: capture-agent/scripts/test.sh
+        if: steps.reach.outputs.run != 'false'
       - name: Release build of the signed app bundle, signed ad hoc
+        if: steps.reach.outputs.run != 'false'
         run: CODESIGN_IDENTITY=- capture-agent/scripts/build.sh
 
   macos-capture-agent-e2e:
