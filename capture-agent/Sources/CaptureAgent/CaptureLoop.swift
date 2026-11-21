@@ -6,7 +6,7 @@ final class CaptureLoop<M: Mac> {
     private let pause: PauseSwitch
     private let pollInterval: TimeInterval
     private let reader: WindowTextReader<M.Element>
-    private let spool: any SpoolAppender
+    private let writer: RecordWriter
     private var screenshots: (stage: CaptureScreenshot<M>, queue: ScreenshotQueue)?
     private let counts: CaptureCounts
     private let log: (String) -> Void
@@ -41,7 +41,7 @@ final class CaptureLoop<M: Mac> {
             hasElectronFramework: mac.hasElectronFramework,
             now: mac.uptime
         )
-        self.spool = spool
+        self.writer = RecordWriter(spool: spool, counts: counts)
         if settings.screenshots.enabled {
             let stage = CaptureScreenshot(
                 mac: mac,
@@ -64,6 +64,7 @@ final class CaptureLoop<M: Mac> {
         }
         self.counts = counts
         self.log = log
+        mac.onSleepChange(SleepRecords(pause: settings.pause, writer: writer).receive)
     }
 
     func run(while keepGoing: () -> Bool) {
@@ -77,6 +78,11 @@ final class CaptureLoop<M: Mac> {
     /// Waits until the screenshot record of every capture so far has been written or refused.
     func waitForScreenshots() {
         screenshots?.queue.waitUntilWritten()
+    }
+
+    /// Stops writing slept and woke records, once the loop has run for the last time.
+    func stopRecordingSleep() {
+        mac.onSleepChange { _, _ in }
     }
 
     /// Gives queued screenshot records until the deadline to reach the spool, then writes no more, and returns how many were dropped.
@@ -94,11 +100,12 @@ final class CaptureLoop<M: Mac> {
         case .nothing:
             return
         case .paused:
-            if write(SpoolRecord.paused(at: mac.now())) { decision.recordedPause(true) }
+            if writer.write(SpoolRecord.paused(at: mac.now())) { decision.recordedPause(true) }
         case .resumed:
-            if write(SpoolRecord.resumed(at: mac.now())) { decision.recordedPause(false) }
+            if writer.write(SpoolRecord.resumed(at: mac.now())) { decision.recordedPause(false) }
         case .excluded(let application, let trigger):
-            if write(SpoolRecord.excluded(at: mac.now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)) {
+            let record = SpoolRecord.excluded(at: mac.now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)
+            if writer.write(record, if: awake) {
                 counts.recordExcluded()
             }
         case .capture(let application, let trigger):
@@ -121,20 +128,14 @@ final class CaptureLoop<M: Mac> {
             fullTextBytes: window.fullLength,
             timedOut: window.timedOut
         )
-        guard write(record) else { return }
+        guard writer.write(record, if: awake) else { return }
         counts.recordWritten(record)
         guard let shot = screenshots?.stage.take(for: record, of: application) else { return }
         screenshots?.queue.add(shot)
     }
 
-    private func write(_ record: SpoolRecord) -> Bool {
-        do {
-            try spool.append(record)
-            return true
-        } catch {
-            counts.recordFailed(error)
-            return false
-        }
+    private func awake() -> Bool {
+        !mac.samplePresence().asleep
     }
 
     private func name(of application: FocusedApplication) -> String {
@@ -190,6 +191,7 @@ public func startCaptureThread<M: Mac & Sendable>(
     let thread = Thread {
         let loop = CaptureLoop(settings: settings, mac: mac, spool: spool, images: images, recognize: recognize, counts: counts, log: log)
         loop.run { stop.requestedDeadline == nil }
+        loop.stopRecordingSleep()
         stop.finish(dropped: loop.stopScreenshots(by: stop.requestedDeadline ?? .now()))
     }
     thread.name = "capture"

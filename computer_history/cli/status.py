@@ -196,7 +196,7 @@ def _print_capture_gaps(health: CaptureHealth) -> None:
     print(
         f"  {WINDOW_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
-        " not paused):"
+        " not paused or asleep):"
     )
     warnings = sorted(
         [(gap, "while you were active") for gap in coverage.unobserved]
@@ -225,7 +225,7 @@ def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None
     t = health.today
     print(
         f"  today         {t.captures:,} captures stored, {t.excluded:,} excluded,"
-        f" {t.cut_off:,} cut off, {t.timed_out:,} timed out"
+        f" {t.cut_off:,} cut off, {t.timed_out:,} timed out, {t.slept:,} slept, {t.woke:,} woke"
     )
     paused = "no" if health.paused_since is None else f"yes, since {ago(health.paused_since, now)}"
     print(f"  paused        {paused}")

@@ -6,7 +6,16 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var clock: TimeInterval = 0
     var callCost: TimeInterval = 0.001
     var callTimeout: TimeInterval = 0.25
-    var presence = Presence(idleSeconds: 0, locked: false, asleep: false)
+    var presence = Presence(idleSeconds: 0, locked: false, asleep: false) {
+        didSet {
+            guard presence.asleep != oldValue.asleep else { return }
+            guard !presence.asleep else { return sleepChanged(.willSleep) }
+            let awake = presence
+            presence.asleep = true
+            sleepChanged(.didWake)
+            presence = awake
+        }
+    }
     var trusted = true
     var focused: FocusedApplication?
     var frontmost: FocusedApplication?
@@ -18,6 +27,7 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var notifications: [UserNotification] = []
     var postedLater: [@Sendable () -> Void] = []
     var onCall: (String) -> Void = { _ in }
+    private var sleepHandler: @Sendable (SleepChange, Date) -> Void = { _, _ in }
     private var elements: CGWindowID = 0
 
     init(start: Date = Date(timeIntervalSince1970: 0)) {
@@ -31,9 +41,22 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     func now() -> Date { start.addingTimeInterval(clock) }
     func sleep(_ seconds: TimeInterval) { clock += seconds }
     func samplePresence() -> Presence { presence }
+    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) { sleepHandler = handler }
+
+    /// Tells the sleep handler of a sleep or wake now, as changing presence.asleep does.
+    func sleepChanged(_ change: SleepChange) { sleepHandler(change, now()) }
+
     func accessibilityTrusted() -> Bool { trusted }
-    func focusedApplication() -> FocusedApplication? { focused }
-    func frontmostApplication() -> FocusedApplication? { frontmost ?? focused }
+
+    func focusedApplication() -> FocusedApplication? {
+        onCall("focusedApplication")
+        return focused
+    }
+
+    func frontmostApplication() -> FocusedApplication? {
+        onCall("frontmostApplication")
+        return frontmost ?? focused
+    }
 
     func applicationElement(_ processIdentifier: pid_t) -> ScriptedElement {
         guard let app = apps[processIdentifier] else { preconditionFailure("no scripted app has pid \(processIdentifier)") }

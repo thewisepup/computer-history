@@ -39,6 +39,8 @@ let fixtureRecords: [SpoolRecord] = [
     ),
     .paused(id: fixtureID(6), at: utc("2026-11-18T09:03:00.000Z")),
     .resumed(id: fixtureID(7), at: utc("2026-11-18T09:15:42.999Z")),
+    .slept(id: fixtureID(15), at: utc("2026-11-18T09:20:00.000Z")),
+    .woke(id: fixtureID(16), at: utc("2026-11-18T10:05:12.345Z")),
 ]
 
 let earlierCapture = SpoolRecord.capture(
