@@ -15,7 +15,7 @@ from computer_history.sources import (
     poll,
     run_backfill,
 )
-from computer_history.store import DATABASE_NAME, connect, content_digest
+from computer_history.store import DATABASE_NAME, connect, content_digest, sidecars
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.manifest import Manifest, true_answers
@@ -27,7 +27,6 @@ from computer_history.synthetic.timeline import Timeline
 RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(), SpoolRenderer())
 SETTLE_AFTER = timedelta(seconds=STABILITY_MARGIN_SECONDS + 60)
 MANIFEST_NAME = "manifest.json"
-SIDECARS = ("-wal", "-shm", "-journal")
 
 
 class BuildFailed(RuntimeError):
@@ -77,7 +76,7 @@ def build_timeline(
         manifest = true_answers(inputs, timeline, rendered.values(), digest)
         manifest_path.write_text(manifest.to_json(), encoding="utf-8")
     except BaseException:
-        for leftover in (db_path, manifest_path, *_sidecars(db_path)):
+        for leftover in (db_path, manifest_path, *sidecars(db_path)):
             leftover.unlink(missing_ok=True)
         raise
     finally:
@@ -117,7 +116,3 @@ def poll_feeds(conn: sqlite3.Connection, feeds: Sequence[Feed], *, now: datetime
     if not summary.ok:
         raise BuildFailed(f"polling failed: {summary.failures}")
     return sum(outcome.inserted for outcome in summary.outcomes.values())
-
-
-def _sidecars(db_path: Path) -> tuple[Path, ...]:
-    return tuple(db_path.with_name(db_path.name + suffix) for suffix in SIDECARS)

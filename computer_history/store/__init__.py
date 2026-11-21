@@ -4,9 +4,16 @@ Only this package knows SQL. Commands open the database with open_store,
 which reports its state. Ingest writes through insert_observations, the only
 way a source's progress moves. It and rebuild_signals both turn a stored
 payload into its signal with the projector the caller passes, and status and
-backfill use the read queries. content_digest hashes what the database holds.
+backfill use the read queries. content_digest hashes what the database holds,
+and backup_database copies it while other connections keep writing.
 """
 
+from computer_history.store.backup import (
+    DatabaseExists,
+    DatabaseInUse,
+    IntegrityCheckFailed,
+    backup_database,
+)
 from computer_history.store.contents import content_digest
 from computer_history.store.db import (
     BUSY_TIMEOUT_SECONDS,
@@ -39,11 +46,14 @@ from computer_history.store.paths import (
     configured_db_path,
     data_folder,
     default_db_path,
+    existing_database_files,
     live_folder,
     refuse_live,
     refuse_live_in_dev,
     resolve_db_path,
+    resolve_dev_db_path,
     running_code,
+    sidecars,
 )
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.screenshots import (
@@ -90,9 +100,12 @@ __all__ = [
     "STATUS_WINDOW",
     "VERSIONS_FOLDER_NAME",
     "Coverage",
+    "DatabaseExists",
+    "DatabaseInUse",
     "DbstatUnavailable",
     "Gap",
     "InsertResult",
+    "IntegrityCheckFailed",
     "LiveDatabaseRefused",
     "Migration",
     "NewestScreenshot",
@@ -115,12 +128,14 @@ __all__ = [
     "StatusTotal",
     "StoreState",
     "UnclaimedSource",
+    "backup_database",
     "configured_db_path",
     "connect",
     "connect_immutable",
     "content_digest",
     "data_folder",
     "default_db_path",
+    "existing_database_files",
     "find_gaps",
     "first_screenshot_at",
     "get_progress",
@@ -137,10 +152,12 @@ __all__ = [
     "refuse_live",
     "refuse_live_in_dev",
     "resolve_db_path",
+    "resolve_dev_db_path",
     "running_code",
     "scanned_tables",
     "schema_version",
     "screenshot_totals",
+    "sidecars",
     "source_summary",
     "sqlite_build",
     "status_reads",

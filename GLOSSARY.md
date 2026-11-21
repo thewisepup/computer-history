@@ -70,6 +70,10 @@ _Avoid_: Release, production build
 Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
 _Avoid_: Mode, environment
 
+**Dev snapshot**:
+A copy of the live database taken into dev's database by `dev snapshot`, read-only and while the stable backend keeps writing; the one read of live data dev is allowed. It never includes the spool or screenshots.
+_Avoid_: Dump, export, clone
+
 **Event**:
 A stretch of activity with a start and an end, as reported by ActivityWatch.
 _Avoid_: Capture

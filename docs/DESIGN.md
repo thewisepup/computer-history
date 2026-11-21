@@ -77,8 +77,10 @@ computer_history/
                 # progress (per-source ingest progress), status (read
                 # queries), screenshots (the screenshot records' status
                 # queries, read through their own index), contents (a digest
-                # of what the database holds), introspection (query plans,
-                # pages and the SQLite build, for the cost meter), timefmt, paths
+                # of what the database holds), backup (a checked copy taken
+                # with SQLite's online backup while others write),
+                # introspection (query plans, pages and the SQLite build, for
+                # the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
@@ -141,7 +143,8 @@ One SQLite file per profile: stable's live
 only when its code sits in a version folder under the live folder's
 `versions/` that carries the `installed` marker; anything else is dev, and
 path resolution refuses dev any database, spool or screenshots path in the
-live folder.
+live folder. The one sanctioned read of live data from dev is `dev snapshot`:
+SQLite's online backup of the live database, opened read-only, into dev's.
 Screenshots live on disk; the DB stores paths and extracted text.
 
 Global rules:
