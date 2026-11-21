@@ -89,8 +89,15 @@ def test_comments_are_single_plain_lines(path: Path) -> None:
     code_lines = {
         tok.start[0]
         for tok in tokenize.generate_tokens(io.StringIO(source).readline)
-        if tok.type not in (tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE,
-                            tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER)
+        if tok.type
+        not in (
+            tokenize.COMMENT,
+            tokenize.NL,
+            tokenize.NEWLINE,
+            tokenize.INDENT,
+            tokenize.DEDENT,
+            tokenize.ENDMARKER,
+        )
     }
     for tok in tokenize.generate_tokens(io.StringIO(source).readline):
         if tok.type != tokenize.COMMENT or "noqa" in tok.string or tok.string.startswith("# ---"):

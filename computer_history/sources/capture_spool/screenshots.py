@@ -96,4 +96,3 @@ def _missing_permission(conn: sqlite3.Connection, now: datetime) -> MissingPermi
         return None
     since = first_screenshot_at(conn, NO_PERMISSION_STATUS, after=taken) or refused.at
     return MissingPermission(since, refused.at, now - refused.at <= AGENT_ALIVE_WITHIN)
-

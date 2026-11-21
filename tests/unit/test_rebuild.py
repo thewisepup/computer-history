@@ -113,9 +113,10 @@ def test_rebuild_reproduces_ingested_signals_row_for_row(
     assert observation_rows(conn) == observations
     assert result.signals_before == result.signals_after == 7
     assert result.skipped == 0 and result.failed_ids == ()
-    assert conn.execute(
-        "SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)
-    ).fetchone()[0] == 0
+    assert (
+        conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[0]
+        == 0
+    )
     assert not conn.in_transaction
 
 
@@ -341,9 +342,7 @@ def test_shrinking_to_half_is_allowed(big: sqlite3.Connection) -> None:
 
 def test_allow_shrink_overrides_the_shrink_check(big: sqlite3.Connection) -> None:
     conn = big
-    result = rebuild_signals(
-        conn, lambda source, payload: None, allow_shrink=True
-    )
+    result = rebuild_signals(conn, lambda source, payload: None, allow_shrink=True)
     assert (result.signals_before, result.signals_after) == (WINDOW_EVENTS, 0)
 
 

@@ -324,9 +324,10 @@ def test_poll_writes_observations_and_signals(conn: sqlite3.Connection) -> None:
         (f"{WEB_BUCKET}/5", "github.com", "https://www.github.com/", "GitHub"),
         (f"{WEB_BUCKET}/6", "news.ycombinator.com", "https://news.ycombinator.com/", "HN"),
     ]
-    assert conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[
-        0
-    ] == 0
+    assert (
+        conn.execute("SELECT COUNT(*) FROM signals WHERE source = ?", (AFK_SOURCE,)).fetchone()[0]
+        == 0
+    )
 
 
 def test_payload_is_stored_verbatim_up_to_json_round_trip(conn: sqlite3.Connection) -> None:
@@ -490,9 +491,7 @@ def test_range_never_stores_a_start_clipped_first_copy(conn: sqlite3.Connection)
     long_event = fake.add(WINDOW_BUCKET, 0, 3600, {"app": "Long"})
     fake.add(WINDOW_BUCKET, 60, 10, {"app": "Next"})
     assert ingest_range(conn, fake, at(30), at(90), now=at(120)).inserted == 1
-    assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == [
-        "Next"
-    ]
+    assert [json.loads(r["payload"])["data"]["app"] for r in rows(conn, WINDOW_SOURCE)] == ["Next"]
     ingest_range(conn, fake, at(0), at(30), now=at(120))
     assert json.loads(rows(conn, WINDOW_SOURCE)[0]["payload"]) == long_event
 

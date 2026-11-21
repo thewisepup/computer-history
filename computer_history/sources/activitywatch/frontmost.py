@@ -59,4 +59,3 @@ def _span(raw: Any) -> AppSpan | None:
     except MALFORMED_EVENT:
         return None
     return None if app is None else AppSpan(start, end, app)
-

@@ -1,35 +1,35 @@
 """Synthetic datasets: believable activity built through the real ingest path.
 
-    generate.py         the inputs (persona, scenario, tier, heavy, seed) -> one timeline
-          |             persona.py: who the user is, as typed config, and a heavier user
-          |             developer.py: the developer persona
-          |             content_creator.py: the content-creator persona
-          |             days.py: the ordinary days a persona lives through
-          |             scenarios.py: what happens, placed on the ordinary timeline
-          |             timeline.py: stretches and faults, in fixed UTC time
-          |             spans.py: (start, end) spans merged, intersected and complemented
-          |             seeds.py: one seeded random generator per part
-          |
-      renderer.py       what a renderer is: timeline -> one source family's raw data
-      activitywatch.py  window, AFK and web buckets as the watchers leave them
-          |             afk.py: the AFK spans aw-watcher-afk reports
-          |             aw_api.py: the buckets served in process, as the real API
-      spool.py          the capture agent's records, in finished one-minute spool files
-          |             captures.py: the records the agent writes, by its schedule
-          |             screenshots.py: the screenshot each capture takes, kept or a duplicate
-          |
-      build.py          render, backfill and poll into a new database, at a fixed now
-      manifest.py       the true answers, from the timeline and never the database
-          |             gaps.py: the stretches each source leaves unobserved, and explained gaps
-          |
-      cache.py          built datasets per user, keyed by inputs and code, renamed into place
-      devdb.py          a cached dataset copied out for local use, never over the live database
-          |
-      operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
-      meter.py          the statements, VM steps, full scans and pages one operation costs
-      gate.py           those costs per operation and dataset against the committed baseline
-          |             baseline.py: the committed costs, one file per SQLite version
-      bench.py          each operation's median wall-clock time against this machine's baseline
+generate.py         the inputs (persona, scenario, tier, heavy, seed) -> one timeline
+      |             persona.py: who the user is, as typed config, and a heavier user
+      |             developer.py: the developer persona
+      |             content_creator.py: the content-creator persona
+      |             days.py: the ordinary days a persona lives through
+      |             scenarios.py: what happens, placed on the ordinary timeline
+      |             timeline.py: stretches and faults, in fixed UTC time
+      |             spans.py: (start, end) spans merged, intersected and complemented
+      |             seeds.py: one seeded random generator per part
+      |
+  renderer.py       what a renderer is: timeline -> one source family's raw data
+  activitywatch.py  window, AFK and web buckets as the watchers leave them
+      |             afk.py: the AFK spans aw-watcher-afk reports
+      |             aw_api.py: the buckets served in process, as the real API
+  spool.py          the capture agent's records, in finished one-minute spool files
+      |             captures.py: the records the agent writes, by its schedule
+      |             screenshots.py: the screenshot each capture takes, kept or a duplicate
+      |
+  build.py          render, backfill and poll into a new database, at a fixed now
+  manifest.py       the true answers, from the timeline and never the database
+      |             gaps.py: the stretches each source leaves unobserved, and explained gaps
+      |
+  cache.py          built datasets per user, keyed by inputs and code, renamed into place
+  devdb.py          a cached dataset copied out for local use, never over the live database
+      |
+  operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
+  meter.py          the statements, VM steps, full scans and pages one operation costs
+  gate.py           those costs per operation and dataset against the committed baseline
+      |             baseline.py: the committed costs, one file per SQLite version
+  bench.py          each operation's median wall-clock time against this machine's baseline
 """
 
 from computer_history.synthetic.baseline import (

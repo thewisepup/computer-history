@@ -14,6 +14,10 @@ if ! "$PY" -m ruff check --fix --exit-non-zero-on-fix computer_history tests; th
   echo "pre-commit: ruff failed or fixed files; review, re-stage, and commit again" >&2
   exit 1
 fi
+if ! "$PY" -m ruff format --exit-non-zero-on-format computer_history tests; then
+  echo "pre-commit: ruff formatted files; review, re-stage, and commit again" >&2
+  exit 1
+fi
 "$PY" -m pytest -q tests/unit
 if ! "$PY" -m pyright --version >/dev/null 2>&1; then
   echo "pre-commit: pyright not found in $PY; run \"$PY\" -m pip install -e '.[test,dev]'" >&2

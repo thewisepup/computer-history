@@ -100,9 +100,7 @@ def capture_health(
     if start < end:
         agreement = app_agreement(
             records,
-            _app_spans(
-                conn, client, buckets, start - APP_TOLERANCE, end + APP_TOLERANCE, hostname
-            ),
+            _app_spans(conn, client, buckets, start - APP_TOLERANCE, end + APP_TOLERANCE, hostname),
             start=start,
             end=end,
         )
