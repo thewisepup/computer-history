@@ -21,3 +21,10 @@ def after_profile_line(out: str) -> str:
     first, _, rest = out.partition("\n")
     assert first.startswith("Profile "), out
     return rest
+
+
+def section(out: list[str], title: str) -> list[str]:
+    """The indented lines under a section title in a command's output."""
+    start = out.index(title) + 1
+    end = next((i for i in range(start, len(out)) if not out[i].startswith("  ")), len(out))
+    return out[start:end]

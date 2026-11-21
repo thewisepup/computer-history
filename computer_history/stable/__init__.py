@@ -7,7 +7,8 @@
         |                     and the walk to the newest one that does
         +-- versions.py       build a commit into its marked version folder and point
         |                     current at it, undoing it all on failure; the pointers
-        +-- launch_agents.py  the plists, loading and removing them, and what
+        +-- launch_agents.py  the plists (the backend, the watchdog and ActivityWatch
+        |                     at login), loading and removing them, and what
         |                     launchd says about each agent for status
         +-- layout.py         where the versions, pointers, link, plists and logs live
 
@@ -17,11 +18,17 @@ Everything that reaches launchctl, GitHub or uv goes through the host adapter it
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.launch_agents import (
+    ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
     LOAD_ATTEMPTS,
     RESTART_THROTTLE_SECONDS,
+    STABLE_AGENTS,
     STOPGAP_LABEL,
+    WATCHDOG,
+    WATCHDOG_INTERVAL_SECONDS,
     AgentStatus,
+    LaunchAgent,
+    Schedule,
     agent_statuses,
 )
 from computer_history.stable.layout import (
@@ -33,16 +40,22 @@ from computer_history.stable.layout import (
 from computer_history.stable.versions import pointed, version_name
 
 __all__ = [
+    "ACTIVITYWATCH_AT_LOGIN",
     "BACKEND",
     "CAPTURE_AGENT_LABEL",
     "LOAD_ATTEMPTS",
     "PACKAGES_FILE_NAME",
     "RELEASE_GATE",
     "RESTART_THROTTLE_SECONDS",
+    "STABLE_AGENTS",
     "STOPGAP_LABEL",
+    "WATCHDOG",
+    "WATCHDOG_INTERVAL_SECONDS",
     "AgentStatus",
     "InstallFailed",
+    "LaunchAgent",
     "Layout",
+    "Schedule",
     "agent_statuses",
     "install",
     "pointed",

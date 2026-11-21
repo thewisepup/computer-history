@@ -33,7 +33,8 @@ def write_stopgap_plist(layout: Layout) -> Path:
 
 
 class FakeHost:
-    """Commits and check runs as scripted, a build that lays out a venv, and launchd as a dict.
+    """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, and
+    ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups, and loads can fail busy first.
     """
@@ -49,6 +50,9 @@ class FakeHost:
         job_error: str | None = None,
         unload_lingers: int = 0,
         busy_loads: int = 0,
+        activitywatch_running: bool = True,
+        opening_starts_activitywatch: bool = True,
+        notify_error: str | None = None,
     ) -> None:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
@@ -59,6 +63,10 @@ class FakeHost:
         self.unload_lingers = unload_lingers
         self.busy_loads = busy_loads
         self.lingering: dict[str, int] = {}
+        self.running_activitywatch = activitywatch_running
+        self.opening_starts_activitywatch = opening_starts_activitywatch
+        self.notify_error = notify_error
+        self.notifications: list[tuple[str, str]] = []
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -108,3 +116,18 @@ class FakeHost:
         if self.jobs.pop(label, None) is None:
             raise HostError(f"{label} is not loaded")
         self.lingering[label] = self.unload_lingers
+
+    def activitywatch_running(self) -> bool:
+        self.calls.append(("activitywatch_running", ""))
+        return self.running_activitywatch
+
+    def open_activitywatch(self) -> None:
+        self.calls.append(("open_activitywatch", ""))
+        if self.opening_starts_activitywatch:
+            self.running_activitywatch = True
+
+    def notify(self, title: str, message: str) -> None:
+        self.calls.append(("notify", message))
+        if self.notify_error is not None:
+            raise HostError(self.notify_error)
+        self.notifications.append((title, message))

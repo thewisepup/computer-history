@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from computer_history.host.contract import (
     COMMAND_NAME,
+    OPEN_ACTIVITYWATCH,
     CheckOutcome,
     CheckRun,
     HostError,
@@ -33,10 +34,20 @@ LAUNCHCTL_BUSY_CODES = frozenset({5, 37})  # EIO, EALREADY: a boot-out still in 
 COMMAND_TIMEOUT_SECONDS = 600
 RUNNING_STATE = re.compile(r"^\s*state = running\s*$", re.MULTILINE)
 PID_LINE = re.compile(r"^\s*pid = (\d+)\s*$", re.MULTILINE)
+PGREP = "/usr/bin/pgrep"
+PGREP_NONE_FOUND = 1
+ACTIVITYWATCH_PROCESS = "aw-qt"
+OSASCRIPT = "/usr/bin/osascript"
+NOTIFY_SCRIPT = (
+    "on run argv",
+    "display notification (item 2 of argv) with title (item 1 of argv)",
+    "end run",
+)
 
 
 class LiveHost:
-    """The host adapter for this Mac: launchctl in the login session, GitHub's API, uv."""
+    """The host adapter for this Mac: launchctl in the login session, GitHub's API, uv, pgrep,
+    open and osascript."""
 
     def main_commits(self, limit: int) -> list[str]:
         commits = _github(f"/commits?sha=main&per_page={limit}", "list main's newest commits")
@@ -98,6 +109,20 @@ class LiveHost:
 
     def unload(self, label: str) -> None:
         _run([LAUNCHCTL, "bootout", f"{_domain()}/{label}"], f"boot out {label}")
+
+    def activitywatch_running(self) -> bool:
+        doing = "look for ActivityWatch's process"
+        found = _command([PGREP, "-x", "-U", str(os.getuid()), ACTIVITYWATCH_PROCESS], doing)
+        if found.returncode not in (0, PGREP_NONE_FOUND):
+            raise HostError(_failure(doing, found))
+        return found.returncode == 0
+
+    def open_activitywatch(self) -> None:
+        _run(list(OPEN_ACTIVITYWATCH), "open ActivityWatch")
+
+    def notify(self, title: str, message: str) -> None:
+        script = [arg for line in NOTIFY_SCRIPT for arg in ("-e", line)]
+        _run([OSASCRIPT, *script, title, message], "post a notification")
 
 
 def _domain() -> str:

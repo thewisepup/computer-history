@@ -1,6 +1,7 @@
 """The capture spool adapter: the capture agent's window text and screenshot records.
 
-    spool folder (paths.py: --spool-path, $COMPUTER_HISTORY_SPOOL, or beside the database)
+    spool folder (paths.py: --spool-path, $COMPUTER_HISTORY_SPOOL, or beside the database,
+          |       where the agent's config file sits too)
           |
       spool.py       finished *.jsonl files oldest first (never open.part or agent.lock),
           |          read with what tells the file apart, removed once stored, or set
@@ -56,6 +57,7 @@ from computer_history.sources.capture_spool.normalize import (
 )
 from computer_history.sources.capture_spool.paths import (
     SPOOL_ENV_VAR,
+    agent_config_path,
     configured_spool_path,
     resolve_spool_path,
 )
@@ -136,6 +138,7 @@ __all__ = [
     "SpoolBacklog",
     "SpoolError",
     "StoredRecord",
+    "agent_config_path",
     "app_agreement",
     "capture_coverage",
     "configured_spool_path",

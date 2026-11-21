@@ -4,11 +4,15 @@ import argparse
 import os
 import sys
 
+from computer_history.host import COMMAND_NAME
 from computer_history.stable import (
     RELEASE_GATE,
     RESTART_THROTTLE_SECONDS,
     STOPGAP_LABEL,
+    WATCHDOG_INTERVAL_SECONDS,
     InstallFailed,
+    LaunchAgent,
+    Schedule,
     install,
     stable_layout,
     uninstall,
@@ -35,13 +39,21 @@ def cmd_install(args: argparse.Namespace) -> int:
     if report.retired_stopgap:
         print(f"  stopgap       {STOPGAP_LABEL} booted out and removed")
     for agent in report.loaded:
-        print(
-            f"  LaunchAgent   {agent.label} loaded: computer-history {' '.join(agent.arguments)},"
-            f" restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
-        )
+        print(f"  LaunchAgent   {agent.label} loaded: {_runs(agent)}")
     if not report.link_on_path:
         print(f"  note: {layout.link.parent} is not on PATH; add it to run computer-history")
     return 0
+
+
+def _runs(agent: LaunchAgent) -> str:
+    command = " ".join(agent.program or (COMMAND_NAME, *agent.arguments))
+    match agent.schedule:
+        case Schedule.KEEP_ALIVE:
+            return f"{command}, restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
+        case Schedule.EVERY_MINUTE:
+            return f"{command}, every {WATCHDOG_INTERVAL_SECONDS}s"
+        case Schedule.AT_LOAD:
+            return f"{command}, once at login"
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:

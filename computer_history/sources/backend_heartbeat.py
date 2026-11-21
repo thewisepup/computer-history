@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 __all__ = [
+    "BackendHeartbeat",
     "backend_heartbeat_path",
     "read_backend_heartbeat",
     "write_backend_heartbeat",

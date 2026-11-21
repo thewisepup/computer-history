@@ -4,48 +4,75 @@ import plistlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
-from computer_history.host import Host, HostError, JobBusy, JobState
+from computer_history.host import OPEN_ACTIVITYWATCH, Host, HostError, JobBusy, JobState
 from computer_history.stable.layout import CAPTURE_AGENT_LABEL, LABEL_PREFIX, Layout
 
 STOPGAP_LABEL = f"{LABEL_PREFIX}.backend"
 RESTART_THROTTLE_SECONDS = 30
+WATCHDOG_INTERVAL_SECONDS = 60
+DISCARDED = "/dev/null"
 UNLOAD_POLL_SECONDS = 0.1
 UNLOAD_WAIT_SECONDS = 5.0
 LOAD_ATTEMPTS = 3
 LOAD_RETRY_SECONDS = 0.5
 
 
+class Schedule(Enum):
+    KEEP_ALIVE = "keep alive"  # run at load, restarted by launchd when it exits
+    EVERY_MINUTE = "every minute"  # run at load, then once a minute
+    AT_LOAD = "at load"  # run once at load
+
+
 @dataclass(frozen=True)
 class LaunchAgent:
-    """A LaunchAgent the stable install runs: the current version's command with these arguments."""
+    """A LaunchAgent the stable install runs: the current version's command with these arguments.
+
+    A program, when given, runs instead of the command, and stdout goes to the log unless quiet.
+    """
 
     name: str
     label: str
     arguments: tuple[str, ...]
+    schedule: Schedule = Schedule.KEEP_ALIVE
+    program: tuple[str, ...] | None = None
+    quiet: bool = False
 
     def plist(self, layout: Layout) -> Path:
         return layout.launch_agents / f"{self.label}.plist"
 
     def render(self, layout: Layout) -> bytes:
-        """The plist: run at load, restarted by launchd when it exits, at most once per throttle."""
+        """The plist: run at load, then kept alive or rerun as its schedule says."""
         log = str(layout.logs / f"{self.name}.log")
-        return plistlib.dumps(
-            {
-                "Label": self.label,
-                "ProgramArguments": [str(layout.command(layout.current)), *self.arguments],
-                "RunAtLoad": True,
-                "KeepAlive": True,
-                "ThrottleInterval": RESTART_THROTTLE_SECONDS,
-                "StandardOutPath": log,
-                "StandardErrorPath": log,
-            }
-        )
+        command = self.program or (str(layout.command(layout.current)), *self.arguments)
+        plist: dict[str, object] = {
+            "Label": self.label,
+            "ProgramArguments": list(command),
+            "RunAtLoad": True,
+            "StandardOutPath": DISCARDED if self.quiet else log,
+            "StandardErrorPath": log,
+        }
+        if self.schedule is Schedule.KEEP_ALIVE:
+            plist |= {"KeepAlive": True, "ThrottleInterval": RESTART_THROTTLE_SECONDS}
+        elif self.schedule is Schedule.EVERY_MINUTE:
+            plist["StartInterval"] = WATCHDOG_INTERVAL_SECONDS
+        return plistlib.dumps(plist)
 
 
 BACKEND = LaunchAgent("backend", f"{LABEL_PREFIX}.ingest", ("ingest", "--watch"))
-STABLE_AGENTS = (BACKEND,)
+WATCHDOG = LaunchAgent(
+    "watchdog", f"{LABEL_PREFIX}.watchdog", ("watchdog",), Schedule.EVERY_MINUTE, quiet=True
+)
+ACTIVITYWATCH_AT_LOGIN = LaunchAgent(
+    "activitywatch",
+    f"{LABEL_PREFIX}.activitywatch",
+    (),
+    Schedule.AT_LOAD,
+    program=OPEN_ACTIVITYWATCH,
+)
+STABLE_AGENTS = (BACKEND, WATCHDOG, ACTIVITYWATCH_AT_LOGIN)
 
 
 @dataclass(frozen=True)

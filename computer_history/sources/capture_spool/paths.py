@@ -7,6 +7,7 @@ from computer_history.store import Profile, refuse_live_in_dev
 
 SPOOL_ENV_VAR = "COMPUTER_HISTORY_SPOOL"
 SPOOL_FOLDER_NAME = "spool"
+AGENT_CONFIG_NAME = "agent-config.json"
 
 
 def configured_spool_path(explicit: str | os.PathLike[str] | None, db_path: Path) -> Path:
@@ -28,3 +29,8 @@ def resolve_spool_path(
     default = db_path.parent / SPOOL_FOLDER_NAME
     refuse_live_in_dev(path, profile, flag="--spool-path", env_var=SPOOL_ENV_VAR, default=default)
     return path
+
+
+def agent_config_path(db_path: Path) -> Path:
+    """The config file the agent and the watchdog read sits beside the database."""
+    return db_path.parent / AGENT_CONFIG_NAME

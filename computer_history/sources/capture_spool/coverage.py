@@ -57,7 +57,14 @@ def capture_coverage(
     )
 
 
-def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterable[Span]) -> str:
+def liveness(
+    last_seen: datetime,
+    *,
+    now: datetime,
+    paused: bool,
+    active: Iterable[Span],
+    alive_within: timedelta = AGENT_ALIVE_WITHIN,
+) -> str:
     """Whether the agent appears alive: 'yes', 'no', 'paused' or 'unknown'.
 
     It is 'no' only when aw-afk shows the user active for longer than the tolerance since the last
@@ -65,7 +72,7 @@ def liveness(last_seen: datetime, *, now: datetime, paused: bool, active: Iterab
     """
     if paused:
         return "paused"
-    if now - last_seen <= AGENT_ALIVE_WITHIN:
+    if now - last_seen <= alive_within:
         return "yes"
     stretches = _clip(_merge(active), last_seen + CAPTURE_TOLERANCE, now)
     attended = sum((b - a for a, b in stretches), timedelta())

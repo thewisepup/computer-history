@@ -18,6 +18,8 @@
                      bucket's newest, still-growing event
       frontmost.py   the app in front on this host, for status: its stored aw-window
                      spans plus each of its window buckets' newest, still-growing event
+      watchers.py    where each of this host's AFK and window buckets last advanced,
+                     for the watchdog
 
 An event that may still be growing is held back for a later poll: delayed,
 never lost. Every event starting before a stream's settled-until time is stored.
@@ -62,6 +64,7 @@ from computer_history.sources.activitywatch.pull import (
     pull_bucket,
     pull_source,
 )
+from computer_history.sources.activitywatch.watchers import watcher_ends
 from computer_history.text import (
     MAX_TEXT_LENGTH,
     MAX_URL_LENGTH,
@@ -102,4 +105,5 @@ __all__ = [
     "resume_start",
     "stored_afk_spans",
     "stored_app_spans",
+    "watcher_ends",
 ]

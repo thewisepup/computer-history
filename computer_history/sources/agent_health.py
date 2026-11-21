@@ -40,7 +40,13 @@ from computer_history.sources.capture_spool import (
 from computer_history.sources.contract import SourceUnavailable
 from computer_history.store import SourceSummary, to_utc
 
-__all__ = ["CaptureHealth", "capture_health"]
+__all__ = [
+    "CaptureHealth",
+    "CaptureLiveness",
+    "active_spans",
+    "capture_health",
+    "capture_liveness",
+]
 
 
 @dataclass(frozen=True)
@@ -185,3 +191,58 @@ def _app_spans(
         except SourceUnavailable:
             pass
     return spans
+
+
+@dataclass(frozen=True)
+class CaptureLiveness:
+    """The agent's newest record, stored or still in the spool, and whether it looks alive."""
+
+    last_record: datetime | None
+    alive: str
+    spool_error: str | None = None
+
+
+def active_spans(
+    conn: sqlite3.Connection | None, client: AWApi | None, start: datetime, end: datetime
+) -> list[tuple[datetime, datetime]]:
+    """The stretches aw-afk shows the user active, from stored spans and ActivityWatch's newest."""
+    stored = [] if conn is None else stored_afk_spans(conn, start, end)
+    if client is not None and (buckets := _buckets(client)) is not None:
+        try:
+            stored.extend(newest_afk_spans(client, buckets))
+        except SourceUnavailable:
+            pass
+    return [(span.start, span.end) for span in stored if not span.afk]
+
+
+def capture_liveness(
+    conn: sqlite3.Connection | None,
+    spool_folder: Path,
+    *,
+    now: datetime,
+    active: Iterable[tuple[datetime, datetime]],
+    watched_since: datetime,
+    alive_within: timedelta,
+) -> CaptureLiveness:
+    """Judge the agent alive as status does, counting silence from no earlier than watched_since.
+
+    The last record is None when the agent has never written one.
+    """
+    now = to_utc(now)
+    try:
+        unstored, spool_error = spool_backlog(spool_folder).newest, None
+    except SpoolError as exc:
+        unstored, spool_error = None, str(exc)
+    stored = None if conn is None else newest_stored(conn, until=now)
+    found = [record for record in (stored, unstored) if record is not None]
+    if not found:
+        return CaptureLiveness(None, "unknown", spool_error)
+    at, kind = max(found, key=lambda record: record[0])
+    alive = liveness(
+        max(at, watched_since),
+        now=now,
+        paused=kind == PAUSED_KIND,
+        active=active,
+        alive_within=alive_within,
+    )
+    return CaptureLiveness(at, alive, spool_error)
