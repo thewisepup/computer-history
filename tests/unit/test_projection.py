@@ -230,7 +230,7 @@ def test_watch_logs_an_unprojected_stream_and_keeps_polling(
         watch(conn, [spool], report=cli_ingest.log_cycle, interval=60, sleep=sleep)
 
     lines = [r for r in caplog.records if r.name == cli_ingest.__name__]
-    assert [r.levelno for r in lines] == [logging.WARNING, logging.WARNING]
+    assert [r.levelno for r in lines] == [logging.ERROR, logging.ERROR]
     assert all(
         "ingest failed on ocr: no source adapter projects observations from 'ocr'" in r.getMessage()
         for r in lines

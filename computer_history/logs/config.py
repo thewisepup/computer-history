@@ -64,7 +64,7 @@ def configure(command: str, *, level: int, stderr_level: int, log_dir: Path) -> 
     context = _Context()
     stderr = logging.StreamHandler(sys.stderr)
     stderr.setLevel(stderr_level)
-    stderr.setFormatter(TextFormatter())
+    stderr.setFormatter(TextFormatter(tracebacks=stderr_level <= logging.DEBUG))
     stderr.addFilter(context)
     package.addHandler(stderr)
     path = log_dir / LOG_FILE_NAME

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -12,6 +13,7 @@ from typing import Any
 import pytest
 from db_states import stored_progress
 from fake_aw import FakeAW
+from log_records import logged
 
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
@@ -382,6 +384,7 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     with path.open("ab") as handle:
         handle.write(b"\xff\xfe broken utf-8\n")
     kept = path.read_bytes()
+    caplog.set_level(logging.DEBUG)
 
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
@@ -392,10 +395,13 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     assert [row[3] for row in observations(conn)] == good
     assert not path.exists()
     assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
-    assert "skipped 7 unusable record(s)" in caplog.text
-    assert "line 3: unknown version 2" in caplog.text
-    assert "it has 11 unusable line(s), 4 of no readable kind" in caplog.text
-    assert "its usable lines are stored" in caplog.text
+    [skipped] = [r for r in logged(caplog, "unusable spool records skipped")]
+    assert (skipped["rejected"], skipped["first_line"]) == (7, 3)
+    reasons = {r["line"]: r["reason"] for r in logged(caplog, "unusable spool record")}
+    assert reasons[3] == "unknown version 2"
+    [aside] = logged(caplog, "spool file set aside")
+    assert "it has 11 unusable line(s), 4 of no readable kind" in str(aside["reason"])
+    assert "its usable lines are stored" in str(aside["reason"])
 
 
 @pytest.mark.parametrize(
@@ -461,7 +467,8 @@ def test_an_unreadable_file_is_moved_aside_and_the_rest_ingested(
     assert summary.ok and summary.outcomes[WINDOW_TEXT_SOURCE].inserted == 1
     assert aside.read_text(encoding="utf-8") == record(1, T0) + "\n"
     assert finished_files(spool_dir) == []
-    assert f"moved spool file {file_name(1)}" in caplog.text and "cannot read it" in caplog.text
+    [aside] = logged(caplog, "spool file set aside")
+    assert aside["file"] == file_name(1) and "cannot read it" in str(aside["reason"])
 
 
 def test_text_is_capped_at_ten_thousand_characters_and_titles_keep_theirs(
@@ -598,7 +605,8 @@ def test_cli_ingest_honors_the_spool_flag_and_prints_rejected_records(
 
     assert code == 0
     assert re.search(r"ax-text\s+inserted\s+1\s+skipped\s+0\s+held back\s+0\s+rejected 1", out)
-    assert "it has 2 unusable line(s), 1 of no readable kind" in caplog.text
+    [aside] = logged(caplog, "spool file set aside")
+    assert "it has 2 unusable line(s), 1 of no readable kind" in str(aside["reason"])
     assert finished_files(elsewhere) == []
 
 

@@ -106,6 +106,21 @@ def test_the_text_line_shows_the_message_and_plain_fields_but_not_nested_ones() 
     ]
 
 
+def test_without_tracebacks_the_text_line_ends_with_the_exception_alone() -> None:
+    doc = {
+        "ts": "2026-11-20T14:00:00.000+00:00",
+        "level": "error",
+        "logger": "computer_history.cli.ingest",
+        "msg": "cycle failed",
+        "exc": "Traceback (most recent call last):\nsqlite3.OperationalError: no such table: x",
+    }
+
+    line = text_line(doc, tracebacks=False)
+
+    assert line.endswith('cycle failed  exc="sqlite3.OperationalError: no such table: x"')
+    assert "\n" not in line
+
+
 def test_commands_with_their_own_output_keep_info_out_of_stderr(
     log_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

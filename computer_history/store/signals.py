@@ -144,11 +144,16 @@ def rebuild_signals(
                 if len(failed_ids) < MAX_LOGGED_FAILURES:
                     failed_ids.append(observation_id)
                     log.warning(
-                        "rebuild-signals: skipping observation %d (%s): cannot project its"
-                        " payload: %r",
-                        observation_id,
-                        source,
-                        exc,
+                        "observation skipped: its payload cannot be projected",
+                        extra={
+                            "observation_id": observation_id,
+                            "source": source,
+                            "error": type(exc).__name__,
+                        },
+                    )
+                    log.debug(
+                        "projection error",
+                        extra={"observation_id": observation_id, "error": repr(exc)},
                     )
                 check_failures(total)
                 continue
@@ -163,8 +168,8 @@ def rebuild_signals(
             write_signals(conn, batch)
         if failed > MAX_LOGGED_FAILURES:
             log.warning(
-                "rebuild-signals: %d more observations skipped (not logged individually)",
-                failed - MAX_LOGGED_FAILURES,
+                "more observations skipped, not logged one by one",
+                extra={"skipped": failed - MAX_LOGGED_FAILURES},
             )
         check_failures(total)
         if (

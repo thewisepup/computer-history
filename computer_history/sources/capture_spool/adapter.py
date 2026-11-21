@@ -68,14 +68,16 @@ class CaptureSpool:
             return self._empty(partial(self._drop, stream, path), more)
         except OSError as exc:
             return self._empty(partial(self._unreadable_by, stream, path, str(exc)), more)
-        read = _read_records(lines, now, stream)
+        read = _read_records(lines, now, stream, path.name)
         if read.rejected:
             log.warning(
-                "skipped %d unusable record(s) in spool file %s for %s (first, line %d: %s)",
-                read.rejected,
-                path.name,
-                stream,
-                *read.first_problem,
+                "unusable spool records skipped",
+                extra={
+                    "file": path.name,
+                    "stream": stream,
+                    "rejected": read.rejected,
+                    "first_line": read.first_problem,
+                },
             )
         finish: Finish = remove_finished
         if read.file_unusable:
@@ -118,7 +120,8 @@ class CaptureSpool:
         stored_by_any = any(key[0] == path for key in self._stored)
         if stored_by_any or len(failed) < len(STREAM_KINDS):
             log.warning(
-                "cannot read spool file %s for %s, will retry: %s", path.name, stream, problem
+                "spool file unreadable, will retry",
+                extra={"file": path.name, "stream": stream, "error": problem},
             )
             self._drop(stream, path)
             return
@@ -151,18 +154,18 @@ class _Read:
     observations: tuple[Observation, ...]
     rejected: int
     latest: datetime | None
-    first_problem: tuple[int, str]
+    first_problem: int
     file_usable: int
     file_unusable: int
     file_kindless: int
 
 
-def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
+def _read_records(lines: list[bytes], now: datetime, stream: str, name: str) -> _Read:
     kinds = STREAM_KINDS[stream]
     observations: list[Observation] = []
     rejected = usable = unusable = kindless = 0
     latest: datetime | None = None
-    first_problem = (0, "")
+    first_problem = 0
     for number, raw in enumerate(lines, start=1):
         if not raw.strip():
             continue
@@ -175,8 +178,11 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
             kindless += kind is None
             if kind in kinds:
                 rejected += 1
-                if rejected == 1:
-                    first_problem = (number, str(exc))
+                first_problem = first_problem or number
+            log.debug(
+                "unusable spool record",
+                extra={"file": name, "stream": stream, "line": number, "reason": str(exc)},
+            )
             continue
         usable += 1
         if record.kind not in kinds:
@@ -192,4 +198,7 @@ def _read_records(lines: list[bytes], now: datetime, stream: str) -> _Read:
 def _move_aside(path: Path, *, reason: str) -> None:
     target = set_aside(path)
     if target is not None:
-        log.warning("moved spool file %s to %s: %s", path.name, target, reason)
+        log.warning(
+            "spool file set aside",
+            extra={"file": path.name, "target": str(target), "reason": reason},
+        )

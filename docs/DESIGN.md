@@ -80,6 +80,8 @@ computer_history/
                 # of what the database holds), introspection (query plans,
                 # pages and the SQLite build, for the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
+                # ingest_health (the watch loop's failure streak, saved beside
+                # the database, and its notifications),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
                 # rebuild-signals), commit (the one write step, a pull, its
@@ -119,6 +121,8 @@ computer_history/
                 # + baseline: one file per SQLite version), bench (median
                 # wall-clock times against this machine's last baseline)
   text.py       # text/URL normalization shared by every source
+  logs/         # config (one setup per run: run id, stderr text, rotating JSON
+                # lines), formatters, query (read back for `logs`), notify
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
   api/          # FastAPI routes under /api

@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from db_states import corrupt_payloads
 from fake_aw import FakeAW, at
+from log_records import logged
 from projectors import AW
 
 from computer_history import cli
@@ -229,7 +230,8 @@ def test_malformed_payload_is_skipped_counted_and_logged(
     assert result.skipped == 1 and result.failed_ids == (bad,)
     assert result.signals_after == len(expected) - 1
     assert signal_rows(conn) == [row for row in expected if row[0] != bad]
-    assert any(f"observation {bad} " in r.getMessage() for r in caplog.records)
+    skipped = logged(caplog, "observation skipped: its payload cannot be projected")
+    assert [r["observation_id"] for r in skipped] == [bad]
 
 
 def test_malformed_afk_payload_is_not_a_failure(ingested: sqlite3.Connection) -> None:
@@ -258,9 +260,9 @@ def test_only_the_first_failures_are_logged_individually(
         result = rebuild_signals(conn, AW)
     assert result.skipped == 3
     assert result.failed_ids == (min(bad),)
-    messages = [r.getMessage() for r in caplog.records]
-    assert sum("skipping observation" in m for m in messages) == 1
-    assert any("2 more observations skipped" in m for m in messages)
+    assert len(logged(caplog, "observation skipped: its payload cannot be projected")) == 1
+    [more] = logged(caplog, "more observations skipped, not logged one by one")
+    assert more["skipped"] == 2
 
 
 def test_more_than_half_failing_aborts_and_rolls_back(ingested: sqlite3.Connection) -> None:

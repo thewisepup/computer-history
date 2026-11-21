@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 _CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")
@@ -47,12 +48,18 @@ class JsonFormatter(_DocFormatter):
 class TextFormatter(_DocFormatter):
     """A record as one readable line: time, level, logger, message and its plain fields."""
 
+    def __init__(self, *, tracebacks: bool = True) -> None:
+        super().__init__()
+        self.tracebacks = tracebacks
+
     def format(self, record: logging.LogRecord) -> str:
-        return text_line(self.doc(record))
+        return text_line(self.doc(record), tracebacks=self.tracebacks)
 
 
-def text_line(doc: dict[str, object], *, with_run: bool = False) -> str:
-    """One JSON log record as a text line, its traceback indented below it."""
+def text_line(
+    doc: Mapping[str, object], *, with_run: bool = False, tracebacks: bool = True
+) -> str:
+    """One JSON log record as a text line, with its traceback indented below or its last line."""
     ts = datetime.fromisoformat(str(doc.get("ts"))).astimezone().strftime(_TEXT_TIME)
     level = str(doc.get("level", "")).upper()
     logger = str(doc.get("logger", "")).removeprefix(_PACKAGE_PREFIX)
@@ -68,8 +75,10 @@ def text_line(doc: dict[str, object], *, with_run: bool = False) -> str:
     if fields:
         line += f"  {fields}"
     exc = doc.get("exc")
-    if isinstance(exc, str):
+    if isinstance(exc, str) and tracebacks:
         line += "".join(f"\n  | {escape(part)}" for part in exc.splitlines())
+    elif isinstance(exc, str):
+        line += f"  exc={_value(exc.splitlines()[-1] if exc else exc)}"
     return line
 
 

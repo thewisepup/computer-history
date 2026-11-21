@@ -45,11 +45,15 @@ class IngestOutcome:
 
 @dataclass(frozen=True)
 class CycleSummary:
-    """One poll's outcomes for the streams that committed, and the failures that cut it short."""
+    """One poll's outcomes for the streams that committed, and the failures that cut it short.
+
+    seconds is how long the poll took.
+    """
 
     at: datetime
     outcomes: dict[str, IngestOutcome] = field(default_factory=dict[str, IngestOutcome])
     failures: tuple[StreamFailure, ...] = ()
+    seconds: float = field(default=0.0, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -57,13 +61,18 @@ class CycleSummary:
 
 
 def poll(
-    conn: sqlite3.Connection, sources: Sequence[Source], *, now: datetime | None = None
+    conn: sqlite3.Connection,
+    sources: Sequence[Source],
+    *,
+    now: datetime | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> CycleSummary:
     """Poll every stream of every source once, pulling again while a pull has more, one commit each.
 
     An unavailable source skips the rest of its streams, a busy database ends the cycle, and a
     stream whose observations cannot be projected is skipped.
     """
+    began = monotonic()
     at = datetime.now(UTC) if now is None else now
     project = projector_for(sources)
     outcomes: dict[str, IngestOutcome] = {}
@@ -86,7 +95,7 @@ def poll(
             failures.append(failure)
             if failure.kind is FailureKind.DATABASE_BUSY:
                 break
-    return CycleSummary(at, outcomes, tuple(failures))
+    return CycleSummary(at, outcomes, tuple(failures), monotonic() - began)
 
 
 def _claim(seen: set[str], streams: list[str]) -> None:

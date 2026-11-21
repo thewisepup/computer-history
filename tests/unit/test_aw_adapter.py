@@ -688,11 +688,22 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         capture_spool,
         commit,
         contract,
+        ingest_health,
         projection,
         runner,
     )
 
-    modules = (contract, commit, projection, runner, backfill, aw, capture_spool, agent_health)
+    modules = (
+        contract,
+        commit,
+        projection,
+        runner,
+        ingest_health,
+        backfill,
+        aw,
+        capture_spool,
+        agent_health,
+    )
     assert sources.__all__ == [name for module in modules for name in module.__all__]
     for module in modules:
         for name in module.__all__:

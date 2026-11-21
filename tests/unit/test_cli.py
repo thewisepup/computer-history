@@ -214,9 +214,9 @@ def test_watch_survives_aw_outage_and_logs_each_cycle(
     assert len(sleeps) == 2
     assert all(0 <= s <= POLL_INTERVAL_SECONDS for s in sleeps)
     failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
-    assert failed.levelno == logging.WARNING
+    assert failed.levelno == logging.ERROR
     assert UNREACHABLE in failed.getMessage()
-    assert "retrying in 60s" in failed.getMessage()
+    assert vars(failed)["retry_s"] == POLL_INTERVAL_SECONDS
     assert succeeded.levelno == logging.INFO
     assert "aw-window +1" in succeeded.getMessage()
     assert table_counts(conn)["observations"] == 2
@@ -314,10 +314,11 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
 
     assert sleeps == [45.0, 58.0]
     failed, succeeded = [r for r in caplog.records if r.name == cli_ingest.__name__]
-    assert failed.levelno == logging.WARNING
+    assert failed.levelno == logging.ERROR
     assert failed.getMessage() == (
-        "ingest failed on aw-afk: database error: database is locked; retrying in 45s"
+        "cycle failed: ingest failed on aw-afk: database error: database is locked"
     )
+    assert vars(failed)["retry_s"] == 45
     assert "aw-afk +1" in succeeded.getMessage()
 
 
@@ -340,7 +341,7 @@ def test_ingest_watch_exits_zero_on_ctrl_c(
     assert code == 0
     assert "Traceback" not in err
     messages = [r.getMessage() for r in caplog.records if r.name == cli_ingest.__name__]
-    assert any("every 60s" in m for m in messages)
+    assert messages[0] == "watching (Ctrl-C to stop)"
     assert messages[-1] == "stopped"
     assert counts_in(db_path)["observations"] == 1
 

@@ -10,6 +10,8 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
       |
   runner.py      poll every stream of every source, once or in the watch loop,
       |          pulling again while a pull says there is more
+  ingest_health.py  the watch loop's failure streak: saved beside the database
+      |          after every cycle, with a notification when it lasts and ends
   backfill.py    plan a stream's history in chunks, then ingest them oldest first
       |
   projection.py  routes each observation to the projector of the source that
@@ -137,6 +139,18 @@ from computer_history.sources.contract import (
     SourceUnavailable,
     StreamProjector,
 )
+from computer_history.sources.ingest_health import (
+    ALERT_AFTER_FAILURES,
+    ALERT_REPEAT,
+    HEALTH_FILE_NAME,
+    HEALTH_STALE_AFTER,
+    FailureStreak,
+    IngestHealth,
+    Recovery,
+    health_path,
+    read_health,
+    write_health,
+)
 from computer_history.sources.projection import (
     KNOWN_SOURCES,
     projector_for,
@@ -172,6 +186,16 @@ __all__ = [
     "IngestOutcome",
     "poll",
     "watch",
+    "ALERT_AFTER_FAILURES",
+    "ALERT_REPEAT",
+    "HEALTH_FILE_NAME",
+    "HEALTH_STALE_AFTER",
+    "FailureStreak",
+    "IngestHealth",
+    "Recovery",
+    "health_path",
+    "read_health",
+    "write_health",
     "BACKFILL_CHUNK",
     "BackfillPlan",
     "BackfillProgress",

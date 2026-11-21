@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from db_states import stored_progress, write_locked
 from fake_aw import FakeAW
+from log_records import logged
 from projectors import no_signal
 
 from computer_history import cli
@@ -563,7 +564,8 @@ def test_unreadable_event_before_the_start_fails_safe(conn, caplog) -> None:
     plan = window_plan(fake, conn)
     assert plan.earlier == ((WINDOW_BUCKET, None),)
     assert not plan.covers_history
-    assert "malformed ActivityWatch event in " + WINDOW_BUCKET in caplog.text
+    [warned] = logged(caplog, "malformed event before the start, taken as uncovered history")
+    assert warned["bucket"] == WINDOW_BUCKET
     result = backfill(conn, fake, plan)
     assert result.inserted == DAYS and result.progress is BackfillProgress.NOT_COVERED
     assert get_progress(conn, WINDOW_SOURCE) is None

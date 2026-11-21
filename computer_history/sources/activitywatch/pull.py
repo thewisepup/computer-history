@@ -6,7 +6,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
 from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
@@ -45,7 +45,11 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
             raise ValueError(f"bad id {event_id!r}")
         start, end = event_times(raw)
     except MALFORMED_EVENT as exc:
-        log.warning("skipping malformed ActivityWatch event in %s: %s", bucket_id, exc)
+        event_id = cast("dict[str, Any]", raw).get("id") if isinstance(raw, dict) else None
+        log.warning(
+            "malformed event skipped",
+            extra={"bucket": bucket_id, "event_id": event_id, "error": repr(exc)},
+        )
         return None
     return _Event(raw, event_id, start, end)
 
@@ -117,6 +121,15 @@ def pull_bucket(
                     continue
         if event.start >= latest_start and event.end >= settled_before:
             held.append(event)
+            log.debug(
+                "event held back: still growing",
+                extra={
+                    "bucket": bucket_id,
+                    "event_id": event.id,
+                    "ends": event.end.isoformat(),
+                    "title": _shown(event.raw),
+                },
+            )
         else:
             observations.append(_observation(source, bucket_id, event))
 
@@ -182,12 +195,23 @@ def newest_events(
 def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:
     raw = client.get_event(bucket_id, clipped.id)
     if raw is None:
-        log.warning("ActivityWatch event %s/%s vanished during the pull", bucket_id, clipped.id)
+        log.warning(
+            "event vanished during the pull", extra={"bucket": bucket_id, "event_id": clipped.id}
+        )
         return None
     event = _parse_event(raw, bucket_id)
     if event is not None and event.id != clipped.id:
         raise AWError(f"ActivityWatch returned event {event.id} for {bucket_id}/{clipped.id}")
     return event
+
+
+def _shown(raw: dict[str, Any]) -> str | None:
+    data: Any = raw.get("data")
+    if not isinstance(data, dict):
+        return None
+    fields = cast("dict[str, Any]", data)
+    shown = fields.get("title") or fields.get("url") or fields.get("status")
+    return None if shown is None else str(shown)
 
 
 def _observation(source: str, bucket_id: str, event: _Event) -> Observation:

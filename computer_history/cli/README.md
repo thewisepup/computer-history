@@ -43,12 +43,44 @@ Ingested from http://127.0.0.1:5600/api/0 and .../ComputerHistory/spool into ...
 
 `inserted` is new rows, `skipped` is rows already stored (re-reads are
 harmless), `held back` is ActivityWatch events still growing — they land on a
-later poll. Re-running always inserts 0 for data it already has. `--watch` is
-the long-running collector: one log line per cycle, survives ActivityWatch
-outages and locked databases. A stream whose observations no adapter can
-project is reported (`error on aw-window: no source adapter projects
-observations from 'aw-window'`, exit 1) while the other streams are still
-ingested.
+later poll. Re-running always inserts 0 for data it already has. A stream
+whose observations no adapter can project is reported (`error on aw-window: no
+source adapter projects observations from 'aw-window'`, exit 1) while the
+other streams are still ingested.
+
+`--watch` is the long-running collector. It survives ActivityWatch outages and
+locked databases, and writes one record per cycle to stderr and to the JSON log
+(see [logs](#logs--what-the-commands-did)). Real output from a verification
+run where `ingest_progress` was renamed away for seven cycles:
+
+```
+2026-11-20 16:12:54 INFO    cli.ingest  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=21
+2026-11-20 16:13:54 ERROR   cli.ingest  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=1  exc="sqlite3.OperationalError: no such table: ingest_progress"
+2026-11-20 16:14:54 ERROR   cli.ingest  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=2
+...
+2026-11-20 16:20:54 INFO    cli.ingest  cycle ok: aw-afk +1 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +1 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=6
+2026-11-20 16:20:54 INFO    cli.ingest  ingest recovered  failed_cycles=7 down_since=2026-11-21T00:13:54.901976+00:00
+```
+
+The first failure of a streak carries its traceback in the JSON log. After
+every cycle the watch saves its ingest health to `ingest-health.json` beside
+the database (a file, not a table, so a broken database cannot hide it):
+
+```json
+{
+  "updated_at": "2026-11-21T00:20:54.952761+00:00",
+  "consecutive_failures": 0,
+  "failing_since": null,
+  "last_success_at": "2026-11-21T00:20:54.952761+00:00",
+  "last_error": null
+}
+```
+
+A restarted watch continues the saved streak. After 5 failed cycles in a row
+it posts a macOS notification (`ingest failing for 5 cycles. Run
+\`computer-history status\`.`), again at most hourly while the failures last,
+and `ingest recovered.` once a cycle succeeds. Notifications never name
+captured content; `COMPUTER_HISTORY_NOTIFY=0` turns them off.
 
 `ax-text` and `screenshot` are the capture agent's spool, read in the same
 poll. Each stream stores its own records from each finished `*.jsonl` file in
@@ -78,6 +110,7 @@ computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 ```
 Database:      .../ComputerHistory/history.db (5.2 MB, schema v5)
 ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
+Ingest:        ok, last cycle 2026-11-18 10:10 (20s ago)
 
 Sources:
   aw-window     3,451 observations  latest end 2026-11-18 10:10  settled until 2026-11-18 10:10 (5s behind now)
@@ -110,6 +143,23 @@ Screenshots:
 Rows:
   ...
 ```
+
+`Ingest:` reads the watch's `ingest-health.json` beside the database, before
+the database itself. While cycles fail, status opens with a banner (real
+output, seven cycles into a renamed `ingest_progress`):
+
+```
+!! ingest is FAILING since 2026-11-20 16:13 (7 cycles): aw-afk: no such table: ingest_progress
+
+Database:      .../history.db (112.0 KB + 16.1 KB WAL, schema v5)
+ActivityWatch: yes (http://127.0.0.1:50057/api/0; sources: aw-afk, aw-web, aw-window)
+Ingest:        FAILING since 2026-11-20 16:13 (7 cycles), last cycle 2026-11-20 16:19 (15s ago)
+  last success  2026-11-20 16:12 (7m 15s ago)
+```
+
+A health file not updated for over 5 minutes adds `NOT REPORTING for <time>
+(is \`ingest --watch\` running?)`; with no file the line reads `no \`ingest
+--watch\` has reported yet`.
 
 Read-only: never creates, migrates or writes, and never changes the spool.
 Gaps are reported as unobserved time, never assumed idle, and are checked up
@@ -447,8 +497,6 @@ is created by `ingest` and `backfill` (only once planning succeeds), shown as
 computer-history --db-path /tmp/scratch.db ingest   # or $COMPUTER_HISTORY_DB
 computer-history status --aw-url http://127.0.0.1:5666/api/0
 computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
-```
-
 Every command but `dev` takes `--db-path`; the networked ones (`ingest`, `status`,
 `backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch
