@@ -9,6 +9,7 @@ from pathlib import Path
 
 import computer_history
 from computer_history.cli.backfill import cmd_backfill
+from computer_history.cli.backup import backup_arg, cmd_backup, cmd_restore
 from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
 from computer_history.cli.install import cmd_install, cmd_uninstall
@@ -26,7 +27,9 @@ from computer_history.store import (
 )
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
-DATABASE_COMMANDS = frozenset({"ingest", "status", "rebuild-signals", "backfill"})
+DATABASE_COMMANDS = frozenset(
+    {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore"}
+)
 INSTALL_COMMANDS = frozenset({"install", "uninstall"})
 
 COMMANDS = {
@@ -38,6 +41,14 @@ COMMANDS = {
     "backfill": (
         "One-time ingest of existing ActivityWatch history, in bounded chunks"
         " (idempotent: re-running adds nothing)."
+    ),
+    "backup": (
+        "Take today's backup of the database into the backups folder beside it, checked for"
+        " integrity, keeping the newest seven days (run daily by the stable install)."
+    ),
+    "restore": (
+        "Put a backup in the database's place: the stable install stops its backend first and"
+        " starts it again after. The current database is set aside, never deleted."
     ),
     "install": (
         "Set up the stable install from the newest main commit that passed the release gate,"
@@ -56,6 +67,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "status": cmd_status,
     "rebuild-signals": cmd_rebuild_signals,
     "backfill": cmd_backfill,
+    "backup": cmd_backup,
+    "restore": cmd_restore,
     "install": cmd_install,
     "uninstall": cmd_uninstall,
     "dev": cmd_dev,
@@ -100,6 +113,13 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="allow a rebuild that drops more than half of the existing signals"
                 " (refused by default as a likely mapping bug)",
+            )
+        if name == "restore":
+            sub.add_argument(
+                "backup",
+                type=backup_arg,
+                help="the day of a daily backup (YYYY-MM-DD), or the path of a backup or a"
+                " set-aside database",
             )
         if name == "backfill":
             sub.add_argument(

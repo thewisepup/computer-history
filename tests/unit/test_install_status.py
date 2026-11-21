@@ -13,6 +13,7 @@ from computer_history.sources import backend_heartbeat_path, runner
 from computer_history.stable import (
     BACKEND,
     CAPTURE_AGENT_LABEL,
+    DAILY_BACKUP,
     STOPGAP_LABEL,
     stable_layout,
     version_name,
@@ -137,8 +138,10 @@ def test_status_shows_the_install_and_its_launch_agents(
     assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
     assert install[2:] == ["  previous      none"]
     pid = host.jobs[BACKEND.label].pid
+    backup_pid = host.jobs[DAILY_BACKUP.label].pid
     assert section(out, AGENTS) == [
         f"  backend          loaded, running (pid {pid})  {BACKEND.label}",
+        f"  backup           loaded, running (pid {backup_pid})  {DAILY_BACKUP.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
     ]
 
@@ -154,6 +157,7 @@ def test_status_before_install_flags_the_stopgap_backend(
     assert section(out, INSTALL)[1:] == ["  current       none", "  previous      none"]
     assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
+        f"  backup           not installed  {DAILY_BACKUP.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
         f"  stopgap backend  loaded, running (pid 100)  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
@@ -168,7 +172,7 @@ def test_status_finds_a_running_stopgap_whose_plist_was_deleted(
 
     _, out, _ = run(checkout, *STATUS, host=host)
 
-    assert section(out, AGENTS)[2:] == [
+    assert section(out, AGENTS)[3:] == [
         f"  stopgap backend  loaded, running (pid 100), plist deleted  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
     ]

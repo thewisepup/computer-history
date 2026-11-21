@@ -64,6 +64,30 @@ def backup_database(source: Path, target: Path, *, replace: bool = False) -> Dat
     return DatabaseCopy(target, schema, target.stat().st_size)
 
 
+def restore_database(source: Path, target: Path, aside: Path) -> DatabaseCopy:
+    """Move target and its journal files aside under aside's name, then copy source into target.
+
+    Nothing may have target open, and when the copy fails target is moved back.
+    """
+    if not source.is_file():
+        raise FileNotFoundError(f"no database at {source}")
+    _refuse_in_use(target)
+    if existing_database_files(aside):
+        raise DatabaseExists(f"{aside.parent} already holds {aside.name}")
+    aside.parent.mkdir(parents=True, exist_ok=True)
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for path, to in zip((target, *sidecars(target)), (aside, *sidecars(aside)), strict=True):
+            if path.exists() or path.is_symlink():
+                path.rename(to)
+                moved.append((path, to))
+        return backup_database(source, target)
+    except BaseException:
+        for path, to in reversed(moved):
+            to.rename(path)
+        raise
+
+
 def _refuse_existing(target: Path, replace: bool) -> None:
     in_the_way = existing_database_files(target)
     if not in_the_way:

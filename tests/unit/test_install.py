@@ -12,6 +12,7 @@ from computer_history.cli.profile import NOT_A_CHECKOUT
 from computer_history.host import CheckOutcome
 from computer_history.stable import (
     BACKEND,
+    DAILY_BACKUP,
     LOAD_ATTEMPTS,
     STOPGAP_LABEL,
     Layout,
@@ -179,7 +180,12 @@ def test_install_twice_repairs_without_rebuilding_or_reaching_github(
     assert code == 0, err
     assert layout.current.resolve().name == version_name(OLDER)
     assert layout.link.resolve() == layout.command(layout.current.resolve())
-    assert [call[0] for call in host.calls if call[0] != "job"] == ["unload", "load"]
+    assert [call for call in host.calls if call[0] != "job"] == [
+        ("unload", BACKEND.label),
+        ("load", BACKEND.label),
+        ("unload", DAILY_BACKUP.label),
+        ("load", DAILY_BACKUP.label),
+    ]
     assert host.jobs[BACKEND.label].pid is not None
     assert [path.name for path in layout.versions.iterdir()] == [version_name(OLDER)]
     assert f"Version {version_name(OLDER)} is already installed and current" in out

@@ -13,10 +13,12 @@ app.py         parser + dispatch: one entry per command
   |                (ActivityWatch and the capture spool in one loop), with
   |                the backend heartbeat after each cycle
   +-- status.py    freshness, coverage gaps, the capture agent, screenshots, row counts,
-  |                the install, its LaunchAgents and the backend's last cycle
+  |                the install, its LaunchAgents, the backend's last cycle and the backups
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
+  +-- backup.py    backup (the day's backup, seven days kept) and restore (a backup
+  |                put in place, the stable backend stopped and started around it)
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
   |                dev snapshot: the live database copied into the dev folder;
   |                dev perf: the performance gate against the committed baseline;
@@ -110,8 +112,10 @@ by label, so a stopgap whose plist was deleted is found too), and loads the
 backend LaunchAgent `io.github.thewisepup.computer-history.ingest`
 (`computer-history ingest --watch` from `current`, started at login,
 restarted by launchd when it exits, at most every 30s; log in
-`~/Library/Logs/computer-history/backend.log`). The database, spool,
-screenshots and agent config stay where they are.
+`~/Library/Logs/computer-history/backend.log`), and the daily backup
+LaunchAgent `io.github.thewisepup.computer-history.backup` (`computer-history
+backup` at 03:00 and at login; see "backup and restore" below). The database,
+spool, screenshots and agent config stay where they are.
 
 Run again with a current version, it skips GitHub and `uv` and repairs the
 rest: the link, the plist (rewritten, the running backend booted out and
@@ -138,15 +142,18 @@ Installed version 572c48b (commit 572c48b111111111111111111111111111111111)
   PATH link     ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
   stopgap       io.github.thewisepup.computer-history.backend booted out and removed
   LaunchAgent   io.github.thewisepup.computer-history.ingest loaded: computer-history ingest --watch, restarted by launchd at most every 30s
+  LaunchAgent   io.github.thewisepup.computer-history.backup loaded: computer-history backup, daily at 03:00 and at login
 $ .venv/bin/computer-history install
 Profile dev (branch 106-install-stable at f3eb7a0), stable install ~/Library/Application Support/ComputerHistory
 Version 572c48b is already installed and current
   current       .../ComputerHistory/current -> .../ComputerHistory/versions/572c48b
   PATH link     ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
   LaunchAgent   io.github.thewisepup.computer-history.ingest loaded: computer-history ingest --watch, restarted by launchd at most every 30s
+  LaunchAgent   io.github.thewisepup.computer-history.backup loaded: computer-history backup, daily at 03:00 and at login
 $ computer-history uninstall
 Profile dev (branch 106-install-stable at f3eb7a0), stable install ~/Library/Application Support/ComputerHistory
   removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
+  removed       ~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
   removed       ~/.local/bin/computer-history
   removed       .../ComputerHistory/current
   removed       .../ComputerHistory/versions
@@ -162,8 +169,75 @@ install failed: uv is not installed (install it with `brew install uv`) (nothing
 ```
 
 `uninstall` removes the link only when it is the install's own, and keeps the
-logs. Both commands reach launchctl, GitHub and `uv` only through the host
+logs and the backups. Both commands reach launchctl, GitHub and `uv` only through the host
 adapter (`computer_history/host/`), so tests run them against a fake.
+
+## backup and restore — the daily backup and putting one back
+
+```bash
+computer-history backup                    # today's backup, unless it is taken already
+computer-history restore 2026-11-19        # put that day's backup in the database's place
+computer-history restore <backup file>     # or any backup or set-aside file, by path
+```
+
+`backup` copies the database with SQLite's online backup, so the backend
+keeps writing while it runs, into `backups/daily/history-<day>.db` beside the
+database (the live folder's `backups/` for stable, the dev folder's for dev).
+The copy holds what was committed when it started and must pass
+`PRAGMA integrity_check` before it is kept: a copy that fails is never kept,
+and the command exits 1. Then the days older than the newest seven are
+removed. A second run on the same day keeps the day's first backup. With no
+database yet it takes nothing and exits 0. Only the database is backed up,
+never the spool or the screenshots.
+
+`install` loads a LaunchAgent that runs `backup` from the stable install at
+03:00 and at login (`RunAtLoad`): launchd runs a 03:00 missed while the Mac
+slept when it wakes, and a Mac that was off takes the day's backup at login.
+Its log is `~/Library/Logs/computer-history/backup.log`.
+
+`update` (a later ticket) takes its own backup before it switches versions,
+into `backups/pre-update/history-<local time>-<version>.db`; the daily pruning
+never removes those.
+
+`restore <day>` puts that day's daily backup in the database's place, and
+`restore <file>` any backup file. The stable install first boots out its
+backend through the host adapter, if it is loaded. When anything else still
+has the database open, such as an `ingest --watch` in a terminal, it refuses
+and starts the backend again. Otherwise it moves the database and its WAL
+files into `backups/set-aside/history-<local time>.db`, never deleting them,
+copies the backup in (integrity checked; on any failure the database is moved
+back) and loads the backend again. A backend that was not loaded is left
+stopped. A dev restore puts a backup in the dev database's place and never
+touches launchd. To undo a wrong restore, restore the set-aside file by path.
+What was ingested after the backup was taken is only in the set-aside copy:
+ActivityWatch's events are ingested again from where the backup's progress
+stood, but spool files were deleted once stored, so their records are not.
+
+Real output through the CLI with the test suite's fake host adapter, in a
+temporary home (live folder shortened to `.../ComputerHistory`):
+
+```
+$ computer-history backup
+Profile stable (version 572c48b), database .../ComputerHistory/history.db
+Backed up .../ComputerHistory/history.db
+  copied to .../ComputerHistory/backups/daily/history-2026-11-20.db
+  schema v5, 92.0 KB, integrity ok
+$ computer-history backup
+Profile stable (version 572c48b), database .../ComputerHistory/history.db
+Today's backup is already taken: .../ComputerHistory/backups/daily/history-2026-11-20.db
+$ computer-history restore 2026-11-19
+Profile stable (version 572c48b), database .../ComputerHistory/history.db
+Restored the daily backup of 2026-11-19 into .../ComputerHistory/history.db
+  from          .../ComputerHistory/backups/daily/history-2026-11-19.db
+  set aside     .../ComputerHistory/backups/set-aside/history-2026-11-20T181907.db (never deleted)
+  backend       io.github.thewisepup.computer-history.ingest stopped, then started again
+$ computer-history restore 2026-01-02
+Profile stable (version 572c48b), database .../ComputerHistory/history.db
+restore failed: no daily backup of 2026-01-02; the kept ones are 2026-11-19, 2026-11-20 (nothing was changed)
+```
+
+A run that takes the eighth day's backup also lists each file it removed
+(`  removed   .../backups/daily/history-2026-11-12.db`).
 
 ## ingest — the everyday command
 
@@ -260,21 +334,29 @@ Stable install:
 
 Stable install's LaunchAgents:
   backend          loaded, running (pid 4242)  io.github.thewisepup.computer-history.ingest
+  backup           loaded, not running  io.github.thewisepup.computer-history.backup
   capture agent    loaded, running (pid 812)  io.github.thewisepup.computer-history.agent
 
 Stable backend:
   last cycle    2026-11-20 19:27 (31s ago), ok
+
+Backups:
+  latest        2026-11-20, taken 2026-11-20 08:14 (11h 13m ago), 18.8 MB
+  daily         7 kept (the newest 7), oldest 2026-11-14
+  pre-update    1 kept, newest taken 2026-11-19 16:02
+  integrity     each passed SQLite's integrity check before it was kept
+  folder        .../ComputerHistory/backups
 ```
 
 Read-only: never creates, migrates or writes, and never changes the spool.
-The last three sections (illustrative above) describe the stable install,
-whichever profile runs `status`, and come after the rest whatever state the
-database is in:
+The last four sections (illustrative above) come after the rest whatever
+state the database is in. The first three describe the stable install,
+whichever profile runs `status`; the backups are the database's own:
 
 - **Stable install**: this run's profile, and the version `current` and
   `previous` point at, with when its build finished; `none` before `install`.
-- **Stable install's LaunchAgents**: what launchd says about the backend and
-  the capture agent (`loaded, running (pid N)`, `loaded, not running`,
+- **Stable install's LaunchAgents**: what launchd says about the backend, the
+  daily backup (`loaded, not running` between runs) and the capture agent (`loaded, running (pid N)`, `loaded, not running`,
   `installed, not loaded`). Only an agent whose plist is installed is looked
   up; one without is `not installed`. The stopgap backend is looked up by
   label whenever the live folder exists, and listed while its plist is there
@@ -287,6 +369,14 @@ database is in:
   not one (a time without an offset, an `ok` that is not true or false).
   A dev `ingest --watch` writes its own heartbeat beside the dev database,
   which no section shows.
+- **Backups**: the backups beside the database `status` reports on, read from
+  the files alone (nothing is opened): the latest daily backup's day, when it
+  was written and its size, how many days are kept, the pre-update backups
+  when there are any, and the folder. Every kept file passed the integrity
+  check when it was taken, since a copy that fails is never kept. A
+  `warning: no daily backup since <day>` follows when the newest is older
+  than yesterday. Before the first, the section is one line:
+  `none yet (the daily backup takes one a day into .../backups/daily)`.
 Gaps are reported as unobserved time, never assumed idle, and are checked up
 to each source's settled-until time. Small lag is normal — an ActivityWatch
 source is settled only up to the start of its current, still-growing event. A

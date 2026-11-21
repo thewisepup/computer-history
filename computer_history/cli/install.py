@@ -35,9 +35,13 @@ def cmd_install(args: argparse.Namespace) -> int:
     if report.retired_stopgap:
         print(f"  stopgap       {STOPGAP_LABEL} booted out and removed")
     for agent in report.loaded:
+        if agent.daily_at is None:
+            runs = f"restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
+        else:
+            runs = f"daily at {agent.daily_at:%H:%M} and at login"
         print(
             f"  LaunchAgent   {agent.label} loaded: computer-history {' '.join(agent.arguments)},"
-            f" restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
+            f" {runs}"
         )
     if not report.link_on_path:
         print(f"  note: {layout.link.parent} is not on PATH; add it to run computer-history")

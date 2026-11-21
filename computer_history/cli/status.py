@@ -35,7 +35,16 @@ from computer_history.sources import (
     resolve_spool_path,
     screenshot_health,
 )
-from computer_history.stable import AgentStatus, agent_statuses, pointed, stable_layout
+from computer_history.stable import (
+    DAILY_BACKUP,
+    DAILY_KEPT,
+    AgentStatus,
+    KeptBackups,
+    agent_statuses,
+    kept_backups,
+    pointed,
+    stable_layout,
+)
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
@@ -71,6 +80,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     _print_launch_agents(args.host)
     print()
     _print_backend(now)
+    print()
+    _print_backups(kept_backups(db_path), now)
     return code
 
 
@@ -186,6 +197,39 @@ def _print_backend(now: datetime) -> None:
         return
     result = "ok" if heartbeat.ok else "failed"
     print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
+
+
+def _print_backups(kept: KeptBackups, now: datetime) -> None:
+    print("Backups:")
+    if not kept.daily and not kept.pre_update:
+        print(f"  none yet (the daily backup takes one a day into {kept.folder / 'daily'})")
+        return
+    if kept.daily:
+        day, latest = kept.daily[-1]
+        print(
+            f"  latest        {day.isoformat()}, taken {ago(latest.taken_at, now)},"
+            f" {human_size(latest.size)}"
+        )
+        print(
+            f"  daily         {len(kept.daily)} kept (the newest {DAILY_KEPT}), oldest"
+            f" {kept.daily[0][0].isoformat()}"
+        )
+    else:
+        print("  daily         none yet")
+    if kept.pre_update:
+        print(
+            f"  pre-update    {len(kept.pre_update)} kept, newest taken"
+            f" {when(kept.pre_update[-1].taken_at)}"
+        )
+    print("  integrity     each passed SQLite's integrity check before it was kept")
+    print(f"  folder        {kept.folder}")
+    if not kept.daily:
+        missing = "no daily backup taken yet"
+    elif (now.astimezone().date() - kept.daily[-1][0]).days > 1:
+        missing = f"no daily backup since {kept.daily[-1][0].isoformat()}"
+    else:
+        return
+    print(f"  warning: {missing}; check that {DAILY_BACKUP.label} is loaded and read its log")
 
 
 def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
