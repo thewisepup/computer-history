@@ -694,7 +694,9 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     )
 
     modules = (contract, commit, projection, runner, backfill, aw, capture_spool, agent_health)
-    assert sources.__all__ == [name for module in modules for name in module.__all__]
+    names = [name for module in modules for name in module.__all__]
+    assert sorted(sources.__all__) == sorted(names)
+    assert len(set(sources.__all__)) == len(sources.__all__)
     for module in modules:
         for name in module.__all__:
             assert getattr(sources, name) is getattr(module, name)

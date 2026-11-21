@@ -10,17 +10,26 @@ from aw_http import served_over_http
 from fake_aw import FakeAW
 
 from computer_history import cli
+from computer_history.cli import dev as cli_dev
+from computer_history.cli.profile import INSTALLED_COPY, NOT_A_CHECKOUT
 from computer_history.sources import SPOOL_ENV_VAR
+from computer_history.sources.capture_spool.paths import SPOOL_FOLDER_NAME
 from computer_history.store import (
+    DATABASE_NAME,
     DB_ENV_VAR,
     INSTALL_MARKER_NAME,
     VERSIONS_FOLDER_NAME,
+    Profile,
     connect,
+    data_folder,
+    live_folder,
     table_counts,
 )
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
+SCREENSHOTS_FOLDER = "screenshots"
+DEVELOPER_DAY = ("--persona", "developer", "--scenario", "typical", "--tier", "day", "--seed", "1")
 
 
 @pytest.fixture
@@ -32,14 +41,14 @@ def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 @pytest.fixture
 def live(home: Path) -> Path:
-    folder = home / "Library" / "Application Support" / "ComputerHistory"
+    folder = live_folder()
     folder.mkdir(parents=True)
     return folder
 
 
 @pytest.fixture
 def dev(home: Path) -> Path:
-    return home / "Library" / "Application Support" / "ComputerHistory-dev"
+    return data_folder(Profile.DEV)
 
 
 @pytest.fixture
@@ -63,8 +72,8 @@ def test_a_checkout_run_is_dev_and_uses_the_dev_folder(
     code, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
 
     assert code == 0
-    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
-    assert f"Database:      {dev / 'history.db'} (not created yet" in "\n".join(out)
+    assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
+    assert f"Database:      {dev / DATABASE_NAME} (not created yet" in "\n".join(out)
     assert list(live.iterdir()) == []
 
 
@@ -82,9 +91,9 @@ def test_a_marked_version_of_the_stable_install_is_stable_and_uses_the_live_fold
 ) -> None:
     code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=True), "ingest", *UNREACHABLE_AW)
 
-    assert out[0] == f"Profile stable (version 1a2b3c4), database {live / 'history.db'}"
+    assert out[0] == f"Profile stable (version 1a2b3c4), database {live / DATABASE_NAME}"
     assert code == 1
-    assert (live / "history.db").is_file()
+    assert (live / DATABASE_NAME).is_file()
     assert not dev.exists()
 
 
@@ -94,8 +103,8 @@ def test_a_version_without_the_marker_is_dev(
     code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=False), "status", *UNREACHABLE_AW)
 
     assert code == 0
-    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
-    assert not (live / "history.db").exists()
+    assert out[0] == f"Profile dev ({INSTALLED_COPY}), database {dev / DATABASE_NAME}"
+    assert not (live / DATABASE_NAME).exists()
 
 
 def spellings(live: Path, tmp_path: Path) -> dict[str, Path]:
@@ -116,8 +125,8 @@ def test_dev_is_refused_the_live_database(
     given: str,
     spelling: str,
 ) -> None:
-    (live / "history.db").write_text("real history\n")
-    db = spellings(live, tmp_path)[spelling] / "history.db"
+    (live / DATABASE_NAME).write_text("real history\n")
+    db = spellings(live, tmp_path)[spelling] / DATABASE_NAME
     argv = ["ingest", *UNREACHABLE_AW]
     if given == "flag":
         argv += ["--db-path", str(db)]
@@ -127,16 +136,16 @@ def test_dev_is_refused_the_live_database(
     code, out, err = run(capsys, checkout, *argv)
 
     assert code == 1
-    assert out == ["Profile dev (not a git checkout), database refused"]
+    assert out == [f"Profile dev ({NOT_A_CHECKOUT}), database refused"]
     assert err.startswith(f"refused: {db} is in the live data folder {live}.")
-    assert "--db-path" in err and DB_ENV_VAR in err and str(dev / "history.db") in err
-    assert sorted(path.name for path in live.iterdir()) == ["history.db"]
-    assert (live / "history.db").read_text() == "real history\n"
+    assert "--db-path" in err and DB_ENV_VAR in err and str(dev / DATABASE_NAME) in err
+    assert sorted(path.name for path in live.iterdir()) == [DATABASE_NAME]
+    assert (live / DATABASE_NAME).read_text() == "real history\n"
 
 
 @pytest.mark.parametrize("spelling", ["plain", "symlink", "case"])
 @pytest.mark.parametrize("given", ["flag", "env"])
-@pytest.mark.parametrize("folder", ["spool", "screenshots"])
+@pytest.mark.parametrize("folder", [SPOOL_FOLDER_NAME, SCREENSHOTS_FOLDER])
 def test_dev_is_refused_the_live_spool_and_screenshots(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -160,9 +169,9 @@ def test_dev_is_refused_the_live_spool_and_screenshots(
     code, out, err = run(capsys, checkout, *argv)
 
     assert code == 1
-    assert out == [f"Profile dev (not a git checkout), database {dev / 'history.db'}"]
+    assert out == [f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"]
     assert err.startswith(f"refused: {spool} is in the live data folder {live}.")
-    assert "--spool-path" in err and SPOOL_ENV_VAR in err and str(dev / "spool") in err
+    assert "--spool-path" in err and SPOOL_ENV_VAR in err and str(dev / SPOOL_FOLDER_NAME) in err
     assert [path.name for path in (live / folder).iterdir()] == ["20260105T090000.000000Z.jsonl"]
     assert not dev.exists()
 
@@ -173,7 +182,7 @@ def test_stable_is_not_walled_off_from_its_own_folder(
     code = installed(live, "1a2b3c4", marked=True)
 
     status, _, err = run(
-        capsys, code, "status", "--db-path", str(live / "history.db"), *UNREACHABLE_AW
+        capsys, code, "status", "--db-path", str(live / DATABASE_NAME), *UNREACHABLE_AW
     )
 
     assert status == 0
@@ -191,8 +200,8 @@ def test_dev_ingests_activitywatch_into_its_own_database(
         code, out, err = run(capsys, checkout, "ingest", "--aw-url", url)
 
     assert code == 0, err
-    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
-    conn = connect(dev / "history.db")
+    assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
+    conn = connect(dev / DATABASE_NAME)
     try:
         assert table_counts(conn)["observations"] == 1
     finally:
@@ -228,7 +237,7 @@ def test_a_dev_run_from_a_git_checkout_names_its_branch_and_commit(
     git(repo, "checkout", "-q", "feature")
     _, on_branch, _ = run(capsys, code, "status", *UNREACHABLE_AW)
 
-    database = dev / "history.db"
+    database = dev / DATABASE_NAME
     assert detached[0] == f"Profile dev (detached at {commit}), database {database}"
     assert on_branch[0] == f"Profile dev (branch feature at {commit}), database {database}"
 
@@ -238,6 +247,7 @@ def test_the_checkout_named_is_the_codes_own_not_one_git_points_at(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     live: Path,
+    dev: Path,
     checkout: Path,
 ) -> None:
     repo = tmp_path / "elsewhere"
@@ -247,4 +257,100 @@ def test_the_checkout_named_is_the_codes_own_not_one_git_points_at(
 
     _, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
 
-    assert out[0].startswith("Profile dev (not a git checkout), ")
+    assert out[0] == f"Profile dev ({NOT_A_CHECKOUT}), database {dev / DATABASE_NAME}"
+
+
+def committed_repo(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "feature")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "first")
+    return repo, git(repo, "rev-parse", "--short", "HEAD")
+
+
+def test_an_unborn_branch_is_named_with_no_commit(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "computer_history").mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "feature")
+    monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
+
+    _, out, _ = run(capsys, repo / "computer_history", "dev", "perf")
+
+    assert out[0] == "Profile dev (branch feature, no commits yet)"
+
+
+def test_a_worktree_names_its_branch_even_once_refs_are_packed(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+) -> None:
+    repo, commit = committed_repo(tmp_path)
+    tree = tmp_path / "tree"
+    git(repo, "worktree", "add", "-q", "-b", "side", str(tree))
+    git(repo, "pack-refs", "--all")
+    (tree / "computer_history").mkdir()
+    monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
+
+    _, out, _ = run(capsys, tree / "computer_history", "dev", "perf")
+
+    assert not (repo / ".git" / "refs" / "heads" / "side").exists()
+    assert out[0] == f"Profile dev (branch side at {commit})"
+
+
+def test_a_copy_installed_into_a_venv_inside_a_checkout_is_not_named_as_the_checkout(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+) -> None:
+    repo, _ = committed_repo(tmp_path)
+    code = repo / ".venv" / "lib" / "python3.12" / "site-packages" / "computer_history"
+    code.mkdir(parents=True)
+    monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
+
+    _, out, _ = run(capsys, code, "dev", "perf")
+
+    assert out[0] == f"Profile dev ({INSTALLED_COPY})"
+
+
+def failing_gate(*args: object, **kwargs: object) -> None:
+    raise OSError("no gate in this test")
+
+
+def test_dev_tools_that_open_no_database_neither_resolve_nor_name_one(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+    checkout: Path,
+) -> None:
+    monkeypatch.setenv(DB_ENV_VAR, str(live / DATABASE_NAME))
+    monkeypatch.setenv(SPOOL_ENV_VAR, str(live / SPOOL_FOLDER_NAME))
+    monkeypatch.setattr(cli_dev, "run_gate", failing_gate)
+    out_folder = tmp_path / "out"
+
+    perf, perf_out, perf_err = run(capsys, checkout, "dev", "perf")
+    build, build_out, build_err = run(
+        capsys,
+        checkout,
+        "dev",
+        "build-db",
+        *DEVELOPER_DAY,
+        "--timezone",
+        "Nowhere/Nope",
+        "--out",
+        str(out_folder),
+    )
+
+    assert (perf, perf_out) == (1, [f"Profile dev ({NOT_A_CHECKOUT})"])
+    assert perf_err == "dev perf failed: OSError: no gate in this test\n"
+    assert build == 2
+    assert build_out == [f"Profile dev ({NOT_A_CHECKOUT}), output {out_folder}"]
+    assert "refused" not in build_err and "invalid dataset inputs" in build_err
+    assert list(live.iterdir()) == []

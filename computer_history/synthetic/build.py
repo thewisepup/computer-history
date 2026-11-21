@@ -15,7 +15,7 @@ from computer_history.sources import (
     poll,
     run_backfill,
 )
-from computer_history.store import connect, content_digest
+from computer_history.store import DATABASE_NAME, connect, content_digest
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.generate import DatasetInputs, generate_timeline
 from computer_history.synthetic.manifest import Manifest, true_answers
@@ -26,7 +26,6 @@ from computer_history.synthetic.timeline import Timeline
 
 RENDERERS: tuple[Renderer, ...] = (ActivityWatchRenderer(), SpoolRenderer())
 SETTLE_AFTER = timedelta(seconds=STABILITY_MARGIN_SECONDS + 60)
-DATABASE_NAME = "history.db"
 MANIFEST_NAME = "manifest.json"
 SIDECARS = ("-wal", "-shm", "-journal")
 

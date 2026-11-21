@@ -8,13 +8,13 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from computer_history.sources import resolve_spool_path
+from computer_history.sources import configured_spool_path
 from computer_history.store import (
     Profile,
+    configured_db_path,
     default_db_path,
     live_folder,
     refuse_live,
-    resolve_db_path,
 )
 from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME, SIDECARS
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
@@ -44,9 +44,9 @@ def live_folders(
 ) -> tuple[Path, ...]:
     """The live folder, the default, configured and given databases' folders, and the spool."""
     default = default_db_path(profile)
-    databases = {default, resolve_db_path(None, profile), resolve_db_path(explicit_db, profile)}
-    folders = {live_folder(), *(db.parent for db in databases)}
-    folders.add(resolve_spool_path(None, default, profile))
+    configured = (configured_db_path(None, profile), configured_db_path(explicit_db, profile))
+    folders = {live_folder(), default.parent, *(db.parent for db in configured)}
+    folders.add(configured_spool_path(None, default))
     return tuple(sorted(folder.expanduser().resolve() for folder in folders))
 
 

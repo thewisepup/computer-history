@@ -4,14 +4,15 @@ import argparse
 import sqlite3
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from computer_history.cli.db import db_busy_hint, store_unavailable
 from computer_history.sources import reproject_signals
-from computer_history.store import Purpose, RebuildAborted, open_store, resolve_db_path
+from computer_history.store import Purpose, RebuildAborted, open_store
 
 
 def cmd_rebuild_signals(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path, args.profile)
+    db_path: Path = args.database
     store = open_store(db_path, Purpose.WRITE_EXISTING)
     conn = store.conn
     if conn is None:

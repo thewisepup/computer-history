@@ -55,6 +55,10 @@ Review findings ratchet into rules:
   beside the owner of the resource (`started` in `synthetic/operations.py`).
 - **S10** A threshold constant is named for what it bounds
   (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
+- **S11** A name joins a package's `__all__` only when code outside its
+  module uses it (tests count); a helper only its own module calls stays
+  `_private` (`_within` in `store/paths.py`). Ruff's RUF022 keeps every
+  `__all__` sorted.
 
 ## Architecture
 
@@ -122,3 +126,5 @@ Review findings ratchet into rules:
   names every CI and nightly job.
 - **H14** A narrowing assert repeated on a store read in tests becomes one helper
   beside the test fixtures (`stored_progress` in `tests/db_states.py`).
+- **H15** A constant a lower layer defines is imported, never restated under
+  another name or value (`synthetic/` takes `DATABASE_NAME` from `store/`).

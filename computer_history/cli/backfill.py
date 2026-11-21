@@ -27,12 +27,11 @@ from computer_history.store import (
     Purpose,
     StoreState,
     open_store,
-    resolve_db_path,
 )
 
 
 def cmd_backfill(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path, args.profile)
+    db_path: Path = args.database
     source = ActivityWatch(AWClient(args.aw_url))
     now = datetime.now(UTC)
     if args.start is not None and args.end is not None and args.start >= args.end:

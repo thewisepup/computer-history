@@ -15,9 +15,10 @@ from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
-from computer_history.store import LiveDatabaseRefused, profile_of, resolve_db_path
+from computer_history.store import LiveDatabaseRefused, resolve_db_path, running_code
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
+DATABASE_COMMANDS = frozenset({"ingest", "status", "rebuild-signals", "backfill"})
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -134,17 +135,23 @@ def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> in
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    args.profile = profile_of(code)
+    running = running_code(code)
+    args.profile = running.profile
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
         return 1
-    try:
-        db_path = resolve_db_path(args.db_path, args.profile)
-    except LiveDatabaseRefused as exc:
-        print(profile_line(code, args.profile, None), flush=True)
-        return _refused(exc)
-    print(profile_line(code, args.profile, db_path), flush=True)
+    uses = None
+    if args.command in DATABASE_COMMANDS:
+        try:
+            args.database = resolve_db_path(args.db_path, args.profile)
+        except LiveDatabaseRefused as exc:
+            print(profile_line(running, code, "database refused"), flush=True)
+            return _refused(exc)
+        uses = f"database {args.database}"
+    elif args.command == "dev" and args.dev_command == "build-db":
+        uses = f"output {args.out}"
+    print(profile_line(running, code, uses), flush=True)
     try:
         return handler(args)
     except LiveDatabaseRefused as exc:

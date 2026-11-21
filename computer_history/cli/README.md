@@ -49,8 +49,11 @@ The capture agent writes into the live folder, so a dev `ingest` with no flags
 reads ActivityWatch and an empty dev spool.
 
 Every command's first line names the profile, the version (stable) or the
-checkout's branch and commit (dev), and the database (real output, home
-shortened to `~`):
+checkout's branch and commit (dev), and what the command uses: the database
+for `ingest`, `status`, `rebuild-signals` and `backfill`, the `--out` folder
+for `dev build-db`, and nothing more for `dev perf` and `dev bench`. Those
+three dev tools open neither the database nor the spool, so they are never
+refused (real output, home shortened to `~`):
 
 ```
 $ computer-history status
@@ -62,8 +65,16 @@ refused: ~/Library/Application Support/ComputerHistory/history.db is in the live
 ```
 
 Stable prints `Profile stable (version 1a2b3c4), database ~/Library/Application Support/ComputerHistory/history.db`.
-Outside a git checkout dev prints `(not a git checkout)`, and on a detached
-HEAD `(detached at <commit>)`.
+Dev reads the branch and commit from the checkout's `.git` folder (or a
+worktree's `.git` file) without running git: `(branch main, no commits yet)`
+before the first commit, `(detached at <commit>)` on a detached HEAD,
+`(an installed copy, not a checkout)` for a copy installed into a venv's
+`site-packages`, and `(not a git checkout)` otherwise.
+
+```
+$ computer-history dev build-db --persona developer --scenario typical --tier day --seed 1 --out /tmp/dev
+Profile dev (branch 103-dev-profile-data-folder at 1e42a9e), output /tmp/dev
+```
 
 ## ingest — the everyday command
 
