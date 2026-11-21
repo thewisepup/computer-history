@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -7,10 +8,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from cli_output import RunCli
 from projectors import payload_fields
 
-from computer_history import cli
 from computer_history.cli.profile import NOT_A_CHECKOUT
+from computer_history.sources import WINDOW_SOURCE
 from computer_history.sources.capture_spool.paths import SPOOL_FOLDER_NAME
 from computer_history.store import (
     DATABASE_NAME,
@@ -18,56 +20,21 @@ from computer_history.store import (
     INSTALL_MARKER_NAME,
     VERSIONS_FOLDER_NAME,
     Observation,
-    Profile,
     connect,
-    data_folder,
     insert_observations,
-    live_folder,
     sidecars,
     supported_version,
 )
+from computer_history.store import db as store_db
 
 T0 = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
-WINDOW = "aw-window"
 SCREENSHOTS_FOLDER = "screenshots"
-
-
-@pytest.fixture
-def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    folder = tmp_path / "home"
-    monkeypatch.setenv("HOME", str(folder))
-    return folder
-
-
-@pytest.fixture
-def live(home: Path) -> Path:
-    folder = live_folder()
-    folder.mkdir(parents=True)
-    return folder
-
-
-@pytest.fixture
-def dev(home: Path) -> Path:
-    return data_folder(Profile.DEV)
-
-
-@pytest.fixture
-def checkout(tmp_path: Path) -> Path:
-    code = tmp_path / "checkout" / "computer_history"
-    code.mkdir(parents=True)
-    return code
-
-
-def run(capsys: pytest.CaptureFixture[str], code: Path, *argv: str) -> tuple[int, list[str], str]:
-    exit_code = cli.main(list(argv), code=code)
-    captured = capsys.readouterr()
-    return exit_code, captured.out.splitlines(), captured.err
 
 
 def window(source_id: str, minute: int) -> Observation:
     start = T0 + timedelta(minutes=minute)
     payload = f'{{"app": "Code", "title": "{source_id}"}}'
-    return Observation(WINDOW, source_id, start, start + timedelta(minutes=1), payload)
+    return Observation(WINDOW_SOURCE, source_id, start, start + timedelta(minutes=1), payload)
 
 
 def store(conn: sqlite3.Connection, *source_ids: str) -> None:
@@ -104,17 +71,17 @@ def integrity(path: Path) -> list[str]:
 
 
 def test_a_snapshot_copies_what_the_live_database_has_committed_while_a_writer_holds_it(
-    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+    run: RunCli, live: Path, dev: Path, checkout: Path
 ) -> None:
     with writer(live / DATABASE_NAME, "a", "b", "c") as backend:
         backend.execute("BEGIN IMMEDIATE")
         backend.execute(
             "INSERT INTO observations (source, source_id, started_at, ended_at, payload,"
             " ingested_at) VALUES (?, 'uncommitted', '', '', '{}', '')",
-            (WINDOW,),
+            (WINDOW_SOURCE,),
         )
 
-        code, out, err = run(capsys, checkout, "dev", "snapshot")
+        code, out, err = run(checkout, "dev", "snapshot")
 
         backend.execute("COMMIT")
         store(backend, "after")
@@ -139,7 +106,7 @@ def listing(folder: Path) -> dict[str, bytes | None]:
 
 
 def test_a_snapshot_copies_neither_the_spool_nor_the_screenshots(
-    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+    run: RunCli, live: Path, dev: Path, checkout: Path
 ) -> None:
     connect(live / DATABASE_NAME).close()
     (live / SPOOL_FOLDER_NAME).mkdir()
@@ -148,7 +115,7 @@ def test_a_snapshot_copies_neither_the_spool_nor_the_screenshots(
     (live / SCREENSHOTS_FOLDER / "a.heic").write_bytes(b"image")
     before = listing(live)
 
-    code, _, err = run(capsys, checkout, "dev", "snapshot")
+    code, _, err = run(checkout, "dev", "snapshot")
 
     assert code == 0, err
     assert sorted(path.name for path in dev.iterdir()) == [DATABASE_NAME]
@@ -162,21 +129,21 @@ def left_with_a_wal(path: Path, tmp_path: Path, *source_ids: str) -> None:
     scratch = tmp_path / "scratch" / DATABASE_NAME
     with writer(scratch, *source_ids):
         path.parent.mkdir(parents=True, exist_ok=True)
-        for name in (DATABASE_NAME, f"{DATABASE_NAME}-wal"):
+        for name in (DATABASE_NAME, sidecars(scratch)[0].name):
             (path.parent / name).write_bytes((scratch.parent / name).read_bytes())
 
 
 def test_a_snapshot_replaces_an_existing_dev_database_only_when_forced(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path, live: Path, dev: Path, checkout: Path
+    run: RunCli, tmp_path: Path, live: Path, dev: Path, checkout: Path
 ) -> None:
     with writer(live / DATABASE_NAME, "live"):
         pass
     left_with_a_wal(dev / DATABASE_NAME, tmp_path, "old")
     before = listing(dev)
 
-    refused, _, why = run(capsys, checkout, "dev", "snapshot")
+    refused, _, why = run(checkout, "dev", "snapshot")
     after_refusal = listing(dev)
-    forced, _, err = run(capsys, checkout, "dev", "snapshot", "--force")
+    forced, _, err = run(checkout, "dev", "snapshot", "--force")
 
     assert refused == 1
     assert why == (
@@ -189,10 +156,74 @@ def test_a_snapshot_replaces_an_existing_dev_database_only_when_forced(
     assert stored_ids(dev / DATABASE_NAME) == ["live"]
 
 
-def test_a_snapshot_with_no_live_database_fails_and_creates_nothing(
-    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+def test_a_forced_snapshot_is_refused_while_another_process_has_the_dev_database_open(
+    run: RunCli, live: Path, dev: Path, checkout: Path
 ) -> None:
-    code, _, err = run(capsys, checkout, "dev", "snapshot")
+    with writer(live / DATABASE_NAME, "live"):
+        pass
+
+    with writer(dev / DATABASE_NAME, "old"):
+        code, _, err = run(checkout, "dev", "snapshot", "--force")
+
+    assert code == 1
+    assert err == (
+        f"dev snapshot refused: another process has {dev / DATABASE_NAME} open; stop the dev"
+        " commands using it, such as ingest --watch, and try again\n"
+    )
+    assert sorted(path.name for path in dev.iterdir()) == [DATABASE_NAME]
+    assert stored_ids(dev / DATABASE_NAME) == ["old"]
+
+
+def test_a_forced_snapshot_that_cannot_take_the_targets_place_puts_the_old_database_back(
+    run: RunCli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, live: Path, checkout: Path
+) -> None:
+    with writer(live / DATABASE_NAME, "live"):
+        pass
+    target = tmp_path / "elsewhere" / DATABASE_NAME
+    left_with_a_wal(target, tmp_path, "old")
+    (target.parent / "notes.txt").write_text("mine\n")
+
+    def refuse(source: object, destination: object) -> None:
+        raise PermissionError("the folder is read-only")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "replace", refuse)
+        code, _, err = run(checkout, "dev", "snapshot", "--force", "--db-path", str(target))
+
+    assert code == 1
+    assert err == "dev snapshot failed: PermissionError: the folder is read-only\n"
+    assert sorted(path.name for path in target.parent.iterdir()) == [DATABASE_NAME, "notes.txt"]
+    assert stored_ids(target) == ["old"]
+
+
+def test_a_database_created_during_the_copy_is_never_overwritten_without_force(
+    run: RunCli, monkeypatch: pytest.MonkeyPatch, live: Path, dev: Path, checkout: Path
+) -> None:
+    with writer(live / DATABASE_NAME, "live"):
+        pass
+    opened = store_db.connect_readonly
+
+    def meanwhile_another_dev_run_creates_it(path: Path) -> sqlite3.Connection:
+        with writer(dev / DATABASE_NAME, "made meanwhile"):
+            pass
+        return opened(path)
+
+    monkeypatch.setattr(store_db, "connect_readonly", meanwhile_another_dev_run_creates_it)
+
+    code, _, err = run(checkout, "dev", "snapshot")
+
+    assert code == 1
+    assert err == (
+        f"dev snapshot refused: {dev} already holds {DATABASE_NAME}; pass --force to replace it\n"
+    )
+    assert sorted(path.name for path in dev.iterdir()) == [DATABASE_NAME]
+    assert stored_ids(dev / DATABASE_NAME) == ["made meanwhile"]
+
+
+def test_a_snapshot_with_no_live_database_fails_and_creates_nothing(
+    run: RunCli, live: Path, dev: Path, checkout: Path
+) -> None:
+    code, _, err = run(checkout, "dev", "snapshot")
 
     assert code == 1
     assert err == f"dev snapshot failed: no database at {live / DATABASE_NAME}\n"
@@ -214,12 +245,12 @@ def damaged(path: Path) -> None:
 
 
 def test_a_snapshot_that_fails_its_integrity_check_leaves_nothing_behind(
-    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+    run: RunCli, live: Path, dev: Path, checkout: Path
 ) -> None:
     damaged(live / DATABASE_NAME)
     dev.mkdir(parents=True)
 
-    code, _, err = run(capsys, checkout, "dev", "snapshot")
+    code, _, err = run(checkout, "dev", "snapshot")
 
     assert code == 1
     assert err.startswith(
@@ -229,9 +260,17 @@ def test_a_snapshot_that_fails_its_integrity_check_leaves_nothing_behind(
     assert list(dev.iterdir()) == []
 
 
+def live_target_refusal(target: Path, live: Path, dev: Path) -> str:
+    return (
+        f"refused: {target} is in the live data folder {live}, and the dev database is never"
+        f" there, whichever profile runs. Leave --db-path and ${DB_ENV_VAR} unset to use"
+        f" {dev / DATABASE_NAME}.\n"
+    )
+
+
 @pytest.mark.parametrize("given", ["flag", "global flag", "env"])
 def test_a_snapshot_is_refused_a_target_in_the_live_folder(
-    capsys: pytest.CaptureFixture[str],
+    run: RunCli,
     monkeypatch: pytest.MonkeyPatch,
     live: Path,
     dev: Path,
@@ -249,17 +288,17 @@ def test_a_snapshot_is_refused_a_target_in_the_live_folder(
     else:
         monkeypatch.setenv(DB_ENV_VAR, str(target))
 
-    code, out, err = run(capsys, checkout, *argv)
+    code, out, err = run(checkout, *argv)
 
     assert code == 1
     assert out == [f"Profile dev ({NOT_A_CHECKOUT}), database refused"]
-    assert err.startswith(f"refused: {target} is in the live data folder {live}.")
+    assert err == live_target_refusal(target, live, dev)
     assert sorted(path.name for path in live.iterdir()) == [DATABASE_NAME]
     assert not dev.exists()
 
 
 def test_stable_takes_its_snapshot_into_the_dev_folder_too(
-    capsys: pytest.CaptureFixture[str], live: Path, dev: Path
+    run: RunCli, live: Path, dev: Path
 ) -> None:
     version = live / VERSIONS_FOLDER_NAME / "1a2b3c4"
     code = version / "venv" / "lib" / "python3.12" / "site-packages" / "computer_history"
@@ -268,12 +307,12 @@ def test_stable_takes_its_snapshot_into_the_dev_folder_too(
     with writer(live / DATABASE_NAME, "live"):
         pass
 
-    status, out, err = run(capsys, code, "dev", "snapshot")
-    refused, refusal, why = run(capsys, code, "dev", "snapshot", "--db-path", str(live / "copy.db"))
+    status, out, err = run(code, "dev", "snapshot")
+    refused, refusal, why = run(code, "dev", "snapshot", "--db-path", str(live / "copy.db"))
 
     assert status == 0, err
     assert out[0] == f"Profile stable (version 1a2b3c4), database {dev / DATABASE_NAME}"
     assert stored_ids(dev / DATABASE_NAME) == ["live"]
     assert (refused, refusal) == (1, ["Profile stable (version 1a2b3c4), database refused"])
-    assert why.startswith(f"refused: {live / 'copy.db'} is in the live data folder {live}.")
+    assert why == live_target_refusal(live / "copy.db", live, dev)
     assert not (live / "copy.db").exists()

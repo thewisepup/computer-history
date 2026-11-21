@@ -10,18 +10,20 @@ from pathlib import Path
 
 from computer_history.sources import configured_spool_path
 from computer_history.store import (
-    SIDECARS,
     Profile,
     configured_db_path,
     default_db_path,
+    existing_database_files,
     live_folder,
     refuse_live,
+    sidecars,
 )
 from computer_history.synthetic.build import DATABASE_NAME, MANIFEST_NAME
 from computer_history.synthetic.cache import CachedDataset, cached_dataset, copy_dataset
 from computer_history.synthetic.generate import DatasetInputs
 
-KNOWN_NAMES = (MANIFEST_NAME, DATABASE_NAME, *(DATABASE_NAME + suffix for suffix in SIDECARS))
+KNOWN_DATABASE_NAMES = (DATABASE_NAME, *(path.name for path in sidecars(Path(DATABASE_NAME))))
+KNOWN_NAMES = (MANIFEST_NAME, *KNOWN_DATABASE_NAMES)
 
 
 class OutputNotAFolder(NotADirectoryError):
@@ -88,5 +90,6 @@ def _refuse_existing(out: Path, in_the_way: Sequence[Path], force: bool) -> None
 
 
 def _in_the_way(target: Path, names: Iterable[str]) -> list[Path]:
-    found = {target / name for name in names}
-    return sorted(path for path in found if path.exists() or path.is_symlink())
+    found = {target / name for name in names if name not in KNOWN_DATABASE_NAMES}
+    others = {path for path in found if path.exists() or path.is_symlink()}
+    return sorted(others.union(existing_database_files(target / DATABASE_NAME)))

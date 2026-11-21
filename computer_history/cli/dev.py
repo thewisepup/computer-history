@@ -14,6 +14,7 @@ from typing import Any
 from computer_history.cli.formatting import human_size
 from computer_history.store import (
     DatabaseExists,
+    DatabaseInUse,
     IntegrityCheckFailed,
     LiveDatabaseRefused,
     Profile,
@@ -217,6 +218,9 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         copy = backup_database(live, args.database, replace=args.force)
     except DatabaseExists as exc:
         print(f"dev snapshot refused: {exc}; pass --force to replace it", file=sys.stderr)
+        return 1
+    except DatabaseInUse as exc:
+        print(f"dev snapshot refused: {exc}", file=sys.stderr)
         return 1
     except (FileNotFoundError, IntegrityCheckFailed) as exc:
         print(f"dev snapshot failed: {exc}", file=sys.stderr)

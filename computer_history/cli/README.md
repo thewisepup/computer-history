@@ -53,7 +53,8 @@ Every command's first line names the profile, the version (stable) or the
 checkout's branch and commit (dev), and what the command uses: the database
 for `ingest`, `status`, `rebuild-signals` and `backfill`, the database it
 copies into for `dev snapshot`, the `--out` folder for `dev build-db`, and
-nothing more for `dev perf` and `dev bench`. Those three dev tools open neither
+nothing more for `dev perf` and `dev bench`. Those three dev tools (`dev build-db`,
+`dev perf` and `dev bench`) open neither
 the database nor the spool, so they are never refused; `dev snapshot` is the
 one command that reads live data from dev (see its section below). Real
 output, home shortened to `~`:
@@ -389,12 +390,16 @@ dev snapshot refused: ~/Library/Application Support/ComputerHistory-dev already 
 ```
 
 The one sanctioned read of live data from dev, so a change can be tried
-against real history. It opens the live database read-only and copies it with
+against real history. It copies only the default live database,
+`history.db` in the live folder `~/Library/Application Support/ComputerHistory/`;
+there is no flag for another source, and `$COMPUTER_HISTORY_DB` names the copy's
+target, never the source. It opens the live database read-only and copies it with
 SQLite's online backup, which takes no write lock: the stable backend keeps
 ingesting, and the copy holds what was committed when it started. The copy is
 written beside the target, passes `PRAGMA integrity_check`, then takes the
 target's place; a copy that fails the check is deleted and the command exits 1
-with `dev snapshot failed: the copy of <path> failed its integrity check: <problems>`. If the live database has no `-wal`/`-shm` files when the
+with `dev snapshot failed: the copy of <path> failed its integrity check: <problems>`.
+If the live database has no `-wal`/`-shm` files when the
 snapshot opens it (no backend running), SQLite creates them, empty; nothing
 else in the live folder changes.
 
@@ -402,9 +407,16 @@ It copies the database only, never the spool or screenshots, so screenshot
 paths in the copy point at files dev doesn't have. The copy lands in dev's
 database: `$COMPUTER_HISTORY_DB` or `--db-path` (global or after `snapshot`)
 when set, else `history.db` in the dev folder, and it is refused, exit code 1,
-inside the live folder, from stable as from dev. Like `dev build-db`, it
-refuses a target that already holds the database or its `-wal`/`-shm`/`-journal`
-files unless `--force`, which replaces all of them. No live database exits 1
+inside the live folder, from stable as from dev (`refused: <path> is in the
+live data folder ..., and the dev database is never there, whichever profile
+runs. ...`). Like `dev build-db`, it refuses a target that already holds the
+database or its `-wal`/`-shm`/`-journal` files unless `--force`, and it checks
+again just before the copy takes its place, so a database another run creates
+meanwhile is never overwritten. `--force` replaces all of them, but only when
+no other process has the database open (`dev snapshot refused: another process
+has <path> open; stop the dev commands using it, such as ingest --watch, and
+try again`); it moves the old files aside first and puts them back if the copy
+can't take their place. No live database exits 1
 with `dev snapshot failed: no database at <path>`. The command never migrates:
 `status` reports a copy whose schema this checkout doesn't match, and `ingest`
 migrates it.
