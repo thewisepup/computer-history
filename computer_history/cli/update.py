@@ -7,59 +7,78 @@ from computer_history.cli import formatting
 from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat
 from computer_history.stable import (
     RELEASE_GATE,
+    Layout,
     RollbackFailed,
+    UpdateAction,
     UpdateFailed,
-    UpdateOutcome,
+    UpdateReport,
     rollback,
     stable_layout,
     update,
     version_name,
 )
-from computer_history.store import DATABASE_NAME
+
+INTERRUPTED_EXIT_CODE = 130
 
 
 def cmd_update(args: argparse.Namespace) -> int:
     layout = stable_layout()
-    heartbeat = backend_heartbeat_path(layout.live / DATABASE_NAME)
+    heartbeat = backend_heartbeat_path(layout.database)
     try:
         report = update(
             args.host,
             layout,
             last_cycle=lambda: read_backend_heartbeat(heartbeat),
             now=formatting.utc_now,
+            wait_seconds=args.wait,
         )
     except UpdateFailed as exc:
         print(f"update failed: {exc}", file=sys.stderr)
         return 1
-    if report.outcome is UpdateOutcome.UP_TO_DATE:
-        print(f"Already up to date: version {report.kept} is current")
-        return 0
-    print(f"Release gate: {', '.join(RELEASE_GATE)}")
-    for verdict in report.skipped:
-        print(f"  skipped {version_name(verdict.commit)}: {verdict.summary}")
-    if report.outcome is UpdateOutcome.UPDATED:
-        print(f"Updated to version {report.version} (commit {report.commit}) from {report.kept}")
+    for line in format_update(report, layout):
+        print(line)
+    if report.interrupted:
+        return INTERRUPTED_EXIT_CODE
+    return 1 if report.action is UpdateAction.FELL_BACK else 0
+
+
+def format_update(report: UpdateReport, layout: Layout) -> list[str]:
+    """The lines update prints for its report."""
+    if report.action is None:
+        line = f"Already up to date: version {report.kept} is current"
+        if report.behind:
+            line += f" (the newest passing commit, {report.version}, is older than current)"
+        return [line]
+    lines = [f"Release gate: {', '.join(RELEASE_GATE)}"]
+    lines += [f"  skipped {version_name(v.commit)}: {v.summary}" for v in report.skipped]
+    if report.action is UpdateAction.UPDATED:
+        lines.append(
+            f"Updated to version {report.version} (commit {report.commit}) from {report.kept}"
+        )
     else:
-        print(f"Update to version {report.version} fell back to {report.kept}: {report.reason}")
+        lines.append(f"Update to version {report.version} fell back: {report.reason}")
     if report.backup is None:
-        print(f"  backup        none (no database at {layout.live / DATABASE_NAME} yet)")
+        lines.append(f"  backup        none (no database at {layout.database} yet)")
     else:
-        print(f"  backup        {report.backup.target} (schema v{report.backup.schema})")
-    if report.outcome is UpdateOutcome.UPDATED:
-        print("  first cycle   completed; the backend deletes stored spool files again")
-        print(f"  current       {layout.current} -> {layout.versions / report.version}")
-        print(f"  previous      {report.kept} (rollback returns to it)")
+        lines.append(f"  backup        {report.backup.target} (schema v{report.backup.schema})")
+    if report.action is UpdateAction.UPDATED:
+        lines += [
+            "  first cycle   completed; the backend deletes stored spool files again",
+            f"  current       {layout.current} -> {layout.versions / report.version}",
+            f"  previous      {report.kept} (rollback returns to it)",
+        ]
         if report.removed is not None:
-            print(f"  removed       {report.removed} (one previous version is kept)")
-    elif report.restored is not None:
-        print(f"  restored      {report.restored} (the new version changed the schema)")
+            lines.append(f"  removed       {report.removed} (one previous version is kept)")
     else:
-        print("  database      kept as it is (the schema did not change)")
-    if report.outcome is UpdateOutcome.FELL_BACK:
-        print(f"  backend       restarted on {report.kept}; it reads the spool files it kept again")
-    for problem in report.problems:
-        print(f"  warning: {problem}")
-    return 0 if report.outcome is UpdateOutcome.UPDATED else 1
+        if report.restored is not None:
+            lines.append(f"  restored      {report.restored} (the new version changed the schema)")
+        else:
+            lines.append("  database      kept as it is (the schema did not change)")
+        lines.append(
+            f"  backend       restarted on {report.kept}; it reads the spool files it kept again"
+        )
+    lines += [f"  warning: {problem}" for problem in report.problems]
+    return lines
 
 
 def cmd_rollback(args: argparse.Namespace) -> int:

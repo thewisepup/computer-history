@@ -43,11 +43,29 @@ def write_stopgap_plist(layout: Layout) -> Path:
 BackendStart = Callable[["FakeHost"], None]
 
 
-def completes_a_cycle(heartbeat: Path, *, error: str | None = None) -> BackendStart:
+def completes_a_cycle(
+    heartbeat: Path, *, error: str | None = None, sources_unavailable: bool = False
+) -> BackendStart:
     """A backend that runs its first ingest cycle at once, failing with the error if given one."""
 
     def start(_: FakeHost) -> None:
-        write_backend_heartbeat(heartbeat, datetime.now(UTC), error is None, error)
+        write_backend_heartbeat(
+            heartbeat,
+            datetime.now(UTC),
+            error is None,
+            error,
+            sources_unavailable=sources_unavailable,
+        )
+
+    return start
+
+
+def then(first: BackendStart, *later: BackendStart) -> BackendStart:
+    """A backend that does first at start, then each later step at the next lookups of it."""
+
+    def start(host: FakeHost) -> None:
+        first(host)
+        host.later.extend(later)
 
     return start
 
@@ -96,6 +114,7 @@ class FakeHost:
         self.lingering: dict[str, int] = {}
         self.backend_starts = list(backend_starts)
         self.crashing = False
+        self.later: list[BackendStart] = []
         self.running_activitywatch = activitywatch_running
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
@@ -132,6 +151,8 @@ class FakeHost:
         if self.lingering.get(label, 0) > 0:
             self.lingering[label] -= 1
             return JobState(loaded=True)
+        if label == BACKEND.label and self.later:
+            self.later.pop(0)(self)
         state = self.jobs.get(label, JobState(loaded=False))
         if label == BACKEND.label and self.crashing and state.loaded:
             self.crashing = False

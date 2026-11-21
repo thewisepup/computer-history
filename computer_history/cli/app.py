@@ -20,6 +20,7 @@ from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
 from computer_history.host import Host, LiveHost
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
+from computer_history.stable import FIRST_CYCLE_WAIT_SECONDS
 from computer_history.store import (
     LiveDatabaseRefused,
     live_folder,
@@ -129,6 +130,16 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="allow a rebuild that drops more than half of the existing signals"
                 " (refused by default as a likely mapping bug)",
+            )
+        if name == "update":
+            sub.add_argument(
+                "--wait",
+                type=float,
+                default=FIRST_CYCLE_WAIT_SECONDS,
+                metavar="SECONDS",
+                help="how long to wait for the backend's first ingest cycle on the new version"
+                f" before falling back (default: {FIRST_CYCLE_WAIT_SECONDS:g}; a long migration"
+                " needs more)",
             )
         if name == "restore":
             sub.add_argument(

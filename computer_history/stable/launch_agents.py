@@ -137,6 +137,14 @@ def stop_agent(host: Host, label: str, *, sleep: Callable[[float], None] = time.
     raise HostError(f"{label} was still loaded {UNLOAD_WAIT_SECONDS:g}s after booting it out")
 
 
+def stop_if_loaded(host: Host, label: str, *, sleep: Callable[[float], None] = time.sleep) -> bool:
+    """Boot a LaunchAgent out if launchd has it loaded; returns whether it was loaded."""
+    if not host.job(label).loaded:
+        return False
+    stop_agent(host, label, sleep=sleep)
+    return True
+
+
 def start_agent(host: Host, plist: Path, *, sleep: Callable[[float], None] = time.sleep) -> None:
     """Load a LaunchAgent's plist, trying again while launchd is still busy with an earlier copy."""
     for attempt in range(1, LOAD_ATTEMPTS + 1):

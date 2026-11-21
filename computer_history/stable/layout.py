@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from computer_history.host import COMMAND_NAME
-from computer_history.store import VERSIONS_FOLDER_NAME, live_folder
+from computer_history.store import DATABASE_NAME, VERSIONS_FOLDER_NAME, live_folder
 
 CURRENT_POINTER_NAME = "current"
 PREVIOUS_POINTER_NAME = "previous"
@@ -23,6 +23,10 @@ class Layout:
 
     live: Path
     home: Path
+
+    @property
+    def database(self) -> Path:
+        return self.live / DATABASE_NAME
 
     @property
     def versions(self) -> Path:

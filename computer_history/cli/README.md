@@ -193,53 +193,73 @@ adapter (`computer_history/host/`), so tests run them against a fake.
 ## update and rollback — moving the stable install
 
 ```bash
-computer-history update      # to the newest main commit that passed the release gate
-computer-history rollback    # back to the previous version; no network
+computer-history update              # to the newest main commit that passed the release gate
+computer-history update --wait 1800  # wait up to 30 minutes for the first cycle (default 600s)
+computer-history rollback            # back to the previous version; no network
 ```
 
 `update` finds the newest `main` commit the release gate passes, as `install`
-does. When that is already `current` it says `Already up to date` and
-changes nothing. Otherwise it builds the commit beside the current version
-into `versions/<short commit>/` and smokes it (`--help`); a failed build or
-smoke removes that folder and changes nothing, as does being offline. Then it
-boots out the backend, takes the pre-update backup
+does. It only moves forward: when that commit is `current`, or older than
+`current` on `main` (say `current`'s checks were re-run and cancelled since
+it was installed), it says `Already up to date` and changes nothing.
+Otherwise it builds the commit beside the current version into
+`versions/<short commit>/` and smokes it (`--help`); a failed build or smoke
+removes that folder and changes nothing, as does being offline. Then it boots
+out the backend, takes the pre-update backup
 (`backups/pre-update/history-<local time>-<old version>.db`, the same SQLite
-online backup and integrity check as the daily one), writes
-`spool-deletion-held` beside the database, points `previous` at the old
-version and `current` at the new one, and loads the backend again. Only the
+online backup and integrity check as the daily one), places the spool hold
+(`spool-deletion-held` beside the database), points `previous` at the old
+version and `current` at the new one, and loads the backend again. A failure
+after the backup and before the switch removes the backup and the built
+folder and starts the backend again, so `nothing was changed` holds. Only the
 backend restarts: the daily backup, the watchdog and the ActivityWatch login
 agent keep running (a fallback that restores the backup stops and starts the
 daily backup around it, as `restore` does).
 
-The new backend's `ingest --watch` sees `spool-deletion-held` and keeps every
-spool file it stores until a cycle completes with no failure; then it removes
-the file, and the next cycle reads the kept files again (all `skipped`, since
-`(source, source_id)` is unique) and deletes them as usual. `update` waits up
-to 300s for a heartbeat newer than the restart:
+While the hold exists, every ingest (the backend's `--watch` and a one-shot
+`ingest` alike) stores spool files but deletes or sets aside none. The
+backend's first cycle with no failure removes the hold; the next cycle reads
+the kept files again (all `skipped`, since `(source, source_id)` is unique)
+and deletes them as usual. `update` waits up to `--wait` seconds (600 by
+default; **a long migration needs a longer wait**) for a heartbeat newer than
+the restart:
 
-- **ok**: it removes `spool-deletion-held`, deletes the version `previous`
-  pointed at before (one previous version is kept), logs `updated` and exits 0.
-- **failed, crashed or none in time** (a crash is launchd reporting a
-  different process, or none, after it had one): it boots the new backend out,
-  points `current` and `previous` back where they were, removes the hold,
-  restores the pre-update backup only when the database's schema version is no
-  longer the backup's (through `restore`, so the replaced database is set
-  aside, never deleted), loads the backend on the old version (which reads the
-  kept spool files again harmlessly), deletes the new version's folder,
-  posts a notification, logs `fell back` with the reason and exits 1.
+- **ok**: it deletes the version `previous` pointed at before (one previous
+  version is kept), logs `updated` and exits 0.
+- **failed only because a source was unavailable** (ActivityWatch down, the
+  heartbeat's `sources_unavailable`): not a reason to fall back; it keeps
+  waiting for a cycle that succeeds or fails for another reason. If the
+  sources stay down for the whole wait, it falls back with that reason.
+- **failed, crashed, none in time or interrupted** (a crash is launchd
+  reporting a different process, or none, after it had one; Ctrl-C or a
+  SIGTERM during the wait counts as interrupted): it boots the new backend
+  out, points `current` and then `previous` back, removes the hold, restores
+  the pre-update backup only when the database's schema version is no longer
+  the backup's (through `restore`, so the replaced database is set aside,
+  never deleted), loads the backend on the old version (which reads the kept
+  spool files again harmlessly), posts a notification (`Update to 9f0e1d2
+  fell back: the backend crashed before its first ingest cycle; back on
+  8d23e3a.`), logs `fell back` with the reason and exits 1 (130 when
+  interrupted). It deletes the new version's folder only when the new backend
+  was confirmed stopped and both pointers went back; otherwise it keeps the
+  folder so whatever still names it runs. Each step that fails is printed as
+  a `warning:` line and the rest still run.
 
-`rollback` swaps `current` and `previous` and restarts the backend; it needs
-no network and no build, and running it twice returns to where it started.
-It does not restore a backup: if the version you return to cannot open the
-database because the newer one migrated it, `restore` the pre-update backup.
-With no previous version it fails and changes nothing.
+`rollback` points `current` at the previous version, then `previous` at the
+one it left, and restarts the backend; it needs no network and no build, and
+running it twice returns to where it started. If `previous` cannot be
+pointed, it points `current` back, so both versions stay referenced. It does
+not restore a backup: if the version you return to cannot open the database
+because the newer one migrated it, `restore` the pre-update backup. With no
+previous version it fails and changes nothing.
 
 Every update, fallback and rollback adds a JSON line to `update-log.jsonl`
 in the live folder (`{"at": ..., "action": "updated" | "fell back" | "rolled
 back", "from": ..., "to": ..., "reason": ...}`); `status` shows the last one.
 
 Real output through the CLI with the test suite's fake host adapter scripting
-check results, a clean first cycle and a crash, in a temporary home:
+check results, a clean first cycle, a crash and a failed build, in a
+temporary home:
 
 ```
 $ computer-history update
@@ -250,20 +270,26 @@ Profile stable (version 572c48b), stable install .../ComputerHistory
 Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests, macos-capture-agent-e2e
   skipped 9f0e1d2: unit failure
 Updated to version 8d23e3a (commit 8d23e3a222222222222222222222222222222222) from 572c48b
-  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T190300-572c48b.db (schema v5)
+  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T191952-572c48b.db (schema v5)
   first cycle   completed; the backend deletes stored spool files again
   current       .../ComputerHistory/current -> .../ComputerHistory/versions/8d23e3a
   previous      572c48b (rollback returns to it)
-$ computer-history update          # exit 1
+$ computer-history update
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests, macos-capture-agent-e2e
-Update to version 9f0e1d2 fell back to 8d23e3a: the backend crashed before its first ingest cycle completed
-  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T190301-8d23e3a.db (schema v5)
+Update to version 9f0e1d2 fell back: the backend crashed before its first ingest cycle
+  backup        .../ComputerHistory/backups/pre-update/history-2026-11-20T191952-8d23e3a.db (schema v5)
   database      kept as it is (the schema did not change)
   backend       restarted on 8d23e3a; it reads the spool files it kept again
-$ computer-history update          # exit 1
+$ computer-history update
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+update failed: could not build version 9f0e1d2: could not install commit 9f0e1d2: No solution found (nothing was changed)
+$ computer-history update
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 update failed: could not list main's newest commits from GitHub: offline (nothing was changed)
+$ computer-history update
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Already up to date: version 8d23e3a is current (the newest passing commit, 572c48b, is older than current)
 $ computer-history rollback
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Rolled back to version 572c48b from 8d23e3a
@@ -271,10 +297,9 @@ Rolled back to version 572c48b from 8d23e3a
   backend       restarted
 ```
 
-A failed first cycle says why, from the heartbeat (`its first ingest cycle
-failed: aw-window: ...`), and a schema change reads `restored <backup> (the
-new version changed the schema)`. A notification, restore or log write that
-fails does not stop the fallback; it is listed as a `warning:` line.
+A failed first cycle says why, from the heartbeat (`the backend's first
+ingest cycle failed: ...`), and a schema change reads `restored <backup> (the
+new version changed the schema)`.
 
 ## backup and restore — the daily backup and putting one back
 
@@ -448,7 +473,10 @@ later poll. Re-running always inserts 0 for data it already has. `--watch` is
 the long-running collector: one log line per cycle, survives ActivityWatch
 outages and locked databases. After each cycle it rewrites
 `backend-heartbeat.json` beside the database, `{"cycle_at": "<UTC ISO>",
-"ok": true}` (`false` when the cycle had a failure); `status` reads it. A stream whose observations no adapter can
+"ok": true, "error": null, "sources_unavailable": false}` (`ok` false and the
+first failure in `error` when the cycle had one; `sources_unavailable` true
+when every failure was a source it could not read, such as ActivityWatch
+down); `status`, the watchdog and `update` read it. A stream whose observations no adapter can
 project is reported (`error on aw-window: no source adapter projects
 observations from 'aw-window'`, exit 1) while the other streams are still
 ingested.
@@ -456,9 +484,10 @@ ingested.
 `ax-text` and `screenshot` are the capture agent's spool, read in the same
 poll. Each stream stores its own records from each finished `*.jsonl` file in
 one commit, oldest first; the file is deleted once both streams have stored
-it. While `spool-deletion-held` sits beside the database (`update` writes it),
-`--watch` keeps stored files until a cycle completes with no failure, then
-removes the hold and deletes them once the next cycle has read them again. The agent's `open.part` and `agent.lock` are never touched. A stream's
+it. While `spool-deletion-held` sits beside the database (`update` places it),
+every ingest keeps the files it stores, and a one-shot run ends with `spool
+files kept: ...`; `--watch` removes the hold after a cycle with no failure,
+and the next cycle reads the kept files again and deletes them. The agent's `open.part` and `agent.lock` are never touched. A stream's
 `rejected` counts lines of its own kinds that are not usable records (failing
 validation, or an unknown format version); a line whose kind cannot be read
 (not JSON, or a kind this backend does not know) belongs to neither stream and

@@ -67,11 +67,11 @@ The copy of the code in a marked version folder under the live folder's `version
 _Avoid_: Release, production build
 
 **Update**:
-Moving the stable install's `current` to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes a cycle on it with spool deletion held.
+Moving the stable install's `current` forward to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes an ok cycle on it under the spool hold.
 _Avoid_: Upgrade, deploy, release
 
 **Fallback**:
-What an update does on its own when the new version's backend crashes, fails its first cycle or completes none in time: the old version back as `current`, the pre-update backup restored only when the schema changed.
+What an update does on its own when the new version's backend crashes, fails its first cycle for a reason other than an unavailable source, completes none in time, or the wait is interrupted: the old version back as `current`, the pre-update backup restored only when the schema changed.
 _Avoid_: Revert, auto-rollback
 
 **Rollback**:
@@ -81,6 +81,10 @@ _Avoid_: Downgrade, revert
 **Update log**:
 `update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
 _Avoid_: Changelog, audit log
+
+**Spool hold**:
+`spool-deletion-held` beside the database, placed by an update: while it exists ingest stores spool files but deletes none, and the backend's first ok cycle removes it.
+_Avoid_: Lock, freeze, pin
 
 **Profile**:
 Stable or dev, decided from where the running code lives. Dev is everything that is not the stable install; it uses `ComputerHistory-dev/` and is refused the live folder.
@@ -95,7 +99,7 @@ The one seam to macOS and the network (launchctl, GitHub, building with uv, chec
 _Avoid_: System client, platform layer
 
 **Backend heartbeat**:
-The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time and whether it succeeded. Not the capture agent's heartbeat record.
+The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time, whether it succeeded, its first failure and whether every failure was an unavailable source. Not the capture agent's heartbeat record.
 _Avoid_: Ping, liveness file
 
 **Watchdog**:

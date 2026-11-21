@@ -15,11 +15,12 @@ from fake_host import (
     gate_runs,
     installed_package,
     stays_silent,
+    then,
 )
 
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import CheckOutcome
-from computer_history.sources import backend_heartbeat_path, runner
+from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat, runner
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,
@@ -28,15 +29,17 @@ from computer_history.stable import (
     stable_layout,
     version_name,
 )
-from computer_history.stable import updates as stable_update
-from computer_history.store import DATABASE_NAME, spool_hold_path
+from computer_history.stable.updates import waiting
+from computer_history.store import DATABASE_NAME, sidecars, spool_hold_path
 
 OLDEST = "a" * 40
 OLDER = "b" * 40
 NEWER = "c" * 40
 NEWEST = "d" * 40
 INSTALL = "Stable install:"
-CYCLE_ERROR = "aw-window: ActivityWatch unreachable"
+CYCLE_ERROR = "database error: disk I/O error"
+AW_DOWN = "aw-window: ActivityWatch unreachable at http://127.0.0.1:5600/api/0"
+QUICK = ("--wait", "0.05")
 SPOOL_FILE = "20261120T120000.000000Z.jsonl"
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 CAPTURE = next(line for line in FIXTURE.read_text().splitlines() if '"kind":"capture"' in line)
@@ -45,8 +48,7 @@ CAPTURE_ID = json.loads(CAPTURE)["id"]
 
 @pytest.fixture(autouse=True)
 def quick_wait(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(stable_update, "FIRST_CYCLE_POLL_SECONDS", 0.001)
-    monkeypatch.setattr(stable_update, "FIRST_CYCLE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(waiting, "FIRST_CYCLE_POLL_SECONDS", 0.001)
 
 
 @pytest.fixture
@@ -63,7 +65,7 @@ def stable_code(layout: Layout) -> Path:
 
 
 def heartbeat(layout: Layout) -> Path:
-    return backend_heartbeat_path(layout.live / DATABASE_NAME)
+    return backend_heartbeat_path(layout.database)
 
 
 def updating(layout: Layout, *starts: BackendStart, **options: object) -> FakeHost:
@@ -77,10 +79,16 @@ def updating(layout: Layout, *starts: BackendStart, **options: object) -> FakeHo
 
 
 def install_state(layout: Layout) -> dict[Path, bytes | str]:
-    """Every file and link of the live folder and the LaunchAgents, links by where they point."""
+    """Every file and link of the live folder and the LaunchAgents, links by where they point.
+
+    The live database's journal files are left out: reading the database for a backup opens them.
+    """
     found: dict[Path, bytes | str] = {}
+    journals = set(sidecars(layout.database))
     for folder in (layout.live, layout.launch_agents):
         for path in folder.rglob("*"):
+            if path in journals:
+                continue
             if path.is_symlink():
                 found[path] = str(path.readlink())
             elif path.is_file():
@@ -140,7 +148,7 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
     assert layout.current.resolve() == layout.versions / new
     assert layout.previous.resolve() == layout.versions / old
     assert sorted(path.name for path in layout.versions.iterdir()) == [old, new]
-    assert not spool_hold_path(layout.live / DATABASE_NAME).exists()
+    assert not spool_hold_path(layout.database).exists()
     assert host.calls.index(("unload", BACKEND.label)) < host.calls.index(("load", BACKEND.label))
     assert restarted(host) == {BACKEND.label}
     assert host.notifications == []
@@ -272,9 +280,9 @@ def test_an_update_whose_backup_fails_changes_nothing_and_restarts_the_backend(
 @pytest.mark.parametrize(
     ("start", "reason"),
     [
-        (crashes, "the backend crashed before its first ingest cycle completed"),
-        (None, f"its first ingest cycle failed: {CYCLE_ERROR}"),
-        (stays_silent, "no ingest cycle completed within 0.05s"),
+        (crashes, "the backend crashed before its first ingest cycle"),
+        (None, f"the backend's first ingest cycle failed: {CYCLE_ERROR}"),
+        (stays_silent, "the backend completed no ingest cycle within 0.05s"),
     ],
     ids=["crash", "failed cycle", "timeout"],
 )
@@ -284,7 +292,7 @@ def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_
     host = updating(layout, start or completes_a_cycle(heartbeat(layout), error=CYCLE_ERROR))
     before = {path: data for path, data in install_state(layout).items() if path.is_symlink()}
 
-    code, out, err = run(stable_code(layout), "update", host=host)
+    code, out, err = run(stable_code(layout), "update", *QUICK, host=host)
 
     assert code == 1, err
     new, old = version_name(NEWER), version_name(OLDER)
@@ -292,17 +300,20 @@ def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_
         before
     )
     assert sorted(path.name for path in layout.versions.iterdir()) == [old]
-    assert not spool_hold_path(layout.live / DATABASE_NAME).exists()
+    assert not spool_hold_path(layout.database).exists()
     assert host.jobs[BACKEND.label].loaded
     assert restarted(host) == {BACKEND.label}
     assert [call for call in host.calls if call[1] == BACKEND.label][-1] == ("load", BACKEND.label)
-    assert out[2] == f"Update to version {new} fell back to {old}: {reason}"
+    assert out[2] == f"Update to version {new} fell back: {reason}"
     assert out[4:] == [
         "  database      kept as it is (the schema did not change)",
         f"  backend       restarted on {old}; it reads the spool files it kept again",
     ]
     assert host.notifications == [
-        ("Computer History update fell back", f"Version {new} {reason}; back on {old}.")
+        (
+            "Computer History update fell back",
+            f"Update to {new} fell back: {reason}; back on {old}.",
+        )
     ]
     ((entry),) = log_lines(layout)
     assert {k: entry[k] for k in ("action", "from", "to", "reason")} == {
@@ -321,7 +332,7 @@ def test_update_falls_back_on_its_own_and_keeps_the_database_when_the_schema_is_
 def test_a_fallback_after_the_new_version_changed_the_schema_restores_the_backup(
     run: RunCli, layout: Layout
 ) -> None:
-    database = layout.live / DATABASE_NAME
+    database = layout.database
 
     def migrates_then_fails(host: FakeHost) -> None:
         with writer(database, "written by the new version"):
@@ -432,26 +443,26 @@ def aw_up(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_backend_keeps_spool_files_until_its_first_cycle_completes(
     run: RunCli, layout: Layout, spool: Path, cycles: list[int], aw_up: None
 ) -> None:
-    hold = spool_hold_path(layout.live / DATABASE_NAME)
+    hold = spool_hold_path(layout.database)
     hold.write_text("")
 
     assert run(stable_code(layout), "ingest", "--watch", host=FakeHost())[0] == 0
 
     assert (spool / SPOOL_FILE).exists()
     assert not hold.exists()
-    assert CAPTURE_ID in stored_ids(layout.live / DATABASE_NAME)
+    assert CAPTURE_ID in stored_ids(layout.database)
 
     cycles[0] = 1
     assert run(stable_code(layout), "ingest", "--watch", host=FakeHost())[0] == 0
 
     assert not (spool / SPOOL_FILE).exists()
-    assert stored_ids(layout.live / DATABASE_NAME).count(CAPTURE_ID) == 1
+    assert stored_ids(layout.database).count(CAPTURE_ID) == 1
 
 
 def test_a_backend_whose_first_cycle_fails_keeps_holding(
     run: RunCli, layout: Layout, spool: Path, cycles: list[int]
 ) -> None:
-    hold = spool_hold_path(layout.live / DATABASE_NAME)
+    hold = spool_hold_path(layout.database)
     hold.write_text("")
 
     code = run(stable_code(layout), "ingest", "--watch", *UNREACHABLE_AW, host=FakeHost())[0]
@@ -459,21 +470,24 @@ def test_a_backend_whose_first_cycle_fails_keeps_holding(
     assert code == 0
     assert hold.exists()
     assert (spool / SPOOL_FILE).exists()
+    written = read_backend_heartbeat(heartbeat(layout))
+    assert written is not None
+    assert written.sources_unavailable
 
 
 def test_held_spool_files_are_read_again_harmlessly_after_a_fallback(
     run: RunCli, layout: Layout, spool: Path, cycles: list[int]
 ) -> None:
-    hold = spool_hold_path(layout.live / DATABASE_NAME)
+    hold = spool_hold_path(layout.database)
     hold.write_text("")
     assert run(stable_code(layout), "ingest", "--watch", *UNREACHABLE_AW, host=FakeHost())[0] == 0
     hold.unlink()
-    stored = stored_ids(layout.live / DATABASE_NAME)
+    stored = stored_ids(layout.database)
 
     code, out, err = run(stable_code(layout), "ingest", *UNREACHABLE_AW, host=FakeHost())
 
     assert not (spool / SPOOL_FILE).exists()
-    assert stored_ids(layout.live / DATABASE_NAME) == stored
+    assert stored_ids(layout.database) == stored
     assert code == 1, err
     assert "  ax-text     inserted      0  skipped      1  held back   0" in out
 
@@ -504,3 +518,161 @@ def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, li
         f"  last update   unreadable update log: the last line of {layout.update_log} is not an"
         " update log entry"
     )
+
+
+def test_update_never_moves_back_to_an_older_commit(run: RunCli, layout: Layout) -> None:
+    host = updating(layout, completes_a_cycle(heartbeat(layout)))
+    assert run(stable_code(layout), "update", host=host)[0] == 0
+    host = FakeHost(checks={NEWER: gate_runs(unit=CheckOutcome.CANCELLED), OLDER: gate_runs()})
+    before = install_state(layout)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    new, old = version_name(NEWER), version_name(OLDER)
+    assert out[1:] == [
+        f"Already up to date: version {new} is current (the newest passing commit, {old}, is"
+        " older than current)"
+    ]
+    assert install_state(layout) == before
+    assert changes(host) == []
+
+
+def test_a_first_cycle_with_activitywatch_down_is_waited_out(run: RunCli, layout: Layout) -> None:
+    down = completes_a_cycle(heartbeat(layout), error=AW_DOWN, sources_unavailable=True)
+    host = updating(layout, then(down, stays_silent, completes_a_cycle(heartbeat(layout))))
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert layout.current.resolve().name == version_name(NEWER)
+    assert out[2].startswith(f"Updated to version {version_name(NEWER)} ")
+
+
+def test_activitywatch_down_for_the_whole_wait_falls_back_and_says_so(
+    run: RunCli, layout: Layout
+) -> None:
+    down = completes_a_cycle(heartbeat(layout), error=AW_DOWN, sources_unavailable=True)
+    host = updating(layout, down)
+
+    code, out, _ = run(stable_code(layout), "update", *QUICK, host=host)
+
+    assert code == 1
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert out[2] == (
+        f"Update to version {version_name(NEWER)} fell back: the backend's sources stayed"
+        f" unavailable for the whole 0.05s wait: {AW_DOWN}"
+    )
+
+
+def test_a_one_shot_ingest_during_the_hold_keeps_spool_files(
+    run: RunCli, layout: Layout, spool: Path, aw_up: None
+) -> None:
+    hold = spool_hold_path(layout.database)
+    hold.write_text("")
+
+    code, out, err = run(stable_code(layout), "ingest", host=FakeHost())
+
+    assert code == 0, err
+    assert (spool / SPOOL_FILE).exists()
+    assert hold.exists()
+    assert CAPTURE_ID in stored_ids(layout.database)
+    assert out[-1] == f"  spool files kept: {hold} holds their deletion while an update runs"
+
+
+def test_a_fallback_that_cannot_stop_the_new_backend_keeps_its_folder(
+    run: RunCli, layout: Layout
+) -> None:
+    def launchd_breaks(host: FakeHost) -> None:
+        host.job_error = "could not ask launchd about it: launchctl timed out"
+
+    host = updating(layout, launchd_breaks)
+
+    code, out, _ = run(stable_code(layout), "update", host=host)
+
+    assert code == 1
+    new_folder = layout.versions / version_name(NEWER)
+    assert (new_folder / "installed").is_file()
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert "  warning: the new version's backend could not be confirmed stopped: could not ask" in (
+        " ".join(out)
+    )
+    assert f"  warning: kept {new_folder}, since its backend or a pointer may still use it" in out
+
+
+def test_a_fallback_that_cannot_point_current_back_keeps_the_new_version_runnable(
+    run: RunCli, layout: Layout
+) -> None:
+    def blocks_the_pointer_then_crashes(host: FakeHost) -> None:
+        staged = layout.live / ".current.new"
+        staged.mkdir()
+        (staged / "in the way").write_text("")
+        crashes(host)
+
+    host = updating(layout, blocks_the_pointer_then_crashes)
+
+    code, out, _ = run(stable_code(layout), "update", host=host)
+
+    assert code == 1
+    new_folder = layout.versions / version_name(NEWER)
+    assert layout.current.resolve() == new_folder
+    assert (new_folder / "installed").is_file()
+    assert any(
+        line.startswith(f"  warning: current could not be pointed back at {version_name(OLDER)}: ")
+        for line in out
+    )
+    assert f"  warning: kept {new_folder}, since its backend or a pointer may still use it" in out
+    assert host.notifications[-1][1].endswith("run computer-history status to see where it is.")
+
+
+def test_an_interrupted_wait_falls_back_and_exits_130(
+    run: RunCli, layout: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def interrupt(_: float) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(waiting.time, "sleep", interrupt)
+    host = updating(layout, stays_silent)
+
+    code, out, _ = run(stable_code(layout), "update", host=host)
+
+    assert code == 130
+    reason = "the update was interrupted before the backend's first ingest cycle"
+    assert out[2] == f"Update to version {version_name(NEWER)} fell back: {reason}"
+    assert layout.current.resolve().name == version_name(OLDER)
+    assert log_lines(layout)[-1]["reason"] == reason
+    assert host.jobs[BACKEND.label].loaded
+
+
+def test_a_failure_after_the_backup_removes_it(run: RunCli, layout: Layout) -> None:
+    spool_hold_path(layout.database).mkdir()
+    host = updating(layout)
+    before = install_state(layout)
+
+    code, _, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 1
+    assert err.rstrip().endswith("(nothing was changed)")
+    assert pre_update_backups(layout) == []
+    assert install_state(layout) == before
+    assert host.jobs[BACKEND.label].loaded
+
+
+def test_a_rollback_that_cannot_point_previous_keeps_current_on_the_newer_version(
+    run: RunCli, layout: Layout
+) -> None:
+    host = updating(layout, completes_a_cycle(heartbeat(layout)))
+    assert run(stable_code(layout), "update", host=host)[0] == 0
+    staged = layout.live / ".previous.new"
+    staged.mkdir()
+    (staged / "in the way").write_text("")
+
+    code, _, err = run(stable_code(layout), "rollback", host=FakeHost(loaded=[BACKEND.label]))
+
+    assert code == 1
+    assert err.startswith(f"rollback failed: could not point previous at {version_name(NEWER)}: ")
+    assert err.rstrip().endswith(
+        f"(current points at {version_name(NEWER)} again; nothing was changed)"
+    )
+    assert layout.current.resolve().name == version_name(NEWER)
+    assert layout.previous.resolve().name == version_name(OLDER)

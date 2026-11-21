@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from functools import partial
 from pathlib import Path
 
 from computer_history.cli.db import db_busy_hint, store_unavailable
@@ -22,7 +21,7 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
-from computer_history.store import Purpose, open_store, spool_hold_path
+from computer_history.store import Purpose, SpoolHold, open_store
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +29,8 @@ log = logging.getLogger(__name__)
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
-    hold = spool_hold_path(db_path)
-    spool = CaptureSpool(spool_path, hold_deletion=args.watch and hold.exists())
-    sources = [ActivityWatch(AWClient(args.aw_url)), spool]
+    hold = SpoolHold.beside(db_path)
+    sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path, hold=hold)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn
     if conn is None:
@@ -46,28 +44,24 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 POLL_INTERVAL_SECONDS,
                 db_path,
             )
-            if spool.holding_deletion:
-                log.info("spool files are kept until a cycle completes (%s is there)", hold)
+            if hold.active:
+                log.info("spool files are kept until a cycle is ok (%s is there)", hold.path)
             try:
                 watch(
                     conn,
                     sources,
-                    report=partial(_report_cycle, spool, hold),
+                    report=log_cycle,
                     heartbeat=backend_heartbeat_path(db_path),
+                    hold=hold,
                 )
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0
         summary = poll(conn, sources)
-    return _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
-
-
-def _report_cycle(spool: CaptureSpool, hold: Path, summary: CycleSummary, delay: float) -> None:
-    log_cycle(summary, delay)
-    if spool.holding_deletion and summary.ok:
-        spool.resume_deletion()
-        hold.unlink(missing_ok=True)
-        log.info("first cycle completed: spool files are deleted once stored again")
+    code = _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
+    if hold.active:
+        print(f"  spool files kept: {hold.path} holds their deletion while an update runs")
+    return code
 
 
 def log_cycle(summary: CycleSummary, delay: float) -> None:

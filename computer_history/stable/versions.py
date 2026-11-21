@@ -52,10 +52,7 @@ def point(pointer: Path, name: str) -> None:
 
 
 def build_version(host: Host, layout: Layout, commit: str) -> bool:
-    """Build a commit into its marked version folder unless it is marked already.
-
-    Returns whether it built one; on any failure the folder is removed before the error goes on.
-    """
+    """Build a commit into its marked version folder unless marked already; True if it built one."""
     folder = layout.versions / version_name(commit)
     if (folder / INSTALL_MARKER_NAME).is_file():
         return False

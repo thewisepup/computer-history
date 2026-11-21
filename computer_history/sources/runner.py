@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 import time
 from collections.abc import Callable, Sequence
@@ -18,7 +19,7 @@ from computer_history.sources.commit import (
 )
 from computer_history.sources.contract import Source, SourceUnavailable
 from computer_history.sources.projection import projector_for
-from computer_history.store import Projector, UnclaimedSource, get_progress
+from computer_history.store import Projector, SpoolHold, UnclaimedSource, get_progress
 
 __all__ = [
     "POLL_INTERVAL_SECONDS",
@@ -29,6 +30,8 @@ __all__ = [
 ]
 
 POLL_INTERVAL_SECONDS = 60
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -134,10 +137,11 @@ def watch(
     monotonic: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
     heartbeat: Path | None = None,
+    hold: SpoolHold | None = None,
 ) -> NoReturn:
     """Poll forever, reporting each cycle and the seconds until the next one.
 
-    After each cycle, failed or not, it rewrites the heartbeat file when given one.
+    After an ok cycle it releases an active spool hold; after every cycle it rewrites the heartbeat.
     """
     clock = clock or (lambda: datetime.now(UTC))
     monotonic = monotonic or time.monotonic
@@ -145,11 +149,25 @@ def watch(
     while True:
         began = monotonic()
         summary = poll(conn, sources, now=clock())
+        if hold is not None and summary.ok and hold.active:
+            hold.release()
+            log.info("a cycle completed: spool files are deleted again once stored")
         if heartbeat is not None:
-            write_backend_heartbeat(heartbeat, summary.at, summary.ok, _first_failure(summary))
+            write_backend_heartbeat(
+                heartbeat,
+                summary.at,
+                summary.ok,
+                _first_failure(summary),
+                sources_unavailable=_only_sources_unavailable(summary),
+            )
         delay = max(0.0, interval - (monotonic() - began))
         report(summary, delay)
         sleep(delay)
+
+
+def _only_sources_unavailable(summary: CycleSummary) -> bool:
+    failures = summary.failures
+    return bool(failures) and all(failure.kind is FailureKind.SOURCE for failure in failures)
 
 
 def _first_failure(summary: CycleSummary) -> str | None:

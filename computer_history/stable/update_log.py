@@ -15,10 +15,7 @@ class UpdateAction(Enum):
 
 @dataclass(frozen=True)
 class UpdateLogEntry:
-    """One line of the update log: what moved current, from which version to which, and why.
-
-    A fallback goes from the version tried back to the one kept; the reason says what failed.
-    """
+    """One update log line: what moved current, from which version to which, and why."""
 
     at: datetime
     action: UpdateAction
@@ -62,3 +59,11 @@ def last_update_log_entry(path: Path) -> UpdateLogEntry | None:
     if reason is not None and not isinstance(reason, str):
         raise ValueError(problem)
     return UpdateLogEntry(at, action, from_version, to_version, reason)
+
+
+def append_or_note(path: Path, entry: UpdateLogEntry, problems: list[str]) -> None:
+    """Add the entry to the update log, noting a failed write among the problems."""
+    try:
+        append_update_log(path, entry)
+    except OSError as exc:
+        problems.append(f"the update log could not be written: {exc}")

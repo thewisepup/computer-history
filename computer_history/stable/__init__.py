@@ -14,9 +14,10 @@
         |                     launchd says about each agent for status
         +-- layout.py         where the versions, pointers, link, plists and logs live
 
-    updates.py        update (build the newest passing commit, back up, switch, wait
-        |             for the backend's first cycle with spool deletion held, and fall
-        |             back on its own) and rollback (current and previous swapped)
+    updates/          update (build the newest passing commit, back up, switch, wait
+        |             for the backend's first ok cycle with spool deletion held, and
+        |             fall back on its own) and rollback (current and previous swapped),
+        |             one module per stage
         +-- update_log.py  one line per update, fallback and rollback, read by status
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
@@ -73,9 +74,10 @@ from computer_history.stable.update_log import (
     last_update_log_entry,
 )
 from computer_history.stable.updates import (
+    FIRST_CYCLE_WAIT_SECONDS,
     RollbackFailed,
     UpdateFailed,
-    UpdateOutcome,
+    UpdateReport,
     rollback,
     update,
 )
@@ -90,6 +92,7 @@ __all__ = [
     "DAILY_FOLDER_NAME",
     "DAILY_KEPT",
     "EVERY_MINUTE_SECONDS",
+    "FIRST_CYCLE_WAIT_SECONDS",
     "LOAD_ATTEMPTS",
     "PACKAGES_FILE_NAME",
     "PRE_UPDATE_FOLDER_NAME",
@@ -113,7 +116,7 @@ __all__ = [
     "UpdateAction",
     "UpdateFailed",
     "UpdateLogEntry",
-    "UpdateOutcome",
+    "UpdateReport",
     "agent_statuses",
     "backup_inventory",
     "daily_backup_path",
