@@ -12,6 +12,7 @@ from computer_history.cli.formatting import (
     app_name,
     db_size,
     duration,
+    finding_lines,
     human_size,
     lag,
     local_midnight,
@@ -19,7 +20,6 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.cli.watchdog import finding_lines
 from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
@@ -34,10 +34,8 @@ from computer_history.sources import (
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
-    backend_heartbeat_path,
     capture_health,
     health_path,
-    read_backend_heartbeat,
     read_health,
     resolve_spool_path,
     screenshot_health,
@@ -82,18 +80,18 @@ MAX_APP_PAIRS_SHOWN = 3
 
 
 def cmd_status(args: argparse.Namespace) -> int:
+    """Print the database's sections, read beside the database it was given, then the stable
+    install's, which describe stable whichever database that is."""
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = formatting.utc_now()
     code = _print_store(args, db_path, spool_path, now)
     print()
+    _print_backups(backup_inventory(db_path), now)
+    print()
     _print_install(args.profile, now)
     print()
     _print_launch_agents(args.host)
-    print()
-    _print_backend(now)
-    print()
-    _print_backups(backup_inventory(db_path), now)
     print()
     _print_watchdog(now)
     return code
@@ -217,23 +215,6 @@ def _job(status: AgentStatus) -> str:
     return shown if status.installed else f"{shown}, plist deleted"
 
 
-def _print_backend(now: datetime) -> None:
-    print("Stable backend:")
-    heartbeat_path = backend_heartbeat_path(default_db_path(Profile.STABLE))
-    try:
-        heartbeat = read_backend_heartbeat(heartbeat_path)
-    except (OSError, ValueError) as exc:
-        print(f"  last cycle    unreadable heartbeat: {exc}")
-        return
-    if heartbeat is None:
-        print(f"  last cycle    none yet (no heartbeat at {heartbeat_path})")
-        return
-    result = "ok" if heartbeat.ok else "failed"
-    if heartbeat.error is not None:
-        result += f": {heartbeat.error}"
-    print(f"  last cycle    {ago(heartbeat.cycle_at, now)}, {result}")
-
-
 def _print_backups(kept: BackupInventory, now: datetime) -> None:
     print("Backups:")
     if not kept.daily and not kept.pre_update:
@@ -304,10 +285,10 @@ def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
         return None, f"Ingest:        cannot read {path}: {exc}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
-    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.updated_at, now)}"
+    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"
     if health.stale(now):
         line += (
-            f"; NOT REPORTING for {duration((now - health.updated_at).total_seconds())}"
+            f"; NOT REPORTING for {duration((now - health.cycle_at).total_seconds())}"
             " (is `ingest --watch` running?)"
         )
     if not health.consecutive_failures:

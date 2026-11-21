@@ -4,8 +4,9 @@ import argparse
 import sys
 
 from computer_history.cli import formatting
-from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat
+from computer_history.sources import health_path, read_health
 from computer_history.stable import (
+    NOTHING_CHANGED,
     RELEASE_GATE,
     Layout,
     RollbackFailed,
@@ -23,18 +24,22 @@ INTERRUPTED_EXIT_CODE = 130
 
 def cmd_update(args: argparse.Namespace) -> int:
     layout = stable_layout()
-    heartbeat = backend_heartbeat_path(layout.database)
+    health = health_path(layout.database)
     try:
         report = update(
             args.host,
             layout,
-            last_cycle=lambda: read_backend_heartbeat(heartbeat),
+            last_cycle=lambda: read_health(health),
             now=formatting.utc_now,
             wait_seconds=args.wait,
         )
     except UpdateFailed as exc:
         print(f"update failed: {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt as exc:
+        left = "; ".join(getattr(exc, "__notes__", ())) or NOTHING_CHANGED
+        print(f"update interrupted before switching versions ({left})", file=sys.stderr)
+        return INTERRUPTED_EXIT_CODE
     for line in format_update(report, layout):
         print(line)
     if report.interrupted:

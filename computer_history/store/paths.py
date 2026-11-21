@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -61,6 +61,21 @@ def running_code(code: Path) -> RunningCode:
     if not inside or not (inside[-1] / INSTALL_MARKER_NAME).is_file():
         return RunningCode(Profile.DEV)
     return RunningCode(Profile.STABLE, inside[-1].name)
+
+
+def replace_atomically(path: Path, stage: Callable[[Path], object]) -> None:
+    """Rewrite a file or link in one step: stage writes the new one beside it, a rename swaps it in.
+
+    Whatever was staged is removed again when writing or renaming fails.
+    """
+    staged = path.with_name(f".{path.name}.new")
+    staged.unlink(missing_ok=True)
+    try:
+        stage(staged)
+        os.replace(staged, path)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
 
 
 def sidecars(db_path: Path) -> tuple[Path, ...]:

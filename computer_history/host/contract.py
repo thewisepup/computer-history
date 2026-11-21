@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -8,6 +9,7 @@ from typing import Protocol
 COMMAND_NAME = "computer-history"
 ACTIVITYWATCH_BUNDLE_ID = "net.activitywatch.ActivityWatch"
 OPEN_ACTIVITYWATCH = ("/usr/bin/open", "-g", "-b", ACTIVITYWATCH_BUNDLE_ID)
+ALERT_REPEAT = timedelta(hours=1)
 
 
 class HostError(Exception):
@@ -80,6 +82,6 @@ class Host(Protocol):
         """Open the ActivityWatch app in the background."""
         ...
 
-    def notify(self, title: str, message: str) -> None:
-        """Post a user notification."""
+    def notify(self, message: str) -> None:
+        """Post a user notification under the app's one title."""
         ...

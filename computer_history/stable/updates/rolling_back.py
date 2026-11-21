@@ -7,9 +7,8 @@ from datetime import datetime
 
 from computer_history.host import Host, HostError
 from computer_history.stable.launch_agents import BACKEND, load_agent
-from computer_history.stable.layout import Layout
+from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
-from computer_history.stable.updates.preparing import NOTHING_CHANGED
 from computer_history.stable.versions import point, pointed
 
 

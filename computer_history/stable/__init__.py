@@ -64,6 +64,7 @@ from computer_history.stable.launch_agents import (
 )
 from computer_history.stable.layout import (
     CAPTURE_AGENT_LABEL,
+    NOTHING_CHANGED,
     PACKAGES_FILE_NAME,
     Layout,
     stable_layout,
@@ -94,6 +95,7 @@ __all__ = [
     "EVERY_MINUTE_SECONDS",
     "FIRST_CYCLE_WAIT_SECONDS",
     "LOAD_ATTEMPTS",
+    "NOTHING_CHANGED",
     "PACKAGES_FILE_NAME",
     "PRE_UPDATE_FOLDER_NAME",
     "RELEASE_GATE",

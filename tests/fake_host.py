@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from computer_history.host import CheckOutcome, CheckRun, HostError, JobBusy, JobState
-from computer_history.sources import write_backend_heartbeat
+from computer_history.sources import IngestHealth, write_health
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,
@@ -44,18 +44,17 @@ BackendStart = Callable[["FakeHost"], None]
 
 
 def completes_a_cycle(
-    heartbeat: Path, *, error: str | None = None, sources_unavailable: bool = False
+    health: Path, *, error: str | None = None, sources_unavailable: bool = False
 ) -> BackendStart:
     """A backend that runs its first ingest cycle at once, failing with the error if given one."""
 
     def start(_: FakeHost) -> None:
-        write_backend_heartbeat(
-            heartbeat,
-            datetime.now(UTC),
-            error is None,
-            error,
-            sources_unavailable=sources_unavailable,
-        )
+        now = datetime.now(UTC)
+        if error is None:
+            write_health(health, IngestHealth(now, last_success_at=now))
+            return
+        cycle = IngestHealth(now, 1, now, last_error=error, sources_unavailable=sources_unavailable)
+        write_health(health, cycle)
 
     return start
 
@@ -118,7 +117,7 @@ class FakeHost:
         self.running_activitywatch = activitywatch_running
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
-        self.notifications: list[tuple[str, str]] = []
+        self.notifications: list[str] = []
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -189,8 +188,8 @@ class FakeHost:
         if self.opening_starts_activitywatch:
             self.running_activitywatch = True
 
-    def notify(self, title: str, message: str) -> None:
+    def notify(self, message: str) -> None:
         self.calls.append(("notify", message))
         if self.notify_error is not None:
             raise HostError(self.notify_error)
-        self.notifications.append((title, message))
+        self.notifications.append(message)

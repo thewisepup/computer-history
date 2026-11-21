@@ -31,6 +31,7 @@ RATE_LIMITED_STATUSES = frozenset({403, 429})
 PYTHON_VERSION = "3.12"
 LAUNCHCTL = "/bin/launchctl"
 LAUNCHCTL_BUSY_CODES = frozenset({5, 37})  # EIO, EALREADY: a boot-out still in progress
+LAUNCHCTL_NO_SUCH_SERVICE = 113
 COMMAND_TIMEOUT_SECONDS = 600
 QUICK_COMMAND_TIMEOUT_SECONDS = 10
 RUNNING_STATE = re.compile(r"^\s*state = running\s*$", re.MULTILINE)
@@ -39,6 +40,8 @@ PGREP = "/usr/bin/pgrep"
 PGREP_NONE_FOUND = 1
 ACTIVITYWATCH_PROCESS = "aw-qt"
 OSASCRIPT = "/usr/bin/osascript"
+NOTIFY_ENV_VAR = "COMPUTER_HISTORY_NOTIFY"
+NOTIFICATION_TITLE = "Computer History"
 NOTIFY_SCRIPT = (
     "on run argv",
     "display notification (item 2 of argv) with title (item 1 of argv)",
@@ -48,7 +51,7 @@ NOTIFY_SCRIPT = (
 
 class LiveHost:
     """The host adapter for this Mac: launchctl in the login session, GitHub's API, uv, pgrep,
-    open and osascript."""
+    open and osascript (off when $COMPUTER_HISTORY_NOTIFY is 0)."""
 
     def main_commits(self, limit: int) -> list[str]:
         commits = _github(f"/commits?sha=main&per_page={limit}", "list main's newest commits")
@@ -94,9 +97,12 @@ class LiveHost:
         return _run([uv, "pip", "freeze", "--python", python], "list the installed packages")
 
     def job(self, label: str) -> JobState:
-        shown = _command([LAUNCHCTL, "print", f"{_domain()}/{label}"], f"ask launchd about {label}")
-        if shown.returncode != 0:
+        doing = f"ask launchd about {label}"
+        shown = _command([LAUNCHCTL, "print", f"{_domain()}/{label}"], doing)
+        if shown.returncode == LAUNCHCTL_NO_SUCH_SERVICE:
             return JobState(loaded=False)
+        if shown.returncode != 0:
+            raise HostError(_failure(doing, shown))
         pid = PID_LINE.search(shown.stdout) if RUNNING_STATE.search(shown.stdout) else None
         return JobState(loaded=True, pid=int(pid.group(1)) if pid else None)
 
@@ -125,10 +131,12 @@ class LiveHost:
     def open_activitywatch(self) -> None:
         _run(list(OPEN_ACTIVITYWATCH), "open ActivityWatch", timeout=QUICK_COMMAND_TIMEOUT_SECONDS)
 
-    def notify(self, title: str, message: str) -> None:
+    def notify(self, message: str) -> None:
+        if os.environ.get(NOTIFY_ENV_VAR) == "0":
+            return
         script = [arg for line in NOTIFY_SCRIPT for arg in ("-e", line)]
         _run(
-            [OSASCRIPT, *script, title, message],
+            [OSASCRIPT, *script, NOTIFICATION_TITLE, message],
             "post a notification",
             timeout=QUICK_COMMAND_TIMEOUT_SECONDS,
         )

@@ -6,8 +6,8 @@ import pytest
 from fake_host import FakeHost
 from hypothesis import HealthCheck, settings
 
-from computer_history.alerts import NOTIFY_ENV_VAR
 from computer_history.cli import app as cli_app
+from computer_history.host import NOTIFY_ENV_VAR
 from computer_history.logs import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from computer_history.logs import reset as reset_logging
 from computer_history.store import DB_ENV_VAR, connect

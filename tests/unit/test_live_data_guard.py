@@ -16,7 +16,7 @@ from live_data_guard import (
     RealNotification,
 )
 
-from computer_history.alerts import post_notification
+from computer_history.host import NOTIFY_ENV_VAR, LiveHost
 from computer_history.logs import (
     LOG_DIR_ENV_VAR,
     default_log_dir,
@@ -98,9 +98,10 @@ def test_touching_live_data_raises(touch) -> None:
     assert not PROBE.exists()
 
 
-def test_posting_a_real_notification_raises() -> None:
+def test_posting_a_real_notification_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(NOTIFY_ENV_VAR)
     with pytest.raises(RealNotification):
-        post_notification("a test must never show this")
+        LiveHost().notify("a test must never show this")
 
 
 def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: Path) -> None:

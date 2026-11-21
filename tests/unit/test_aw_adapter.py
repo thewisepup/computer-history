@@ -686,7 +686,6 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     import computer_history.sources as sources
     from computer_history.sources import (
         agent_health,
-        backend_heartbeat,
         backfill,
         capture_spool,
         commit,
@@ -702,7 +701,6 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         commit,
         projection,
         runner,
-        backend_heartbeat,
         ingest_health,
         cycle_report,
         backfill,

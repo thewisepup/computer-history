@@ -6,16 +6,15 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from computer_history.alerts import NOTIFICATION_TITLE
 from computer_history.host import Host, HostError
 from computer_history.sources import (
     AWApi,
-    BackendHeartbeat,
+    IngestHealth,
     SourceUnavailable,
     Span,
     active_spans,
     capture_liveness,
-    read_backend_heartbeat,
+    read_health,
     watcher_ends,
 )
 from computer_history.watchdog.alerts import Notice, due_to_log, notices
@@ -47,7 +46,7 @@ class WatchPaths:
     """The files one watchdog run reads and writes."""
 
     spool: Path
-    heartbeat: Path
+    health: Path
     config: Path
     state: Path
     lock: Path
@@ -123,17 +122,13 @@ def _watch(
     except sqlite3.Error as exc:
         active, store_error = [], f"database read failed: {exc}"
     capture = _capture_agent(conn, paths, active, store_error, now, watched_since, thresholds)
-    heartbeat, backend = _heartbeat(paths.heartbeat)
-    failing_since = previous.failing_since
-    if heartbeat is not None:
-        failing_since = None if heartbeat.ok else failing_since or heartbeat.cycle_at
+    health, backend = _health(paths.health)
     if backend is None:
         backend = judge_backend(
-            heartbeat,
+            health,
             now=now,
             active=_since(active, now - silent_after[Check.BACKEND]),
             watched_since=watched_since,
-            failing_since=failing_since,
             silent_after=silent_after[Check.BACKEND],
         )
         if store_error is not None and backend.verdict is not Verdict.OK:
@@ -163,7 +158,7 @@ def _watch(
         now=now,
     ):
         try:
-            host.notify(NOTIFICATION_TITLE, notice.message)
+            host.notify(notice.message)
         except HostError as exc:
             errors.append(str(exc))
             continue
@@ -188,7 +183,6 @@ def _watch(
         open=frozenset(open_problems),
         reopened=recent_reopens(previous.reopened, now) if reopening is None else reopening.reopens,
         unreachable_since=unreachable_since,
-        failing_since=failing_since,
         logged=logged,
         errors=tuple(errors),
     )
@@ -227,9 +221,9 @@ def _capture_agent(
     return Finding(Check.CAPTURE_AGENT, Verdict.UNKNOWN, Reason.UNREADABLE, detail=store_error)
 
 
-def _heartbeat(path: Path) -> tuple[BackendHeartbeat | None, Finding | None]:
+def _health(path: Path) -> tuple[IngestHealth | None, Finding | None]:
     try:
-        return read_backend_heartbeat(path), None
+        return read_health(path), None
     except (OSError, ValueError) as exc:
         unreadable = Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.UNREADABLE, detail=str(exc))
         return None, unreadable

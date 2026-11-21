@@ -24,15 +24,15 @@ from computer_history.sources import (
     SPOOL_VERSION,
     WINDOW_SOURCE,
     AWError,
+    IngestHealth,
     agent_config_path,
     agent_health,
-    backend_heartbeat_path,
-    write_backend_heartbeat,
+    health_path,
+    write_health,
 )
 from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_layout
 from computer_history.store import DATABASE_NAME
 from computer_history.watchdog import (
-    NOTIFICATION_TITLE,
     REOPEN_LIMIT,
     watchdog_lock_path,
     watchdog_state_path,
@@ -69,7 +69,7 @@ class WatchedAW(FakeAW):
 
 class Mac:
     """A Mac on a minute clock: ActivityWatch's watchers, the capture agent's spool and the
-    backend's heartbeat, each kept going or stopped by the test."""
+    backend's ingest cycles, each kept going or stopped by the test."""
 
     def __init__(self, folder: Path, run: RunCli, checkout: Path, host: FakeHost) -> None:
         self.db = folder / DATABASE_NAME
@@ -114,8 +114,10 @@ class Mac:
             if record is not None:
                 self.record(record)
             if cycle:
-                heartbeat = backend_heartbeat_path(self.db)
-                write_backend_heartbeat(heartbeat, self.now, failing is None, failing)
+                health = IngestHealth(self.now, last_success_at=self.now)
+                if failing is not None:
+                    health = IngestHealth(self.now, 1, self.now, last_error=failing)
+                write_health(health_path(self.db), health)
             self.watch()
 
     def watched(self, bucket: str, start: float, seconds: float, data: dict[str, str]) -> None:
@@ -165,7 +167,7 @@ class Mac:
 
     @property
     def notified(self) -> list[str]:
-        return [message for _, message in self.host.notifications]
+        return list(self.host.notifications)
 
     def notified_at(self, message: str) -> list[float]:
         """The minutes whose watchdog run printed a line containing the message."""
@@ -244,7 +246,6 @@ def test_a_silent_capture_agent_while_active_notifies_once_an_hour_then_once_whe
     mac.run(minutes(3, 69), record=None)
     mac.run(minutes(70, 75))
 
-    assert mac.host.notifications[0][0] == NOTIFICATION_TITLE
     assert mac.notified == [CAPTURE_SILENT, CAPTURE_SILENT, CAPTURE_BACK]
     assert mac.notified_at(f"notified: {CAPTURE_SILENT}") == [8, 68]
     assert mac.notified_at(f"cleared: {CAPTURE_BACK}") == [70]
@@ -445,24 +446,26 @@ def test_an_old_or_empty_bucket_beside_a_live_one_is_no_problem(mac: Mac) -> Non
     assert mac.host.notifications == []
 
 
-def test_cycles_failing_past_the_threshold_notify_with_the_reason(mac: Mac) -> None:
+def test_failing_cycles_are_left_to_ingests_own_alert_and_never_notify_from_the_watchdog(
+    mac: Mac,
+) -> None:
     reason = "aw-window: ActivityWatch answered 500"
     mac.run(minutes(0, 2))
-    mac.run(minutes(3, 10), failing=reason)
+    mac.run(minutes(3, 30), failing=reason)
 
-    message = f"The backend's ingest cycles have been failing for over 5 min: {reason}"
-    assert mac.notified == [message]
-    assert mac.notified_at(message) == [9]
-    assert mac.outputs[-1][4].startswith("  backend        PROBLEM: cycles are failing")
+    assert mac.notified == []
+    assert mac.outputs[-1][4].startswith(
+        "  backend        ok: running, but its cycles fail (ingest alerts on that)"
+    )
+    assert mac.outputs[-1][4].endswith(f" ({reason})")
 
 
-def test_a_failed_cycle_never_clears_a_silent_backend(mac: Mac) -> None:
+def test_a_failed_cycle_clears_a_silent_backend_since_it_is_running_again(mac: Mac) -> None:
     mac.run(minutes(0, 2))
     mac.run(minutes(3, 8), cycle=False)
-    mac.run(minutes(9, 11), failing="database is locked")
     assert mac.notified == [BACKEND_SILENT]
 
-    mac.run([12])
+    mac.run([9], failing="database is locked")
 
     assert mac.notified == [BACKEND_SILENT, "The backend is finishing ingest cycles again."]
 

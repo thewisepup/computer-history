@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -9,7 +8,7 @@ from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
 from computer_history.cli import ingest as cli_ingest
-from computer_history.sources import backend_heartbeat_path, read_backend_heartbeat, runner
+from computer_history.sources import health_path, read_health, runner
 from computer_history.stable import (
     ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
@@ -26,7 +25,6 @@ from computer_history.store import DATABASE_NAME
 COMMIT = "b" * 40
 INSTALL = "Stable install:"
 AGENTS = "Stable install's LaunchAgents:"
-BACKEND_SECTION = "Stable backend:"
 
 
 @pytest.fixture
@@ -44,7 +42,12 @@ def stable_code(run: RunCli, live: Path, checkout: Path) -> tuple[Path, FakeHost
     return installed_package(stable_layout().link.resolve().parents[1]), host
 
 
-def test_dev_status_shows_the_stable_backends_last_cycle(
+def ingest_line(out: list[str]) -> str:
+    (line,) = [line for line in out if line.startswith("Ingest:")]
+    return line
+
+
+def test_status_reads_the_backends_last_cycle_beside_the_database_it_was_given(
     run: RunCli,
     monkeypatch: pytest.MonkeyPatch,
     live: Path,
@@ -53,77 +56,35 @@ def test_dev_status_shows_the_stable_backends_last_cycle(
     one_cycle: None,
 ) -> None:
     code, host = stable_code
-    heartbeat = backend_heartbeat_path(live / DATABASE_NAME)
-    _, out, _ = run(checkout, *STATUS, host=host)
-    assert section(out, BACKEND_SECTION) == [
-        f"  last cycle    none yet (no heartbeat at {heartbeat})"
-    ]
-
     monkeypatch.setattr(cli_ingest, "AWClient", lambda *args, **kwargs: FakeAW({}))
     assert run(code, "ingest", "--watch", host=host)[0] == 0
-    _, out, _ = run(checkout, *STATUS, host=host)
 
-    (line,) = section(out, BACKEND_SECTION)
-    assert line.startswith("  last cycle    ")
-    assert line.endswith(" ago), ok")
+    _, stable_out, _ = run(code, *STATUS, host=host)
+    _, dev_out, _ = run(checkout, *STATUS, host=host)
+
+    assert ingest_line(stable_out).startswith("Ingest:        ok, last cycle ")
+    assert ingest_line(dev_out) == "Ingest:        no `ingest --watch` has reported yet"
+    assert not any(line.startswith("Stable backend") for line in stable_out + dev_out)
 
 
-def test_a_failed_cycle_still_writes_the_heartbeat_and_status_says_why_it_failed(
+def test_a_failed_cycle_is_recorded_with_why_and_status_leads_with_it(
     run: RunCli,
     live: Path,
-    checkout: Path,
     stable_code: tuple[Path, FakeHost],
     one_cycle: None,
 ) -> None:
     code, host = stable_code
     assert run(code, "ingest", "--watch", *UNREACHABLE_AW, host=host)[0] == 0
 
-    _, out, _ = run(checkout, *STATUS, host=host)
+    _, out, _ = run(code, *STATUS, host=host)
 
-    (line,) = section(out, BACKEND_SECTION)
-    assert " ago), failed: " in line
-    heartbeat = read_backend_heartbeat(backend_heartbeat_path(live / DATABASE_NAME))
-    assert heartbeat is not None and heartbeat.error is not None
-    assert line.endswith(f" ago), failed: {heartbeat.error}")
-    assert "ActivityWatch" in heartbeat.error
-
-
-def test_a_dev_backends_heartbeat_is_not_shown_as_stables(
-    run: RunCli,
-    live: Path,
-    dev: Path,
-    checkout: Path,
-    one_cycle: None,
-) -> None:
-    host = FakeHost()
-    assert run(checkout, "ingest", "--watch", *UNREACHABLE_AW, host=host)[0] == 0
-    assert backend_heartbeat_path(dev / DATABASE_NAME).is_file()
-
-    _, out, _ = run(checkout, *STATUS, host=host)
-
-    (line,) = section(out, BACKEND_SECTION)
-    assert line.startswith("  last cycle    none yet")
-
-
-@pytest.mark.parametrize(
-    "written",
-    [
-        {"cycle_at": "2026-11-20T17:22:03", "ok": True},
-        {"cycle_at": "2026-11-20T17:22:03+00:00", "ok": "yes"},
-        {"ok": True},
-    ],
-    ids=["naive time", "ok not a bool", "no time"],
-)
-def test_an_unreadable_heartbeat_is_reported_not_trusted(
-    run: RunCli, live: Path, checkout: Path, written: dict[str, object]
-) -> None:
-    backend_heartbeat_path(live / DATABASE_NAME).write_text(json.dumps(written))
-
-    code, out, _ = run(checkout, *STATUS, host=FakeHost())
-
-    assert code == 0
-    (line,) = section(out, BACKEND_SECTION)
-    assert line.startswith("  last cycle    unreadable heartbeat: ")
+    health = read_health(health_path(live / DATABASE_NAME))
+    assert health is not None and health.last_error is not None
+    assert not health.ok and health.sources_unavailable
+    assert "ActivityWatch" in health.last_error
+    assert out[1].startswith("!! ingest is FAILING since ")
+    assert out[1].endswith(health.last_error)
+    assert "FAILING since" in ingest_line(out)
 
 
 def test_status_shows_the_install_and_its_launch_agents(
