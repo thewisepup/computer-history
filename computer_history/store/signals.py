@@ -6,12 +6,12 @@ Signals come from a projector the caller passes. Observations are only read, nev
 from __future__ import annotations
 
 import logging
-import math
 import sqlite3
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from computer_history.logs import progress_step
 from computer_history.store.db import transaction
 
 log = logging.getLogger(__name__)
@@ -21,7 +21,6 @@ MAX_FAILURE_RATIO = 0.5
 MIN_KEPT_RATIO = 0.5
 SHRINK_CHECK_MIN_SIGNALS = 50
 MAX_LOGGED_FAILURES = 20
-PROGRESS_RECORDS = 5
 MIN_PROGRESS_STEP = 10_000
 
 
@@ -133,7 +132,7 @@ def rebuild_signals(
         before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
         total = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
         conn.execute("DELETE FROM signals")
-        step = max(MIN_PROGRESS_STEP, math.ceil(total / PROGRESS_RECORDS))
+        step = progress_step(total, at_least=MIN_PROGRESS_STEP)
         rows = conn.execute(
             "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id"
         )
@@ -178,7 +177,7 @@ def rebuild_signals(
         if failed > MAX_LOGGED_FAILURES:
             log.warning(
                 "more observations skipped, not logged one by one",
-                extra={"skipped": failed - MAX_LOGGED_FAILURES},
+                extra={"unlogged": failed - MAX_LOGGED_FAILURES},
             )
         check_failures(total)
         if (

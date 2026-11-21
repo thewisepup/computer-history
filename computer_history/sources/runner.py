@@ -45,15 +45,12 @@ class IngestOutcome:
 
 @dataclass(frozen=True)
 class CycleSummary:
-    """One poll's outcomes for the streams that committed, and the failures that cut it short.
-
-    seconds is how long the poll took.
-    """
+    """One poll's outcomes for the streams that committed, and the failures that cut it short."""
 
     at: datetime
     outcomes: dict[str, IngestOutcome] = field(default_factory=dict[str, IngestOutcome])
     failures: tuple[StreamFailure, ...] = ()
-    seconds: float = field(default=0.0, compare=False)
+    duration_s: float = field(default=0.0, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -149,8 +146,7 @@ def watch(
     monotonic = monotonic or time.monotonic
     sleep = sleep or time.sleep
     while True:
-        began = monotonic()
-        summary = poll(conn, sources, now=clock())
-        delay = max(0.0, interval - (monotonic() - began))
+        summary = poll(conn, sources, now=clock(), monotonic=monotonic)
+        delay = max(0.0, interval - summary.duration_s)
         report(summary, delay)
         sleep(delay)

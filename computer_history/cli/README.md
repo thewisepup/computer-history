@@ -52,32 +52,36 @@ other streams are still ingested.
 `--watch` is the long-running collector. It survives ActivityWatch outages and
 locked databases, and writes one record per cycle to stderr and to the JSON log
 (see [logs](#logs--what-the-commands-did)). Real output from a verification
-run where `ingest_progress` was renamed away for seven cycles:
+run where `ingest_progress` was renamed away for two cycles:
 
 ```
-2026-11-20 16:12:54 INFO    cli.ingest  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=21
-2026-11-20 16:13:54 ERROR   cli.ingest  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=1  exc="sqlite3.OperationalError: no such table: ingest_progress"
-2026-11-20 16:14:54 ERROR   cli.ingest  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=2
-...
-2026-11-20 16:20:54 INFO    cli.ingest  cycle ok: aw-afk +1 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +1 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=6
-2026-11-20 16:20:54 INFO    cli.ingest  ingest recovered  failed_cycles=7 down_since=2026-11-21T00:13:54.901976+00:00
+2026-11-20 17:15:32 INFO    sources.cycle_report  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=12
+2026-11-20 17:16:32 ERROR   sources.cycle_report  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=2 retry_s=60 streak=1  exc="sqlite3.OperationalError: no such table: ingest_progress"
+2026-11-20 17:17:32 ERROR   sources.cycle_report  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=2
+2026-11-20 17:18:32 INFO    sources.cycle_report  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=20
+2026-11-20 17:18:32 INFO    sources.cycle_report  ingest recovered  failed_cycles=2 failing_since=2026-11-21T01:16:32.792900+00:00
 ```
 
-The first failure of a streak carries its traceback in the JSON log. After
+The first failure of each distinct cause in a streak carries its traceback in
+the JSON log, and so does the first after a restart. A one-shot `ingest`
+writes the same record to the JSON log only, since it prints its own report.
+After
 every cycle the watch saves its ingest health to `ingest-health.json` beside
 the database (a file, not a table, so a broken database cannot hide it):
 
 ```json
 {
-  "updated_at": "2026-11-21T00:20:54.952761+00:00",
+  "updated_at": "2026-11-21T01:18:32.801132+00:00",
   "consecutive_failures": 0,
   "failing_since": null,
-  "last_success_at": "2026-11-21T00:20:54.952761+00:00",
-  "last_error": null
+  "last_success_at": "2026-11-21T01:18:32.801132+00:00",
+  "last_error": null,
+  "alerted_at": null
 }
 ```
 
-A restarted watch continues the saved streak. After 5 failed cycles in a row
+A restarted watch continues the saved streak, including when it last
+notified, so a restart neither notifies again early nor misses the recovery. After 5 failed cycles in a row
 it posts a macOS notification (`ingest failing for 5 cycles. Run
 \`computer-history status\`.`), again at most hourly while the failures last,
 and `ingest recovered.` once a cycle succeeds. Notifications never name
@@ -292,10 +296,10 @@ Each chunk is a DEBUG record. Real output (`computer-history logs --logger
 sources.backfill`):
 
 ```
-2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill started  chunks=3 start=2026-11-17T08:00:00+00:00 end=2026-11-21T00:20:54.952761+00:00
-2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill progress  chunks_done=1 chunks=3 inserted=0
-2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill progress  chunks_done=2 chunks=3 inserted=0
-2026-11-20 16:21:25 INFO    sources.backfill [backfill 4a165a38]  backfill finished  outcome=ok chunks_done=3 chunks=3 inserted=0 skipped=25 held_back=0 duration_ms=4
+2026-11-20 17:18:45 INFO    sources.backfill [backfill b79404d0]  backfill started  chunks=3 start=2026-11-17T08:00:00+00:00 end=2026-11-21T01:18:32.801132+00:00
+2026-11-20 17:18:45 INFO    sources.backfill [backfill b79404d0]  backfill progress  chunks_done=1 chunks=3 inserted=0
+2026-11-20 17:18:45 INFO    sources.backfill [backfill b79404d0]  backfill progress  chunks_done=2 chunks=3 inserted=0
+2026-11-20 17:18:45 INFO    sources.backfill [backfill b79404d0]  backfill finished  outcome=ok chunks_done=3 chunks=3 inserted=0 skipped=23 held_back=0 duration_ms=5
 ```
 
 ## rebuild-signals — regenerate the derived layer
@@ -326,9 +330,16 @@ rebuild-signals aborted: no source adapter projects 'screenshot', the source of 
 ```
 
 The JSON log gets `rebuild started`, a `rebuild progress` record at each fifth
-of the observations (only past 10,000 of them), `rebuild aborted` or `rebuild
-failed` as an ERROR, and `rebuild finished` with the counts, `outcome` and
-`duration_ms`.
+of the observations (only past 10,000 of them), and one `rebuild finished`
+however it ends, with `outcome`, `duration_ms`, the signal counts and `failed`
+(observations that could not be projected). It is an ERROR when the rebuild
+aborted (with the reason in `error`) or failed (with its traceback). Real
+output:
+
+```
+2026-11-20 17:18:45 INFO    sources.projection [rebuild-signals f7a50a1b]  rebuild started  allow_shrink=False
+2026-11-20 17:18:45 INFO    sources.projection [rebuild-signals f7a50a1b]  rebuild finished  outcome=ok duration_ms=1 signals_before=28 signals_after=28 failed=0
+```
 
 ## dev build-db — a database of synthetic history
 
@@ -498,36 +509,51 @@ reports medians only.
 ```bash
 computer-history logs --since 1h               # 30m, 2h, 1d, or an ISO date/datetime
 computer-history logs --level error            # this level and above
-computer-history logs --run bef0fb32           # one run: one command invocation
+computer-history logs --run d5f6018a           # one run: one command invocation
 computer-history logs --logger sources         # a logger and those below it
 computer-history logs --level error --json     # the raw JSON lines
 ```
 
 Every command logs to stderr as text and to `computer-history.jsonl` in
 `$COMPUTER_HISTORY_LOG_DIR`, else `~/Library/Logs/computer-history/`. The file
-rotates at 10 MB and keeps 5 old files; `logs` reads them all, oldest first.
+rotates at 10 MB and keeps 5 old files; every running command appends to it,
+taking turns through `computer-history.jsonl.lock`, and whichever rotates it
+first, the others follow. `logs` reads them all, oldest first, and skips a
+line without a JSON object and an ISO time.
 Each record carries `ts` (UTC), `level`, `logger`, `msg`, `run` (an id per
 invocation), `cmd`, its fields, and `exc` for a traceback. Real output:
 
 ```
-2026-11-20 16:12:54 INFO    cli.ingest [ingest --watch bef0fb32]  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=21
-2026-11-20 16:13:54 ERROR   cli.ingest [ingest --watch bef0fb32]  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=1 retry_s=60 streak=1
+2026-11-20 17:15:32 INFO    sources.cycle_report [ingest --watch d5f6018a]  cycle ok: aw-afk +0 (1 dup, 1 held); aw-web +0 (0 dup, 0 held); aw-window +0 (3 dup, 1 held); ax-text +0 (0 dup, 0 held); screenshot +0 (0 dup, 0 held)  duration_ms=12
+2026-11-20 17:16:32 ERROR   sources.cycle_report [ingest --watch d5f6018a]  cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress  duration_ms=2 retry_s=60 streak=1
   | Traceback (most recent call last):
-  |   File ".../computer_history/sources/runner.py", line 88, in poll
+  |   File ".../computer_history/sources/runner.py", line 85, in poll
   |     _poll_stream(conn, source, stream, project, outcomes, now=at)
   ...
   | sqlite3.OperationalError: no such table: ingest_progress
 ```
 
 ```json
-{"ts": "2026-11-21T00:13:54.903+00:00", "level": "error", "logger": "computer_history.cli.ingest", "msg": "cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress", "run": "bef0fb32", "cmd": "ingest --watch", "duration_ms": 1, "streams": {}, "failures": [{"stream": "aw-afk", "kind": "database busy", "error": "no such table: ingest_progress"}], "retry_s": 60, "streak": 1, "exc": "Traceback (most recent call last):\n ..."}
+{"ts": "2026-11-21T01:16:32.795+00:00", "level": "error", "logger": "computer_history.sources.cycle_report", "msg": "cycle failed: ingest failed on aw-afk: database error: no such table: ingest_progress", "run": "d5f6018a", "cmd": "ingest --watch", "duration_ms": 2, "streams": {}, "failures": [{"stream": "aw-afk", "kind": "database busy", "error": "no such table: ingest_progress"}], "retry_s": 60, "streak": 1, "exc": "Traceback (most recent call last):\n ..."}
 ```
 
 Text output shows only plain fields; nested ones (`streams`, `failures`) are in
 the JSON. Control characters in any value are escaped, so a record is one
 line. Window titles, URLs and captured text appear only in DEBUG records. A
 command that crashes logs `command crashed` as CRITICAL with its traceback and
-exits 1. With no log yet, `logs` says `no log records yet in <folder>`.
+exits 1, for example `status` on a database missing `ingest_progress`:
+
+```
+2026-11-20 17:17:37 CRITICAL cli.app [status c35947c6]  command crashed
+  | Traceback (most recent call last):
+  ...
+  | sqlite3.OperationalError: no such table: ingest_progress
+```
+
+With no records yet, `logs` says `no log records yet in <folder>`. A log file
+that cannot be opened is reported once at start (`log file unavailable`), and
+one that fails later once (`computer-history: cannot write <path>: <error>`);
+stderr logging goes on either way.
 
 ## When the database can't be used
 
@@ -556,7 +582,7 @@ computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 computer-history --log-level debug ingest           # or $COMPUTER_HISTORY_LOG_LEVEL
 ```
 
-`--log-level` (`debug`, `info`, `warning`, `error`) sets the lowest level
+`--log-level` (`debug`, `info`, `warning`, `error`, `critical`) sets the lowest level
 logged, to stderr and to the JSON log. Without it the file gets INFO and
 stderr WARNING, since each command prints its own report; `ingest --watch`
 logs INFO to stderr too, as stderr is its log. At DEBUG, stderr shows

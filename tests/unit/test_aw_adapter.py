@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import logging
 import sqlite3
 from datetime import timedelta
 from email.message import Message
@@ -11,6 +12,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 from fake_aw import T0, FakeAW, at
+from log_records import logged
 from projectors import AW
 
 from computer_history.sources import (
@@ -688,6 +690,7 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         capture_spool,
         commit,
         contract,
+        cycle_report,
         ingest_health,
         projection,
         runner,
@@ -699,6 +702,7 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         projection,
         runner,
         ingest_health,
+        cycle_report,
         backfill,
         aw,
         capture_spool,
@@ -708,3 +712,29 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
     for module in modules:
         for name in module.__all__:
             assert getattr(sources, name) is getattr(module, name)
+
+
+@pytest.mark.parametrize(
+    ("raw_id", "logged_id"),
+    [(7, 7), ("short-id", "short-id"), ("x" * 500, None), ([1, 2], None)],
+    ids=["int", "short-str", "long-str", "list"],
+)
+def test_a_malformed_event_warns_with_its_error_type_and_only_a_short_id(
+    caplog: pytest.LogCaptureFixture, raw_id: object, logged_id: object
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    fake = FakeAW({WINDOW_BUCKET: "currentwindow"})
+    fake.events[WINDOW_BUCKET].append({"id": raw_id, "timestamp": "never", "data": {}})
+
+    pulled = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(30))
+
+    assert pulled.observations == ()
+    warnings = logged(caplog, "malformed event skipped")
+    assert warnings and all(
+        (w["event_id"], w["error"], w["levelno"]) == (logged_id, "ValueError", logging.WARNING)
+        for w in warnings
+    )
+    details = logged(caplog, "malformed event detail")
+    assert details and all(
+        d["levelno"] == logging.DEBUG and d["raw_id"] == repr(raw_id) for d in details
+    )

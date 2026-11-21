@@ -94,4 +94,4 @@ def test_the_same_ingest_at_debug_shows_what_was_held_back_and_why_lines_were_re
     ]
     assert {r["level"] for r in written if leaks([r])} == {"debug"}
     refused = [r for r in written if r["msg"] == "unusable spool record"]
-    assert any(AW_TITLES[0] in str(r["reason"]) for r in refused)
+    assert any(AW_TITLES[0] in str(r["error"]) for r in refused)

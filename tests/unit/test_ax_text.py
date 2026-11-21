@@ -396,12 +396,12 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     assert not path.exists()
     assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
     [skipped] = [r for r in logged(caplog, "unusable spool records skipped")]
-    assert (skipped["rejected"], skipped["first_line"]) == (7, 3)
-    reasons = {r["line"]: r["reason"] for r in logged(caplog, "unusable spool record")}
+    assert (skipped["rejected"], skipped["line"], skipped["error"]) == (7, 3, "unknown version")
+    reasons = {r["line"]: r["error"] for r in logged(caplog, "unusable spool record")}
     assert reasons[3] == "unknown version 2"
     [aside] = logged(caplog, "spool file set aside")
-    assert "it has 11 unusable line(s), 4 of no readable kind" in str(aside["reason"])
-    assert "its usable lines are stored" in str(aside["reason"])
+    assert "it has 11 unusable line(s), 4 of no readable kind" in str(aside["error"])
+    assert "its usable lines are stored" in str(aside["error"])
 
 
 @pytest.mark.parametrize(
@@ -468,7 +468,7 @@ def test_an_unreadable_file_is_moved_aside_and_the_rest_ingested(
     assert aside.read_text(encoding="utf-8") == record(1, T0) + "\n"
     assert finished_files(spool_dir) == []
     [aside] = logged(caplog, "spool file set aside")
-    assert aside["file"] == file_name(1) and "cannot read it" in str(aside["reason"])
+    assert aside["file"] == file_name(1) and "cannot read it" in str(aside["error"])
 
 
 def test_text_is_capped_at_ten_thousand_characters_and_titles_keep_theirs(
@@ -606,7 +606,7 @@ def test_cli_ingest_honors_the_spool_flag_and_prints_rejected_records(
     assert code == 0
     assert re.search(r"ax-text\s+inserted\s+1\s+skipped\s+0\s+held back\s+0\s+rejected 1", out)
     [aside] = logged(caplog, "spool file set aside")
-    assert "it has 2 unusable line(s), 1 of no readable kind" in str(aside["reason"])
+    assert "it has 2 unusable line(s), 1 of no readable kind" in str(aside["error"])
     assert finished_files(elsewhere) == []
 
 

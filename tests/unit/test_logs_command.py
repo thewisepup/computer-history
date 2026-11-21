@@ -108,3 +108,15 @@ def test_logs_rejects_an_unreadable_since(capsys: pytest.CaptureFixture[str]) ->
     with pytest.raises(SystemExit):
         cli.main(["logs", "--since", "yesterday"])
     assert "not an ISO date or datetime: 'yesterday'" in capsys.readouterr().err
+
+
+def test_logs_skips_lines_without_a_usable_time(
+    log_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = doc(5, "info", "cli.ingest", "cycle ok", "dddd4444")
+    lines = [{**good, "ts": None}, {**good, "ts": "yesterday"}, {**good, "ts": "2026-11-20T10:00"}]
+    rows = [json.dumps(row) for row in [*lines, good]]
+    (log_dir / LOG_FILE_NAME).write_text("\n".join(rows) + "\n")
+
+    assert len(shown(capsys)) == 1
+    assert messages(shown(capsys, "--json", "--since", "1h")) == ["cycle ok"]

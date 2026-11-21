@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import contextvars
 import logging
-import logging.handlers
 import os
 import sys
 import uuid
 from pathlib import Path
 
-from computer_history.logs.formatters import JsonFormatter, TextFormatter
+from computer_history.logs.formatters import SHOWN_FIELD, JsonFormatter, TextFormatter
+from computer_history.logs.rotation import SharedRotatingFileHandler
 
 LOG_DIR_ENV_VAR = "COMPUTER_HISTORY_LOG_DIR"
 LOG_LEVEL_ENV_VAR = "COMPUTER_HISTORY_LOG_LEVEL"
@@ -16,7 +16,7 @@ LOG_FILE_NAME = "computer-history.jsonl"
 MAX_LOG_BYTES = 10_000_000
 LOG_BACKUPS = 5
 PACKAGE_LOGGER = "computer_history"
-LEVEL_NAMES = ("DEBUG", "INFO", "WARNING", "ERROR")
+LEVEL_NAMES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 _run_id = contextvars.ContextVar("run_id", default="-")
 _command = contextvars.ContextVar("command", default="-")
@@ -51,32 +51,41 @@ class _Context(logging.Filter):
         return True
 
 
-def configure(command: str, *, level: int, stderr_level: int, log_dir: Path) -> Path | None:
+def _not_shown(record: logging.LogRecord) -> bool:
+    return not getattr(record, SHOWN_FIELD, False)
+
+
+def configure(
+    command: str, *, level: int | None, long_running: bool, log_dir: Path
+) -> Path | None:
     """Send the package's records as text to stderr and as JSON lines to the log folder.
 
-    Every record carries a new run id and the command; returns the log file, or None if unusable.
+    Without a level the file gets INFO and stderr WARNING, or INFO for a long-running command.
     """
     reset()
     _command.set(command)
     _run_id.set(uuid.uuid4().hex[:8])
+    file_level = logging.INFO if level is None else level
+    stderr_level = level if level is not None else (
+        logging.INFO if long_running else logging.WARNING
+    )
     package = logging.getLogger(PACKAGE_LOGGER)
-    package.setLevel(min(level, stderr_level))
+    package.setLevel(min(file_level, stderr_level))
     context = _Context()
     stderr = logging.StreamHandler(sys.stderr)
     stderr.setLevel(stderr_level)
-    stderr.setFormatter(TextFormatter(tracebacks=stderr_level <= logging.DEBUG))
+    stderr.setFormatter(TextFormatter(full_tracebacks=stderr_level <= logging.DEBUG))
     stderr.addFilter(context)
+    stderr.addFilter(_not_shown)
     package.addHandler(stderr)
     path = log_dir / LOG_FILE_NAME
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
-        file = logging.handlers.RotatingFileHandler(
-            path, maxBytes=MAX_LOG_BYTES, backupCount=LOG_BACKUPS, encoding="utf-8", delay=True
-        )
+        file = SharedRotatingFileHandler(path, max_bytes=MAX_LOG_BYTES, backups=LOG_BACKUPS)
     except OSError as exc:
         log.warning("log file unavailable", extra={"path": str(path), "error": str(exc)})
         return None
-    file.setLevel(level)
+    file.setLevel(file_level)
     file.setFormatter(JsonFormatter())
     file.addFilter(context)
     package.addHandler(file)

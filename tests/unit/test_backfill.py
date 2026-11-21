@@ -17,10 +17,10 @@ from projectors import no_signal
 from computer_history import cli
 from computer_history.cli import app as cli_app
 from computer_history.cli import backfill as cli_backfill
+from computer_history.logs import PROGRESS_RECORDS
 from computer_history.sources import (
     AFK_SOURCE,
     BACKFILL_CHUNK,
-    PROGRESS_RECORDS,
     RESUME_OVERLAP_SECONDS,
     WINDOW_SOURCE,
     ActivityWatch,

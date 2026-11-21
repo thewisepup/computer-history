@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -9,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import NamedTuple
 
+from computer_history.logs import Outcome, progress_step
 from computer_history.sources.commit import (
     StrayObservation,
     StreamFailure,
@@ -21,7 +21,6 @@ from computer_history.store import Progress, Projector, UnclaimedSource, get_pro
 
 __all__ = [
     "BACKFILL_CHUNK",
-    "PROGRESS_RECORDS",
     "BackfillPlan",
     "BackfillProgress",
     "BackfillResult",
@@ -35,7 +34,6 @@ __all__ = [
 ]
 
 BACKFILL_CHUNK = timedelta(days=7)
-PROGRESS_RECORDS = 5
 
 log = logging.getLogger(__name__)
 
@@ -232,9 +230,9 @@ def run_backfill(
     results: list[BackfillResult] = []
     stream = None
     total = sum(len(plan.chunks) for plan in plans)
-    step = max(1, math.ceil(total / PROGRESS_RECORDS))
+    step = progress_step(total)
     began = clock()
-    outcome = "crashed"
+    outcome = Outcome.CRASHED
     planned = [plan for plan in plans if plan.chunks]
     log.info(
         "backfill started",
@@ -252,7 +250,7 @@ def run_backfill(
             extra={
                 "stream": done.stream,
                 "chunk": done.index + 1,
-                "of": done.total,
+                "chunks": done.total,
                 "start": done.chunk.start.isoformat(),
                 "inserted": done.inserted,
                 "skipped": done.skipped,
@@ -282,20 +280,20 @@ def run_backfill(
             _backfill_stream(conn, source, project, results[-1], clock, chunk_done)
             if on_stream is not None:
                 on_stream(results[-1])
-        outcome = "ok"
+        outcome = Outcome.OK
     except (SourceUnavailable, sqlite3.Error, UnclaimedSource, StrayObservation) as exc:
-        outcome = "failed"
+        outcome = Outcome.FAILED
         log.exception("backfill failed", extra={"stream": stream})
         return BackfillRun(_committed(results), failure_of(stream, exc))
     except KeyboardInterrupt:
-        outcome = "interrupted"
+        outcome = Outcome.INTERRUPTED
         log.warning("backfill interrupted", extra={"stream": stream})
         return BackfillRun(_committed(results), interrupted=True)
     finally:
         log.info(
             "backfill finished",
             extra={
-                "outcome": outcome,
+                "outcome": outcome.value,
                 "chunks_done": sum(result.chunks_done for result in results),
                 "chunks": total,
                 "inserted": sum(result.inserted for result in results),

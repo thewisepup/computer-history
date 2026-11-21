@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -12,16 +13,19 @@ from log_records import logged
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.cli import status as cli_status
+from computer_history.logs import LOG_FILE_NAME, configure
 from computer_history.sources import (
     ALERT_AFTER_FAILURES,
     ALERT_REPEAT,
     HEALTH_STALE_AFTER,
+    CycleReporter,
     CycleSummary,
     FailureKind,
     FailureStreak,
     IngestHealth,
     IngestOutcome,
     Recovery,
+    StreakAlert,
     StreamFailure,
     failure_of,
     health_path,
@@ -36,7 +40,7 @@ UNREACHABLE = "http://127.0.0.1:9"
 
 
 def ok(at: datetime) -> CycleSummary:
-    return CycleSummary(at, {"aw-afk": IngestOutcome(1, 0, 1, at)}, seconds=0.25)
+    return CycleSummary(at, {"aw-afk": IngestOutcome(1, 0, 1, at)}, duration_s=0.25)
 
 
 def failed(at: datetime, error: str = NO_TABLE) -> CycleSummary:
@@ -46,7 +50,7 @@ def failed(at: datetime, error: str = NO_TABLE) -> CycleSummary:
 class Recorder:
     def __init__(self) -> None:
         self.saved: list[IngestHealth] = []
-        self.notified: list[str] = []
+        self.notified: list[StreakAlert] = []
 
     def streak(self, health: IngestHealth | None = None) -> FailureStreak:
         return FailureStreak(save=self.saved.append, notify=self.notified.append, health=health)
@@ -61,19 +65,17 @@ def test_a_streak_notifies_at_the_threshold_then_hourly_then_once_recovered() ->
     assert seen.notified == []
 
     streak.record(failed(T0 + (ALERT_AFTER_FAILURES - 1) * MINUTE))
-    assert seen.notified == [
-        f"ingest failing for {ALERT_AFTER_FAILURES} cycles. Run `computer-history status`."
-    ]
+    assert seen.notified == [StreakAlert(ALERT_AFTER_FAILURES)]
     alerted = T0 + (ALERT_AFTER_FAILURES - 1) * MINUTE
     streak.record(failed(alerted + ALERT_REPEAT - MINUTE))
     assert len(seen.notified) == 1
     streak.record(failed(alerted + ALERT_REPEAT))
-    assert len(seen.notified) == 2 and "for 7 cycles" in seen.notified[-1]
+    assert seen.notified[-1] == StreakAlert(7)
 
     recovery = streak.record(ok(alerted + ALERT_REPEAT + MINUTE))
 
-    assert recovery == Recovery(failed_cycles=7, down_since=T0)
-    assert seen.notified[-1] == "ingest recovered."
+    assert recovery == Recovery(failed_cycles=7, failing_since=T0)
+    assert seen.notified[-1] == StreakAlert(7, ended=True)
     assert seen.saved[-1] == IngestHealth(
         alerted + ALERT_REPEAT + MINUTE, last_success_at=alerted + ALERT_REPEAT + MINUTE
     )
@@ -104,6 +106,33 @@ def test_every_cycle_saves_the_health_with_the_error_and_the_last_success() -> N
     ]
 
 
+def test_a_restart_mid_streak_neither_notifies_again_early_nor_misses_the_recovery() -> None:
+    seen = Recorder()
+    first = seen.streak()
+    for n in range(ALERT_AFTER_FAILURES):
+        first.record(failed(T0 + n * MINUTE))
+    assert seen.notified == [StreakAlert(ALERT_AFTER_FAILURES)]
+    saved = seen.saved[-1]
+    assert saved.alerted_at == T0 + (ALERT_AFTER_FAILURES - 1) * MINUTE
+
+    restarted = seen.streak(saved)
+    restarted.record(failed(T0 + ALERT_AFTER_FAILURES * MINUTE))
+    restarted.record(ok(T0 + (ALERT_AFTER_FAILURES + 1) * MINUTE))
+
+    assert seen.notified == [
+        StreakAlert(ALERT_AFTER_FAILURES),
+        StreakAlert(ALERT_AFTER_FAILURES + 1, ended=True),
+    ]
+    assert seen.saved[-1].alerted_at is None
+
+
+def test_the_cli_turns_alerts_into_notification_text() -> None:
+    assert cli_ingest.alert_text(StreakAlert(5)) == (
+        "ingest failing for 5 cycles. Run `computer-history status`."
+    )
+    assert cli_ingest.alert_text(StreakAlert(5, ended=True)) == "ingest recovered."
+
+
 def test_a_restarted_watch_continues_the_saved_streak() -> None:
     seen = Recorder()
     saved = IngestHealth(T0 + 3 * MINUTE, 4, T0, T0 - MINUTE, f"aw-afk: {NO_TABLE}")
@@ -132,7 +161,7 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     path = health_path(tmp_path / "history.db")
     assert path == tmp_path / "ingest-health.json"
     assert read_health(path) is None
-    health = IngestHealth(T0 + MINUTE, 3, T0, T0 - MINUTE, f"aw-afk: {NO_TABLE}")
+    health = IngestHealth(T0 + MINUTE, 3, T0, T0 - MINUTE, f"aw-afk: {NO_TABLE}", T0)
 
     write_health(path, IngestHealth(T0, last_success_at=T0))
     write_health(path, health)
@@ -141,7 +170,18 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     assert [p.name for p in tmp_path.iterdir()] == [path.name]
 
 
-@pytest.mark.parametrize("text", ["not json", "[1, 2]", '{"updated_at": "2026-11-19"}'])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[1, 2]",
+        '{"updated_at": "2026-11-19"}',
+        '{"updated_at": "2026-11-19T20:07:00", "consecutive_failures": 0}',
+        '{"updated_at": "2026-11-19T20:07:00+00:00", "consecutive_failures": 1,'
+        ' "failing_since": "2026-11-19T20:00:00"}',
+    ],
+    ids=["not-json", "not-an-object", "incomplete", "naive-update", "naive-since"],
+)
 def test_an_unreadable_health_file_raises_value_error(tmp_path: Path, text: str) -> None:
     path = tmp_path / "ingest-health.json"
     path.write_text(text)
@@ -155,7 +195,7 @@ def test_the_cycle_record_counts_every_stream_and_times_the_cycle(
 ) -> None:
     caplog.set_level(logging.INFO)
 
-    cli_ingest.log_cycle(ok(T0), 59.7, streak=Recorder().streak())
+    CycleReporter(cli_ingest.cycle_line, streak=Recorder().streak())(ok(T0), 59.7)
 
     [record] = logged(caplog, "cycle ok: aw-afk +1 (0 dup, 1 held)")
     assert record["levelno"] == logging.INFO
@@ -165,23 +205,30 @@ def test_the_cycle_record_counts_every_stream_and_times_the_cycle(
     }
 
 
+def failing(at: datetime, error: str = NO_TABLE) -> CycleSummary:
+    try:
+        raise sqlite3.OperationalError(error)
+    except sqlite3.OperationalError as exc:
+        return CycleSummary(at, {}, (failure_of("aw-afk", exc),))
+
+
+def failure_records(
+    caplog: pytest.LogCaptureFixture, error: str = NO_TABLE
+) -> list[dict[str, object]]:
+    return logged(caplog, f"cycle failed: ingest failed on aw-afk: database error: {error}")
+
+
 def test_failed_cycles_are_errors_with_a_traceback_only_on_the_first(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.INFO)
-    streak = Recorder().streak()
-
-    def failing(at: datetime) -> CycleSummary:
-        try:
-            raise sqlite3.OperationalError(NO_TABLE)
-        except sqlite3.OperationalError as exc:
-            return CycleSummary(at, {}, (failure_of("aw-afk", exc),))
+    report = CycleReporter(cli_ingest.cycle_line, streak=Recorder().streak())
 
     for n in range(3):
-        cli_ingest.log_cycle(failing(T0 + n * MINUTE), 60.0, streak=streak)
-    cli_ingest.log_cycle(ok(T0 + 3 * MINUTE), 60.0, streak=streak)
+        report(failing(T0 + n * MINUTE), 60.0)
+    report(ok(T0 + 3 * MINUTE), 60.0)
 
-    errors = logged(caplog, f"cycle failed: ingest failed on aw-afk: database error: {NO_TABLE}")
+    errors = failure_records(caplog)
     assert [r["levelno"] for r in errors] == [logging.ERROR] * 3
     assert [r["streak"] for r in errors] == [1, 2, 3]
     assert [r["exc_info"] is not None for r in errors] == [True, False, False]
@@ -189,7 +236,40 @@ def test_failed_cycles_are_errors_with_a_traceback_only_on_the_first(
         {"stream": "aw-afk", "kind": "database busy", "error": NO_TABLE}
     ]
     [recovered] = logged(caplog, "ingest recovered")
-    assert (recovered["failed_cycles"], recovered["down_since"]) == (3, T0.isoformat())
+    assert (recovered["failed_cycles"], recovered["failing_since"]) == (3, T0.isoformat())
+
+
+
+def test_each_new_cause_in_a_streak_and_a_restart_get_a_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
+    seen = Recorder()
+    report = CycleReporter(cli_ingest.cycle_line, streak=seen.streak())
+    report(failing(T0), 60.0)
+    report(failing(T0 + MINUTE, "database is locked"), 60.0)
+    report(failing(T0 + 2 * MINUTE), 60.0)
+    restarted = CycleReporter(cli_ingest.cycle_line, streak=seen.streak(seen.saved[-1]))
+    restarted(failing(T0 + 3 * MINUTE), 60.0)
+    restarted(ok(T0 + 4 * MINUTE), 60.0)
+    restarted(failing(T0 + 5 * MINUTE), 60.0)
+
+    traced = [(r["streak"], r["exc_info"] is not None) for r in failure_records(caplog)]
+    assert traced == [(1, True), (3, False), (4, True), (1, True)]
+    [locked] = failure_records(caplog, "database is locked")
+    assert locked["exc_info"] is not None
+
+
+def test_a_one_shot_cycle_record_stays_off_stderr_but_reaches_the_log_file(
+    log_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure("ingest", level=None, long_running=False, log_dir=log_dir)
+
+    CycleReporter(cli_ingest.cycle_line, shown=True)(failing(T0))
+
+    assert capsys.readouterr().err == ""
+    [written] = [json.loads(line) for line in (log_dir / LOG_FILE_NAME).read_text().splitlines()]
+    assert written["level"] == "error" and "shown" not in written
 
 
 def status_lines(

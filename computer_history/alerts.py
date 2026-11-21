@@ -1,3 +1,5 @@
+"""macOS notifications for states someone must act on, off when $COMPUTER_HISTORY_NOTIFY=0."""
+
 from __future__ import annotations
 
 import logging

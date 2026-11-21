@@ -14,11 +14,13 @@ from computer_history.sources import (
     ActivityWatch,
     AWClient,
     CaptureSpool,
+    CycleReporter,
     CycleSummary,
     FailureKind,
     FailureStreak,
     IngestHealth,
     IngestOutcome,
+    StreakAlert,
     StreamFailure,
     health_path,
     poll,
@@ -43,9 +45,10 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     with store:
         if args.watch:
             health = health_path(db_path)
+            post = desktop_notifier()
             streak = FailureStreak(
                 save=partial(write_health, health),
-                notify=desktop_notifier(),
+                notify=None if post is None else lambda alert: post(alert_text(alert)),
                 health=_saved(health),
             )
             log.info(
@@ -58,62 +61,19 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 },
             )
             try:
-                watch(conn, sources, report=partial(log_cycle, streak=streak))
+                watch(conn, sources, report=CycleReporter(cycle_line, streak=streak))
             except KeyboardInterrupt:
                 log.info("stopped")
             return 0
         summary = poll(conn, sources)
-    log_cycle(summary)
+    CycleReporter(cycle_line, shown=True)(summary)
     return _print_summary(summary, f"{args.aw_url} and {spool_path}", db_path)
 
 
-def log_cycle(
-    summary: CycleSummary, delay: float | None = None, *, streak: FailureStreak | None = None
-) -> None:
-    """Write the cycle's one record, INFO if every stream committed and ERROR if not.
-
-    Under a streak it counts the cycle, adds a traceback to its first failure and notes its end.
-    """
-    recovery = None if streak is None else streak.record(summary)
-    fields: dict[str, object] = {
-        "duration_ms": round(summary.seconds * 1000),
-        "streams": {name: _counts(o) for name, o in summary.outcomes.items()},
-    }
-    if summary.ok:
-        log.info("cycle ok: %s", cycle_line(summary) or "no streams", extra=fields)
-    else:
-        fields["failures"] = [
-            {"stream": f.stream, "kind": f.kind.value, "error": f.error} for f in summary.failures
-        ]
-        if delay is not None:
-            fields["retry_s"] = round(delay)
-        if streak is not None:
-            fields["streak"] = streak.failures
-        first = streak is None or streak.failures == 1
-        cause = next((f.exc for f in summary.failures if f.kind is not FailureKind.SOURCE), None)
-        log.error(
-            "cycle failed: %s",
-            cycle_line(summary),
-            extra=fields,
-            exc_info=cause if first else None,
-        )
-    if recovery is not None:
-        log.info(
-            "ingest recovered",
-            extra={
-                "failed_cycles": recovery.failed_cycles,
-                "down_since": recovery.down_since.isoformat(),
-            },
-        )
-
-
-def _counts(outcome: IngestOutcome) -> dict[str, int]:
-    return {
-        "inserted": outcome.inserted,
-        "skipped": outcome.skipped,
-        "held_back": outcome.held_back,
-        "rejected": outcome.rejected,
-    }
+def alert_text(alert: StreakAlert) -> str:
+    if alert.ended:
+        return "ingest recovered."
+    return f"ingest failing for {alert.failures:,} cycles. Run `computer-history status`."
 
 
 def _saved(path: Path) -> IngestHealth | None:

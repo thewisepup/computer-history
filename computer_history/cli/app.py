@@ -176,11 +176,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"computer-history: {exc}", file=sys.stderr)
         return 2
     watching = getattr(args, "watch", False)
-    quiet = logging.INFO if watching else logging.WARNING
     configure(
         f"{args.command} --watch" if watching else args.command,
-        level=logging.INFO if level is None else level,
-        stderr_level=quiet if level is None else level,
+        level=level,
+        long_running=watching,
         log_dir=resolve_log_dir(),
     )
     handler = HANDLERS.get(args.command)

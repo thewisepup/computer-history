@@ -338,7 +338,7 @@ def test_each_stream_counts_its_own_unusable_lines_and_the_file_is_set_aside_onc
         (WINDOW_TEXT_SOURCE, 2),
     }
     [aside] = logged(caplog, "spool file set aside")
-    assert "it has 8 unusable line(s), 2 of no readable kind" in str(aside["reason"])
+    assert "it has 8 unusable line(s), 2 of no readable kind" in str(aside["error"])
 
 
 def test_screenshot_records_never_move_the_window_text_progress(

@@ -14,13 +14,14 @@ from log_records import logged
 from projectors import AW
 
 from computer_history import cli
-from computer_history.cli import rebuild as cli_rebuild
+from computer_history.logs import PROGRESS_RECORDS
 from computer_history.sources import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
     ActivityWatch,
     poll,
+    projection,
 )
 from computer_history.store import (
     RebuildAborted,
@@ -265,7 +266,7 @@ def test_only_the_first_failures_are_logged_individually(
     assert result.failed_ids == (min(bad),)
     assert len(logged(caplog, "observation skipped: its payload cannot be projected")) == 1
     [more] = logged(caplog, "more observations skipped, not logged one by one")
-    assert more["skipped"] == 2
+    assert more["unlogged"] == 2
 
 
 def test_more_than_half_failing_aborts_and_rolls_back(ingested: sqlite3.Connection) -> None:
@@ -526,10 +527,11 @@ def test_cli_rebuild_logs_an_abort_as_an_error_then_its_end(
 
     run(capsys, "--db-path", str(db_path), "rebuild-signals")
 
-    [aborted] = logged(caplog, "rebuild aborted")
+    [aborted] = logged(caplog, "rebuild finished")
     failed = aborted["failed"]
     assert aborted["levelno"] == logging.ERROR and isinstance(failed, int) and failed > 0
-    assert [r["outcome"] for r in logged(caplog, "rebuild finished")] == ["aborted"]
+    assert aborted["outcome"] == "aborted" and aborted["exc_info"] is None
+    assert aborted["name"] == projection.__name__
 
 
 def test_cli_rebuild_logs_a_database_failure_with_its_traceback(
@@ -543,14 +545,14 @@ def test_cli_rebuild_logs_a_database_failure_with_its_traceback(
     def locked(*args: Any, **kwargs: Any) -> None:
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(cli_rebuild, "reproject_signals", locked)
+    monkeypatch.setattr(projection, "rebuild_signals", locked)
 
     code, _, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
 
     assert code == 1 and "Traceback" not in err
-    [failed] = logged(caplog, "rebuild failed")
+    [failed] = logged(caplog, "rebuild finished")
     assert failed["levelno"] == logging.ERROR and failed["exc_info"] is not None
-    assert [r["outcome"] for r in logged(caplog, "rebuild finished")] == ["failed"]
+    assert failed["outcome"] == "failed"
 
 
 def test_rebuild_logs_progress_at_each_fifth_of_the_observations(
@@ -562,6 +564,6 @@ def test_rebuild_logs_progress_at_each_fifth_of_the_observations(
 
     rebuild_signals(big, AW)
 
-    step = math.ceil(total / signals_module.PROGRESS_RECORDS)
+    step = math.ceil(total / PROGRESS_RECORDS)
     scanned = [r["scanned"] for r in logged(caplog, "rebuild progress")]
     assert scanned == list(range(step, total + 1, step))

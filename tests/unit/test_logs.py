@@ -11,9 +11,13 @@ import pytest
 from computer_history.cli import app as cli_app
 from computer_history.cli import main
 from computer_history.logs import (
+    LEVEL_NAMES,
+    LEVELS,
     LOG_BACKUPS,
     LOG_FILE_NAME,
     LOG_LEVEL_ENV_VAR,
+    JsonFormatter,
+    SharedRotatingFileHandler,
     configure,
     escape,
     log_files,
@@ -31,7 +35,7 @@ def records(log_dir: Path) -> list[dict[str, object]]:
 
 
 def test_a_json_record_carries_the_run_the_command_and_its_fields(log_dir: Path) -> None:
-    configure("ingest", level=logging.INFO, stderr_level=logging.WARNING, log_dir=log_dir)
+    configure("ingest", level=None, long_running=False, log_dir=log_dir)
     log.info("cycle ok", extra={"duration_ms": 412, "streams": {"aw-afk": {"inserted": 0}}})
     try:
         raise ValueError("no such table: ingest_progress")
@@ -49,9 +53,9 @@ def test_a_json_record_carries_the_run_the_command_and_its_fields(log_dir: Path)
 
 
 def test_each_configure_starts_a_new_run(log_dir: Path) -> None:
-    configure("ingest", level=logging.INFO, stderr_level=logging.WARNING, log_dir=log_dir)
+    configure("ingest", level=None, long_running=False, log_dir=log_dir)
     log.info("one")
-    configure("status", level=logging.INFO, stderr_level=logging.WARNING, log_dir=log_dir)
+    configure("status", level=None, long_running=False, log_dir=log_dir)
     log.info("two")
 
     one, two = records(log_dir)
@@ -61,7 +65,7 @@ def test_each_configure_starts_a_new_run(log_dir: Path) -> None:
 def test_captured_text_cannot_break_a_record_into_lines(
     log_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    configure("ingest", level=logging.DEBUG, stderr_level=logging.DEBUG, log_dir=log_dir)
+    configure("ingest", level=logging.DEBUG, long_running=False, log_dir=log_dir)
     log.debug("event held back", extra={"event_id": 88214, "title": HOSTILE_TITLE})
 
     lines = (log_dir / LOG_FILE_NAME).read_text().splitlines()
@@ -116,7 +120,7 @@ def test_without_tracebacks_the_text_line_ends_with_the_exception_alone() -> Non
         "exc": "Traceback (most recent call last):\nsqlite3.OperationalError: no such table: x",
     }
 
-    line = text_line(doc, tracebacks=False)
+    line = text_line(doc, full_tracebacks=False)
 
     assert line.endswith('cycle failed  exc="sqlite3.OperationalError: no such table: x"')
     assert "\n" not in line
@@ -125,7 +129,7 @@ def test_without_tracebacks_the_text_line_ends_with_the_exception_alone() -> Non
 def test_commands_with_their_own_output_keep_info_out_of_stderr(
     log_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    configure("backfill", level=logging.INFO, stderr_level=logging.WARNING, log_dir=log_dir)
+    configure("backfill", level=None, long_running=False, log_dir=log_dir)
     log.info("backfill started")
     log.warning("bucket has no usable created time")
 
@@ -162,7 +166,7 @@ def test_an_unusable_log_folder_leaves_stderr_logging(
     blocked = tmp_path / "a-file"
     blocked.write_text("")
 
-    path = configure("ingest", level=logging.INFO, stderr_level=logging.INFO, log_dir=blocked)
+    path = configure("ingest", level=None, long_running=True, log_dir=blocked)
     assert path is None
     log.info("still logged")
 
@@ -174,7 +178,7 @@ def test_the_log_file_rotates_within_its_bound(
     log_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(config_module, "MAX_LOG_BYTES", 2_000)
-    configure("ingest", level=logging.INFO, stderr_level=logging.ERROR, log_dir=log_dir)
+    configure("ingest", level=None, long_running=False, log_dir=log_dir)
     for n in range(500):
         log.info("cycle ok", extra={"n": n})
 
@@ -199,3 +203,65 @@ def test_a_crashing_command_logs_its_traceback_and_exits_one(
     assert "  | RuntimeError: no such table: ingest_progress" in err
     [crashed] = records(log_dir)
     assert crashed["level"] == "critical" and "RuntimeError" in str(crashed["exc"])
+
+
+RECORDS = 60
+
+
+def test_two_writers_sharing_one_log_rotate_it_without_losing_or_reordering_records(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / LOG_FILE_NAME
+    writers = [
+        SharedRotatingFileHandler(path, max_bytes=2_000, backups=LOG_BACKUPS) for _ in range(2)
+    ]
+    for writer in writers:
+        writer.setFormatter(JsonFormatter())
+    try:
+        for n in range(RECORDS):
+            writers[n % 2].emit(logging.makeLogRecord({"msg": "cycle ok", "n": n}))
+    finally:
+        for writer in writers:
+            writer.close()
+
+    files = log_files(tmp_path)
+    numbers = [json.loads(line)["n"] for f in files for line in f.read_text().splitlines()]
+    assert numbers == list(range(RECORDS))
+    assert 2 < len(files) <= LOG_BACKUPS + 1
+    assert all(f.stat().st_size <= 2_000 for f in files)
+
+
+def test_an_unwritable_log_file_is_reported_once_at_setup(
+    log_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (log_dir / LOG_FILE_NAME).write_text("")
+    (log_dir / LOG_FILE_NAME).chmod(0o444)
+
+    assert configure("ingest", level=None, long_running=True, log_dir=log_dir) is None
+    log.info("still logged")
+
+    err = capsys.readouterr().err
+    assert err.count("log file unavailable") == 1 and "still logged" in err
+    assert "Traceback" not in err
+
+
+def test_a_log_file_that_fails_later_warns_once_not_per_record(
+    log_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure("ingest", level=None, long_running=False, log_dir=log_dir)
+    log.info("cycle ok")
+    (log_dir / LOG_FILE_NAME).unlink()
+    log_dir.chmod(0o500)
+    try:
+        for _ in range(3):
+            log.info("cycle ok")
+    finally:
+        log_dir.chmod(0o700)
+
+    err = capsys.readouterr().err
+    assert err.count("computer-history: cannot write") == 1 and "Traceback" not in err
+
+
+def test_every_level_the_flag_accepts_can_be_filtered_on() -> None:
+    assert list(LEVELS) == [name.lower() for name in LEVEL_NAMES]
+    assert LEVELS["critical"] == logging.CRITICAL

@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 STABILITY_MARGIN_SECONDS = 120
 CLIP_GUARD = timedelta(seconds=1)
+MAX_LOGGED_ID = 64
 _END_CLIP_TOLERANCE = timedelta(milliseconds=1)
 
 
@@ -45,10 +46,14 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
             raise ValueError(f"bad id {event_id!r}")
         start, end = event_times(raw)
     except MALFORMED_EVENT as exc:
-        event_id = cast("dict[str, Any]", raw).get("id") if isinstance(raw, dict) else None
+        raw_id = cast("dict[str, Any]", raw).get("id") if isinstance(raw, dict) else None
         log.warning(
             "malformed event skipped",
-            extra={"bucket": bucket_id, "event_id": event_id, "error": repr(exc)},
+            extra={"bucket": bucket_id, "event_id": _loggable(raw_id), "error": type(exc).__name__},
+        )
+        log.debug(
+            "malformed event detail",
+            extra={"bucket": bucket_id, "raw_id": repr(raw_id), "error": repr(exc)},
         )
         return None
     return _Event(raw, event_id, start, end)
@@ -203,6 +208,14 @@ def _refetch(client: AWApi, bucket_id: str, clipped: _Event) -> _Event | None:
     if event is not None and event.id != clipped.id:
         raise AWError(f"ActivityWatch returned event {event.id} for {bucket_id}/{clipped.id}")
     return event
+
+
+def _loggable(event_id: object) -> int | str | None:
+    if isinstance(event_id, bool):
+        return None
+    if isinstance(event_id, int) or (isinstance(event_id, str) and len(event_id) <= MAX_LOGGED_ID):
+        return event_id
+    return None
 
 
 def _shown(raw: dict[str, Any]) -> str | None:
