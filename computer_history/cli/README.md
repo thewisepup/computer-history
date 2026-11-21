@@ -18,6 +18,7 @@ app.py         parser + dispatch: one entry per command
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
   +-- dev.py       dev build-db: a database of synthetic history from the dataset cache;
+  |                dev snapshot: the live database copied into the dev folder;
   |                dev perf: the performance gate against the committed baseline;
   |                dev bench: wall-clock timings against this machine's last ones
         |
@@ -55,10 +56,13 @@ reads ActivityWatch and an empty dev spool.
 
 Every command's first line names the profile, the version (stable) or the
 checkout's branch and commit (dev), and what the command uses: the database
-for `ingest`, `status`, `rebuild-signals` and `backfill`, the `--out` folder
-for `dev build-db`, and nothing more for `dev perf` and `dev bench`. Those
-three dev tools open neither the database nor the spool, so they are never
-refused (real output, home shortened to `~`):
+for `ingest`, `status`, `rebuild-signals` and `backfill`, the database it
+copies into for `dev snapshot`, the `--out` folder for `dev build-db`, and
+nothing more for `dev perf` and `dev bench`. Those three dev tools (`dev build-db`,
+`dev perf` and `dev bench`) open neither
+the database nor the spool, so they are never refused; `dev snapshot` is the
+one command that reads live data from dev (see its section below). Real
+output, home shortened to `~`:
 
 ```
 $ computer-history status
@@ -485,6 +489,60 @@ winner's entry, which is never moved aside. Delete the
 folder at any time: the next request rebuilds, as it does for an entry missing
 its database or manifest.
 
+## dev snapshot — the live database, copied into dev
+
+```bash
+computer-history dev snapshot           # into the dev folder's history.db
+computer-history dev snapshot --force   # replace the copy already there
+computer-history status                 # dev now reads the copy
+```
+
+Real output, home shortened to `~`, taken while another connection committed
+about 64,000 write transactions in a loop on the live database:
+
+```
+$ computer-history dev snapshot
+Profile dev (branch 104-dev-snapshot at f3eb7a0), database ~/Library/Application Support/ComputerHistory-dev/history.db
+Snapshot of the live database ~/Library/Application Support/ComputerHistory/history.db
+  copied to ~/Library/Application Support/ComputerHistory-dev/history.db
+  schema v5, 153.5 MB, integrity ok
+$ computer-history dev snapshot
+Profile dev (branch 104-dev-snapshot at f3eb7a0), database ~/Library/Application Support/ComputerHistory-dev/history.db
+dev snapshot refused: ~/Library/Application Support/ComputerHistory-dev already holds history.db; pass --force to replace it
+```
+
+The one sanctioned read of live data from dev, so a change can be tried
+against real history. It copies only the default live database,
+`history.db` in the live folder `~/Library/Application Support/ComputerHistory/`;
+there is no flag for another source, and `$COMPUTER_HISTORY_DB` names the copy's
+target, never the source. It opens the live database read-only and copies it with
+SQLite's online backup, which takes no write lock: the stable backend keeps
+ingesting, and the copy holds what was committed when it started. The copy is
+written beside the target, passes `PRAGMA integrity_check`, then takes the
+target's place; a copy that fails the check is deleted and the command exits 1
+with `dev snapshot failed: the copy of <path> failed its integrity check: <problems>`.
+If the live database has no `-wal`/`-shm` files when the
+snapshot opens it (no backend running), SQLite creates them, empty; nothing
+else in the live folder changes.
+
+It copies the database only, never the spool or screenshots, so screenshot
+paths in the copy point at files dev doesn't have. The copy lands in dev's
+database: `$COMPUTER_HISTORY_DB` or `--db-path` (global or after `snapshot`)
+when set, else `history.db` in the dev folder, and it is refused, exit code 1,
+inside the live folder, from stable as from dev (`refused: <path> is in the
+live data folder ..., and the dev database is never there, whichever profile
+runs. ...`). Like `dev build-db`, it refuses a target that already holds the
+database or its `-wal`/`-shm`/`-journal` files unless `--force`, and it checks
+again just before the copy takes its place, so a database another run creates
+meanwhile is never overwritten. `--force` replaces all of them, but only when
+no other process has the database open (`dev snapshot refused: another process
+has <path> open; stop the dev commands using it, such as ingest --watch, and
+try again`); it moves the old files aside first and puts them back if the copy
+can't take their place. No live database exits 1
+with `dev snapshot failed: no database at <path>`. The command never migrates:
+`status` reports a copy whose schema this checkout doesn't match, and `ingest`
+migrates it.
+
 ## dev perf — the performance gate
 
 ```bash
@@ -624,7 +682,7 @@ computer-history status --aw-url http://127.0.0.1:5666/api/0
 computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 ```
 
-Every command but `dev`, `install` and `uninstall` takes `--db-path`; the networked ones (`ingest`, `status`,
+Every command but `dev`, `install` and `uninstall` takes `--db-path`, and so does `dev snapshot`; the networked ones (`ingest`, `status`,
 `backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch
 database never collects the real spool. Without `--db-path` the database is

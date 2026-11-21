@@ -100,9 +100,10 @@ and 5,000 examples each, and pin anything found as an `@example`:
 Every run from a checkout or worktree is **dev**: it uses
 `~/Library/Application Support/ComputerHistory-dev/` (database, spool,
 screenshots) and is refused the live folder's database, spool and screenshots
-however they are passed. Only code in a marked version folder of the stable
-install, under the live folder's `versions/`, is **stable** and uses the live
-folder. Every command's first line names the profile; the CLI README's
+however they are passed; `computer-history dev snapshot` is the one way to
+copy the live database (only the database) into dev's. Only code in a marked
+version folder of the stable install, under the live folder's `versions/`, is
+**stable** and uses the live folder. Every command's first line names the profile; the CLI README's
 "Profiles" section has the details.
 
 Agents that edit code work in their own git worktree, never in the main

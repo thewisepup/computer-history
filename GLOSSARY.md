@@ -82,6 +82,10 @@ _Avoid_: System client, platform layer
 The file beside the database that `ingest --watch` rewrites after each cycle, with the cycle's time and whether it succeeded. Not the capture agent's heartbeat record.
 _Avoid_: Ping, liveness file
 
+**Dev snapshot**:
+A copy of the live database taken into dev's database by `dev snapshot`, read-only and while the stable backend keeps writing; the one read of live data dev is allowed. It never includes the spool or screenshots.
+_Avoid_: Dump, export, clone
+
 **Event**:
 A stretch of activity with a start and an end, as reported by ActivityWatch.
 _Avoid_: Capture

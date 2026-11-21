@@ -13,6 +13,7 @@ DEV_FOLDER_NAME = "ComputerHistory-dev"
 VERSIONS_FOLDER_NAME = "versions"
 INSTALL_MARKER_NAME = "installed"
 SHORT_COMMIT_LENGTH = 7
+SIDECARS = ("-wal", "-shm", "-journal")
 
 
 class Profile(Enum):
@@ -61,6 +62,16 @@ def running_code(code: Path) -> RunningCode:
     return RunningCode(Profile.STABLE, inside[-1].name)
 
 
+def sidecars(db_path: Path) -> tuple[Path, ...]:
+    """The journal files SQLite keeps beside a database."""
+    return tuple(db_path.with_name(db_path.name + suffix) for suffix in SIDECARS)
+
+
+def existing_database_files(db_path: Path) -> list[Path]:
+    """The database file and its journal files that already exist, dangling links included."""
+    return [path for path in (db_path, *sidecars(db_path)) if path.exists() or path.is_symlink()]
+
+
 def default_db_path(profile: Profile) -> Path:
     """The profile's default database location."""
     return data_folder(profile) / DATABASE_NAME
@@ -85,19 +96,34 @@ def resolve_db_path(explicit: str | os.PathLike[str] | None, profile: Profile) -
     return path
 
 
+def resolve_dev_db_path(explicit: str | os.PathLike[str] | None) -> Path:
+    """Dev's configured database path under either profile, refused inside the live folder."""
+    path = configured_db_path(explicit, Profile.DEV)
+    if _in_live_folder(path):
+        raise LiveDatabaseRefused(
+            f"{path} is in the live data folder {live_folder()}, and the dev database is never"
+            " there, whichever profile runs. Leave --db-path and"
+            f" ${DB_ENV_VAR} unset to use {default_db_path(Profile.DEV)}."
+        )
+    return path
+
+
 def refuse_live_in_dev(
     path: Path, profile: Profile, *, flag: str, env_var: str, default: Path
 ) -> None:
     """Raise LiveDatabaseRefused when a dev run's path is in the live folder or links into it."""
-    live = live_folder()
-    if profile is Profile.STABLE or not _within(path.resolve(), live.resolve()):
+    if profile is Profile.STABLE or not _in_live_folder(path):
         return
     raise LiveDatabaseRefused(
-        f"{path} is in the live data folder {live}. This run is dev (its code is a checkout or"
-        " worktree, not the stable install), and dev never uses live data. Leave"
+        f"{path} is in the live data folder {live_folder()}. This run is dev (its code is a"
+        " checkout or worktree, not the stable install), and dev never uses live data. Leave"
         f" {flag} and ${env_var} unset to use {default}, or run the stable install's"
         " computer-history."
     )
+
+
+def _in_live_folder(path: Path) -> bool:
+    return _within(path.resolve(), live_folder().resolve())
 
 
 def refuse_live(paths: Iterable[Path], live: Sequence[Path], *, replaced: bool = False) -> None:

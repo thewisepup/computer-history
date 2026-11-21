@@ -17,7 +17,13 @@ from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.host import Host, LiveHost
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
-from computer_history.store import LiveDatabaseRefused, live_folder, resolve_db_path, running_code
+from computer_history.store import (
+    LiveDatabaseRefused,
+    live_folder,
+    resolve_db_path,
+    resolve_dev_db_path,
+    running_code,
+)
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 DATABASE_COMMANDS = frozenset({"ingest", "status", "rebuild-signals", "backfill"})
@@ -39,8 +45,9 @@ COMMANDS = {
     ),
     "uninstall": "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
     "dev": (
-        "Developer tools: build-db makes a database of synthetic history, perf runs the"
-        " performance gate, bench times each operation."
+        "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
+        " live database into the dev folder, perf runs the performance gate, bench times each"
+        " operation."
     ),
 }
 
@@ -63,7 +70,8 @@ def build_parser() -> argparse.ArgumentParser:
     db_help = (
         "SQLite database path (default: $COMPUTER_HISTORY_DB, else history.db in the profile's"
         " data folder: ~/Library/Application Support/ComputerHistory-dev/ for dev,"
-        " ComputerHistory/ for stable)"
+        " ComputerHistory/ for stable). For dev snapshot it is where the copy goes, always dev's"
+        " database whichever profile runs"
     )
     parser.add_argument("--db-path", help=db_help)
     db_after_command = argparse.ArgumentParser(add_help=False)
@@ -157,12 +165,12 @@ def main(
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
         return 1
     uses = None
-    if args.command in DATABASE_COMMANDS:
-        try:
-            args.database = resolve_db_path(args.db_path, args.profile)
-        except LiveDatabaseRefused as exc:
-            print(profile_line(running, code, "database refused"), flush=True)
-            return _refused(exc)
+    try:
+        args.database = _database(args)
+    except LiveDatabaseRefused as exc:
+        print(profile_line(running, code, "database refused"), flush=True)
+        return _refused(exc)
+    if args.database is not None:
         uses = f"database {args.database}"
     elif args.command in INSTALL_COMMANDS:
         uses = f"stable install {live_folder()}"
@@ -173,6 +181,15 @@ def main(
         return handler(args)
     except LiveDatabaseRefused as exc:
         return _refused(exc)
+
+
+def _database(args: argparse.Namespace) -> Path | None:
+    """The database the command opens or copies into, or None for one that uses none."""
+    if args.command in DATABASE_COMMANDS:
+        return resolve_db_path(args.db_path, args.profile)
+    if args.command == "dev" and args.dev_command == "snapshot":
+        return resolve_dev_db_path(args.db_path)
+    return None
 
 
 def _refused(exc: LiveDatabaseRefused) -> int:

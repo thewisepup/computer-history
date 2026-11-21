@@ -11,6 +11,7 @@
       +-- backfill.py  plan, then ingest history chunk by chunk through the runner
       +-- install.py   install and uninstall the stable install, through the host adapter
       +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
+            |          dev snapshot (the live database copied into the dev folder),
             |          dev perf (the performance gate), dev bench (wall-clock timings)
             |
     profile.py (the first line: profile, version or checkout, database),
