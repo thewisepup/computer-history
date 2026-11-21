@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 import sqlite3
@@ -10,11 +11,13 @@ from typing import Any
 import pytest
 from db_states import stored_progress, write_locked
 from fake_aw import FakeAW
+from log_records import logged
 from projectors import no_signal
 
 from computer_history import cli
 from computer_history.cli import app as cli_app
 from computer_history.cli import backfill as cli_backfill
+from computer_history.logs import PROGRESS_RECORDS
 from computer_history.sources import (
     AFK_SOURCE,
     BACKFILL_CHUNK,
@@ -563,7 +566,8 @@ def test_unreadable_event_before_the_start_fails_safe(conn, caplog) -> None:
     plan = window_plan(fake, conn)
     assert plan.earlier == ((WINDOW_BUCKET, None),)
     assert not plan.covers_history
-    assert "malformed ActivityWatch event in " + WINDOW_BUCKET in caplog.text
+    [warned] = logged(caplog, "malformed event before the start, taken as uncovered history")
+    assert warned["bucket"] == WINDOW_BUCKET
     result = backfill(conn, fake, plan)
     assert result.inserted == DAYS and result.progress is BackfillProgress.NOT_COVERED
     assert get_progress(conn, WINDOW_SOURCE) is None
@@ -640,3 +644,47 @@ def test_unhandled_command_fails_cleanly(capsys, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setitem(cli.COMMANDS, "frobnicate", "Not built yet.")
     assert cli.main(["frobnicate"]) == 1
     assert "computer-history frobnicate: not implemented yet" in capsys.readouterr().err
+
+
+def test_a_backfill_logs_its_start_progress_and_end(conn, caplog) -> None:
+    caplog.set_level(logging.DEBUG)
+    plan = window_plan(history_aw(NOW), conn, chunk=timedelta(days=1))
+    chunks = len(plan.chunks)
+
+    backfill(conn, history_aw(NOW), plan)
+
+    [started] = logged(caplog, "backfill started")
+    assert (started["streams"], started["chunks"]) == ([WINDOW_SOURCE], chunks)
+    assert started["start"] == plan.chunks[0].start.isoformat()
+    step = math.ceil(chunks / PROGRESS_RECORDS)
+    progress = logged(caplog, "backfill progress")
+    assert [r["chunks_done"] for r in progress] == list(range(step, chunks, step))
+    assert all(r["levelno"] == logging.INFO for r in progress)
+    assert len(logged(caplog, "chunk committed")) == chunks
+    [finished] = logged(caplog, "backfill finished")
+    assert (finished["outcome"], finished["chunks_done"], finished["inserted"]) == (
+        "ok",
+        chunks,
+        DAYS,
+    )
+    assert finished["streams"] == {
+        WINDOW_SOURCE: {"chunks_done": chunks, "inserted": DAYS, "progress": "set"}
+    }
+
+
+def test_a_failed_backfill_logs_the_error_once_with_its_traceback_then_its_end(
+    capsys, use_aw, db_path: Path, caplog
+) -> None:
+    healthy = history_aw(datetime.now(UTC))
+    fake = FailingAW({WINDOW_BUCKET: "currentwindow"}, t0=healthy.t0, ok=2)
+    fake.events = {WINDOW_BUCKET: healthy.events[WINDOW_BUCKET]}
+    use_aw(fake)
+
+    run(capsys, "--db-path", str(db_path), "backfill")
+
+    [failed] = logged(caplog, "backfill failed")
+    assert failed["levelno"] == logging.ERROR and failed["stream"] == WINDOW_SOURCE
+    assert failed["exc_info"] is not None
+    [finished] = logged(caplog, "backfill finished")
+    assert (finished["outcome"], finished["chunks_done"]) == ("failed", 2)
+    assert finished["levelno"] == logging.INFO

@@ -150,7 +150,7 @@ private func reminderFile() -> URL {
 private func posts(at offsets: [TimeInterval], of reminder: inout PermissionReminder, from start: Date) -> [Bool] {
     offsets.map { offset in
         var posted = false
-        reminder.grantMissing(at: start.addingTimeInterval(offset), post: { _, _ in posted = true; return .posted }, log: { _ in })
+        reminder.grantMissing(at: start.addingTimeInterval(offset), post: { _, _ in posted = true; return .posted }, log: AgentLog { _ in })
         return posted
     }
 }

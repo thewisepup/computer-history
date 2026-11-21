@@ -255,7 +255,7 @@ func aFocusElementStepThatNamesNoElementIsRefused(step: String, problem: String)
 @Test func aRefusedScriptedSessionWritesNothing() throws {
     let home = scratchFolder()
     let settings = AgentSettings(folder: AgentSettings.defaultFolder(home: home), spoolDirectory: scratchFolder())
-    let outcome = runScriptedSession(script: URL(fileURLWithPath: "/nonexistent.json"), settings: settings, homes: [home], log: { _ in })
+    let outcome = runScriptedSession(script: URL(fileURLWithPath: "/nonexistent.json"), settings: settings, homes: [home], log: AgentLog { _ in })
     #expect(outcome.exitCode == 1)
     #expect(outcome.message.hasPrefix("refusing a scripted session"))
     #expect(!FileManager.default.fileExists(atPath: settings.spoolDirectory.path))

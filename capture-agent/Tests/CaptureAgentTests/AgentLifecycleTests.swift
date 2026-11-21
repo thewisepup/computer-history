@@ -4,18 +4,18 @@ import Testing
 
 final class Recorder: @unchecked Sendable {
     private let lock = NSLock()
-    private var _lines: [String] = []
     private var _prompts: [Bool] = []
     private var _capturingStarted = 0
     private var _stopDeadlines: [DispatchTime] = []
     var dropped: Int? = 0
+    let logs = LogRecorder()
     let spool = TempSpool()
     let counts = CaptureCounts()
     lazy var settings = AgentSettings.load(environment: [
         "COMPUTER_HISTORY_DB": spool.directory.appendingPathComponent("folder/history.db").path,
     ])
 
-    var lines: [String] { lock.withLock { _lines } }
+    var lines: [String] { logs.records.map(\.message) }
     var prompts: [Bool] { lock.withLock { _prompts } }
     var capturingStarted: Int { lock.withLock { _capturingStarted } }
     var stopDeadlines: [DispatchTime] { lock.withLock { _stopDeadlines } }
@@ -35,7 +35,7 @@ final class Recorder: @unchecked Sendable {
                 self.lock.withLock { self._stopDeadlines.append(deadline) }
                 return self.dropped
             },
-            log: { line in self.lock.withLock { self._lines.append(line) } }
+            log: logs.log
         )
     }
 }

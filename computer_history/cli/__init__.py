@@ -7,6 +7,7 @@ app.py         parser + dispatch: one entry per command
   +-- status.py    freshness, coverage gaps, row counts
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
+  +-- logs.py      the JSON log's records, filtered, as text or raw lines
   +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
         |          dev perf (the performance gate), dev bench (wall-clock timings)
         |

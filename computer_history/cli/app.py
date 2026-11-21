@@ -4,13 +4,15 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from computer_history.cli.backfill import cmd_backfill
 from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
+from computer_history.cli.logs import cmd_logs
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
+from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
 
 COMMANDS = {
@@ -27,7 +29,10 @@ COMMANDS = {
         "Developer tools: build-db makes a database of synthetic history, perf runs the"
         " performance gate, bench times each operation."
     ),
+    "logs": "Show the JSON log's records, filtered by time, level, run or logger.",
 }
+
+log = logging.getLogger(__name__)
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "ingest": cmd_ingest,
@@ -35,6 +40,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "rebuild-signals": cmd_rebuild_signals,
     "backfill": cmd_backfill,
     "dev": cmd_dev,
+    "logs": cmd_logs,
 }
 
 
@@ -48,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
         "~/Library/Application Support/ComputerHistory/history.db)"
     )
     parser.add_argument("--db-path", help=db_help)
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=LEVEL_NAMES,
+        help="lowest level logged, to stderr and the log file (default:"
+        " $COMPUTER_HISTORY_LOG_LEVEL, else INFO to the file and, except for ingest --watch,"
+        " WARNING to stderr)",
+    )
     db_after_command = argparse.ArgumentParser(add_help=False)
     db_after_command.add_argument("--db-path", default=argparse.SUPPRESS, help=db_help)
     aw = argparse.ArgumentParser(add_help=False)
@@ -60,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name, help_text in COMMANDS.items():
         if name == "dev":
             add_dev_commands(subparsers.add_parser(name, help=help_text, description=help_text))
+            continue
+        if name == "logs":
+            add_logs_arguments(subparsers.add_parser(name, help=help_text, description=help_text))
             continue
         if name in ("ingest", "status", "backfill"):
             parents = [db_after_command, aw]
@@ -106,6 +123,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def add_logs_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--since",
+        type=since_arg,
+        help="only records from this long ago (30m, 2h, 1d) or this ISO date/datetime on",
+    )
+    sub.add_argument(
+        "--level",
+        type=str.lower,
+        choices=[name.lower() for name in LEVEL_NAMES],
+        default="debug",
+        help="only records at this level or above (default: every record)",
+    )
+    sub.add_argument("--run", help="only records of this run id")
+    sub.add_argument(
+        "--logger",
+        help="only records from this logger or below it (ingest, sources.activitywatch, ...)",
+    )
+    sub.add_argument("--json", action="store_true", help="print the raw JSON lines")
+
+
+SINCE_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def since_arg(value: str) -> datetime:
+    """A time that many seconds, minutes, hours or days ago (30m, 2h, 1d), or an ISO time."""
+    amount, unit = value[:-1], value[-1:].lower()
+    if unit in SINCE_UNITS and amount.isdigit():
+        return datetime.now(UTC) - timedelta(seconds=int(amount) * SINCE_UNITS[unit])
+    return when_arg(value)
+
+
 def when_arg(value: str) -> datetime:
     """An ISO date or datetime. Local time unless it carries an offset."""
     try:
@@ -121,16 +170,27 @@ def when_arg(value: str) -> datetime:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    try:
+        level = resolve_level(args.log_level)
+    except ValueError as exc:
+        print(f"computer-history: {exc}", file=sys.stderr)
+        return 2
+    watching = getattr(args, "watch", False)
+    configure(
+        f"{args.command} --watch" if watching else args.command,
+        level=level,
+        long_running=watching,
+        log_dir=resolve_log_dir(),
     )
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
         return 1
-    return handler(args)
+    try:
+        return handler(args)
+    except Exception:
+        log.critical("command crashed", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":

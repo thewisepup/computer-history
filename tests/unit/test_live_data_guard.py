@@ -8,8 +8,20 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-from live_data_guard import GUARDED_ENV_VARS, LIVE_DATA_DIR, LiveDataTouched
+from live_data_guard import (
+    GUARDED_ENV_VARS,
+    LIVE_DATA_DIR,
+    LIVE_LOG_DIR,
+    LiveDataTouched,
+    RealNotification,
+)
 
+from computer_history.alerts import post_notification
+from computer_history.logs import (
+    LOG_DIR_ENV_VAR,
+    default_log_dir,
+    resolve_log_dir,
+)
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR
 from computer_history.store import DB_ENV_VAR, connect, default_db_path
 from computer_history.store import db as store_db
@@ -21,7 +33,8 @@ PROBE = LIVE_DATA_DIR / "test-guard-probe-that-never-exists.db"
 def test_home_is_a_sandbox_and_defaults_land_in_it() -> None:
     assert Path.home() != LIVE_DATA_DIR.parents[2]
     assert not default_db_path().is_relative_to(LIVE_DATA_DIR)
-    assert not any(os.environ.get(name) for name in GUARDED_ENV_VARS)
+    assert not any(os.environ.get(name) for name in GUARDED_ENV_VARS if name != LOG_DIR_ENV_VAR)
+    assert not resolve_log_dir().is_relative_to(LIVE_LOG_DIR)
 
 
 def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
@@ -29,7 +42,8 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
 ) -> None:
     monkeypatch.setenv("HOME", str(LIVE_DATA_DIR.parents[2]))
     assert default_db_path() == LIVE_DATA_DIR / "history.db"
-    assert set(GUARDED_ENV_VARS) == {DB_ENV_VAR, SPOOL_ENV_VAR}
+    assert default_log_dir() == LIVE_LOG_DIR
+    assert set(GUARDED_ENV_VARS) == {DB_ENV_VAR, SPOOL_ENV_VAR, LOG_DIR_ENV_VAR}
 
 
 @pytest.mark.parametrize(
@@ -45,6 +59,8 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
         lambda: connect(PROBE, create=False),
         lambda: os.remove(PROBE),
         lambda: os.rename(PROBE, PROBE.with_suffix(".moved")),
+        lambda: open(LIVE_LOG_DIR / "computer-history.jsonl", "rb"),
+        lambda: os.remove(LIVE_LOG_DIR / "test-guard-probe-that-never-exists.jsonl"),
     ],
     ids=[
         "open",
@@ -57,12 +73,19 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
         "store-connect",
         "remove",
         "rename",
+        "open-log",
+        "remove-log",
     ],
 )
 def test_touching_live_data_raises(touch) -> None:
     with pytest.raises(LiveDataTouched):
         touch()
     assert not PROBE.exists()
+
+
+def test_posting_a_real_notification_raises() -> None:
+    with pytest.raises(RealNotification):
+        post_notification("a test must never show this")
 
 
 def test_the_real_folder_stays_guarded_when_home_was_redirected_first(tmp_path: Path) -> None:

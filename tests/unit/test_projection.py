@@ -21,8 +21,10 @@ from computer_history.sources import (
     WEB_SOURCE,
     WINDOW_SOURCE,
     ActivityWatch,
+    CycleReporter,
     FailureKind,
     StreamFailure,
+    cycle_report,
     plan_backfill,
     poll,
     projector_for,
@@ -227,10 +229,10 @@ def test_watch_logs_an_unprojected_stream_and_keeps_polling(
 
     caplog.set_level(logging.INFO)
     with pytest.raises(KeyboardInterrupt):
-        watch(conn, [spool], report=cli_ingest.log_cycle, interval=60, sleep=sleep)
+        watch(conn, [spool], report=CycleReporter(cli_ingest.cycle_line), interval=60, sleep=sleep)
 
-    lines = [r for r in caplog.records if r.name == cli_ingest.__name__]
-    assert [r.levelno for r in lines] == [logging.WARNING, logging.WARNING]
+    lines = [r for r in caplog.records if r.name == cycle_report.__name__]
+    assert [r.levelno for r in lines] == [logging.ERROR, logging.ERROR]
     assert all(
         "ingest failed on ocr: no source adapter projects observations from 'ocr'" in r.getMessage()
         for r in lines

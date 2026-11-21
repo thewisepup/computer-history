@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
@@ -81,6 +81,7 @@ class StreamFailure:
     stream: str | None
     error: str
     kind: FailureKind
+    exc: BaseException | None = field(default=None, compare=False, repr=False)
 
 
 AdapterError = UnclaimedSource | StrayObservation
@@ -98,4 +99,4 @@ def failure_of(
         kind = FailureKind.DATABASE_BUSY
     else:
         kind = FailureKind.DATABASE
-    return StreamFailure(stream, str(exc), kind)
+    return StreamFailure(stream, str(exc), kind, exc)

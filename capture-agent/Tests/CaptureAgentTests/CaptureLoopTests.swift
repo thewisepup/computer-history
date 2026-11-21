@@ -11,7 +11,8 @@ final class LoopFixture {
     var screenshots = ScreenshotSettings(recognitionTimeout: 120)
     var images: (any ImageStore)?
     var recognizedText: @Sendable (URL) throws -> String = { _ in "" }
-    var logged: [String] = []
+    let logs = LogRecorder()
+    var logged: [String] { logs.records.filter { $0.level != .debug }.map(\.message) }
     private lazy var writer = spool.writer()
     lazy var screenshotGate = ScreenshotRefusingSpool(writer: writer, refusals: 0)
 
@@ -35,7 +36,7 @@ final class LoopFixture {
             images: images ?? JPEGImageStore(folder: settings.folder, longEdge: screenshots.longEdge, quality: screenshots.quality),
             recognize: recognizedText,
             counts: counts,
-            log: { self.logged.append($0) }
+            log: logs.log
         )
     }
 

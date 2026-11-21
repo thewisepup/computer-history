@@ -40,7 +40,7 @@ struct CaptureScreenshot<M: Mac> {
     let idleThreshold: TimeInterval
     var dedup: ScreenshotDedup
     var reminder: PermissionReminder
-    let log: (String) -> Void
+    let log: AgentLog
 
     mutating func take(for capture: SpoolRecord, of application: FocusedApplication) -> QueuedScreenshot {
         guard !pause.isPaused, mac.samplePresence().silence(idleThreshold: idleThreshold).isEmpty,

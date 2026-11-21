@@ -18,22 +18,22 @@ struct PermissionReminder {
 
     /// Posts the reminder when none was tried in the last day, saving the time only once one was posted, which may happen later on another thread once the user allows notifications.
     mutating func grantMissing(
-        at now: Date, post: (UserNotification, @escaping @Sendable () -> Void) -> NotificationPosting, log: (String) -> Void
+        at now: Date, post: (UserNotification, @escaping @Sendable () -> Void) -> NotificationPosting, log: AgentLog
     ) {
         if let lastTried, (-Self.interval..<Self.interval).contains(now.timeIntervalSince(lastTried)) { return }
         lastTried = now
         switch post(ScreenRecordingSettings.reminder, { [file] in try? Self.write(now, to: file) }) {
         case .posted:
-            log("screen recording missing, posted a reminder")
+            log.notice(.screenshots, "screen recording missing, posted a reminder")
             save(now, log: log)
         case .awaitingPermission:
-            log("screen recording missing, asked macOS to allow notifications for the reminder")
+            log.notice(.screenshots, "screen recording missing, asked macOS to allow notifications for the reminder")
         case .timedOut(let seconds):
-            log("screen recording missing, the notification centre did not answer within \(Int(seconds))s")
+            log.notice(.screenshots, "screen recording missing, the notification centre did not answer within \(Int(seconds))s")
         case .unavailable(let reason):
             guard !toldUnavailable else { return }
             toldUnavailable = true
-            log("screen recording missing, notifications unavailable (\(reason)), status is the only warning")
+            log.notice(.screenshots, "screen recording missing, notifications unavailable (\(reason)), status is the only warning")
         }
     }
 
@@ -44,13 +44,13 @@ struct PermissionReminder {
         try? FileManager.default.removeItem(at: file)
     }
 
-    private mutating func save(_ time: Date, log: (String) -> Void) {
+    private mutating func save(_ time: Date, log: AgentLog) {
         do {
             try Self.write(time, to: file)
         } catch {
             guard !toldUnsaved else { return }
             toldUnsaved = true
-            log("could not save the reminder time to \(file.path) (\(error.localizedDescription)), a restart may remind again")
+            log.error(.screenshots, "could not save the reminder time to \(file.path) (\(error.localizedDescription)), a restart may remind again")
         }
     }
 
