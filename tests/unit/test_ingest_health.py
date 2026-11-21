@@ -239,7 +239,6 @@ def test_failed_cycles_are_errors_with_a_traceback_only_on_the_first(
     assert (recovered["failed_cycles"], recovered["failing_since"]) == (3, T0.isoformat())
 
 
-
 def test_each_new_cause_in_a_streak_and_a_restart_get_a_traceback(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

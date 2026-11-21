@@ -55,9 +55,7 @@ def _not_shown(record: logging.LogRecord) -> bool:
     return not getattr(record, SHOWN_FIELD, False)
 
 
-def configure(
-    command: str, *, level: int | None, long_running: bool, log_dir: Path
-) -> Path | None:
+def configure(command: str, *, level: int | None, long_running: bool, log_dir: Path) -> Path | None:
     """Send the package's records as text to stderr and as JSON lines to the log folder.
 
     Without a level the file gets INFO and stderr WARNING, or INFO for a long-running command.
@@ -66,8 +64,8 @@ def configure(
     _command.set(command)
     _run_id.set(uuid.uuid4().hex[:8])
     file_level = logging.INFO if level is None else level
-    stderr_level = level if level is not None else (
-        logging.INFO if long_running else logging.WARNING
+    stderr_level = (
+        level if level is not None else (logging.INFO if long_running else logging.WARNING)
     )
     package = logging.getLogger(PACKAGE_LOGGER)
     package.setLevel(min(file_level, stderr_level))

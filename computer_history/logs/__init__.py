@@ -1,12 +1,12 @@
 """Logging for every command: set up once by the CLI, read back by `computer-history logs`.
 
-    config.py      one setup per run: the run id and command on every record, text
-         |         to stderr, JSON lines to the log folder
-    rotation.py    the JSON log file, size-rotated, shared by every running process
-    formatters.py  a record as one JSON line or one text line, control characters escaped
-         |
-    query.py       the JSON lines read back across the rotated files, filtered
-    units.py       what every unit of work's records share: outcomes, progress cadence
+config.py      one setup per run: the run id and command on every record, text
+     |         to stderr, JSON lines to the log folder
+rotation.py    the JSON log file, size-rotated, shared by every running process
+formatters.py  a record as one JSON line or one text line, control characters escaped
+     |
+query.py       the JSON lines read back across the rotated files, filtered
+units.py       what every unit of work's records share: outcomes, progress cadence
 """
 
 from computer_history.logs.config import (

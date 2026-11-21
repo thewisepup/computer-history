@@ -152,10 +152,7 @@ def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
 def _ingest_state(health: IngestHealth) -> str:
     if not health.consecutive_failures or health.failing_since is None:
         return "ok"
-    return (
-        f"FAILING since {when(health.failing_since)}"
-        f" ({health.consecutive_failures:,} cycles)"
-    )
+    return f"FAILING since {when(health.failing_since)} ({health.consecutive_failures:,} cycles)"
 
 
 def _print_sources(summaries: list[SourceSummary], now: datetime) -> None:
