@@ -19,11 +19,51 @@ app.py         parser + dispatch: one entry per command
   |                dev bench: wall-clock timings against this machine's last ones
         |
 db.py and sources.py (unusable database / source messages),
+profile.py (the first line: profile, version or checkout, database),
 formatting.py (durations, times, sizes)
 ```
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the
 venv activated (or aliased).
+
+## Profiles: stable and dev
+
+Every run is **dev** unless its code runs from the stable install: a version
+folder under `~/Library/Application Support/ComputerHistory/versions/` that
+carries the `installed` marker. A checkout, a worktree, an editable install, a
+`pip install .` into a venv, or a version folder without the marker is dev.
+Nothing installs stable yet; until then every run is dev.
+
+| | dev | stable |
+|---|---|---|
+| Data folder | `~/Library/Application Support/ComputerHistory-dev/` | `~/Library/Application Support/ComputerHistory/` (the live folder) |
+| Database, spool, screenshots | `history.db`, `spool/`, `screenshots/` in that folder | the same, in the live folder |
+| Live folder | refused | its own |
+| ActivityWatch | reads the live one | reads the live one |
+
+`--db-path`, `$COMPUTER_HISTORY_DB`, `--spool-path` and `$COMPUTER_HISTORY_SPOOL`
+still win over the defaults, but dev refuses, with exit code 1, any of them
+inside the live folder, including through a symlink or in another letter case.
+The screenshots sit beside the database, so the database's refusal covers them.
+The capture agent writes into the live folder, so a dev `ingest` with no flags
+reads ActivityWatch and an empty dev spool.
+
+Every command's first line names the profile, the version (stable) or the
+checkout's branch and commit (dev), and the database (real output, home
+shortened to `~`):
+
+```
+$ computer-history status
+Profile dev (branch 103-dev-profile-data-folder at f8ea2fb), database ~/Library/Application Support/ComputerHistory-dev/history.db
+...
+$ computer-history --db-path ~/Library/Application\ Support/ComputerHistory/history.db ingest
+Profile dev (branch 103-dev-profile-data-folder at f8ea2fb), database refused
+refused: ~/Library/Application Support/ComputerHistory/history.db is in the live data folder ~/Library/Application Support/ComputerHistory. This run is dev (its code is a checkout or worktree, not the stable install), and dev never uses live data. Leave --db-path and $COMPUTER_HISTORY_DB unset to use ~/Library/Application Support/ComputerHistory-dev/history.db, or run the stable install's computer-history.
+```
+
+Stable prints `Profile stable (version 1a2b3c4), database ~/Library/Application Support/ComputerHistory/history.db`.
+Outside a git checkout dev prints `(not a git checkout)`, and on a detached
+HEAD `(detached at <commit>)`.
 
 ## ingest — the everyday command
 
@@ -33,6 +73,7 @@ computer-history ingest --watch    # poll every 60s until Ctrl-C
 ```
 
 ```
+Profile stable (version 1a2b3c4), database .../ComputerHistory/history.db
 Ingested from http://127.0.0.1:5600/api/0 and .../ComputerHistory/spool into .../ComputerHistory/history.db
   aw-afk     inserted      5  skipped      0  held back   1
   aw-web     inserted     62  skipped      1  held back   0
@@ -287,8 +328,9 @@ month, year); `--start` and `--timezone` move the range, and `--heavy` alone (or
 `--heavy 3` for another factor) makes the persona a heavier user (switching
 twice as often, twice the text, weekends worked). The same inputs always give the same database contents.
 
-It refuses, with exit code 1, to write into a live folder: the default
-`~/Library/Application Support/ComputerHistory/`, the folder of
+It refuses, with exit code 1, to write into a live folder: the live folder
+`~/Library/Application Support/ComputerHistory/`, the profile's default
+database folder, the folder of
 `$COMPUTER_HISTORY_DB` or of a global `--db-path`, and `$COMPUTER_HISTORY_SPOOL`,
 and to replace a file or folder that holds one of them.
 Paths are compared after resolving symlinks and ignoring letter case, so
@@ -452,4 +494,6 @@ computer-history ingest --spool-path /tmp/spool     # or $COMPUTER_HISTORY_SPOOL
 Every command but `dev` takes `--db-path`; the networked ones (`ingest`, `status`,
 `backfill`) take `--aw-url`. `ingest` and `status` also take `--spool-path`;
 without it the spool is the `spool/` folder beside the database, so a scratch
-database never collects the real spool. `-h` on any command prints its flags.
+database never collects the real spool. Without `--db-path` the database is
+the profile's (see Profiles above), and dev refuses any of these paths inside
+the live folder. `-h` on any command prints its flags.

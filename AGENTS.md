@@ -73,6 +73,14 @@ passes or fails by chance. To hunt for new failures, run them with random seeds
 and 5,000 examples each, and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/test_aw_ingest_properties.py`.
 
+Every run from a checkout or worktree is **dev**: it uses
+`~/Library/Application Support/ComputerHistory-dev/` (database, spool,
+screenshots) and is refused the live folder's database, spool and screenshots
+however they are passed. Only code in a marked version folder of the stable
+install, under the live folder's `versions/`, is **stable** and uses the live
+folder. Every command's first line names the profile; the CLI README's
+"Profiles" section has the details.
+
 Agents that edit code work in their own git worktree, never in the main
 checkout. `scripts/prune-worktrees` removes worktrees whose work has landed
 on `origin/main` (`--dry-run` to preview); the post-merge hook runs it after

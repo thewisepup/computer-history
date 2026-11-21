@@ -10,7 +10,9 @@ from pathlib import Path
 
 from computer_history.sources import resolve_spool_path
 from computer_history.store import (
+    Profile,
     default_db_path,
+    live_folder,
     refuse_live,
     resolve_db_path,
 )
@@ -37,10 +39,14 @@ class DevDatabase:
     copied: tuple[Path, ...]
 
 
-def live_folders(explicit_db: str | os.PathLike[str] | None = None) -> tuple[Path, ...]:
-    """The folders of the default, configured and given databases, and the configured spool."""
-    databases = {default_db_path(), resolve_db_path(), resolve_db_path(explicit_db)}
-    folders = {db.parent for db in databases} | {resolve_spool_path(None, default_db_path())}
+def live_folders(
+    explicit_db: str | os.PathLike[str] | None, profile: Profile
+) -> tuple[Path, ...]:
+    """The live folder, the default, configured and given databases' folders, and the spool."""
+    default = default_db_path(profile)
+    databases = {default, resolve_db_path(None, profile), resolve_db_path(explicit_db, profile)}
+    folders = {live_folder(), *(db.parent for db in databases)}
+    folders.add(resolve_spool_path(None, default, profile))
     return tuple(sorted(folder.expanduser().resolve() for folder in folders))
 
 

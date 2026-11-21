@@ -40,7 +40,7 @@ from computer_history.sources import (
     watch,
 )
 from computer_history.sources.capture_spool import adapter as spool_adapter
-from computer_history.store import connect, get_progress, table_counts, utc_iso
+from computer_history.store import Profile, connect, get_progress, table_counts, utc_iso
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = [
@@ -538,13 +538,13 @@ def test_the_spool_path_is_the_flag_then_the_env_var_then_beside_the_database(
 ) -> None:
     db_path = tmp_path / "data" / "history.db"
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
-    assert resolve_spool_path(None, db_path) == tmp_path / "data" / "spool"
+    assert resolve_spool_path(None, db_path, Profile.DEV) == tmp_path / "data" / "spool"
     monkeypatch.setenv(SPOOL_ENV_VAR, "")
-    assert resolve_spool_path("", db_path) == tmp_path / "data" / "spool"
+    assert resolve_spool_path("", db_path, Profile.DEV) == tmp_path / "data" / "spool"
     monkeypatch.setenv(SPOOL_ENV_VAR, str(tmp_path / "env-spool"))
-    assert resolve_spool_path(None, db_path) == tmp_path / "env-spool"
-    assert resolve_spool_path(str(tmp_path / "flag"), db_path) == tmp_path / "flag"
-    assert resolve_spool_path("~/x", db_path) == Path.home() / "x"
+    assert resolve_spool_path(None, db_path, Profile.DEV) == tmp_path / "env-spool"
+    assert resolve_spool_path(str(tmp_path / "flag"), db_path, Profile.DEV) == tmp_path / "flag"
+    assert resolve_spool_path("~/x", db_path, Profile.DEV) == Path.home() / "x"
 
 
 @pytest.fixture

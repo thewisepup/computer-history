@@ -29,11 +29,22 @@ from computer_history.store.introspection import (
 from computer_history.store.observations import InsertResult, Observation, insert_observations
 from computer_history.store.opening import OpenedStore, Purpose, StoreState, open_store
 from computer_history.store.paths import (
+    DATABASE_FILE_NAME,
     DB_ENV_VAR,
+    DEV_FOLDER_NAME,
+    INSTALL_MARKER_NAME,
+    LIVE_FOLDER_NAME,
+    VERSIONS_FOLDER_NAME,
     LiveDatabaseRefused,
+    Profile,
+    data_folder,
     default_db_path,
+    live_folder,
+    profile_of,
     refuse_live,
+    refuse_live_in_dev,
     resolve_db_path,
+    stable_version,
     within,
 )
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
@@ -72,6 +83,16 @@ from computer_history.store.status import (
 from computer_history.store.timefmt import to_utc, utc_iso
 
 __all__ = [
+    "DATABASE_FILE_NAME",
+    "DEV_FOLDER_NAME",
+    "INSTALL_MARKER_NAME",
+    "LIVE_FOLDER_NAME",
+    "VERSIONS_FOLDER_NAME",
+    "Profile",
+    "data_folder",
+    "live_folder",
+    "profile_of",
+    "stable_version",
     "BUSY_TIMEOUT_SECONDS",
     "DB_ENV_VAR",
     "SCREENSHOT_STATUS_INDEX",
@@ -118,6 +139,7 @@ __all__ = [
     "payload_values",
     "rebuild_signals",
     "refuse_live",
+    "refuse_live_in_dev",
     "resolve_db_path",
     "screenshot_totals",
     "scanned_tables",

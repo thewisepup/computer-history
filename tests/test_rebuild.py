@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import after_profile_line
 from db_states import corrupt_payloads
 from fake_aw import FakeAW, at
 from projectors import AW
@@ -412,7 +413,7 @@ def test_cli_rebuild_signals_abort_exits_nonzero(
     code, out, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
 
     assert code == 1
-    assert out == ""
+    assert after_profile_line(out) == ""
     assert "aborted" in err and "signals unchanged" in err
     conn = connect(db_path)
     try:
@@ -435,7 +436,7 @@ def test_cli_rebuild_signals_refuses_a_missing_db(
 ) -> None:
     code, out, err = run(capsys, "--db-path", str(db_path), "rebuild-signals")
     assert code == 1
-    assert out == ""
+    assert after_profile_line(out) == ""
     assert f"no database at {db_path}" in err and "ingest" in err
     assert not db_path.exists()
 

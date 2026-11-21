@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import os
+import subprocess
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from aw_http import served_over_http
+from fake_aw import FakeAW
+
+from computer_history import cli
+from computer_history.sources import SPOOL_ENV_VAR
+from computer_history.store import (
+    DB_ENV_VAR,
+    INSTALL_MARKER_NAME,
+    VERSIONS_FOLDER_NAME,
+    connect,
+    table_counts,
+)
+
+WINDOW_BUCKET = "aw-watcher-window_test-host.local"
+UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
+
+
+@pytest.fixture
+def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    folder = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(folder))
+    return folder
+
+
+@pytest.fixture
+def live(home: Path) -> Path:
+    folder = home / "Library" / "Application Support" / "ComputerHistory"
+    folder.mkdir(parents=True)
+    return folder
+
+
+@pytest.fixture
+def dev(home: Path) -> Path:
+    return home / "Library" / "Application Support" / "ComputerHistory-dev"
+
+
+@pytest.fixture
+def checkout(tmp_path: Path) -> Path:
+    code = tmp_path / "checkout" / "computer_history"
+    code.mkdir(parents=True)
+    return code
+
+
+def run(
+    capsys: pytest.CaptureFixture[str], code: Path, *argv: str
+) -> tuple[int, list[str], str]:
+    exit_code = cli.main(list(argv), code=code)
+    captured = capsys.readouterr()
+    return exit_code, captured.out.splitlines(), captured.err
+
+
+def test_a_checkout_run_is_dev_and_uses_the_dev_folder(
+    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+) -> None:
+    code, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
+
+    assert code == 0
+    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
+    assert f"Database:      {dev / 'history.db'} (not created yet" in "\n".join(out)
+    assert list(live.iterdir()) == []
+
+
+def installed(live: Path, version: str, *, marked: bool) -> Path:
+    folder = live / VERSIONS_FOLDER_NAME / version
+    code = folder / "venv" / "lib" / "python3.12" / "site-packages" / "computer_history"
+    code.mkdir(parents=True)
+    if marked:
+        (folder / INSTALL_MARKER_NAME).write_text("")
+    return code
+
+
+def test_a_marked_version_of_the_stable_install_is_stable_and_uses_the_live_folder(
+    capsys: pytest.CaptureFixture[str], live: Path, dev: Path
+) -> None:
+    code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=True), "ingest", *UNREACHABLE_AW)
+
+    assert out[0] == f"Profile stable (version 1a2b3c4), database {live / 'history.db'}"
+    assert code == 1
+    assert (live / "history.db").is_file()
+    assert not dev.exists()
+
+
+def test_a_version_without_the_marker_is_dev(
+    capsys: pytest.CaptureFixture[str], live: Path, dev: Path
+) -> None:
+    code, out, _ = run(capsys, installed(live, "1a2b3c4", marked=False), "status", *UNREACHABLE_AW)
+
+    assert code == 0
+    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
+    assert not (live / "history.db").exists()
+
+
+def spellings(live: Path, tmp_path: Path) -> dict[str, Path]:
+    alias = tmp_path / "alias"
+    alias.symlink_to(live)
+    return {"plain": live, "symlink": alias, "case": Path(str(live).upper())}
+
+
+@pytest.mark.parametrize("spelling", ["plain", "symlink", "case"])
+@pytest.mark.parametrize("given", ["flag", "env"])
+def test_dev_is_refused_the_live_database(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+    dev: Path,
+    checkout: Path,
+    given: str,
+    spelling: str,
+) -> None:
+    (live / "history.db").write_text("real history\n")
+    db = spellings(live, tmp_path)[spelling] / "history.db"
+    argv = ["ingest", *UNREACHABLE_AW]
+    if given == "flag":
+        argv += ["--db-path", str(db)]
+    else:
+        monkeypatch.setenv(DB_ENV_VAR, str(db))
+
+    code, out, err = run(capsys, checkout, *argv)
+
+    assert code == 1
+    assert out == ["Profile dev (not a git checkout), database refused"]
+    assert err.startswith(f"refused: {db} is in the live data folder {live}.")
+    assert "--db-path" in err and DB_ENV_VAR in err and str(dev / "history.db") in err
+    assert sorted(path.name for path in live.iterdir()) == ["history.db"]
+    assert (live / "history.db").read_text() == "real history\n"
+
+
+@pytest.mark.parametrize("spelling", ["plain", "symlink", "case"])
+@pytest.mark.parametrize("given", ["flag", "env"])
+@pytest.mark.parametrize("folder", ["spool", "screenshots"])
+def test_dev_is_refused_the_live_spool_and_screenshots(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+    dev: Path,
+    checkout: Path,
+    given: str,
+    spelling: str,
+    folder: str,
+) -> None:
+    (live / folder).mkdir()
+    (live / folder / "20260105T090000.000000Z.jsonl").write_text("waiting\n")
+    spool = spellings(live, tmp_path)[spelling] / folder
+    argv = ["ingest", *UNREACHABLE_AW]
+    if given == "flag":
+        argv += ["--spool-path", str(spool)]
+    else:
+        monkeypatch.setenv(SPOOL_ENV_VAR, str(spool))
+
+    code, out, err = run(capsys, checkout, *argv)
+
+    assert code == 1
+    assert out == [f"Profile dev (not a git checkout), database {dev / 'history.db'}"]
+    assert err.startswith(f"refused: {spool} is in the live data folder {live}.")
+    assert "--spool-path" in err and SPOOL_ENV_VAR in err and str(dev / "spool") in err
+    assert [path.name for path in (live / folder).iterdir()] == ["20260105T090000.000000Z.jsonl"]
+    assert not dev.exists()
+
+
+def test_stable_is_not_walled_off_from_its_own_folder(
+    capsys: pytest.CaptureFixture[str], live: Path
+) -> None:
+    code = installed(live, "1a2b3c4", marked=True)
+
+    status, _, err = run(
+        capsys, code, "status", "--db-path", str(live / "history.db"), *UNREACHABLE_AW
+    )
+
+    assert status == 0
+    assert "refused" not in err
+
+
+def test_dev_ingests_activitywatch_into_its_own_database(
+    capsys: pytest.CaptureFixture[str], live: Path, dev: Path, checkout: Path
+) -> None:
+    now = datetime.now(UTC)
+    aw = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=60))
+    aw.add(WINDOW_BUCKET, 0, 600, {"app": "Code", "title": "cli.py"})
+
+    with served_over_http(aw) as url:
+        code, out, err = run(capsys, checkout, "ingest", "--aw-url", url)
+
+    assert code == 0, err
+    assert out[0] == f"Profile dev (not a git checkout), database {dev / 'history.db'}"
+    conn = connect(dev / "history.db")
+    try:
+        assert table_counts(conn)["observations"] == 1
+    finally:
+        conn.close()
+    assert list(live.iterdir()) == []
+
+
+def git(repo: Path, *argv: str) -> str:
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    identity = ["-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    done = subprocess.run(
+        ["git", "-C", str(repo), *identity, *argv],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return done.stdout.strip()
+
+
+def test_a_dev_run_from_a_git_checkout_names_its_branch_and_commit(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, live: Path, dev: Path
+) -> None:
+    repo = tmp_path / "repo"
+    code = repo / "computer_history"
+    code.mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "feature")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "first")
+    commit = git(repo, "rev-parse", "--short", "HEAD")
+    git(repo, "checkout", "-q", "--detach")
+
+    _, detached, _ = run(capsys, code, "status", *UNREACHABLE_AW)
+    git(repo, "checkout", "-q", "feature")
+    _, on_branch, _ = run(capsys, code, "status", *UNREACHABLE_AW)
+
+    database = dev / "history.db"
+    assert detached[0] == f"Profile dev (detached at {commit}), database {database}"
+    assert on_branch[0] == f"Profile dev (branch feature at {commit}), database {database}"
+
+
+def test_the_checkout_named_is_the_codes_own_not_one_git_points_at(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    live: Path,
+    checkout: Path,
+) -> None:
+    repo = tmp_path / "elsewhere"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
+
+    _, out, _ = run(capsys, checkout, "status", *UNREACHABLE_AW)
+
+    assert out[0].startswith("Profile dev (not a git checkout), ")

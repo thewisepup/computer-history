@@ -11,15 +11,14 @@ import pytest
 from live_data_guard import GUARDED_ENV_VARS, LIVE_DATA_DIR, LiveDataTouched
 
 from computer_history.sources.capture_spool.paths import SPOOL_ENV_VAR
-from computer_history.store import DB_ENV_VAR, connect, default_db_path
-from computer_history.store.paths import resolve_db_path
+from computer_history.store import DB_ENV_VAR, Profile, connect, default_db_path, resolve_db_path
 
 PROBE = LIVE_DATA_DIR / "test-guard-probe-that-never-exists.db"
 
 
 def test_home_is_a_sandbox_and_defaults_land_in_it() -> None:
     assert Path.home() != LIVE_DATA_DIR.parents[2]
-    assert not default_db_path().is_relative_to(LIVE_DATA_DIR)
+    assert not default_db_path(Profile.STABLE).is_relative_to(LIVE_DATA_DIR)
     assert not any(os.environ.get(name) for name in GUARDED_ENV_VARS)
 
 
@@ -27,7 +26,7 @@ def test_the_guard_watches_the_folder_and_variables_the_app_really_uses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HOME", str(LIVE_DATA_DIR.parents[2]))
-    assert default_db_path() == LIVE_DATA_DIR / "history.db"
+    assert default_db_path(Profile.STABLE) == LIVE_DATA_DIR / "history.db"
     assert set(GUARDED_ENV_VARS) == {DB_ENV_VAR, SPOOL_ENV_VAR}
 
 
@@ -83,6 +82,6 @@ def test_a_run_given_no_database_path_lands_in_the_sandbox_not_the_live_db(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    connect(resolve_db_path(None)).close()
-    assert default_db_path().exists()
-    assert default_db_path().is_relative_to(tmp_path)
+    connect(resolve_db_path(None, Profile.STABLE)).close()
+    assert default_db_path(Profile.STABLE).exists()
+    assert default_db_path(Profile.STABLE).is_relative_to(tmp_path)

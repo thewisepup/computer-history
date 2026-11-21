@@ -170,7 +170,7 @@ def cmd_build_db(args: argparse.Namespace) -> int:
             inputs,
             args.out,
             cache=cache_root(),
-            live=live_folders(args.db_path),
+            live=live_folders(args.db_path, args.profile),
             force=args.force,
         )
     except REFUSALS as exc:

@@ -5,13 +5,19 @@ import logging
 import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
+import computer_history
 from computer_history.cli.backfill import cmd_backfill
 from computer_history.cli.dev import add_dev_commands, cmd_dev
 from computer_history.cli.ingest import cmd_ingest
+from computer_history.cli.profile import profile_line
 from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS
+from computer_history.store import LiveDatabaseRefused, profile_of, resolve_db_path
+
+CODE_LOCATION = Path(computer_history.__file__).resolve().parent
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -44,8 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Local activity store and ActivityWatch ingest.",
     )
     db_help = (
-        "SQLite database path (default: $COMPUTER_HISTORY_DB, else "
-        "~/Library/Application Support/ComputerHistory/history.db)"
+        "SQLite database path (default: $COMPUTER_HISTORY_DB, else history.db in the profile's"
+        " data folder: ~/Library/Application Support/ComputerHistory-dev/ for dev,"
+        " ComputerHistory/ for stable)"
     )
     parser.add_argument("--db-path", help=db_help)
     db_after_command = argparse.ArgumentParser(add_help=False)
@@ -119,18 +126,34 @@ def when_arg(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION) -> int:
+    """Run one command; the profile is decided from where the code runs."""
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    args.profile = profile_of(code)
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
         return 1
-    return handler(args)
+    try:
+        db_path = resolve_db_path(args.db_path, args.profile)
+    except LiveDatabaseRefused as exc:
+        print(profile_line(code, args.profile, None), flush=True)
+        return _refused(exc)
+    print(profile_line(code, args.profile, db_path), flush=True)
+    try:
+        return handler(args)
+    except LiveDatabaseRefused as exc:
+        return _refused(exc)
+
+
+def _refused(exc: LiveDatabaseRefused) -> int:
+    print(f"refused: {exc}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

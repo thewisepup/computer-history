@@ -26,8 +26,8 @@ log = logging.getLogger(__name__)
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
-    spool_path = resolve_spool_path(args.spool_path, db_path)
+    db_path = resolve_db_path(args.db_path, args.profile)
+    spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     sources = [ActivityWatch(AWClient(args.aw_url)), CaptureSpool(spool_path)]
     store = open_store(db_path, Purpose.WRITE)
     conn = store.conn

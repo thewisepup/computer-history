@@ -10,6 +10,7 @@
       +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
             |          dev perf (the performance gate), dev bench (wall-clock timings)
             |
+    profile.py (the first line: profile, version or checkout, database),
     db.py and sources.py (unusable database / source messages),
     formatting.py (durations, times, sizes, app names)
 """

@@ -11,7 +11,7 @@ from computer_history.store import Purpose, RebuildAborted, open_store, resolve_
 
 
 def cmd_rebuild_signals(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
+    db_path = resolve_db_path(args.db_path, args.profile)
     store = open_store(db_path, Purpose.WRITE_EXISTING)
     conn = store.conn
     if conn is None:

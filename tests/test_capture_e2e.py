@@ -22,7 +22,7 @@ from computer_history.sources.capture_spool import (
     SPOOL_ENV_VAR,
     resolve_spool_path,
 )
-from computer_history.store import DB_ENV_VAR, resolve_db_path
+from computer_history.store import DB_ENV_VAR, Profile, resolve_db_path
 from computer_history.store.timefmt import to_utc
 
 AGENT_ENV_VAR = "CAPTURE_AGENT_BINARY"
@@ -541,7 +541,7 @@ def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv(DB_ENV_VAR, raising=False)
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
-    db = resolve_db_path()
+    db = resolve_db_path(None, Profile.STABLE)
     assert Path(agent["folder"]) == db.parent
-    assert Path(agent["spool"]) == resolve_spool_path(None, db)
+    assert Path(agent["spool"]) == resolve_spool_path(None, db, Profile.STABLE)
     assert not (home / "Library").exists()
