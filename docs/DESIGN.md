@@ -78,7 +78,8 @@ computer_history/
                 # queries), screenshots (the screenshot records' status
                 # queries, read through their own index), contents (a digest
                 # of what the database holds), backup (a checked copy taken
-                # with SQLite's online backup while others write),
+                # with SQLite's online backup while others write, and a copy
+                # put back with the database it replaces set aside),
                 # introspection (query plans, pages and the SQLite build, for
                 # the cost meter), timefmt, paths
   sources/      # contract (the adapter Protocols), runner (poll + watch),
@@ -134,9 +135,10 @@ computer_history/
                 # the newest main commit passing it), versions (build a
                 # commit into a marked version folder; current and previous
                 # pointers), launch_agents (plists, loading, launchd's state
-                # for status: the backend, the watchdog and ActivityWatch at
-                # login), layout (where it all lives), install (install
-                # and uninstall)
+                # for status: the backend, the daily backup, the watchdog and
+                # ActivityWatch at login), layout (where it all lives), install
+                # (install and uninstall), backups (the daily and pre-update
+                # backups beside the database, and restore)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
                 # backend), alerts (which findings notify, how often, and which
@@ -694,6 +696,10 @@ in the live folder and starts the backend at login from it:
                            # rewritten after each cycle
   watchdog.json            # the watchdog's last findings and what it notified, see 8.6
   .watchdog.lock           # held by a watchdog run, so two never overlap
+  backups/
+    daily/history-<YYYY-MM-DD>.db                    # one a day, the newest 7 kept
+    pre-update/history-<local time>-<version>.db     # taken by update, never pruned with the dailies
+    set-aside/history-<local time>.db                # the database a restore replaced, never deleted
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
@@ -702,9 +708,10 @@ in the live folder and starts the backend at login from it:
   previous -> versions/<short commit>                  # kept by update (later)
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.watchdog.plist
 ~/Library/LaunchAgents/io.github.thewisepup.computer-history.activitywatch.plist
-~/Library/Logs/computer-history/backend.log, watchdog.log, activitywatch.log
+~/Library/Logs/computer-history/backend.log, backup.log, watchdog.log, activitywatch.log
 ```
 
 - **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
@@ -728,6 +735,21 @@ in the live folder and starts the backend at login from it:
 - **Backend LaunchAgent:** `current/venv/bin/computer-history ingest --watch`,
   `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30s. Through `current`, a
   pointer switch plus a restart moves it to another version.
+- **Daily backup LaunchAgent:** `current/venv/bin/computer-history backup`,
+  `RunAtLoad` and `StartCalendarInterval` 03:00. launchd runs a time missed
+  while the Mac slept on wake, and `RunAtLoad` covers a Mac that was off. The
+  command takes the day's backup only when there is none yet: SQLite's online
+  backup of the database (the backend keeps writing), checked with
+  `PRAGMA integrity_check` before it is kept, then the oldest days past seven
+  removed. The database only; screenshots are not backed up.
+- **Restore** (`restore <day>` or `restore <file>`): for the live database it
+  boots out the daily backup and the backend if they are loaded (loading them
+  again if a boot-out fails). Holding the database's exclusive lock, so no
+  other connection can open it meanwhile, it folds the WAL in and moves the
+  file into `set-aside/` under the time; it refuses when anything else has
+  the database open. It copies the backup in (integrity checked; the database
+  moved back on failure) and loads the agents again. A restore into any other
+  database, dev's included, never touches launchd.
 - **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
   `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
   `/dev/null` and only its stderr (notifications posted, errors, config

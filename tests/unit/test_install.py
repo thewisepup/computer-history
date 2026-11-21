@@ -181,9 +181,10 @@ def test_install_twice_repairs_without_rebuilding_or_reaching_github(
     assert code == 0, err
     assert layout.current.resolve().name == version_name(OLDER)
     assert layout.link.resolve() == layout.command(layout.current.resolve())
-    reloads = [call[0] for call in host.calls if call[0] != "job"]
     rerun = [agent for agent in STABLE_AGENTS if agent.schedule is not Schedule.AT_LOAD]
-    assert reloads == ["unload", "load"] * len(rerun)
+    assert [call for call in host.calls if call[0] != "job"] == [
+        (step, agent.label) for agent in rerun for step in ("unload", "load")
+    ]
     assert host.jobs[BACKEND.label].pid is not None
     assert [path.name for path in layout.versions.iterdir()] == [version_name(OLDER)]
     assert f"Version {version_name(OLDER)} is already installed and current" in out

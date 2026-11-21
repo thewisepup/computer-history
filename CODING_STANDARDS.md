@@ -94,6 +94,10 @@ Review findings ratchet into rules:
 - **A10** A factory parameter that every production caller fills with a
   placeholder is removed, and the value is set once, where it becomes known.
 - **A11** A Bool flag that picks between two counters becomes two methods.
+- **A12** A command's failures reach the CLI as one domain exception the layer
+  below raises (`InstallFailed`, `BackupFailed`, `RestoreFailed`), carrying
+  the message to print; the CLI never catches a tuple of library exceptions
+  (`OSError`, `sqlite3.Error`) itself.
 
 ## Hygiene
 

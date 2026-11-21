@@ -1,4 +1,4 @@
-"""Reading command output past the profile line every command starts with."""
+"""Reading command output: past the profile line every command starts with, and by section."""
 
 from __future__ import annotations
 
@@ -21,6 +21,10 @@ def after_profile_line(out: str) -> str:
     first, _, rest = out.partition("\n")
     assert first.startswith("Profile "), out
     return rest
+
+
+UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
+STATUS = ("status", *UNREACHABLE_AW)
 
 
 def section(out: list[str], title: str) -> list[str]:

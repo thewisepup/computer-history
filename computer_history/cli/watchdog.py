@@ -7,8 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from socket import gethostname
 
-from computer_history.cli.clock import AW_CHECK_TIMEOUT_SECONDS, utc_now
+from computer_history.cli import formatting
 from computer_history.cli.formatting import ago, duration
+from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
     AWClient,
     agent_config_path,
@@ -39,7 +40,7 @@ def cmd_watchdog(args: argparse.Namespace) -> int:
         state=watchdog_state_path(db_path),
         lock=watchdog_lock_path(db_path),
     )
-    now = utc_now()
+    now = formatting.utc_now()
     client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     with open_store(db_path, Purpose.READ) as store:
         if store.state not in (StoreState.READY, StoreState.MISSING):

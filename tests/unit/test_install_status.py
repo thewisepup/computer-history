@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from cli_output import RunCli, section
+from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
 from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
@@ -14,6 +14,7 @@ from computer_history.stable import (
     ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
     CAPTURE_AGENT_LABEL,
+    DAILY_BACKUP,
     STABLE_AGENTS,
     STOPGAP_LABEL,
     WATCHDOG,
@@ -23,8 +24,6 @@ from computer_history.stable import (
 from computer_history.store import DATABASE_NAME
 
 COMMIT = "b" * 40
-UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")
-STATUS = ("status", *UNREACHABLE_AW)
 INSTALL = "Stable install:"
 AGENTS = "Stable install's LaunchAgents:"
 BACKEND_SECTION = "Stable backend:"
@@ -138,11 +137,13 @@ def test_status_shows_the_install_and_its_launch_agents(
     assert install[0] == "  this run      dev"
     assert install[1].startswith(f"  current       {version_name(COMMIT)}, installed ")
     assert install[2:] == ["  previous      none"]
-    pids = [host.jobs[agent.label].pid for agent in (BACKEND, WATCHDOG, ACTIVITYWATCH_AT_LOGIN)]
+    pids = {agent: host.jobs[agent.label].pid for agent in STABLE_AGENTS}
     assert section(out, AGENTS) == [
-        f"  backend          loaded, running (pid {pids[0]})  {BACKEND.label}",
-        f"  watchdog         loaded, running (pid {pids[1]})  {WATCHDOG.label}",
-        f"  activitywatch    loaded, running (pid {pids[2]})  {ACTIVITYWATCH_AT_LOGIN.label}",
+        f"  backend          loaded, running (pid {pids[BACKEND]})  {BACKEND.label}",
+        f"  backup           loaded, running (pid {pids[DAILY_BACKUP]})  {DAILY_BACKUP.label}",
+        f"  watchdog         loaded, running (pid {pids[WATCHDOG]})  {WATCHDOG.label}",
+        f"  activitywatch    loaded, running (pid {pids[ACTIVITYWATCH_AT_LOGIN]})"
+        f"  {ACTIVITYWATCH_AT_LOGIN.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
     ]
 
@@ -158,6 +159,7 @@ def test_status_before_install_flags_the_stopgap_backend(
     assert section(out, INSTALL)[1:] == ["  current       none", "  previous      none"]
     assert section(out, AGENTS) == [
         f"  backend          not installed  {BACKEND.label}",
+        f"  backup           not installed  {DAILY_BACKUP.label}",
         f"  watchdog         not installed  {WATCHDOG.label}",
         f"  activitywatch    not installed  {ACTIVITYWATCH_AT_LOGIN.label}",
         f"  capture agent    not installed  {CAPTURE_AGENT_LABEL}",
@@ -174,7 +176,8 @@ def test_status_finds_a_running_stopgap_whose_plist_was_deleted(
 
     _, out, _ = run(checkout, *STATUS, host=host)
 
-    assert section(out, AGENTS)[len(STABLE_AGENTS) + 1 :] == [
+    capture_agent = len(STABLE_AGENTS) + 1
+    assert section(out, AGENTS)[capture_agent:] == [
         f"  stopgap backend  loaded, running (pid 100), plist deleted  {STOPGAP_LABEL}",
         "  warning: the stopgap backend still runs; `computer-history install` retires it",
     ]

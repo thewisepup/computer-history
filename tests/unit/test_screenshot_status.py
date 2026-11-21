@@ -14,6 +14,7 @@ from fake_aw import FakeAW
 from projectors import AW
 
 from computer_history import cli
+from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import status as cli_status
 from computer_history.sources import (
     AGENT_ALIVE_WITHIN,
@@ -238,7 +239,7 @@ def status_at(
     local_zone(ZONE)
 
     def at(now: datetime) -> None:
-        monkeypatch.setattr(cli_status, "utc_now", lambda: now)
+        monkeypatch.setattr(cli_formatting, "utc_now", lambda: now)
 
     at(CLI_NOW)
     return at

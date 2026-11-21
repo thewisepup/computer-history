@@ -11,11 +11,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from cli_output import RunCli, section
+from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
 from fake_aw import T0, FakeAW
 from fake_host import FakeHost, gate_runs, installed_package
 
-from computer_history.cli import status as cli_status
+from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import watchdog as cli_watchdog
 from computer_history.host import OPEN_ACTIVITYWATCH
 from computer_history.sources import (
@@ -180,7 +180,7 @@ def on_the_clock(monkeypatch: pytest.MonkeyPatch, mac: Mac) -> Mac:
     """Point the watchdog command at the Mac's ActivityWatch, host name and clock."""
     monkeypatch.setattr(cli_watchdog, "AWClient", lambda *args, **kwargs: mac.client())
     monkeypatch.setattr(cli_watchdog, "gethostname", lambda: HOST)
-    monkeypatch.setattr(cli_watchdog, "utc_now", lambda: mac.now)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: mac.now)
     return mac
 
 
@@ -374,7 +374,7 @@ def test_status_shows_the_stable_watchdogs_findings(
     host = FakeHost(checks={COMMIT: gate_runs()})
     assert run(checkout, "install", host=host)[0] == 0
     stable = installed_package(stable_layout().link.resolve().parents[1])
-    _, out, _ = run(checkout, "status", "--aw-url", "http://127.0.0.1:1/api/0", host=host)
+    _, out, _ = run(checkout, *STATUS, host=host)
     assert section(out, "Stable watchdog:") == [
         f"  last run       none yet (no state at {watchdog_state_path(live / DATABASE_NAME)})"
     ]
@@ -382,8 +382,8 @@ def test_status_shows_the_stable_watchdogs_findings(
     mac = on_the_clock(monkeypatch, Mac(live, run, stable, host))
     mac.run(minutes(0, 2))
     mac.run(minutes(3, 8), record=None)
-    monkeypatch.setattr(cli_status, "utc_now", lambda: mac.now + timedelta(seconds=30))
-    _, out, _ = run(checkout, "status", "--aw-url", "http://127.0.0.1:1/api/0", host=host)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: mac.now + timedelta(seconds=30))
+    _, out, _ = run(checkout, *STATUS, host=host)
 
     shown = section(out, "Stable watchdog:")
     assert shown[0].startswith("  last run       ") and shown[0].endswith(" (30s ago)")
@@ -393,8 +393,8 @@ def test_status_shows_the_stable_watchdogs_findings(
     assert shown[3].startswith("  backend        ok: recording")
     assert shown[4:] == []
 
-    monkeypatch.setattr(cli_status, "utc_now", lambda: mac.now + timedelta(minutes=10))
-    _, out, _ = run(checkout, "status", "--aw-url", "http://127.0.0.1:1/api/0", host=host)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: mac.now + timedelta(minutes=10))
+    _, out, _ = run(checkout, *STATUS, host=host)
 
     assert section(out, "Stable watchdog:")[-1] == (
         "  warning: the watchdog last ran 10m ago; it runs every minute while its LaunchAgent"
@@ -470,10 +470,9 @@ def test_a_failed_cycle_never_clears_a_silent_backend(mac: Mac) -> None:
 def test_a_database_read_error_cannot_tell_and_keeps_the_silence_counting(
     monkeypatch: pytest.MonkeyPatch, mac: Mac
 ) -> None:
-    unreachable = "http://127.0.0.1:1/api/0"
-    assert mac.run_cli(
-        mac.checkout, "ingest", "--db-path", str(mac.db), "--aw-url", unreachable
-    )[0] in (0, 1)
+    ingest = ("ingest", "--db-path", str(mac.db), *UNREACHABLE_AW)
+    code, _, _ = mac.run_cli(mac.checkout, *ingest)
+    assert code in (0, 1)
     mac.run(minutes(0, 2))
     mac.run(minutes(3, 5), record=None)
 

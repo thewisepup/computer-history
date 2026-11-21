@@ -52,6 +52,8 @@ def _runs(agent: LaunchAgent) -> str:
             return f"{command}, restarted by launchd at most every {RESTART_THROTTLE_SECONDS}s"
         case Schedule.EVERY_MINUTE:
             return f"{command}, every {EVERY_MINUTE_SECONDS}s"
+        case Schedule.DAILY:
+            return f"{command}, daily at {agent.daily_at:%H:%M} and at login"
         case Schedule.AT_LOAD:
             return f"{command}, once at login"
 

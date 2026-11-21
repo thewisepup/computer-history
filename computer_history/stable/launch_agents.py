@@ -4,6 +4,7 @@ import plistlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import time as clock_time
 from enum import Enum
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from computer_history.stable.layout import CAPTURE_AGENT_LABEL, LABEL_PREFIX, La
 
 STOPGAP_LABEL = f"{LABEL_PREFIX}.backend"
 RESTART_THROTTLE_SECONDS = 30
+DAILY_BACKUP_HOUR = 3
 EVERY_MINUTE_SECONDS = 60
 DISCARDED = "/dev/null"
 UNLOAD_POLL_SECONDS = 0.1
@@ -23,6 +25,7 @@ LOAD_RETRY_SECONDS = 0.5
 class Schedule(Enum):
     KEEP_ALIVE = "keep alive"  # run at load, restarted by launchd when it exits
     EVERY_MINUTE = "every minute"  # run at load, then once a minute
+    DAILY = "daily"  # run at load, then at its daily time
     AT_LOAD = "at load"  # run once at load
 
 
@@ -34,6 +37,7 @@ class LaunchAgent:
     label: str
     arguments: tuple[str, ...]
     schedule: Schedule = Schedule.KEEP_ALIVE
+    daily_at: clock_time | None = None
     program: tuple[str, ...] | None = None
     quiet: bool = False
 
@@ -41,7 +45,7 @@ class LaunchAgent:
         return layout.launch_agents / f"{self.label}.plist"
 
     def render(self, layout: Layout) -> bytes:
-        """The plist: run at load, then kept alive or rerun as its schedule says."""
+        """The plist: run at load, then kept alive, or rerun as its schedule says."""
         log = str(layout.logs / f"{self.name}.log")
         command = self.program or (str(layout.command(layout.current)), *self.arguments)
         plist: dict[str, object] = {
@@ -51,14 +55,27 @@ class LaunchAgent:
             "StandardOutPath": DISCARDED if self.quiet else log,
             "StandardErrorPath": log,
         }
-        if self.schedule is Schedule.KEEP_ALIVE:
-            plist |= {"KeepAlive": True, "ThrottleInterval": RESTART_THROTTLE_SECONDS}
-        elif self.schedule is Schedule.EVERY_MINUTE:
-            plist["StartInterval"] = EVERY_MINUTE_SECONDS
+        match self.schedule:
+            case Schedule.KEEP_ALIVE:
+                plist |= {"KeepAlive": True, "ThrottleInterval": RESTART_THROTTLE_SECONDS}
+            case Schedule.EVERY_MINUTE:
+                plist["StartInterval"] = EVERY_MINUTE_SECONDS
+            case Schedule.DAILY:
+                at = self.daily_at or clock_time()
+                plist["StartCalendarInterval"] = {"Hour": at.hour, "Minute": at.minute}
+            case Schedule.AT_LOAD:
+                pass
         return plistlib.dumps(plist)
 
 
 BACKEND = LaunchAgent("backend", f"{LABEL_PREFIX}.ingest", ("ingest", "--watch"))
+DAILY_BACKUP = LaunchAgent(
+    "backup",
+    f"{LABEL_PREFIX}.backup",
+    ("backup",),
+    Schedule.DAILY,
+    daily_at=clock_time(DAILY_BACKUP_HOUR),
+)
 WATCHDOG = LaunchAgent(
     "watchdog", f"{LABEL_PREFIX}.watchdog", ("watchdog",), Schedule.EVERY_MINUTE, quiet=True
 )
@@ -69,7 +86,7 @@ ACTIVITYWATCH_AT_LOGIN = LaunchAgent(
     Schedule.AT_LOAD,
     program=OPEN_ACTIVITYWATCH,
 )
-STABLE_AGENTS = (BACKEND, WATCHDOG, ACTIVITYWATCH_AT_LOGIN)
+STABLE_AGENTS = (BACKEND, DAILY_BACKUP, WATCHDOG, ACTIVITYWATCH_AT_LOGIN)
 
 
 @dataclass(frozen=True)
@@ -102,8 +119,26 @@ def load_agent(
         return
     plist.write_bytes(rendered)
     if loaded:
-        host.unload(agent.label)
-        _wait_until_unloaded(host, agent.label, sleep)
+        stop_agent(host, agent.label, sleep=sleep)
+    start_agent(host, plist, sleep=sleep)
+
+
+def _holds(plist: Path, rendered: bytes) -> bool:
+    return plist.is_file() and plist.read_bytes() == rendered
+
+
+def stop_agent(host: Host, label: str, *, sleep: Callable[[float], None] = time.sleep) -> None:
+    """Boot a loaded LaunchAgent out and wait until launchd no longer has it."""
+    host.unload(label)
+    for _ in range(round(UNLOAD_WAIT_SECONDS / UNLOAD_POLL_SECONDS)):
+        if not host.job(label).loaded:
+            return
+        sleep(UNLOAD_POLL_SECONDS)
+    raise HostError(f"{label} was still loaded {UNLOAD_WAIT_SECONDS:g}s after booting it out")
+
+
+def start_agent(host: Host, plist: Path, *, sleep: Callable[[float], None] = time.sleep) -> None:
+    """Load a LaunchAgent's plist, trying again while launchd is still busy with an earlier copy."""
     for attempt in range(1, LOAD_ATTEMPTS + 1):
         try:
             host.load(plist)
@@ -112,18 +147,6 @@ def load_agent(
             if attempt == LOAD_ATTEMPTS:
                 raise
             sleep(LOAD_RETRY_SECONDS)
-
-
-def _holds(plist: Path, rendered: bytes) -> bool:
-    return plist.is_file() and plist.read_bytes() == rendered
-
-
-def _wait_until_unloaded(host: Host, label: str, sleep: Callable[[float], None]) -> None:
-    for _ in range(round(UNLOAD_WAIT_SECONDS / UNLOAD_POLL_SECONDS)):
-        if not host.job(label).loaded:
-            return
-        sleep(UNLOAD_POLL_SECONDS)
-    raise HostError(f"{label} was still loaded {UNLOAD_WAIT_SECONDS:g}s after booting it out")
 
 
 def remove_agent(host: Host, label: str, plist: Path) -> bool:
