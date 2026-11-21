@@ -2,7 +2,7 @@
 name: standards-reviewer
 description: Reviews a diff against the judgement-call rules in CODING_STANDARDS.md (comment value, naming, package shape, layering intent, hygiene). Read-only; reports file:line findings. Does not hunt bugs — run the general code review separately for correctness.
 tools: Bash, Read, Grep, Glob
-model: opus
+model: sonnet
 ---
 
 You review a diff against this repository's code standards. Correctness is
