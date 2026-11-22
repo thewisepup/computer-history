@@ -17,6 +17,7 @@ from computer_history.host import (
     OPEN_ACTIVITYWATCH,
     CheckOutcome,
     CheckRun,
+    GitState,
     HostError,
     JobBusy,
     JobState,
@@ -40,6 +41,9 @@ LAUNCHCTL_WAITING = LAUNCHCTL_RUNNING.replace("state = running", "state = not ru
     "\tpid = 4242\n", ""
 )
 UV = "/opt/homebrew/bin/uv"
+GIT = "/usr/bin/git"
+HEAD = "c" * 40
+ORIGIN_MAIN = "d" * 40
 
 
 @pytest.fixture(autouse=True)
@@ -207,6 +211,103 @@ def test_another_bootstrap_failure_is_a_plain_host_error(
     with pytest.raises(HostError, match="not permitted") as raised:
         LiveHost().load(tmp_path / f"{BACKEND.label}.plist")
     assert not isinstance(raised.value, JobBusy)
+
+
+def git_answers(
+    monkeypatch: pytest.MonkeyPatch, answers: dict[str, tuple[int, str, str]]
+) -> list[list[str]]:
+    """git answering each subcommand (the words after -C and the folder) as given."""
+    ran: list[list[str]] = []
+    monkeypatch.setattr(live.shutil, "which", lambda name: GIT if name == "git" else None)
+
+    def run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        ran.append(command)
+        returncode, stdout, stderr = answers[" ".join(command[3:])]
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+    return ran
+
+
+GIT_ON_MAIN = {
+    "rev-parse --verify HEAD": (0, f"{HEAD}\n", ""),
+    "symbolic-ref --quiet --short HEAD": (0, "main\n", ""),
+    "status --porcelain": (0, "", ""),
+    "rev-parse --verify --quiet refs/remotes/origin/main": (0, f"{ORIGIN_MAIN}\n", ""),
+}
+
+
+def test_git_state_reads_branch_tree_head_and_origin_main_without_fetching(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ran = git_answers(monkeypatch, GIT_ON_MAIN)
+
+    state = LiveHost().git_state(tmp_path)
+
+    assert state == GitState(branch="main", clean=True, head=HEAD, origin_main=ORIGIN_MAIN)
+    assert all(command[:3] == [GIT, "-C", str(tmp_path)] for command in ran)
+    assert sorted(" ".join(command[3:]) for command in ran) == sorted(GIT_ON_MAIN)
+
+
+def test_git_state_reads_a_detached_head_a_dirty_tree_and_no_origin_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    git_answers(
+        monkeypatch,
+        GIT_ON_MAIN
+        | {
+            "symbolic-ref --quiet --short HEAD": (1, "", ""),
+            "status --porcelain": (0, "?? notes.txt\n", ""),
+            "rev-parse --verify --quiet refs/remotes/origin/main": (1, "", ""),
+        },
+    )
+
+    state = LiveHost().git_state(tmp_path)
+
+    assert state == GitState(branch=None, clean=False, head=HEAD, origin_main=None)
+
+
+def test_git_state_ignores_git_location_variables_and_answers_quickly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(live.shutil, "which", lambda name: GIT if name == "git" else None)
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        monkeypatch.setenv(name, str(tmp_path / "elsewhere"))
+    seen: list[dict[str, Any]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append(kwargs)
+        returncode, stdout, stderr = GIT_ON_MAIN[" ".join(command[3:])]
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+
+    LiveHost().git_state(tmp_path)
+
+    assert all(not {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} & set(kw["env"]) for kw in seen)
+    assert all(kw["timeout"] == live.QUICK_COMMAND_TIMEOUT_SECONDS for kw in seen)
+
+
+def test_git_state_outside_a_checkout_is_a_host_error_with_gits_words(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    refused = "fatal: not a git repository (or any of the parent directories): .git"
+    git_answers(
+        monkeypatch,
+        {command: (128, "", refused) for command in GIT_ON_MAIN},
+    )
+
+    with pytest.raises(HostError, match=r"could not read the checkout's HEAD: fatal: not a git"):
+        LiveHost().git_state(tmp_path)
+
+
+def test_git_state_without_git_is_a_host_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(live.shutil, "which", lambda _: None)
+
+    with pytest.raises(HostError, match="git is not installed"):
+        LiveHost().git_state(tmp_path)
 
 
 def test_the_build_creates_installs_smokes_and_freezes_with_uv(

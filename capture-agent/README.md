@@ -26,10 +26,21 @@ Run these from `capture-agent/`.
 scripts/test.sh        # swift test, with the Swift Testing paths Command Line Tools need
 scripts/e2e.sh         # the end-to-end check: a scripted session through the spool into a temp database
 scripts/build.sh       # build, wrap in .build/ComputerHistoryAgent.app, sign, verify
-scripts/install.sh     # build, replace the installed app, register the login item, check it runs,
-                       # then ask for Screen Recording and open its settings pane unless granted
+scripts/install.sh     # refuse unless the guard allows it, then build, replace the installed app,
+                       # register the login item, check it runs, then ask for Screen Recording
+                       # and open its settings pane unless granted (--force: install anyway)
 scripts/uninstall.sh   # unregister the login item, stop the agent, delete the app
 ```
+
+`install.sh` first runs `computer-history check-agent-install` from this
+checkout's `.venv` (created on first use by `scripts/venv-python`), passing
+its arguments on. The guard refuses unless the checkout is on `main`, clean
+and at `origin/main`, the release gate's capture-agent checks passed on that
+commit, and the stable backend is at that commit or newer; it lists every
+unmet condition with its fix, and a refusal stops the script before the build
+or the old agent's unregistering. `scripts/install.sh --force` installs anyway
+and lists what it skipped. The conditions are in
+`computer_history/cli/README.md` under check-agent-install.
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
 alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's

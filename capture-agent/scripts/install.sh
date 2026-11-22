@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+python="$(../scripts/venv-python)"
+"$(dirname "$python")/computer-history" check-agent-install "$@"
 app="$HOME/Applications/ComputerHistoryAgent.app"
 agent="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' Bundle/Info.plist)"
 job="gui/$(id -u)/$(/usr/libexec/PlistBuddy -c 'Print :Label' Bundle/LaunchAgent.plist)"

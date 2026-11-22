@@ -36,6 +36,16 @@ class CheckRun:
 
 
 @dataclass(frozen=True)
+class GitState:
+    """What git says about a checkout: its branch, whether it is clean, HEAD and origin/main."""
+
+    branch: str | None
+    clean: bool
+    head: str
+    origin_main: str | None
+
+
+@dataclass(frozen=True)
 class JobState:
     """What launchd says about a LaunchAgent: whether it is loaded, and its process if running."""
 
@@ -44,8 +54,8 @@ class JobState:
 
 
 class Host(Protocol):
-    """Everything that touches macOS or the network: launchctl, GitHub, uv, ActivityWatch's app
-    and user notifications."""
+    """Everything that touches macOS or the network: launchctl, GitHub, git, uv, ActivityWatch's
+    app and user notifications."""
 
     def main_commits(self, limit: int) -> list[str]:
         """The newest commits on main, newest first."""
@@ -53,6 +63,10 @@ class Host(Protocol):
 
     def check_runs(self, commit: str) -> list[CheckRun]:
         """The latest run of each CI check on a commit."""
+        ...
+
+    def git_state(self, checkout: Path) -> GitState:
+        """What git says about the checkout holding this folder, without fetching."""
         ...
 
     def build(self, commit: str, venv: Path) -> str:
