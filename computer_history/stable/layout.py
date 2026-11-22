@@ -16,6 +16,9 @@ UPDATE_LOG_NAME = "update-log.jsonl"
 LABEL_PREFIX = "io.github.thewisepup.computer-history"
 CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
 CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
+AGENT_COMMIT_NAME = "agent-commit.txt"
+SPOOL_READS_NAME = "spool-reads.json"
+INSTALLED_AGENT_NAME = "installed-agent.json"
 
 
 @dataclass(frozen=True)
@@ -55,9 +58,19 @@ class Layout:
         return self.home / "Library" / "LaunchAgents"
 
     @property
+    def installed_agent(self) -> Path:
+        """The record of which commit the app at the capture agent's fixed path was built from."""
+        return self.live / INSTALLED_AGENT_NAME
+
+    @property
+    def capture_agent_app(self) -> Path:
+        """The one fixed path the running capture agent's app is installed and registered at."""
+        return self.home / "Applications" / CAPTURE_AGENT_APP
+
+    @property
     def capture_agent_plist(self) -> Path:
-        """The capture agent's plist, inside the app bundle its own install script puts in place."""
-        bundle = self.home / "Applications" / CAPTURE_AGENT_APP
+        """The capture agent's plist, inside the app bundle at its fixed path."""
+        bundle = self.capture_agent_app
         return bundle / "Contents" / "Library" / "LaunchAgents" / f"{CAPTURE_AGENT_LABEL}.plist"
 
     @property
@@ -67,6 +80,18 @@ class Layout:
     def command(self, version: Path) -> Path:
         """The computer-history command inside a version folder, or through a pointer to one."""
         return version / VENV_FOLDER_NAME / "bin" / COMMAND_NAME
+
+    def agent_app(self, version: Path) -> Path:
+        """The copy of the capture agent's app a version folder carries."""
+        return version / CAPTURE_AGENT_APP
+
+    def agent_commit(self, version: Path) -> Path:
+        """The note of the commit a version folder's agent app was built from."""
+        return version / AGENT_COMMIT_NAME
+
+    def spool_reads(self, version: Path) -> Path:
+        """The note of the spool version and record kinds a version folder's backend reads."""
+        return version / SPOOL_READS_NAME
 
 
 def stable_layout() -> Layout:

@@ -8,8 +8,11 @@
         |
         +-- gate.py           the release gate: the checks a main commit must pass,
         |                     and the walk to the newest one that does
-        +-- versions.py       build a commit into its marked version folder and point
-        |                     current at it, undoing it all on failure; the pointers
+        +-- versions.py       build a commit into its marked version folder, noting what
+        |                     its backend reads, and point current at it, undoing it all
+        |                     on failure; the pointers
+        +-- capture_agent.py  the installed agent's record, and the agent app a version
+        |                     folder carries: built when its source changed, else copied
         +-- launch_agents.py  the plists (kept running, run every minute, run daily or
         |                     once at login: the backend, the backup, the watchdog and
         |                     ActivityWatch), loading, stopping, starting and removing
@@ -48,6 +51,7 @@ from computer_history.stable.backups import (
     take_daily_backup,
     take_pre_update_backup,
 )
+from computer_history.stable.capture_agent import record_installed_agent
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.install_lock import InstallBusy, holding_install_lock
@@ -131,6 +135,7 @@ __all__ = [
     "install",
     "last_update_log_entry",
     "pointed",
+    "record_installed_agent",
     "restore_backup",
     "rollback",
     "stable_layout",

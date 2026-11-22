@@ -3,8 +3,10 @@
 updating.py         update: the release-gate walk, then prepare, switch and wait,
     |               or fall back; Ctrl-C and SIGTERM interrupt it until the
     |               fallback or the last steps, which run to their end
-    +-- preparing.py      build the new version, stop the backend, back up the
-    |                     database and place the spool hold; undone on any failure
+    +-- preparing.py      decide whether the capture agent changed, build the new
+    |                     version and its agent app (or copy the app unchanged),
+    |                     stop the backend, back up the database and place the
+    |                     spool hold; undone on any failure
     +-- waiting.py        wait until a deadline for the backend's first ok cycle
     |                     on the new version
     +-- falling_back.py   put the old version back, restoring the backup when the
