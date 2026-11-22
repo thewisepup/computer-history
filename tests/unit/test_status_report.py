@@ -61,8 +61,10 @@ def last_cycle(db_path: Path, when: datetime) -> None:
     write_health(health_path(db_path), IngestHealth(when, last_success_at=when))
 
 
-def watching(db_path: Path, since: datetime, ran_at: datetime, **saved: object) -> None:
-    state = WatchdogState(ran_at=ran_at, watching_since=since, **saved)  # type: ignore[arg-type]
+def watching(
+    db_path: Path, since: datetime, ran_at: datetime, unreachable_since: datetime | None = None
+) -> None:
+    state = WatchdogState(ran_at=ran_at, watching_since=since, unreachable_since=unreachable_since)
     write_watchdog_state(watchdog_state_path(db_path), state)
 
 
