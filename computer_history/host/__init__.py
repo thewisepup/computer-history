@@ -2,7 +2,9 @@
 
     contract.py   Host (the Protocol), its answers (CheckRun, JobState, BackendBuild,
                   SpoolReads), HostError
-                  and JobBusy (launchd not done with a job yet), the command
+                  JobBusy (launchd not done with a job yet) and
+                  AgentNotUnregistered (the agent at the fixed path left as it
+                  was), the command
                   that opens ActivityWatch, and how often a lasting problem may
                   notify again
         |
@@ -21,6 +23,7 @@ from computer_history.host.contract import (
     COMMAND_NAME,
     OPEN_ACTIVITYWATCH,
     SPOOL_READS_FLAG,
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -38,6 +41,7 @@ __all__ = [
     "NOTIFY_ENV_VAR",
     "OPEN_ACTIVITYWATCH",
     "SPOOL_READS_FLAG",
+    "AgentNotUnregistered",
     "BackendBuild",
     "CheckOutcome",
     "CheckRun",

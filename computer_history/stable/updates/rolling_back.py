@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from computer_history.host import Host, HostError
+from computer_history.host import AgentNotUnregistered, Host, HostError
 from computer_history.stable.backups import pre_update_backup_of
 from computer_history.stable.capture_agent import (
     AgentMove,
@@ -85,7 +85,13 @@ def _move_agent(
     host: Host, layout: Layout, move: AgentMove, now: Callable[[], datetime], problems: list[str]
 ) -> AgentRollback:
     try:
-        host.install_agent(move.app, layout.capture_agent_app)
+        at = host.install_agent(move.app, layout.capture_agent_app)
+    except AgentNotUnregistered as exc:
+        problems.append(
+            f"could not move the capture agent back to {move.to_version}'s build: {exc}; it was"
+            " left as it is"
+        )
+        return AgentRollback(moved=False)
     except (HostError, OSError) as exc:
         with contextlib.suppress(OSError):
             layout.installed_agent.unlink(missing_ok=True)
@@ -95,7 +101,7 @@ def _move_agent(
         )
         return AgentRollback(moved=False)
     try:
-        record_installed_agent(layout, move.built_from, now())
+        record_installed_agent(layout, move.built_from, at)
     except OSError as exc:
         problems.append(f"the installed capture agent's record could not be written: {exc}")
     entry = UpdateLogEntry(

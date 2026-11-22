@@ -315,17 +315,26 @@ active:
 | 120 active seconds, no record, and the database can't be read (its schema is newer than the version running `update` reads, after a migration) | `installed, not verified: ..., but the database's schema is newer than this update reads, so only the spool was checked` | 0 |
 | 120 active seconds, no record | `fell back` | 3 |
 | the new agent could not be registered or started | `fell back`, at once | 3 |
+| the installed app could not be copied into the old version's folder, or the installed agent could not be unregistered | `not swapped: 8d23e3a's capture agent keeps running`, at once, with the cause as a `warning:` line; no fallback line, no notification | 0 |
 | Ctrl-C or SIGTERM during the wait | `fell back` | 130 |
 
-An agent fallback installs the old version's app over the fixed path again,
+The copy into the old version's folder is staged beside it and renamed into
+place, so a failed copy leaves that folder's app as it was. An agent fallback
+installs the old version's app over the fixed path again,
 rewrites `installed-agent.json` (removes it when that app's commit is
 unknown or it could not be put back, so the next update rebuilds the agent),
-logs `agent fell back`, and posts a notification (`The capture agent from
-9f0e1d2 fell back to 8d23e3a's: the new capture agent recorded nothing in
-120s while you were active.`). Each step that fails is a `warning:` line and
+moves the failed build and its note to `ComputerHistoryAgent.fell-back.app`
+and `agent-commit.fell-back.txt` in the new version's folder and copies the
+restored app and its note into the usual slot, logs `agent fell back`, and
+posts a notification (`The capture agent from 9f0e1d2 fell back to
+8d23e3a's: the new capture agent recorded nothing in 120s while you were
+active. Its build is kept at .../versions/9f0e1d2/ComputerHistoryAgent.fell-back.app.`);
+the update's output names it too (`kept          .../ComputerHistoryAgent.fell-back.app
+(the build that fell back)`). When the new agent can't be unregistered, the
+fallback says it stays. Each step that fails is a `warning:` line and
 the rest still run. The new backend, the pointers and the database stay; the
-failed build stays in the new version's folder until a later swap replaces
-it with the app it falls back to. Because the next update compares against
+failed build stays aside in the new version's folder, where you can inspect
+or launch it by hand, until that folder is pruned. Because the next update compares against
 the installed agent's commit, it tries the agent again even when its source
 didn't change since. The record reads use the live database and the spool
 beside it, where launchd's agent and backend write and read (never
@@ -396,7 +405,7 @@ Every update, fallback, agent fallback and rollback adds a JSON line to
 "fell back" | "agent fell back" | "rolled back" | "agent rolled back", "from":
 ..., "to": ..., "reason": ...}`); `status` shows the last one. An `updated`
 line adds `"agent"`, the capture agent's outcome (`unchanged`, `updated and
-verified`, `installed, not verified` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
+verified`, `installed, not verified`, `not swapped` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
 version, to the old one, with the reason) before the run's `updated` line
 (illustrative):
 

@@ -168,6 +168,23 @@ def keep_installed_app(layout: Layout, version: Path) -> None:
         note.write_text(f"{built_from}\n", encoding="utf-8")
 
 
+def set_aside_fallen_back(layout: Layout, version: Path, restored: Path) -> Path:
+    """Move a version folder's agent app and note to its fell-back slot, then copy the restored
+    version's app and note into their place; returns the slot."""
+    app, note = layout.agent_app(version), layout.agent_commit(version)
+    kept, kept_note = layout.fell_back_agent_app(version), layout.fell_back_agent_commit(version)
+    staged = _staged_copy(layout.agent_app(restored), app)
+    shutil.rmtree(kept, ignore_errors=True)
+    app.rename(kept)
+    if note.exists():
+        note.replace(kept_note)
+    staged.rename(app)
+    built_from = _note(layout, restored)
+    if built_from is not None:
+        note.write_text(f"{built_from}\n", encoding="utf-8")
+    return kept
+
+
 def _staged_copy(source: Path, app: Path) -> Path:
     staged = app.with_name(f".{app.name}.staged")
     shutil.rmtree(staged, ignore_errors=True)

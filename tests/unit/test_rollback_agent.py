@@ -259,6 +259,25 @@ def test_an_agent_that_does_not_start_after_the_move_is_a_problem_and_rollback_g
     assert [line["action"] for line in log_lines(layout)] == ["updated", "rolled back"]
 
 
+def test_an_agent_that_cannot_be_unregistered_stays_with_its_record(
+    run: RunCli, live: Path, checkout: Path
+) -> None:
+    layout = updated_with_newer_agent(run, live, checkout)
+    record = layout.installed_agent.read_bytes()
+    host = offline()
+    host.agent_unregister_errors.append("Operation not permitted")
+
+    code, out, err = run(stable_code(layout), "rollback", host=host)
+
+    assert code == 0, err
+    assert out[-1] == (
+        f"  warning: could not move the capture agent back to {OLD}'s build: Operation not"
+        " permitted; it was left as it is"
+    )
+    assert agent_built_from(layout.capture_agent_app) == NEWER
+    assert layout.installed_agent.read_bytes() == record
+
+
 def test_an_agent_already_on_the_previous_versions_build_stays(
     run: RunCli, live: Path, checkout: Path
 ) -> None:

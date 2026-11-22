@@ -22,6 +22,10 @@ class JobBusy(HostError):
     """launchd is still busy with the job, as right after a boot-out; trying again may work."""
 
 
+class AgentNotUnregistered(HostError):
+    """The capture agent at the fixed path could not be unregistered, so it was left as it was."""
+
+
 class CheckOutcome(Enum):
     SUCCESS = "success"
     FAILURE = "failure"
@@ -106,7 +110,8 @@ class Host(Protocol):
 
     def install_agent(self, app: Path, fixed: Path) -> datetime:
         """Put an app over the agent's fixed path and register it, retrying until it runs; returns
-        when it was first registered, once the old one was unregistered."""
+        when it was first registered, once the old one was unregistered (AgentNotUnregistered
+        when it could not be, before anything changed)."""
         ...
 
     def job(self, label: str) -> JobState:

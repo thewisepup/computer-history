@@ -848,10 +848,18 @@ in the live folder and starts the backend at login from it:
   ends it installed, not verified. 120 active seconds with no record, a
   register or start failure (at once), or Ctrl-C or SIGTERM during the wait
   falls the agent back: the old version's app installed again and recorded
-  (the record removed when its commit is unknown or it failed), `agent fell
-  back` logged, a notification posted, each failure a problem while the rest
-  run. The new backend, the pointers and the database stay. Update exits 3
-  after an agent fallback.
+  (the record removed when its commit is unknown or it failed), the failed
+  build and its note moved to `ComputerHistoryAgent.fell-back.app` and
+  `agent-commit.fell-back.txt` in the new version's folder with the restored
+  app and note copied into the usual slot (so a later swap never replaces
+  it), `agent fell back` logged, a notification naming where the build is
+  kept posted, each failure a problem while the rest run. The new backend,
+  the pointers and the database stay. Update exits 3 after an agent
+  fallback. When the installed app can't be copied into the old version's
+  folder (the copy is staged beside it and renamed into place) or the host
+  can't unregister the installed agent (`AgentNotUnregistered`, raised before
+  anything changes), nothing was swapped: the outcome is `not swapped`, the
+  cause a problem, with no fallback line or notification, and update exits 0.
 - **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
   `spool-deletion-held` sits beside the database, every ingest stores spool
   files as usual but deletes or sets aside none. `ingest --watch` removes the
@@ -894,8 +902,9 @@ in the live folder and starts the backend at login from it:
   `gui/<uid>` domain), the GitHub lookup, the uv build, the capture agent
   (its source tree hash from GitHub's contents listing, the toolchain check,
   the build into a version folder, and the install over
-  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall`, `ditto`,
-  `install`, then up to three tries of waiting for launchd to show it running,
+  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall` (a
+  failure raises `AgentNotUnregistered` and leaves everything as it was),
+  `ditto`, `install` (its time returned as the swap time), then up to three tries of waiting for launchd to show it running,
   each retry a `launchctl kickstart`, `uninstall` and `install` as
   `scripts/install.sh` does), ActivityWatch's app
   (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and

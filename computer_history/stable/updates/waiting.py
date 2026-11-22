@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Protocol
 
 from computer_history.host import Host, HostError
@@ -120,10 +121,11 @@ class AgentRecords(Protocol):
 
 @dataclass(frozen=True)
 class AgentCheck:
-    """What became of the capture agent in an update, and why."""
+    """What became of the capture agent in an update, why, and where a fallback kept its build."""
 
     outcome: AgentOutcome
     detail: str | None = None
+    kept: Path | None = None
 
 
 def wait_for_agent_record(

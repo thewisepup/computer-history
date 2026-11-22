@@ -19,6 +19,7 @@ import pytest
 
 from computer_history.host import (
     OPEN_ACTIVITYWATCH,
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -636,6 +637,25 @@ def test_installing_the_agent_unregisters_the_old_app_replaces_it_and_registers_
         [live.LAUNCHCTL, "print", job],
     ]
     assert not fixed.exists()
+
+
+def test_an_old_agent_that_cannot_be_unregistered_is_left_in_place(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    fixed = agent_app(tmp_path / "Applications", executable="OldAgent")
+    ran = commands_answer_each(
+        monkeypatch,
+        {str(fixed / "Contents" / "MacOS" / "OldAgent"): (1, "", "Operation not permitted")},
+    )
+
+    with pytest.raises(
+        AgentNotUnregistered, match="unregister the installed capture agent: Operation"
+    ):
+        LiveHost(sleep=lambda _: None).install_agent(app, fixed)
+
+    assert ran == [[str(fixed / "Contents" / "MacOS" / "OldAgent"), "uninstall"]]
+    assert (fixed / "Contents" / "MacOS" / "OldAgent").is_file()
 
 
 def test_an_agent_that_does_not_start_is_kickstarted_and_registered_again(

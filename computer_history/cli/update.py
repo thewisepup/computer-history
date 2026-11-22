@@ -116,6 +116,8 @@ def format_update(report: UpdateReport, layout: Layout) -> list[str]:
             lines.append(f"  removed       {report.removed} (one previous version is kept)")
         if report.agent is not None:
             lines.append(f"  agent         {_agent(report.agent, report.kept)}")
+        if report.agent is not None and report.agent.kept is not None:
+            lines.append(f"  kept          {report.agent.kept} (the build that fell back)")
     else:
         if report.restored is not None:
             lines.append(f"  restored      {report.restored} (the new version changed the schema)")

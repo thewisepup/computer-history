@@ -20,6 +20,7 @@ from computer_history.host.contract import (
     COMMAND_NAME,
     OPEN_ACTIVITYWATCH,
     SPOOL_READS_FLAG,
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -176,7 +177,10 @@ class LiveHost:
         label = _bundle_label(app)
         old = _existing_executable(fixed)
         if old is not None:
-            _run([str(old), "uninstall"], "unregister the installed capture agent")
+            try:
+                _run([str(old), "uninstall"], "unregister the installed capture agent")
+            except HostError as exc:
+                raise AgentNotUnregistered(str(exc)) from exc
         if fixed.exists():
             shutil.rmtree(fixed)
         fixed.parent.mkdir(parents=True, exist_ok=True)

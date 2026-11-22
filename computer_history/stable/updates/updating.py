@@ -134,6 +134,10 @@ def update(
     interrupted = bool(deferred)
     if swap is None:
         check = AgentCheck(AgentOutcome.UNCHANGED, "its source is the same")
+    elif not swap.swapped:
+        check = AgentCheck(
+            AgentOutcome.NOT_SWAPPED, f"{prepared.old.name}'s capture agent keeps running"
+        )
     elif swap.at is None or interrupted:
         check = AgentCheck(AgentOutcome.FELL_BACK, swap.failure or AGENT_INTERRUPTED)
     else:
@@ -207,9 +211,11 @@ def _finish(
     old = prepared.old
     problems = [] if swap is None else list(swap.problems)
     if check.outcome is AgentOutcome.FELL_BACK:
-        reason = check.detail or AGENT_INTERRUPTED
-        reinstall = swap is None or swap.touched
-        problems += fall_back_agent(host, layout, prepared, reason, reinstall=reinstall, now=now)
+        fell_back = fall_back_agent(
+            host, layout, prepared, check.detail or AGENT_INTERRUPTED, now=now
+        )
+        problems += fell_back.problems
+        check = replace(check, kept=fell_back.kept)
     removed = _remove_version(layout, prepared.old_previous, keep=(prepared.new, old.name))
     entry = UpdateLogEntry(now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome)
     append_or_note(layout.update_log, entry, problems)

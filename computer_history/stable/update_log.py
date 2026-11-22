@@ -25,6 +25,7 @@ class AgentOutcome(Enum):
     VERIFIED = "updated and verified"
     NOT_VERIFIED = "installed, not verified"
     FELL_BACK = "fell back"
+    NOT_SWAPPED = "not swapped"
 
 
 _CLEARS_A_FALLBACK = (AgentOutcome.UNCHANGED, AgentOutcome.VERIFIED, AgentOutcome.NOT_VERIFIED)
