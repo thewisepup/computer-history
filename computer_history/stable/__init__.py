@@ -21,9 +21,9 @@
         |                     ActivityWatch), loading, stopping, starting and removing
         |                     them, and what
         |                     launchd says about each agent for status
-        +-- stopped_agents.py the agents update, rollback and restore stop for a step,
-        |                     and starting or reloading them after it, even when it fails
-        +-- layout.py        where the versions, pointers, link, plists and logs live
+        +-- stopped_agents.py the agents update and restore stop for a step, and
+        |                     starting or reloading them after it, even when it fails
+        +-- layout.py         where the versions, pointers, link, plists and logs live
 
     updates/          update (build the newest passing commit, back up, switch, wait
         |             for the backend's first ok cycle with spool deletion held, swap

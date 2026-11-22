@@ -22,8 +22,7 @@ class UpdateFailed(Exception):
 
 @dataclass(frozen=True)
 class Prepared:
-    """What update readied before switching: both versions, the agent, the stopped backend, the
-    backup and the hold."""
+    """What update readied before switching versions, the stopped backend among it."""
 
     old: InstalledVersion
     old_previous: InstalledVersion | None

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.host import JobState
+from computer_history.host import JobBusy, JobState
 from computer_history.stable import launch_agents
 from computer_history.stable.launch_agents import (
     BACKEND,
@@ -59,7 +59,6 @@ def test_only_loaded_agents_are_stopped_and_they_start_again_the_last_stopped_fi
 
     stopped.stop(AGENTS)
 
-    assert stopped.owed == (DAILY_BACKUP, BACKEND)
     assert host.jobs == {}
     restart = stopped.start_again()
     assert restart.agents == (BACKEND, DAILY_BACKUP)
@@ -70,7 +69,7 @@ def test_only_loaded_agents_are_stopped_and_they_start_again_the_last_stopped_fi
         ("load", BACKEND.label),
         ("load", DAILY_BACKUP.label),
     ]
-    assert stopped.owed == ()
+    assert stopped.start_again().agents == ()
     assert not loaded(host, WATCHDOG)
 
 
@@ -99,7 +98,7 @@ def test_an_agent_that_will_not_stop_is_still_owed_a_start(layout: Layout) -> No
 
     assert raised.value.agent is BACKEND
     assert str(raised.value).startswith(f"{BACKEND.label} was still loaded ")
-    assert stopped.owed == (DAILY_BACKUP, BACKEND)
+    assert stopped.start_again().agents == (BACKEND, DAILY_BACKUP)
 
 
 def test_starting_again_tries_an_agent_whose_stop_failed_once_launchd_lets_it_go(
@@ -141,8 +140,8 @@ def test_an_agent_launchd_cannot_be_asked_about_is_not_owed_and_those_before_it_
 
     assert raised.value.agent is BACKEND
     assert str(raised.value) == LAUNCHD_DOWN
-    assert stopped.owed == (DAILY_BACKUP,)
     assert loaded(host, BACKEND)
+    assert stopped.start_again().agents == (DAILY_BACKUP,)
 
 
 def test_a_start_that_keeps_failing_is_reported(layout: Layout) -> None:
@@ -231,8 +230,9 @@ def test_a_ctrl_c_while_waiting_out_a_stop_leaves_the_agent_owed(layout: Layout)
     with pytest.raises(KeyboardInterrupt):
         stopped.stop((BACKEND,))
 
-    assert stopped.owed == (BACKEND,)
-    assert stopped.start_again_unless_loaded().failed == ()
+    restart = stopped.start_again_unless_loaded()
+    assert restart.agents == (BACKEND,)
+    assert restart.failed == ()
     assert loaded(host, BACKEND)
 
 
@@ -250,7 +250,22 @@ def test_load_rewrites_the_plist_and_starts_an_agent_whether_or_not_it_was_stopp
     assert BACKEND.plist(layout).read_bytes() == BACKEND.render(layout)
     assert loaded(host, BACKEND)
     assert loaded(host, WATCHDOG)
-    assert stopped.owed == ()
+    assert stopped.start_again().agents == ()
+
+
+def test_an_agent_stopped_twice_before_its_load_is_owed_nothing_after_it(layout: Layout) -> None:
+    host = FakeHost(loaded=[BACKEND.label])
+    stopped = stopped_agents(host, layout)
+    stopped.stop((BACKEND,))
+    host.busy_loads = LOAD_ATTEMPTS
+    with pytest.raises(JobBusy):
+        stopped.load(BACKEND)
+    host.jobs[BACKEND.label] = JobState(loaded=True)
+
+    stopped.stop((BACKEND,))
+    stopped.load(BACKEND)
+
+    assert loaded(host, BACKEND)
     assert stopped.start_again().agents == ()
 
 
