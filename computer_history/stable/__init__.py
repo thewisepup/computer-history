@@ -37,9 +37,7 @@ Everything that reaches launchctl, GitHub, git or uv goes through the host adapt
 """
 
 from computer_history.stable.agent_guard import (
-    GuardCondition,
     GuardFailed,
-    GuardVerdict,
     Unmet,
     check_agent_install,
 )
@@ -60,7 +58,7 @@ from computer_history.stable.backups import (
     take_daily_backup,
     take_pre_update_backup,
 )
-from computer_history.stable.gate import CAPTURE_AGENT_GATE, RELEASE_GATE
+from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.install_lock import InstallBusy, holding_install_lock
 from computer_history.stable.launch_agents import (
@@ -104,7 +102,6 @@ __all__ = [
     "ACTIVITYWATCH_AT_LOGIN",
     "BACKEND",
     "BACKUPS_FOLDER_NAME",
-    "CAPTURE_AGENT_GATE",
     "CAPTURE_AGENT_LABEL",
     "DAILY_BACKUP",
     "DAILY_FOLDER_NAME",
@@ -126,9 +123,7 @@ __all__ = [
     "BackupFailed",
     "BackupInventory",
     "DailyOutcome",
-    "GuardCondition",
     "GuardFailed",
-    "GuardVerdict",
     "InstallBusy",
     "InstallFailed",
     "LaunchAgent",

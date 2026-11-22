@@ -9,12 +9,14 @@ from cli_output import RunCli
 from fake_host import NOT_A_CHECKOUT, OFFLINE, FakeHost, gate_runs
 
 from computer_history.host import CheckOutcome, CheckRun, GitState
-from computer_history.stable import Layout, stable_layout
+from computer_history.stable import Layout, stable_layout, version_name
+from computer_history.stable.gate import COMMITS_SEARCHED
 
 OLDER = "b" * 40
 HEAD = "c" * 40
 NEWER = "d" * 40
 GUARD = "check-agent-install"
+HEAD_NAME, NEWER_NAME, OLDER_NAME = (version_name(c) for c in (HEAD, NEWER, OLDER))
 
 
 def at_head(**changes: object) -> GitState:
@@ -41,8 +43,8 @@ def test_the_guard_passes_when_every_condition_is_met(
     code, out, err = run(checkout, GUARD, host=host)
 
     assert code == 0, err
-    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD[:7]}"]
-    assert ("git_state", str(Path.cwd())) in host.calls
+    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD_NAME}"]
+    assert ("git_state", str(checkout.parent)) in host.calls
 
 
 def guard_host(git: GitState | None = None, **checks: list[CheckRun]) -> FakeHost:
@@ -84,8 +86,8 @@ def refusal(err: str) -> tuple[str, list[str]]:
             at_head(origin_main=NEWER),
             {},
             "HEAD is origin/main",
-            f"HEAD {HEAD[:7]} is not origin/main {NEWER[:7]}; pull, or push what main holds"
-            " locally, until they match: git pull",
+            f"HEAD {HEAD_NAME} is not origin/main {NEWER_NAME}; pull, or push what main"
+            " holds locally, until they match: git pull",
         ),
         (
             at_head(origin_main=None),
@@ -103,7 +105,8 @@ def refusal(err: str) -> tuple[str, list[str]]:
             at_head(),
             {"HEAD": gate_runs(**{"macos-capture-agent-tests": None})},
             "capture-agent checks passed on HEAD",
-            "macos-capture-agent-tests missing; wait for CI to finish on it",
+            "macos-capture-agent-tests missing; a job that never ran won't appear by waiting:"
+            " re-run CI on HEAD or check the job name",
         ),
         (
             at_head(),
@@ -145,7 +148,7 @@ def test_each_unmet_condition_alone_refuses_and_names_itself_with_its_fix(
     assert out[1:] == []
     first, lines = refusal(err)
     assert first == (
-        f"Agent install refused: 1 unmet condition for HEAD {HEAD[:7]}"
+        f"Agent install refused: 1 unmet condition for HEAD {HEAD_NAME}"
         " (pass --force to install anyway)"
     )
     assert lines == [f"  {condition}: {expected}"]
@@ -170,8 +173,8 @@ def test_a_backend_older_than_head_refuses_and_says_to_update(
 
     assert code == 1
     assert refusal(err)[1] == [
-        f"  stable backend at HEAD or newer: the stable backend is version {OLDER[:7]}, older"
-        f" than HEAD {HEAD[:7]}; move it forward first: computer-history update"
+        f"  stable backend at HEAD or newer: the stable backend is version {OLDER_NAME}, older"
+        f" than HEAD {HEAD_NAME}; move it forward first: computer-history update"
     ]
 
 
@@ -181,7 +184,7 @@ def test_a_backend_newer_than_head_passes(run: RunCli, live: Path, checkout: Pat
     code, out, err = run(checkout, GUARD, host=guard_host(at_head()))
 
     assert code == 0, err
-    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD[:7]}"]
+    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD_NAME}"]
 
 
 def test_newer_is_judged_by_mains_order_not_by_how_the_commits_sort(
@@ -210,10 +213,23 @@ def test_a_head_missing_from_mains_newest_commits_refuses(
 
     assert code == 1
     assert refusal(err)[1] == [
-        f"  stable backend at HEAD or newer: HEAD {stray[:7]} is not among main's newest 20"
-        f" commits, so it can't be compared with the stable backend's version {HEAD[:7]};"
+        f"  stable backend at HEAD or newer: HEAD {version_name(stray)} is not among main's"
+        f" newest {COMMITS_SEARCHED} commits, so it can't be compared with the stable backend's"
+        f" version {HEAD_NAME};"
         " pull main: git pull"
     ]
+
+
+def test_a_backend_at_head_passes_even_when_main_has_moved_far_past_it(
+    run: RunCli, stable_at_head: Layout, checkout: Path
+) -> None:
+    host = FakeHost(checks={NEWER: gate_runs()}, git=at_head())
+    host.off_main[HEAD] = gate_runs()
+
+    code, _, err = run(checkout, GUARD, host=host)
+
+    assert code == 0, err
+    assert ("main_commits", str(COMMITS_SEARCHED)) not in host.calls
 
 
 def test_no_stable_install_refuses_and_says_to_install(
@@ -228,7 +244,7 @@ def test_no_stable_install_refuses_and_says_to_install(
         "  stable backend at HEAD or newer: there is no stable install; set it up first:"
         " computer-history install"
     ]
-    assert ("main_commits", "20") not in host.calls
+    assert ("main_commits", str(COMMITS_SEARCHED)) not in host.calls
 
 
 def test_every_unmet_condition_is_listed_at_once(run: RunCli, live: Path, checkout: Path) -> None:
@@ -239,7 +255,7 @@ def test_every_unmet_condition_is_listed_at_once(run: RunCli, live: Path, checko
 
     assert code == 1
     first, lines = refusal(err)
-    assert first.startswith(f"Agent install refused: 5 unmet conditions for HEAD {HEAD[:7]}")
+    assert first.startswith(f"Agent install refused: 5 unmet conditions for HEAD {HEAD_NAME}")
     assert [line.split(":")[0].strip() for line in lines] == [
         "on main",
         "clean working tree",
@@ -250,8 +266,9 @@ def test_every_unmet_condition_is_listed_at_once(run: RunCli, live: Path, checko
 
 
 def test_github_out_of_reach_refuses_with_the_hosts_error(
-    run: RunCli, stable_at_head: Layout, checkout: Path
+    run: RunCli, live: Path, checkout: Path
 ) -> None:
+    installed_at(run, checkout, OLDER)
     host = guard_host(at_head())
     host.offline = True
 
@@ -276,13 +293,12 @@ def test_force_passes_and_lists_every_condition_it_skipped(
     assert code == 0, err
     assert (
         out[1]
-        == f"Agent install allowed by --force, skipping 4 unmet conditions for HEAD {HEAD[:7]}:"
+        == f"Agent install allowed by --force, skipping 3 unmet conditions for HEAD {HEAD_NAME}:"
     )
     assert [line.split(":")[0].strip() for line in out[2:]] == [
         "on main",
         "clean working tree",
         "capture-agent checks passed on HEAD",
-        "stable backend at HEAD or newer",
     ]
 
 
@@ -292,7 +308,7 @@ def test_force_with_every_condition_met_just_passes(
     code, out, _ = run(checkout, GUARD, "--force", host=guard_host(at_head()))
 
     assert code == 0
-    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD[:7]}"]
+    assert out[1:] == [f"Agent install allowed: every condition holds for HEAD {HEAD_NAME}"]
 
 
 def test_a_checkout_git_cannot_read_refuses_unless_forced(
@@ -324,7 +340,7 @@ def test_the_guard_only_reads_and_opens_no_database_or_spool_from_a_dev_checkout
     assert out[0].endswith(f"stable install {stable_at_head.live}")
     assert tree(stable_at_head.live.parent.parent.parent) == before
     assert not dev.exists()
-    assert {call for call, _ in host.calls} == {"git_state", "check_runs", "main_commits"}
+    assert {call for call, _ in host.calls} == {"git_state", "check_runs"}
 
 
 def tree(folder: Path) -> dict[Path, bytes | str]:

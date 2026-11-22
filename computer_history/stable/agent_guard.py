@@ -43,10 +43,7 @@ class GuardFailed(Exception):
 
 
 def check_agent_install(host: Host, layout: Layout, checkout: Path) -> GuardVerdict:
-    """Judge whether the capture agent in a checkout may be installed by hand, changing nothing.
-
-    It reads git, GitHub and the stable install's current pointer, and opens no database or spool.
-    """
+    """Judge whether the capture agent in a checkout may be installed by hand."""
     try:
         git = host.git_state(checkout)
     except HostError as exc:
@@ -99,8 +96,15 @@ def _agent_checks_unmet(host: Host, head: str) -> Unmet | None:
     verdict = gate_verdict(head, runs, CAPTURE_AGENT_GATE)
     if verdict.passed:
         return None
-    pending = all(outcome in (None, CheckOutcome.RUNNING) for outcome in verdict.failing.values())
-    fix = "wait for CI to finish on it" if pending else "fix or re-run the failing jobs in CI"
+    outcomes = set(verdict.failing.values())
+    if outcomes == {CheckOutcome.RUNNING}:
+        fix = "wait for CI to finish on it"
+    elif outcomes <= {None, CheckOutcome.RUNNING}:
+        fix = (
+            "a job that never ran won't appear by waiting: re-run CI on HEAD or check the job name"
+        )
+    else:
+        fix = "fix or re-run the failing jobs in CI"
     return Unmet(GuardCondition.AGENT_CHECKS_PASSED, verdict.summary, fix)
 
 
@@ -112,6 +116,8 @@ def _backend_unmet(host: Host, layout: Layout, head: str) -> Unmet | None:
             "there is no stable install",
             "set it up first: computer-history install",
         )
+    if current.name == version_name(head):
+        return None
     try:
         commits = host.main_commits(COMMITS_SEARCHED)
     except HostError as exc:

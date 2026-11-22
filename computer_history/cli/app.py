@@ -48,6 +48,7 @@ DATABASE_COMMANDS = frozenset(
     {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore", "watchdog"}
 )
 INSTALL_COMMANDS = frozenset({"install", "uninstall", "update", "rollback"})
+READS_THE_INSTALL = INSTALL_COMMANDS | {"check-agent-install"}
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -154,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
             continue
         if name in ("ingest", "status", "backfill", "watchdog"):
             parents = [db_after_command, aw]
-        elif name in INSTALL_COMMANDS or name == "check-agent-install":
+        elif name in READS_THE_INSTALL:
             parents = []
         else:
             parents = [db_after_command]
@@ -288,6 +289,7 @@ def main(
         log_dir=args.log_dir,
     )
     args.host = LiveHost() if host is None else host
+    args.code = code
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
@@ -300,7 +302,7 @@ def main(
         return _refused(exc)
     if args.database is not None:
         uses = f"database {args.database}"
-    elif args.command in INSTALL_COMMANDS or args.command == "check-agent-install":
+    elif args.command in READS_THE_INSTALL:
         uses = f"stable install {live_folder()}"
     elif args.command == "dev" and args.dev_command == "build-db":
         uses = f"output {args.out}"

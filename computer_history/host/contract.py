@@ -37,8 +37,7 @@ class CheckRun:
 
 @dataclass(frozen=True)
 class GitState:
-    """A checkout's branch (None when HEAD is detached), whether its tree is clean, its HEAD and
-    its origin/main (None when it has none)."""
+    """What git says about a checkout: its branch, whether it is clean, HEAD and origin/main."""
 
     branch: str | None
     clean: bool

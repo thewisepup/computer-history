@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 def cmd_check_agent_install(args: argparse.Namespace) -> int:
     try:
-        verdict = check_agent_install(args.host, stable_layout(), Path.cwd())
+        verdict = check_agent_install(args.host, stable_layout(), _checkout(args.code))
     except GuardFailed as exc:
         log.info("agent install not checked", extra={"error": str(exc), "forced": args.force})
         if args.force:
@@ -51,6 +51,10 @@ def cmd_check_agent_install(args: argparse.Namespace) -> int:
     for unmet in verdict.unmet:
         print(_line(unmet), file=sys.stderr)
     return 1
+
+
+def _checkout(code: Path) -> Path:
+    return code.parent
 
 
 def _line(unmet: Unmet) -> str:

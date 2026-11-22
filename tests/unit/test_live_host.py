@@ -267,6 +267,27 @@ def test_git_state_reads_a_detached_head_a_dirty_tree_and_no_origin_main(
     assert state == GitState(branch=None, clean=False, head=HEAD, origin_main=None)
 
 
+def test_git_state_ignores_git_location_variables_and_answers_quickly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(live.shutil, "which", lambda name: GIT if name == "git" else None)
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        monkeypatch.setenv(name, str(tmp_path / "elsewhere"))
+    seen: list[dict[str, Any]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append(kwargs)
+        returncode, stdout, stderr = GIT_ON_MAIN[" ".join(command[3:])]
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+
+    LiveHost().git_state(tmp_path)
+
+    assert all(not {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} & set(kw["env"]) for kw in seen)
+    assert all(kw["timeout"] == live.QUICK_COMMAND_TIMEOUT_SECONDS for kw in seen)
+
+
 def test_git_state_outside_a_checkout_is_a_host_error_with_gits_words(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
