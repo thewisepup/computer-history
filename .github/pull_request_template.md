@@ -44,6 +44,16 @@
 
 </details>
 
+## Try it yourself
+
+- [ ] **** (dev checkout | stable install, ~)
+  ``
+  Expect: 
+
+**After merging**
+
+- [ ] 
+
 <details>
 <summary>Walkthrough</summary>
 

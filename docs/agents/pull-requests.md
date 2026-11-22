@@ -29,8 +29,8 @@ has not seen the work.
    End with one line, `Review effort: skim | read | careful`, and the reason
    (for example, "careful: touches live data").
 3. **Call-outs**: one sentence per item, each tagged:
-   - `[Action]` something you must do (merge order, a command to run after
-     merging, a new dependency);
+   - `[Action]` something you must do (merge order, a new dependency, steps
+     after merging), in one line; the steps themselves go in Try it yourself;
    - `[Choice]` a judgment call you might overrule, stated as what was chosen;
    - `[Gap]` something no automated check covers (needs the real Mac, a
      permission, a TLA+ run, a later ticket).
@@ -51,15 +51,24 @@ has not seen the work.
      `![what it shows](https://github.com/thewisepup/computer-history/blob/pr-evidence/<pr-number>/<file>.png?raw=true)`;
    - the test that fails without the change;
    - review findings and what was done about each.
-5. **Walkthrough**, collapsed:
+5. **Try it yourself**: what only you can check, as copy-paste steps from the
+   `pr-checklist` skill. Each step says whether it runs in the dev checkout or
+   the stable install, the exact command, what to expect and how long to wait.
+   Steps needed after merging (`computer-history update`, reinstalling the
+   capture agent, a permission or a re-login) go under **After merging**.
+   Anything a command can show is checked by the agent and lands in Testing
+   instead. With nothing left for you, write "Nothing to do by hand: all
+   checked above."
+6. **Walkthrough**, collapsed, written with the `pr-walkthrough` skill:
    - **New files**: each file created and why it exists.
-   - **Data models**: record formats, tables and types created or changed.
+   - **Data models**: record formats, tables and types created or changed,
+     each with a sample value before and after.
    - **Workflow**: how the code flows end to end, as numbered steps.
    - **Key functions**: the high-level functions and methods added, and what
      each does.
-6. **How to review**, collapsed: the order to read files in, and what is
+7. **How to review**, collapsed: the order to read files in, and what is
    skim-only (fixtures, generated output, renames).
-7. **Notes**: bookkeeping. The milestone or spec, "folds the milestone's
+8. **Notes**: bookkeeping. The milestone or spec, "folds the milestone's
    stack into one PR", `Closes #…`, and follow-ups.
 
 ## Example
