@@ -19,7 +19,6 @@ from computer_history.host import ALERT_REPEAT
 from computer_history.logs import LOG_FILE_NAME, configure
 from computer_history.sources import (
     ALERT_AFTER_FAILURES,
-    HEALTH_STALE_AFTER,
     CycleReporter,
     CycleSummary,
     FailureKind,
@@ -330,19 +329,6 @@ def test_status_reports_a_failing_ingest_first(
     [ingest] = [line for line in lines if line.startswith("Ingest:")]
     assert "FAILING since" in ingest and "last cycle" in ingest and "NOT REPORTING" not in ingest
     assert any(line.startswith("  last success  ") for line in lines)
-
-
-def test_status_says_when_the_watcher_stopped_reporting(
-    db_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    write_health(health_path(db_path), IngestHealth(T0, last_success_at=T0))
-
-    lines = status_lines(db_path, capsys, monkeypatch, T0 + HEALTH_STALE_AFTER + MINUTE)
-
-    [ingest] = [line for line in lines if line.startswith("Ingest:")]
-    assert ingest.startswith("Ingest:        ok, last cycle ")
-    assert "NOT REPORTING for 6m" in ingest
-    assert not any(line.startswith("!! ingest") for line in lines)
 
 
 def test_status_without_a_watcher_says_so(

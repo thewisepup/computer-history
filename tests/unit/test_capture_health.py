@@ -543,7 +543,6 @@ def test_paused_until_a_later_record(conn, tmp_path: Path) -> None:
     store_records(conn, [spool_line(1, at(-20)), spool_line(2, at(-15), kind=PAUSED_KIND)])
     paused = health(conn, tmp_path)
     assert paused.paused_since == at(-15)
-    assert paused.alive is Liveness.PAUSED
     store_records(conn, [spool_line(3, at(-1), kind=RESUMED_KIND)])
     assert health(conn, tmp_path).paused_since is None
 
@@ -553,7 +552,6 @@ def test_a_capture_after_a_pause_without_a_resume_ends_the_pause(conn, tmp_path:
     store_afk(conn, [(at(-200), NOW, "not-afk")])
     result = health(conn, tmp_path)
     assert result.paused_since is None
-    assert result.alive is Liveness.SILENT
     assert result.coverage is not None
     expected = [(at(-100) + CAPTURE_TOLERANCE, NOW)]
     assert [(g.start, g.end) for g in result.coverage.unobserved] == expected
@@ -586,7 +584,6 @@ def test_a_pause_still_in_the_spool_counts(conn, tmp_path: Path) -> None:
     touch(tmp_path / "open.part", at(-20), spool_line(2, at(-20), kind=PAUSED_KIND) + "\n")
     result = health(conn, tmp_path)
     assert result.paused_since == at(-20)
-    assert result.alive is Liveness.PAUSED
 
 
 def test_a_record_still_in_the_spool_counts_as_the_last_record(conn, tmp_path: Path) -> None:
@@ -594,14 +591,12 @@ def test_a_record_still_in_the_spool_counts_as_the_last_record(conn, tmp_path: P
     touch(tmp_path / "open.part", at(-1), spool_line(2, at(-1)) + "\n")
     result = health(conn, tmp_path)
     assert result.last_record == at(-1)
-    assert result.alive is Liveness.ALIVE
 
 
-def test_silence_while_active_is_unobserved_and_not_alive(conn, tmp_path: Path) -> None:
+def test_silence_while_active_is_unobserved(conn, tmp_path: Path) -> None:
     store_records(conn, [spool_line(i, at(-120 + i / 2)) for i in range(60)])
     store_afk(conn, [(at(-120), at(-1), "not-afk")])
     result = health(conn, tmp_path)
-    assert result.alive is Liveness.SILENT
     assert result.coverage is not None
     assert result.coverage.end == NOW
     assert [(g.start, g.end) for g in result.coverage.unobserved] == [
@@ -615,9 +610,9 @@ def test_the_newest_afk_event_from_activitywatch_counts_before_it_is_stored(
     store_records(conn, [spool_line(1, at(-60))])
     fake = FakeAW({AFK_BUCKET: "afkstatus"}, t0=at(-50))
     fake.add(AFK_BUCKET, 0, 50 * 60, {"status": "not-afk"})
-    assert health(conn, tmp_path).alive is Liveness.UNKNOWN
+    stored_only = health(conn, tmp_path).coverage
+    assert stored_only is not None and stored_only.unobserved == ()
     result = health(conn, tmp_path, fake)
-    assert result.alive is Liveness.SILENT
     assert result.coverage is not None and result.coverage.unobserved
 
 

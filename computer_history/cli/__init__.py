@@ -8,9 +8,10 @@ app.py         parser + dispatch: one entry per command, the log folder of the
   |                the ingest health file, the cycle's log record and the
   |                failure streak's notification after each cycle, and spool deletion
   |                held until a cycle completes while update asks for it
-  +-- status.py    the given database's ingest, freshness, coverage gaps, row
-  |                counts and backups, then the stable install's version and last
-  |                update, its LaunchAgents and the watchdog's findings
+  +-- status.py    the status report formatted: the given database's ingest,
+  |                freshness, coverage gaps, row counts and backups, then the
+  |                stable install's version and last update, its LaunchAgents and
+  |                the watchdog's findings
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter

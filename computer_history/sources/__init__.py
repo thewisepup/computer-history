@@ -155,7 +155,6 @@ from computer_history.sources.contract import (
 from computer_history.sources.cycle_report import CycleReporter
 from computer_history.sources.ingest_health import (
     ALERT_AFTER_FAILURES,
-    HEALTH_STALE_AFTER,
     FailureStreak,
     IngestHealth,
     Recovery,
@@ -188,7 +187,6 @@ __all__ = [
     "DEFAULT_AW_URL",
     "DUPLICATE_STATUS",
     "EXCLUDED_KIND",
-    "HEALTH_STALE_AFTER",
     "HEARTBEAT_SECONDS",
     "KEPT_STATUS",
     "KNOWN_SOURCES",

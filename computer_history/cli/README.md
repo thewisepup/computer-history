@@ -15,7 +15,8 @@ app.py         parser + dispatch: one entry per command, the profile's log
   |                the ingest health file and the failure streak's notification
   |                after each cycle, and spool deletion held until a cycle
   |                completes while update asks for it
-  +-- status.py    the given database's ingest, freshness, coverage gaps, capture
+  +-- status.py    the status report (`computer_history/status/`) formatted: the
+  |                given database's ingest, freshness, coverage gaps, capture
   |                agent, screenshots, row counts and backups, then the stable
   |                install, its agent's build, its last update, its LaunchAgents and the
   |                watchdog's findings
@@ -857,9 +858,22 @@ Ingest:        FAILING since 2026-11-20 16:13 (7 cycles), last cycle 2026-11-20 
   last success  2026-11-20 16:12 (7m 15s ago)
 ```
 
-A health file not updated for over 5 minutes adds `NOT REPORTING for <time>
-(is \`ingest --watch\` running?)`; with no file the line reads `no \`ingest
---watch\` has reported yet`.
+The line takes the watchdog's backend verdict, by its threshold
+(`backend_minutes`, 5 by default) and from the watchdog state beside the
+database. A last cycle older than that while aw-afk shows you active adds
+`NOT REPORTING for <time> (is \`ingest --watch\` running?)`; while you were
+away it adds `; cannot tell: silent, but aw-afk does not show you active`
+instead, and while no watchdog runs beside the database (none ran in the last
+3 minutes, as in dev), `; cannot tell: silent, but watched only since the
+watchdog resumed`, since silence counts only from when the watchdog last
+began watching. With no file the line reads `no \`ingest --watch\` has
+reported yet`.
+
+`ActivityWatch:` is the watchdog's verdict too: `no` and the banner while it
+is unreachable, and `; PROBLEM: not advancing (<sources>)` after the sources
+when one of this host's AFK or window sources has not advanced past its
+threshold. Status never writes the watchdog's state, notifies or reopens
+ActivityWatch.
 
 Read-only: never creates, migrates or writes, and never changes the spool.
 The last four sections (illustrative above) come after the rest whatever
@@ -930,9 +944,12 @@ The capture agent section:
 
 - **last capture**: the newest capture, stored or still in the spool
   (excluded, pause and sleep records are not captures).
-- **alive**: `yes` when the newest record, stored or still in the spool, is
-  at most 5 minutes old; `NO` when `aw-afk` shows you active for over a minute
-  since it; `paused` while capture is paused; otherwise `cannot tell`.
+- **alive**: the watchdog's capture agent verdict, by its threshold
+  (`capture_agent_minutes`, 5 by default): `yes` when the newest record,
+  stored or still in the spool, is within it; `NO` when `aw-afk` shows you
+  active for over a minute since it within the threshold's last stretch;
+  `paused` while capture is paused; otherwise `cannot tell`, with why (aw-afk
+  does not show you active, or no watchdog has watched long enough).
 - **spool**: finished `*.jsonl` files waiting to be ingested and how long the
   oldest has waited, then the files set aside in `unreadable/`. `open.part`
   and `agent.lock` are not counted. The spool path resolves as for `ingest`.

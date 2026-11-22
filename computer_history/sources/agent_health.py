@@ -66,7 +66,6 @@ class CaptureHealth:
     spool_error: str | None
     last_capture: datetime | None = None
     last_record: datetime | None = None
-    alive: Liveness = Liveness.UNKNOWN
     paused_since: datetime | None = None
     today: DayCounts = DayCounts()
     coverage: Coverage | None = None
@@ -139,7 +138,6 @@ def capture_health(
         spool_error=spool_error,
         last_capture=_last_capture(conn, now, unstored),
         last_record=newest[0],
-        alive=liveness(newest[0], now=now, paused=paused, active=active),
         paused_since=newest[0] if paused else None,
         today=day_counts(records, day_start),
         coverage=coverage,

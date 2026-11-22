@@ -65,7 +65,11 @@ from computer_history.stable.backups import (
     take_daily_backup,
     take_pre_update_backup,
 )
-from computer_history.stable.capture_agent import installed_agent, record_installed_agent
+from computer_history.stable.capture_agent import (
+    InstalledAgent,
+    installed_agent,
+    record_installed_agent,
+)
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.install_lock import InstallBusy, holding_install_lock
@@ -109,7 +113,7 @@ from computer_history.stable.updates import (
     rollback,
     update,
 )
-from computer_history.stable.versions import pointed, version_name
+from computer_history.stable.versions import InstalledVersion, pointed, version_name
 
 __all__ = [
     "ACTIVITYWATCH_AT_LOGIN",
@@ -143,6 +147,8 @@ __all__ = [
     "GuardFailed",
     "InstallBusy",
     "InstallFailed",
+    "InstalledAgent",
+    "InstalledVersion",
     "LaunchAgent",
     "Layout",
     "RestoreFailed",

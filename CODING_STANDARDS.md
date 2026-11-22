@@ -67,10 +67,12 @@ Review findings ratchet into rules:
 
 - **A1** **[checked]** Layers depend downward only: `host/` imports no other
   package; `store/` never imports `sources/`, `synthetic/`, `stable/`,
-  `watchdog/` or `cli/`; `sources/` never imports `synthetic/`, `stable/`,
-  `watchdog/` or `cli/`; `synthetic/` never imports `stable/`, `watchdog/` or
-  `cli/`; `stable/` never imports `sources/`, `synthetic/`, `watchdog/` or
-  `cli/`; `watchdog/` never imports `synthetic/`, `stable/` or `cli/`.
+  `watchdog/`, `status/` or `cli/`; `sources/` never imports `synthetic/`,
+  `stable/`, `watchdog/`, `status/` or `cli/`; `synthetic/` never imports
+  `stable/`, `watchdog/`, `status/` or `cli/`; `stable/` never imports
+  `sources/`, `synthetic/`, `watchdog/`, `status/` or `cli/`; `watchdog/` never
+  imports `synthetic/`, `stable/`, `status/` or `cli/`; `status/` never imports
+  `synthetic/` or `cli/`.
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients
   (the host adapter's `LiveHost` among them); everything below takes them as
