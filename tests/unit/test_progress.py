@@ -15,14 +15,11 @@ from computer_history.sources import (
     RESUME_OVERLAP_SECONDS,
     WINDOW_SOURCE,
     ActivityWatch,
-    AWSource,
     BackfillProgress,
     IngestOutcome,
-    SourcePull,
+    Pull,
     plan_all_backfills,
     poll,
-    position_at,
-    pull_source,
     run_backfill,
 )
 from computer_history.sources.activitywatch.pull import CLIP_GUARD
@@ -43,7 +40,6 @@ from computer_history.store import (
 from computer_history.store.progress import write_with_batch
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
-WINDOW = AWSource(WINDOW_SOURCE, (WINDOW_BUCKET,))
 SPOOL_POSITION = "2026-11-18T10.jsonl:48213"
 PROGRESS_MIGRATION = next(m for m in load_migrations() if m.name.endswith("_ingest_progress.sql"))
 
@@ -250,23 +246,23 @@ def test_migration_moves_cursors_into_progress_and_leaves_observations(tmp_path:
         conn.close()
 
 
-def resume_after_migration(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
-    assert first_pull.frontier is not None
+def resume_after_migration(path: Path, first_pull: Pull) -> sqlite3.Connection:
+    assert first_pull.settled_until is not None
     old = previous_version(path)
     insert_observations(old, first_pull.observations, project=no_signal)
     old.execute(
         "INSERT INTO ingest_cursors (source, last_seen) VALUES (?, ?)",
-        (WINDOW_SOURCE, utc_iso(first_pull.frontier)),
+        (WINDOW_SOURCE, utc_iso(first_pull.settled_until)),
     )
     old.close()
     return connect(path)
 
 
-def resume_on_current_schema(path: Path, first_pull: SourcePull) -> sqlite3.Connection:
-    assert first_pull.frontier is not None
+def resume_on_current_schema(path: Path, first_pull: Pull) -> sqlite3.Connection:
+    assert first_pull.position is not None
     conn = connect(path)
     update = ProgressUpdate(
-        WINDOW_SOURCE, position_at(first_pull.frontier), settled_until=first_pull.frontier
+        WINDOW_SOURCE, first_pull.position, settled_until=first_pull.settled_until
     )
     insert_observations(conn, first_pull.observations, progress=update, project=no_signal)
     return conn
@@ -277,8 +273,8 @@ def test_migrated_cursor_resumes_like_progress_written_today(tmp_path: Path, pre
     fake = RecordingAW({WINDOW_BUCKET: "currentwindow"})
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     fake.add(WINDOW_BUCKET, 50, 60, {"app": "B"})
-    first_pull = pull_source(fake, WINDOW, now=at(55))
-    assert first_pull.frontier == at(55)
+    first_pull = ActivityWatch(fake).pull_after(WINDOW_SOURCE, None, now=at(55))
+    assert first_pull.settled_until == at(55)
     conn = prepare(tmp_path / "history.db", first_pull)
     try:
         fake.add(WINDOW_BUCKET, 58, 60, {"app": "C"})

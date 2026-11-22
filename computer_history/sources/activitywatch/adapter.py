@@ -27,7 +27,7 @@ class ActivityWatch:
         return list(self._discover())
 
     def pull_after(self, stream: str, position: str | None, *, now: datetime) -> Pull:
-        start = None if position is None else resume_start(position)
+        start = None if position is None else _resume_start(position)
         return _as_pull(pull_source(self.client, self._source(stream), start=start, now=now))
 
     def pull_range(self, stream: str, start: datetime, end: datetime, *, now: datetime) -> Pull:
@@ -60,15 +60,15 @@ class ActivityWatch:
 
 
 def _as_pull(pulled: SourcePull) -> Pull:
-    position = None if pulled.frontier is None else position_at(pulled.frontier)
+    position = None if pulled.frontier is None else _position_at(pulled.frontier)
     return Pull(pulled.observations, pulled.held_back, position, pulled.frontier)
 
 
-def position_at(settled_until: datetime) -> str:
+def _position_at(settled_until: datetime) -> str:
     """The position of a stream whose events are all stored up to the given time."""
     return utc_iso(settled_until)
 
 
-def resume_start(position: str) -> datetime:
+def _resume_start(position: str) -> datetime:
     """Where the next poll starts reading: a little before the stored position."""
     return to_utc(position) - timedelta(seconds=RESUME_OVERLAP_SECONDS)

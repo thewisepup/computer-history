@@ -46,7 +46,7 @@ Review findings ratchet into rules:
   `__init__.py` carrying a short flow diagram and the public re-exports.
 - **S4** **[checked]** A package diagram names every module in the package, and only
   modules that exist.
-- **S5** Types live next to their producer (`BucketPull` beside `pull_bucket`).
+- **S5** Types live next to their producer (`SourcePull` beside `pull_source`).
 - **S6** **[checked]** No module imports another module's `_private` names.
 - **S7** A type that summarises other values is named for what it counts
   (`CaptureCounts`), never as the plural of an item type in the same package.

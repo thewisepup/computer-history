@@ -30,7 +30,6 @@ from computer_history.sources import (
     FailureKind,
     plan_backfill,
     poll,
-    position_at,
     run_backfill,
 )
 from computer_history.store import (
@@ -78,7 +77,7 @@ def settled(conn: sqlite3.Connection, source: str = WINDOW_SOURCE) -> datetime |
 
 
 def set_progress(conn: sqlite3.Connection, source: str, until: datetime) -> None:
-    update = ProgressUpdate(source, position_at(until), settled_until=until)
+    update = ProgressUpdate(source, "seeded", settled_until=until)
     insert_observations(conn, [], progress=update, project=no_signal)
 
 
