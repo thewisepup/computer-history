@@ -17,7 +17,8 @@ app.py         parser + dispatch: one entry per command, the profile's log
   |                completes while update asks for it
   +-- status.py    the given database's ingest, freshness, coverage gaps, capture
   |                agent, screenshots, row counts and backups, then the stable
-  |                install, its last update, its LaunchAgents and the watchdog's findings
+  |                install, its agent's build, its last update, its LaunchAgents and the
+  |                watchdog's findings
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
@@ -751,6 +752,8 @@ Stable install:
   this run      stable
   current       572c48b, installed 2026-11-20 17:22 (2h 5m ago)
   previous      1f2e3d4, installed 2026-11-19 16:02 (1d 3h ago)
+  agent         built from 1f2e3d4, installed 2026-11-20 17:25 (2h 2m ago)
+                fell back 572c48b -> 1f2e3d4, 2026-11-20 17:25 (2h 2m ago): the new capture agent recorded nothing in 120s while you were active
   last update   updated 1f2e3d4 -> 572c48b, 2026-11-20 17:22 (2h 5m ago)
 
 Stable install's LaunchAgents:
@@ -803,6 +806,11 @@ so a dev `status` shows dev's backend, not stable's:
   `none yet (the daily backup takes one a day into .../backups/daily)`.
 - **Stable install**: this run's profile, and the version `current` and
   `previous` point at, with when its build finished; `none` before `install`.
+  `agent` is the commit the app at the capture agent's fixed path was built
+  from and when it was put there, read from `installed-agent.json` (`built
+  from unknown` without that record or the app), so drift from `current`
+  shows. Under it sits the update log's last `agent fell back` line, when there
+  is one: `fell back <tried> -> <kept>, ...: <reason>`.
   `last update` is the update log's last line: `updated <from> -> <to>`,
   `rolled back <from> -> <to>`, or `fell back <tried> -> <kept>, ...: <reason>`
   (`none yet` before the first, `unreadable update log: ...` for a damaged one).

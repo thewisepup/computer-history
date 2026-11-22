@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from cli_output import RunCli
+from cli_output import STATUS, RunCli, section
 from fake_aw import FakeAW
 from fake_host import (
     AgentStart,
@@ -380,6 +380,10 @@ def test_the_next_update_retries_an_agent_that_fell_back_though_its_source_is_un
     assert agent_line(out).startswith("  agent         updated and verified")
     assert agent_built_from(layout.capture_agent_app) == NEWEST
     assert agent_built_from(layout.agent_app(layout.versions / NEW)) == OLDER
+    _, out, _ = run(stable_code(layout), *STATUS, host=host)
+    install = section(out, "Stable install:")
+    assert install[3].startswith(f"  agent         built from {version_name(NEWEST)}, installed ")
+    assert install[4].startswith(f"                fell back {NEW} -> {OLD}, ")
 
 
 def test_an_unchanged_agent_is_not_installed_and_the_update_line_says_so(
@@ -407,3 +411,34 @@ def test_a_backend_fallback_never_installs_the_agent(
     assert installs(host) == []
     assert agent_built_from(layout.capture_agent_app) == OLDER
     assert not [line for line in out if line.startswith("  agent ")]
+
+
+def test_status_shows_the_agents_build_and_its_last_fallback(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    host = agent_update(layout, stays_silent)
+    assert run(stable_code(layout), "update", host=host)[0] == AGENT_FELL_BACK_EXIT_CODE
+
+    _, out, _ = run(stable_code(layout), *STATUS, host=host)
+
+    install = section(out, "Stable install:")
+    assert install[1].startswith(f"  current       {NEW}, installed ")
+    assert install[3].startswith(f"  agent         built from {OLD}, installed ")
+    assert install[4].startswith(f"                fell back {NEW} -> {OLD}, ")
+    assert install[4].endswith(f" ago): {SILENT}")
+    assert install[5].startswith(f"  last update   updated {OLD} -> {NEW}, ")
+
+
+def test_status_shows_no_fallback_for_an_agent_that_never_fell_back(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    host = agent_update(layout, records(spool(layout), clock.now))
+    assert run(stable_code(layout), "update", host=host)[0] == 0
+
+    _, out, _ = run(stable_code(layout), *STATUS, host=host)
+
+    install = section(out, "Stable install:")
+    assert install[3].startswith(f"  agent         built from {NEW}, installed ")
+    assert install[4].startswith(f"  last update   updated {OLD} -> {NEW}, ")
