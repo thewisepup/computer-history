@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from computer_history.sources.activitywatch import (
+    AFK_SOURCE,
     AfkSpan,
     AppSpan,
     AWApi,
+    discover_sources,
     newest_afk_spans,
     newest_app_spans,
     stored_afk_spans,
@@ -46,12 +49,11 @@ from computer_history.store import SourceSummary, to_utc
 __all__ = [
     "CaptureHealth",
     "CaptureLiveness",
-    "NewestRecord",
+    "DatabaseRead",
+    "StoredAndSpooled",
     "active_spans",
-    "active_time",
     "capture_health",
     "capture_liveness",
-    "newest_record",
 ]
 
 
@@ -243,12 +245,54 @@ def active_time(
     conn: sqlite3.Connection | None, client: AWApi, start: datetime, end: datetime
 ) -> timedelta | None:
     """How long aw-afk shows the user active between two times, or None when ActivityWatch is
-    unreachable."""
+    unreachable or has no aw-afk bucket."""
     try:
-        client.get_buckets()
+        buckets = client.get_buckets()
     except SourceUnavailable:
         return None
+    if not any(source.name == AFK_SOURCE for source in discover_sources(client, buckets=buckets)):
+        return None
     return attended_time(active_spans(conn, client, start, end), start, end)
+
+
+@dataclass(frozen=True)
+class NewestRead:
+    """The agent's newest record found, and why the database could not be searched, if it
+    could not."""
+
+    record: NewestRecord | None
+    database_unread: str | None = None
+
+
+@dataclass(frozen=True)
+class DatabaseRead:
+    """A connection to the database opened for reading, or why there is none."""
+
+    conn: sqlite3.Connection | None
+    unread: str | None = None
+
+
+class StoredAndSpooled:
+    """The capture agent's records in the database and spool, and aw-afk, read afresh each time."""
+
+    def __init__(
+        self,
+        open_database: Callable[[], AbstractContextManager[DatabaseRead]],
+        spool: Path,
+        client: AWApi,
+        *,
+        now: Callable[[], datetime],
+    ) -> None:
+        self.open_database, self.spool, self.client, self.now = open_database, spool, client, now
+
+    def newest_record(self) -> NewestRead:
+        with self.open_database() as database:
+            found = newest_record(database.conn, self.spool, now=self.now())
+            return NewestRead(found, database.unread)
+
+    def active_between(self, start: datetime, end: datetime) -> timedelta | None:
+        with self.open_database() as database:
+            return active_time(database.conn, self.client, start, end)
 
 
 def capture_liveness(

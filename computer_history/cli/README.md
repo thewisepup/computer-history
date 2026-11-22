@@ -298,32 +298,48 @@ folder when that folder doesn't already carry it (its `agent-commit.txt`
 naming the installed agent's commit), so there is always an app to put back.
 Then the new version's app is installed over
 `~/Applications/ComputerHistoryAgent.app` and registered, and
-`installed-agent.json` is rewritten. `update` then polls every 2 seconds for
-a record, stored or still in the spool, captured at or after the swap,
-counting only time aw-afk shows you active:
+`installed-agent.json` is rewritten. The swap time is when the host first
+registered the new app, once the old one was unregistered, so a record the
+new agent writes while launchd is still being asked about it counts.
+`update` then polls every 2 seconds for a record, stored or still in the
+spool, captured at or after the swap, counting only time aw-afk shows you
+active:
 
 | What it sees | Agent outcome | Exit |
 |---|---|---|
-| a record from the new agent | `updated and verified` | 0 |
-| the newest record is `paused` | `installed, not verified: capture is paused` | 0 |
-| ActivityWatch unreachable | `installed, not verified: ActivityWatch could not say whether you were active` | 0 |
+| a record from the new agent, of any kind (`paused` too) | `updated and verified` | 0 |
+| the newest record is a `paused` one from before the swap | `installed, not verified: capture is paused` | 0 |
+| ActivityWatch unreachable, or without an aw-afk bucket | `installed, not verified: ActivityWatch could not say whether you were active` | 0 |
+| aw-afk's stored spans can't be read | `installed, not verified: your activity since the swap could not be read: ...` | 0 |
 | under 120 active seconds within 600 wall-clock seconds | `installed, not verified: you were not active for 120s within the 600s wait` | 0 |
+| 120 active seconds, no record, and the database can't be read (its schema is newer than the version running `update` reads, after a migration) | `installed, not verified: ..., but the database's schema is newer than this update reads, so only the spool was checked` | 0 |
 | 120 active seconds, no record | `fell back` | 3 |
 | the new agent could not be registered or started | `fell back`, at once | 3 |
+| the installed app could not be copied into the old version's folder, or the installed agent could not be unregistered | `not swapped: 8d23e3a's capture agent keeps running`, at once, with the cause as a `warning:` line; no fallback line, no notification | 0 |
 | Ctrl-C or SIGTERM during the wait | `fell back` | 130 |
 
-An agent fallback installs the old version's app over the fixed path again,
+The copy into the old version's folder is staged beside it and renamed into
+place, so a failed copy leaves that folder's app as it was. An agent fallback
+installs the old version's app over the fixed path again,
 rewrites `installed-agent.json` (removes it when that app's commit is
 unknown or it could not be put back, so the next update rebuilds the agent),
-logs `agent fell back`, and posts a notification (`The capture agent from
-9f0e1d2 fell back to 8d23e3a's: the new capture agent recorded nothing in
-120s while you were active.`). Each step that fails is a `warning:` line and
+moves the failed build and its note to `ComputerHistoryAgent.fell-back.app`
+and `agent-commit.fell-back.txt` in the new version's folder and copies the
+restored app and its note into the usual slot, logs `agent fell back`, and
+posts a notification (`The capture agent from 9f0e1d2 fell back to
+8d23e3a's: the new capture agent recorded nothing in 120s while you were
+active. Its build is kept at .../versions/9f0e1d2/ComputerHistoryAgent.fell-back.app.`);
+the update's output names it too (`kept          .../ComputerHistoryAgent.fell-back.app
+(the build that fell back)`). When the new agent can't be unregistered, the
+fallback says it stays. Each step that fails is a `warning:` line and
 the rest still run. The new backend, the pointers and the database stay; the
-failed build stays in the new version's folder until a later swap replaces
-it with the app it falls back to. Because the next update compares against
+failed build stays aside in the new version's folder, where you can inspect
+or launch it by hand, until that folder is pruned. Because the next update compares against
 the installed agent's commit, it tries the agent again even when its source
-didn't change since. The record reads use the live database and spool, and
-aw-afk at `--aw-url` (default `http://127.0.0.1:5600/api/0`).
+didn't change since. The record reads use the live database and the spool
+beside it, where launchd's agent and backend write and read (never
+`$COMPUTER_HISTORY_SPOOL`), and aw-afk at `--aw-url` (default
+`http://127.0.0.1:5600/api/0`).
 
 Ctrl-C or SIGTERM before the switch (during either build, the backend's stop,
 the backup or the hold) undoes what `update` did, starts the backend again and
@@ -389,7 +405,7 @@ Every update, fallback, agent fallback and rollback adds a JSON line to
 "fell back" | "agent fell back" | "rolled back" | "agent rolled back", "from":
 ..., "to": ..., "reason": ...}`); `status` shows the last one. An `updated`
 line adds `"agent"`, the capture agent's outcome (`unchanged`, `updated and
-verified`, `installed, not verified` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
+verified`, `installed, not verified`, `not swapped` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
 version, to the old one, with the reason) before the run's `updated` line
 (illustrative):
 
@@ -810,8 +826,11 @@ so a dev `status` shows dev's backend, not stable's:
   from and when it was put there, read from `installed-agent.json` (`built
   from unknown` without that record or the app), so drift from `current`
   shows. Under it sits the update log's last `agent fell back` line, when there
-  is one: `fell back <tried> -> <kept>, ...: <reason>`.
-  `last update` is the update log's last line: `updated <from> -> <to>`,
+  is one and no later update installed or kept an agent (its outcome
+  `updated and verified`, `installed, not verified` or `unchanged`) and no
+  later rollback moved it: `fell back <tried> -> <kept>, ...: <reason>`.
+  `last update` is the update log's last line that moved `current`, skipping
+  agent lines: `updated <from> -> <to>`,
   `rolled back <from> -> <to>`, or `fell back <tried> -> <kept>, ...: <reason>`
   (`none yet` before the first, `unreadable update log: ...` for a damaged one).
 - **Stable install's LaunchAgents**: what launchd says about the backend, the

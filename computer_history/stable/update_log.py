@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -14,12 +15,20 @@ class UpdateAction(Enum):
     AGENT_FELL_BACK = "agent fell back"
     AGENT_ROLLED_BACK = "agent rolled back"
 
+    @property
+    def moves_current(self) -> bool:
+        return self in (UpdateAction.UPDATED, UpdateAction.FELL_BACK, UpdateAction.ROLLED_BACK)
+
 
 class AgentOutcome(Enum):
     UNCHANGED = "unchanged"
     VERIFIED = "updated and verified"
     NOT_VERIFIED = "installed, not verified"
     FELL_BACK = "fell back"
+    NOT_SWAPPED = "not swapped"
+
+
+_CLEARS_A_FALLBACK = (AgentOutcome.UNCHANGED, AgentOutcome.VERIFIED, AgentOutcome.NOT_VERIFIED)
 
 
 @dataclass(frozen=True)
@@ -50,19 +59,32 @@ def append_update_log(path: Path, entry: UpdateLogEntry) -> None:
         log.write(json.dumps(line) + "\n")
 
 
-def last_update_log_entry(path: Path, action: UpdateAction | None = None) -> UpdateLogEntry | None:
-    """The update log's last line with an action this version knows, or with the given action,
-    skipping lines a newer one wrote, or None without one; ValueError when a line it reaches is
-    unreadable."""
+def last_update_log_entry(path: Path) -> UpdateLogEntry | None:
+    """The update log's last line that moved current, skipping agent lines and lines a newer
+    version wrote, or None without one; ValueError when a line it reaches is unreadable."""
+    return next((entry for entry in _newest_first(path) if entry.action.moves_current), None)
+
+
+def last_agent_fallback(path: Path) -> UpdateLogEntry | None:
+    """The update log's last agent fallback, unless a later update or rollback installed or kept
+    an agent; ValueError when a line it reaches is unreadable."""
+    for entry in _newest_first(path):
+        if entry.action is UpdateAction.AGENT_FELL_BACK:
+            return entry
+        if entry.action is UpdateAction.AGENT_ROLLED_BACK or entry.agent in _CLEARS_A_FALLBACK:
+            return None
+    return None
+
+
+def _newest_first(path: Path) -> Iterator[UpdateLogEntry]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
-        return None
+        return
     for number in range(len(lines), 0, -1):
         entry = _entry(path, number, lines[number - 1])
-        if entry is not None and action in (None, entry.action):
-            return entry
-    return None
+        if entry is not None:
+            yield entry
 
 
 def _entry(path: Path, number: int, line: str) -> UpdateLogEntry | None:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import signal
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from stable_updates import (
     NEWER,
     NEWEST,
     OLDER,
+    OLDEST,
     health,
     install_older,
     log_lines,
@@ -36,7 +39,7 @@ from stable_updates import (
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import update as cli_update
-from computer_history.sources import CAPTURE_KIND, PAUSED_KIND, configured_spool_path
+from computer_history.sources import CAPTURE_KIND, PAUSED_KIND, SPOOL_ENV_VAR, default_spool_path
 from computer_history.stable import (
     AGENT_ACTIVE_SECONDS,
     AGENT_WAIT_SECONDS,
@@ -47,6 +50,7 @@ from computer_history.stable import (
     version_name,
 )
 from computer_history.stable.updates import waiting
+from computer_history.store import load_migrations
 
 START = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
@@ -116,7 +120,7 @@ def layout(run: RunCli, live: Path, checkout: Path) -> Layout:
 
 
 def spool(layout: Layout) -> Path:
-    return configured_spool_path(None, layout.database)
+    return default_spool_path(layout.database)
 
 
 def agent_update(layout: Layout, *starts: AgentStart, **options: object) -> FakeHost:
@@ -176,6 +180,82 @@ def test_the_first_agent_update_keeps_the_installed_app_in_the_old_version_to_fa
     assert layout.agent_commit(old_folder).read_text() == f"{OLDER}\n"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+def test_a_failed_copy_of_the_installed_app_leaves_it_running_and_the_old_copy_as_it_was(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    old_folder = layout.versions / OLD
+    lay_out_agent(layout.agent_app(old_folder), OLDEST)
+    layout.agent_commit(old_folder).write_text(f"{OLDEST}\n")
+    unreadable = layout.capture_agent_app / "Contents" / "Resources" / "locked"
+    unreadable.parent.mkdir(parents=True)
+    unreadable.write_text("x")
+    unreadable.chmod(0)
+
+    host = agent_update(layout, stays_silent)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == f"  agent         not swapped: {OLD}'s capture agent keeps running"
+    (warning,) = [line for line in out if "warning" in line]
+    assert warning.startswith(
+        f"  warning: the installed capture agent could not be kept in {OLD}: "
+    )
+    assert installs(host) == []
+    assert host.notifications == []
+    (updated,) = log_lines(layout)
+    assert (updated["action"], updated["agent"]) == ("updated", "not swapped")
+    found = installed_agent(layout)
+    assert found is not None and found.built_from == OLDER
+    assert agent_built_from(layout.agent_app(old_folder)) == OLDEST
+    assert not (layout.agent_app(old_folder) / "Contents" / "Resources").exists()
+    assert layout.agent_commit(old_folder).read_text() == f"{OLDEST}\n"
+    assert sorted(path.name for path in old_folder.iterdir() if "Agent" in path.name) == [
+        layout.agent_app(old_folder).name
+    ]
+    assert agent_built_from(layout.capture_agent_app) == OLDER
+
+
+def test_an_installed_agent_that_cannot_be_unregistered_is_left_running_and_not_swapped(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    host = agent_update(layout, agent_unregister_errors=["Operation not permitted"])
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == f"  agent         not swapped: {OLD}'s capture agent keeps running"
+    assert [line for line in out if "warning" in line] == [
+        "  warning: the installed capture agent could not be unregistered, so it keeps running:"
+        " Operation not permitted"
+    ]
+    assert agent_built_from(layout.capture_agent_app) == OLDER
+    found = installed_agent(layout)
+    assert found is not None and found.built_from == OLDER
+    assert host.notifications == []
+
+
+def test_a_new_agent_that_cannot_be_unregistered_at_fallback_is_said_to_stay(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    host = agent_update(
+        layout, stays_silent, agent_unregister_errors=[None, "Operation not permitted"]
+    )
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == AGENT_FELL_BACK_EXIT_CODE, err
+    assert [line for line in out if "warning" in line] == [
+        "  warning: the new capture agent could not be unregistered, so it stays: Operation not"
+        " permitted (run capture-agent/scripts/install.sh from a checkout at main)"
+    ]
+    assert agent_built_from(layout.capture_agent_app) == NEWER
+
+
 def test_the_wait_ends_the_moment_a_record_arrives(
     run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
 ) -> None:
@@ -202,7 +282,8 @@ def test_paused_capture_skips_the_wait_and_says_not_verified(
     run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
 ) -> None:
     active(aw)
-    host = agent_update(layout, records(spool(layout), clock.now, PAUSED_KIND))
+    write_record(spool(layout), PAUSED_KIND, START - timedelta(seconds=1))
+    host = agent_update(layout, stays_silent)
 
     code, out, err = run(stable_code(layout), "update", host=host)
 
@@ -211,6 +292,118 @@ def test_paused_capture_skips_the_wait_and_says_not_verified(
     assert agent_built_from(layout.capture_agent_app) == NEWER
     assert log_lines(layout)[-1]["agent"] == "installed, not verified"
     assert clock.sleeps == 0
+
+
+def test_a_paused_record_from_the_new_agent_verifies_it(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    host = agent_update(layout, records(spool(layout), clock.now, PAUSED_KIND))
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == "  agent         updated and verified: the new capture agent records"
+    assert clock.sleeps == 0
+
+
+def test_a_record_written_while_launchd_is_still_checking_the_agent_verifies_it(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+    first = records(spool(layout), clock.now)
+
+    def records_then_launchd_checks(host: FakeHost) -> None:
+        first(host)
+        clock.at += timedelta(seconds=5)
+
+    host = agent_update(layout, records_then_launchd_checks)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == "  agent         updated and verified: the new capture agent records"
+    found = installed_agent(layout)
+    assert found is not None and found.installed_at == START
+
+
+def test_the_check_reads_the_stable_spool_whatever_the_shell_sets(
+    run: RunCli,
+    layout: Layout,
+    clock: Clock,
+    aw: FakeAW,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active(aw)
+    monkeypatch.setenv(SPOOL_ENV_VAR, str(tmp_path / "elsewhere"))
+    host = agent_update(layout, records(spool(layout), clock.now))
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == "  agent         updated and verified: the new capture agent records"
+
+
+def test_no_afk_bucket_ends_the_wait_at_once_installed_not_verified(
+    run: RunCli, layout: Layout, clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aw = FakeAW({"aw-watcher-window_test-host.local": "currentwindow"}, t0=START)
+    monkeypatch.setattr(cli_update, "AWClient", lambda *args, **kwargs: aw)
+    host = agent_update(layout, stays_silent)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == (
+        "  agent         installed, not verified: ActivityWatch could not say whether you were"
+        " active"
+    )
+    assert clock.sleeps == 0
+
+
+def test_a_database_that_fails_to_read_mid_wait_ends_installed_not_verified(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+
+    def breaks_the_database(_: FakeHost) -> None:
+        with closing(sqlite3.connect(layout.database)) as conn:
+            conn.execute("DROP TABLE observations")
+
+    host = agent_update(layout, breaks_the_database)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out).startswith(
+        "  agent         installed, not verified: your activity since the swap could not be read: "
+    )
+    assert agent_built_from(layout.capture_agent_app) == NEWER
+    assert log_lines(layout)[-1]["agent"] == "installed, not verified"
+
+
+def test_a_silent_agent_after_a_schema_migration_is_not_verified_rather_than_put_back(
+    run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
+) -> None:
+    active(aw)
+
+    def migrates(_: FakeHost) -> None:
+        with closing(sqlite3.connect(layout.database)) as conn:
+            conn.execute(f"PRAGMA user_version = {len(load_migrations()) + 1}")
+
+    host = agent_update(layout, migrates)
+
+    code, out, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 0, err
+    assert agent_line(out) == (
+        f"  agent         installed, not verified: the new capture agent recorded nothing in"
+        f" {AGENT_ACTIVE_SECONDS:g}s while you were active, but the database's schema is newer"
+        " than this update reads, so only the spool was checked"
+    )
+    assert agent_built_from(layout.capture_agent_app) == NEWER
+    assert host.notifications == []
 
 
 def test_an_unreachable_activitywatch_ends_the_wait_installed_not_verified(
@@ -258,17 +451,25 @@ def test_a_silent_agent_while_active_falls_back_to_the_old_app_and_keeps_the_new
     assert code == AGENT_FELL_BACK_EXIT_CODE, err
     assert f"Updated to version {NEW} (commit {NEWER}) from {OLD}" in out
     assert agent_line(out) == f"  agent         fell back to {OLD}'s capture agent: {SILENT}"
+    new_folder = layout.versions / NEW
+    kept = layout.fell_back_agent_app(new_folder)
+    assert f"  kept          {kept} (the build that fell back)" in out
     assert not [line for line in out if "warning" in line]
-    assert layout.current.resolve() == layout.versions / NEW
+    assert layout.current.resolve() == new_folder
     assert agent_built_from(layout.capture_agent_app) == OLDER
-    assert agent_built_from(layout.agent_app(layout.versions / NEW)) == NEWER
+    assert agent_built_from(kept) == NEWER
+    assert layout.fell_back_agent_commit(new_folder).read_text() == f"{NEWER}\n"
+    assert agent_built_from(layout.agent_app(new_folder)) == OLDER
+    assert layout.agent_commit(new_folder).read_text() == f"{OLDER}\n"
     found = installed_agent(layout)
     assert found is not None and found.built_from == OLDER
     assert installs(host) == [
         str(layout.agent_app(layout.versions / NEW)),
         str(layout.agent_app(layout.versions / OLD)),
     ]
-    assert host.notifications == [f"The capture agent from {NEW} fell back to {OLD}'s: {SILENT}."]
+    assert host.notifications == [
+        f"The capture agent from {NEW} fell back to {OLD}'s: {SILENT}. Its build is kept at {kept}."
+    ]
     fell_back, updated = log_lines(layout)
     assert {k: fell_back[k] for k in ("action", "from", "to", "reason")} == {
         "action": "agent fell back",
@@ -379,11 +580,11 @@ def test_the_next_update_retries_an_agent_that_fell_back_though_its_source_is_un
     assert ("build_agent", NEWEST) in host.calls
     assert agent_line(out).startswith("  agent         updated and verified")
     assert agent_built_from(layout.capture_agent_app) == NEWEST
-    assert agent_built_from(layout.agent_app(layout.versions / NEW)) == OLDER
+    assert agent_built_from(layout.fell_back_agent_app(layout.versions / NEW)) == NEWER
     _, out, _ = run(stable_code(layout), *STATUS, host=host)
     install = section(out, "Stable install:")
     assert install[3].startswith(f"  agent         built from {version_name(NEWEST)}, installed ")
-    assert install[4].startswith(f"                fell back {NEW} -> {OLD}, ")
+    assert install[4].startswith(f"  last update   updated {NEW} -> {version_name(NEWEST)}, ")
 
 
 def test_an_unchanged_agent_is_not_installed_and_the_update_line_says_so(

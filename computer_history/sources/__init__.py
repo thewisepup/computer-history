@@ -27,7 +27,8 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
 
 agent_health.py  for status, the watchdog and update's agent check: the capture
                  agent's stored records and spool, judged against aw-afk and
-                 aw-window, drawing on both adapters
+                 aw-window, drawing on both adapters; update reads them afresh
+                 through StoredAndSpooled
 """
 
 from computer_history.sources.activitywatch import (
@@ -61,12 +62,11 @@ from computer_history.sources.activitywatch import (
 from computer_history.sources.agent_health import (
     CaptureHealth,
     CaptureLiveness,
-    NewestRecord,
+    DatabaseRead,
+    StoredAndSpooled,
     active_spans,
-    active_time,
     capture_health,
     capture_liveness,
-    newest_record,
 )
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
@@ -125,6 +125,7 @@ from computer_history.sources.capture_spool import (
     capture_coverage,
     configured_spool_path,
     day_counts,
+    default_spool_path,
     finished_files,
     liveness,
     newest_stored,
@@ -236,6 +237,7 @@ __all__ = [
     "Coverage",
     "CycleReporter",
     "CycleSummary",
+    "DatabaseRead",
     "DayCounts",
     "FailureKind",
     "FailureStreak",
@@ -247,7 +249,6 @@ __all__ = [
     "KeptScreenshot",
     "Liveness",
     "MissingPermission",
-    "NewestRecord",
     "Projecting",
     "Pull",
     "Recovery",
@@ -258,13 +259,13 @@ __all__ = [
     "Span",
     "SpoolBacklog",
     "SpoolError",
+    "StoredAndSpooled",
     "StoredRecord",
     "StrayObservation",
     "StreakAlert",
     "StreamFailure",
     "StreamProjector",
     "active_spans",
-    "active_time",
     "agent_config_path",
     "app_agreement",
     "attended_time",
@@ -276,6 +277,7 @@ __all__ = [
     "commit_pull",
     "configured_spool_path",
     "day_counts",
+    "default_spool_path",
     "discover_sources",
     "extract_domain",
     "failure_of",
@@ -284,7 +286,6 @@ __all__ = [
     "liveness",
     "newest_afk_spans",
     "newest_app_spans",
-    "newest_record",
     "newest_stored",
     "parse_record",
     "plan_all_backfills",

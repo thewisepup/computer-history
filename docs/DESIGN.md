@@ -93,8 +93,9 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status and its liveness for the watchdog, judged
-                # against aw-afk and aw-window),
+                # health for status, its liveness for the watchdog, and the
+                # records update's agent check reads, judged against aw-afk
+                # and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch, the only way to pull,
@@ -148,9 +149,9 @@ computer_history/
                 # (install and uninstall), install_lock (the one lock on the
                 # live folder), backups (the daily and pre-update
                 # backups beside the database, and restore), updates/ (update
-                # by stage: updating, preparing, waiting, falling_back; and
-                # rolling_back), update_log (one line per update, fallback and
-                # rollback)
+                # by stage: updating, preparing, waiting, falling_back,
+                # swapping, agent_waiting; and rolling_back), update_log (one
+                # line per update, fallback, rollback and agent move)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
                 # backend), alerts (which findings notify, how often, and which
@@ -792,7 +793,7 @@ in the live folder and starts the backend at login from it:
   the new commit with that at the installed agent's build commit
   (`installed-agent.json`; missing, unreadable or no app at the fixed path
   counts as changed); when changed, check for Swift (`xcrun --find swift`) and
-  the signing identity (`security find-identity -v -p codesigning`); build it
+  the signing identity (`security find-identity -p codesigning`); build it
   beside the current version; then build and sign the agent into the new
   version folder from a fresh GitHub export of the commit with that commit's
   own `scripts/build.sh`, or, unchanged, copy the installed agent's app
@@ -831,20 +832,35 @@ in the live folder and starts the backend at login from it:
   `agent-commit.txt` already names the installed agent's commit, install the
   new version's app over the fixed path through the host (unregister, replace,
   register, confirm running, with the install script's retries) and rewrite
-  `installed-agent.json`. Then wait for a record captured at or after the
-  swap, stored or in the spool, read through an injected reader (the newest
-  record's time and kind, and aw-afk's active time between two times) built
-  on the reads status and the watchdog use, not the watchdog's verdict. A
-  record verifies it; a newest `paused` record, ActivityWatch unreachable, or
+  `installed-agent.json`. The swap time is when the host first registered the
+  new app, after unregistering the old one. Then wait for a record captured
+  at or after the swap, stored or in the spool beside the live database (never
+  `$COMPUTER_HISTORY_SPOOL`), read through an injected reader
+  (`sources/agent_health.py`'s `StoredAndSpooled`: the newest record's time
+  and kind, why the database could not be searched if so, and aw-afk's active
+  time between two times) built on the reads status and the watchdog use, not
+  the watchdog's verdict. A record of any kind verifies it; a newest `paused`
+  record from before the swap, ActivityWatch unreachable or without an aw-afk
+  bucket, aw-afk's stored spans unreadable, 120 active seconds without a
+  record while the database can't be read (a schema newer than the running
+  version reads, after a migration, so only the spool was seen), or
   under 120 active seconds within 600 wall-clock seconds
   (`AGENT_ACTIVE_SECONDS`, `AGENT_WAIT_SECONDS` beside the first-cycle wait)
   ends it installed, not verified. 120 active seconds with no record, a
   register or start failure (at once), or Ctrl-C or SIGTERM during the wait
   falls the agent back: the old version's app installed again and recorded
-  (the record removed when its commit is unknown or it failed), `agent fell
-  back` logged, a notification posted, each failure a problem while the rest
-  run. The new backend, the pointers and the database stay. Update exits 3
-  after an agent fallback.
+  (the record removed when its commit is unknown or it failed), the failed
+  build and its note moved to `ComputerHistoryAgent.fell-back.app` and
+  `agent-commit.fell-back.txt` in the new version's folder with the restored
+  app and note copied into the usual slot (so a later swap never replaces
+  it), `agent fell back` logged, a notification naming where the build is
+  kept posted, each failure a problem while the rest run. The new backend,
+  the pointers and the database stay. Update exits 3 after an agent
+  fallback. When the installed app can't be copied into the old version's
+  folder (the copy is staged beside it and renamed into place) or the host
+  can't unregister the installed agent (`AgentNotUnregistered`, raised before
+  anything changes), nothing was swapped: the outcome is `not swapped`, the
+  cause a problem, with no fallback line or notification, and update exits 0.
 - **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
   `spool-deletion-held` sits beside the database, every ingest stores spool
   files as usual but deletes or sets aside none. `ingest --watch` removes the
@@ -887,8 +903,9 @@ in the live folder and starts the backend at login from it:
   `gui/<uid>` domain), the GitHub lookup, the uv build, the capture agent
   (its source tree hash from GitHub's contents listing, the toolchain check,
   the build into a version folder, and the install over
-  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall`, `ditto`,
-  `install`, then up to three tries of waiting for launchd to show it running,
+  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall` (a
+  failure raises `AgentNotUnregistered` and leaves everything as it was),
+  `ditto`, `install` (its time returned as the swap time), then up to three tries of waiting for launchd to show it running,
   each retry a `launchctl kickstart`, `uninstall` and `install` as
   `scripts/install.sh` does), ActivityWatch's app
   (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and

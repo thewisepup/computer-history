@@ -11,7 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import computer_history.store
+from computer_history.cli import formatting as cli_formatting
 from computer_history.host import (
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -159,8 +161,8 @@ def fails_to_register(error: str) -> AgentStart:
 
 class FakeHost:
     """Commits, check runs, backend starts, agent source trees (one shared tree unless scripted),
-    the agent toolchain, builds and starts as scripted, launchd as a dict, and ActivityWatch's app
-    and notifications as flags and a list.
+    the agent toolchain, builds, unregisters and starts as scripted, launchd as a dict, and
+    ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -188,6 +190,7 @@ class FakeHost:
         agent_build_error: str | None = None,
         agent_build_interrupted: bool = False,
         agent_register_error: str | None = None,
+        agent_unregister_errors: Iterable[str | None] = (),
         agent_starts: Iterable[AgentStart] = (),
     ) -> None:
         self.checks = dict(checks or {})
@@ -213,6 +216,7 @@ class FakeHost:
         self.agent_build_error = agent_build_error
         self.agent_build_interrupted = agent_build_interrupted
         self.agent_register_error = agent_register_error
+        self.agent_unregister_errors = list(agent_unregister_errors)
         self.agent_starts = list(agent_starts)
         self.calls: list[tuple[str, str]] = []
 
@@ -262,15 +266,22 @@ class FakeHost:
         if self.agent_build_interrupted:
             raise KeyboardInterrupt
 
-    def install_agent(self, app: Path, fixed: Path) -> None:
+    def install_agent(self, app: Path, fixed: Path) -> datetime:
         self.calls.append(("install_agent", str(app)))
+        unregister_error = (
+            self.agent_unregister_errors.pop(0) if self.agent_unregister_errors else None
+        )
+        if unregister_error is not None:
+            raise AgentNotUnregistered(unregister_error)
         if fixed.exists():
             shutil.rmtree(fixed)
         shutil.copytree(app, fixed, symlinks=True)
+        registered_at = cli_formatting.utc_now()
         if self.agent_register_error is not None:
             raise HostError(self.agent_register_error)
         if self.agent_starts:
             self.agent_starts.pop(0)(self)
+        return registered_at
 
     def job(self, label: str) -> JobState:
         self.calls.append(("job", label))

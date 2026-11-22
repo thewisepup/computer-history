@@ -10,6 +10,7 @@ import subprocess
 import tarfile
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from email.message import Message
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ import pytest
 
 from computer_history.host import (
     OPEN_ACTIVITYWATCH,
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -441,9 +443,18 @@ IDENTITIES = (
     '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Computer History Code Signing"\n'
     "     1 valid identities found\n"
 )
+UNTRUSTED_IDENTITY = (
+    "Policy: Code Signing\n"
+    "  Matching identities\n"
+    '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Computer History Code Signing"'
+    " (CSSMERR_TP_NOT_TRUSTED)\n"
+    "     1 identities found\n\n"
+    "  Valid identities only\n"
+    "     0 valid identities found\n"
+)
 
 
-def test_the_agent_toolchain_asks_xcrun_for_swift_and_security_for_the_identity(
+def test_the_agent_toolchain_asks_xcrun_for_swift_and_security_for_any_signing_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ran = commands_answer_each(monkeypatch, {live.SECURITY: (0, IDENTITIES, "")})
@@ -452,8 +463,16 @@ def test_the_agent_toolchain_asks_xcrun_for_swift_and_security_for_the_identity(
 
     assert ran == [
         [live.XCRUN, "--find", "swift"],
-        [live.SECURITY, "find-identity", "-v", "-p", "codesigning"],
+        [live.SECURITY, "find-identity", "-p", "codesigning"],
     ]
+
+
+def test_an_untrusted_self_signed_identity_is_enough_for_the_agent_toolchain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands_answer_each(monkeypatch, {live.SECURITY: (0, UNTRUSTED_IDENTITY, "")})
+
+    LiveHost().check_agent_toolchain()
 
 
 @pytest.mark.parametrize(
@@ -605,9 +624,11 @@ def test_installing_the_agent_unregisters_the_old_app_replaces_it_and_registers_
     app = agent_app(tmp_path / "version")
     fixed = agent_app(tmp_path / "Applications", executable="OldAgent")
     ran = launchd_runs_after(monkeypatch, prints=1)
+    registered = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 
-    LiveHost(sleep=lambda _: None).install_agent(app, fixed)
+    at = LiveHost(sleep=lambda _: None, now=lambda: registered).install_agent(app, fixed)
 
+    assert at == registered
     job = f"gui/{os.getuid()}/{CAPTURE_AGENT_LABEL}"
     assert ran == [
         [str(fixed / "Contents" / "MacOS" / "OldAgent"), "uninstall"],
@@ -616,6 +637,25 @@ def test_installing_the_agent_unregisters_the_old_app_replaces_it_and_registers_
         [live.LAUNCHCTL, "print", job],
     ]
     assert not fixed.exists()
+
+
+def test_an_old_agent_that_cannot_be_unregistered_is_left_in_place(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    fixed = agent_app(tmp_path / "Applications", executable="OldAgent")
+    ran = commands_answer_each(
+        monkeypatch,
+        {str(fixed / "Contents" / "MacOS" / "OldAgent"): (1, "", "Operation not permitted")},
+    )
+
+    with pytest.raises(
+        AgentNotUnregistered, match="unregister the installed capture agent: Operation"
+    ):
+        LiveHost(sleep=lambda _: None).install_agent(app, fixed)
+
+    assert ran == [[str(fixed / "Contents" / "MacOS" / "OldAgent"), "uninstall"]]
+    assert (fixed / "Contents" / "MacOS" / "OldAgent").is_file()
 
 
 def test_an_agent_that_does_not_start_is_kickstarted_and_registered_again(

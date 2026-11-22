@@ -83,11 +83,11 @@ The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgen
 _Avoid_: Deployed agent, agent version
 
 **Agent swap**:
-Update installing a changed capture agent's app from the new version folder over the fixed path, after the backend's first ok cycle, then waiting for a record captured since. A record verifies it; no record during 120 active seconds, or an agent that never starts, is an **agent fallback**: the old version's app goes back over the fixed path while the new backend stays.
+Update installing a changed capture agent's app from the new version folder over the fixed path, after the backend's first ok cycle, then waiting for a record captured since. A record verifies it; no record during 120 active seconds, or an agent that never starts, is an **agent fallback**: the old version's app goes back over the fixed path while the new backend stays, and the build that fell back is kept aside in the new version folder as `ComputerHistoryAgent.fell-back.app`. When the installed app can't be kept in the old version folder or the installed agent can't be unregistered, the agent is **not swapped** and keeps running.
 _Avoid_: Agent deploy, agent rollback (rollback is the command)
 
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one whose action it knows, and the last agent fallback.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent or a rollback moves it.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:

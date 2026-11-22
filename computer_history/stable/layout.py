@@ -16,7 +16,9 @@ UPDATE_LOG_NAME = "update-log.jsonl"
 LABEL_PREFIX = "io.github.thewisepup.computer-history"
 CAPTURE_AGENT_LABEL = f"{LABEL_PREFIX}.agent"
 CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
+FELL_BACK_AGENT_APP = "ComputerHistoryAgent.fell-back.app"
 AGENT_COMMIT_NAME = "agent-commit.txt"
+FELL_BACK_AGENT_COMMIT_NAME = "agent-commit.fell-back.txt"
 SPOOL_READS_NAME = "spool-reads.json"
 INSTALLED_AGENT_NAME = "installed-agent.json"
 
@@ -88,6 +90,14 @@ class Layout:
     def agent_commit(self, version: Path) -> Path:
         """The note of the commit a version folder's agent app was built from."""
         return version / AGENT_COMMIT_NAME
+
+    def fell_back_agent_app(self, version: Path) -> Path:
+        """Where a version folder keeps its agent build after it fell back."""
+        return version / FELL_BACK_AGENT_APP
+
+    def fell_back_agent_commit(self, version: Path) -> Path:
+        """The note of the commit the build that fell back was built from."""
+        return version / FELL_BACK_AGENT_COMMIT_NAME
 
     def spool_reads(self, version: Path) -> Path:
         """The note of the spool version and record kinds a version folder's backend reads."""

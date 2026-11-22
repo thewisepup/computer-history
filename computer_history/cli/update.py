@@ -3,19 +3,18 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime, timedelta
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 from computer_history.cli import formatting
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
-    AWApi,
     AWClient,
-    NewestRecord,
-    active_time,
-    configured_spool_path,
+    DatabaseRead,
+    StoredAndSpooled,
+    default_spool_path,
     health_path,
-    newest_record,
     read_health,
 )
 from computer_history.stable import (
@@ -39,30 +38,25 @@ INTERRUPTED_EXIT_CODE = 130
 AGENT_FELL_BACK_EXIT_CODE = 3
 
 
-class StoredAndSpooled:
-    """The capture agent's records in the live database and spool, and aw-afk, read afresh."""
-
-    def __init__(self, database: Path, spool: Path, client: AWApi) -> None:
-        self.database, self.spool, self.client = database, spool, client
-
-    def newest_record(self) -> NewestRecord | None:
-        with open_store(self.database, Purpose.READ) as store:
-            conn = store.conn if store.state is StoreState.READY else None
-            return newest_record(conn, self.spool, now=formatting.utc_now())
-
-    def active_between(self, start: datetime, end: datetime) -> timedelta | None:
-        with open_store(self.database, Purpose.READ) as store:
-            conn = store.conn if store.state is StoreState.READY else None
-            return active_time(conn, self.client, start, end)
+@contextmanager
+def _reading(database: Path) -> Generator[DatabaseRead]:
+    with open_store(database, Purpose.READ) as store:
+        if store.state is StoreState.READY:
+            yield DatabaseRead(store.conn)
+        elif store.state is StoreState.NEWER:
+            yield DatabaseRead(None, "the database's schema is newer than this update reads")
+        else:
+            yield DatabaseRead(None, f"the database is {store.state.value}")
 
 
 def cmd_update(args: argparse.Namespace) -> int:
     layout = stable_layout()
     health = health_path(layout.database)
     records = StoredAndSpooled(
-        layout.database,
-        configured_spool_path(None, layout.database),
+        lambda: _reading(layout.database),
+        default_spool_path(layout.database),
         AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS),
+        now=formatting.utc_now,
     )
     try:
         report = update(
@@ -122,6 +116,8 @@ def format_update(report: UpdateReport, layout: Layout) -> list[str]:
             lines.append(f"  removed       {report.removed} (one previous version is kept)")
         if report.agent is not None:
             lines.append(f"  agent         {_agent(report.agent, report.kept)}")
+        if report.agent is not None and report.agent.kept is not None:
+            lines.append(f"  kept          {report.agent.kept} (the build that fell back)")
     else:
         if report.restored is not None:
             lines.append(f"  restored      {report.restored} (the new version changed the schema)")

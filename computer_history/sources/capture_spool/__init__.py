@@ -62,6 +62,7 @@ from computer_history.sources.capture_spool.paths import (
     SPOOL_ENV_VAR,
     agent_config_path,
     configured_spool_path,
+    default_spool_path,
     resolve_spool_path,
 )
 from computer_history.sources.capture_spool.record import (
@@ -151,6 +152,7 @@ __all__ = [
     "capture_coverage",
     "configured_spool_path",
     "day_counts",
+    "default_spool_path",
     "finished_files",
     "liveness",
     "newest_stored",

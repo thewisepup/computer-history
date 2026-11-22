@@ -20,15 +20,17 @@ from computer_history.stable.update_log import (
     UpdateLogEntry,
     append_or_note,
 )
+from computer_history.stable.updates.agent_waiting import (
+    AgentCheck,
+    AgentRecords,
+    wait_for_agent_record,
+)
 from computer_history.stable.updates.falling_back import fall_back
 from computer_history.stable.updates.preparing import Prepared, UpdateFailed, prepare
 from computer_history.stable.updates.swapping import AgentSwap, fall_back_agent, swap_agent
 from computer_history.stable.updates.waiting import (
     FIRST_CYCLE_WAIT_SECONDS,
-    AgentCheck,
-    AgentRecords,
     LastCycle,
-    wait_for_agent_record,
     wait_for_first_cycle,
 )
 from computer_history.stable.versions import InstalledVersion, point, pointed, version_name
@@ -62,6 +64,21 @@ class UpdateReport:
     @property
     def version(self) -> str:
         return version_name(self.commit)
+
+
+@dataclass(frozen=True)
+class UpdateRun:
+    """One update's host and layout, the commit it moves to and those it skipped, what it
+    prepared, and its clocks."""
+
+    host: Host
+    layout: Layout
+    commit: str
+    skipped: tuple[GateVerdict, ...]
+    prepared: Prepared
+    now: Callable[[], datetime]
+    sleep: Callable[[float], None]
+    monotonic: Callable[[], float]
 
 
 @dataclass(frozen=True)
@@ -104,63 +121,40 @@ def update(
         return UpdateReport(None, commit, old.name, search.skipped, behind=behind)
     with _signals_interrupt():
         prepared = prepare(host, layout, commit, old, now=now, sleep=sleep)
-        first = _switch(
-            host,
-            layout,
-            prepared,
-            last_cycle,
-            now=now,
-            wait_seconds=wait_seconds,
-            sleep=sleep,
-            monotonic=monotonic,
-        )
+        run = UpdateRun(host, layout, commit, search.skipped, prepared, now, sleep, monotonic)
+        first = _switch(run, last_cycle, wait_seconds)
     if first.problem is not None:
         with _signals_deferred() as deferred:
-            report = _fell_back(
-                host,
-                layout,
-                prepared,
-                first.problem,
-                first.interrupted,
-                commit,
-                search.skipped,
-                now,
-                sleep,
-            )
+            report = _fell_back(run, first.problem, first.interrupted)
         return replace(report, interrupted=True) if deferred else report
     with _signals_deferred() as deferred:
         problems = _release_hold(prepared)
-        swap = swap_agent(host, layout, prepared, now=now) if prepared.agent.changed else None
+        swap = swap_agent(host, layout, prepared) if prepared.agent.changed else None
     interrupted = bool(deferred)
     if swap is None:
         check = AgentCheck(AgentOutcome.UNCHANGED, "its source is the same")
+    elif not swap.swapped:
+        check = AgentCheck(
+            AgentOutcome.NOT_SWAPPED, f"{prepared.old.name}'s capture agent keeps running"
+        )
     elif swap.at is None or interrupted:
         check = AgentCheck(AgentOutcome.FELL_BACK, swap.failure or AGENT_INTERRUPTED)
     else:
-        check, interrupted = _check_agent(swap.at, agent_records, now, sleep, monotonic)
+        check, interrupted = _check_agent(run, swap.at, agent_records)
     with _signals_deferred() as deferred:
-        report = _finish(host, layout, prepared, check, swap, commit, search.skipped, now)
+        report = _finish(run, check, swap)
     problems.extend(report.problems)
     return replace(report, interrupted=interrupted or bool(deferred), problems=tuple(problems))
 
 
-def _fell_back(
-    host: Host,
-    layout: Layout,
-    prepared: Prepared,
-    problem: str,
-    interrupted: bool,
-    commit: str,
-    skipped: tuple[GateVerdict, ...],
-    now: Callable[[], datetime],
-    sleep: Callable[[float], None],
-) -> UpdateReport:
-    fell_back = fall_back(host, layout, prepared, problem, now=now, sleep=sleep)
+def _fell_back(run: UpdateRun, problem: str, interrupted: bool) -> UpdateReport:
+    prepared = run.prepared
+    fell_back = fall_back(run.host, run.layout, prepared, problem, now=run.now, sleep=run.sleep)
     return UpdateReport(
         UpdateAction.FELL_BACK,
-        commit,
+        run.commit,
         prepared.old.name,
-        skipped,
+        run.skipped,
         backup=prepared.backup,
         reason=problem,
         restored=fell_back.restored,
@@ -178,46 +172,38 @@ def _release_hold(prepared: Prepared) -> list[str]:
 
 
 def _check_agent(
-    swapped_at: datetime,
-    records: AgentRecords,
-    now: Callable[[], datetime],
-    sleep: Callable[[float], None],
-    monotonic: Callable[[], float],
+    run: UpdateRun, swapped_at: datetime, records: AgentRecords
 ) -> tuple[AgentCheck, bool]:
     try:
         with _signals_interrupt():
             check = wait_for_agent_record(
-                records, swapped_at, now=now, sleep=sleep, monotonic=monotonic
+                records, swapped_at, now=run.now, sleep=run.sleep, monotonic=run.monotonic
             )
     except KeyboardInterrupt:
         return AgentCheck(AgentOutcome.FELL_BACK, AGENT_INTERRUPTED), True
     return check, False
 
 
-def _finish(
-    host: Host,
-    layout: Layout,
-    prepared: Prepared,
-    check: AgentCheck,
-    swap: AgentSwap | None,
-    commit: str,
-    skipped: tuple[GateVerdict, ...],
-    now: Callable[[], datetime],
-) -> UpdateReport:
+def _finish(run: UpdateRun, check: AgentCheck, swap: AgentSwap | None) -> UpdateReport:
+    layout, prepared = run.layout, run.prepared
     old = prepared.old
     problems = [] if swap is None else list(swap.problems)
     if check.outcome is AgentOutcome.FELL_BACK:
-        reason = check.detail or AGENT_INTERRUPTED
-        reinstall = swap is None or swap.touched
-        problems += fall_back_agent(host, layout, prepared, reason, reinstall=reinstall, now=now)
+        fell_back = fall_back_agent(
+            run.host, layout, prepared, check.detail or AGENT_INTERRUPTED, now=run.now
+        )
+        problems += fell_back.problems
+        check = replace(check, kept=fell_back.kept)
     removed = _remove_version(layout, prepared.old_previous, keep=(prepared.new, old.name))
-    entry = UpdateLogEntry(now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome)
+    entry = UpdateLogEntry(
+        run.now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome
+    )
     append_or_note(layout.update_log, entry, problems)
     return UpdateReport(
         UpdateAction.UPDATED,
-        commit,
+        run.commit,
         old.name,
-        skipped,
+        run.skipped,
         backup=prepared.backup,
         removed=removed,
         problems=tuple(problems),
@@ -225,27 +211,18 @@ def _finish(
     )
 
 
-def _switch(
-    host: Host,
-    layout: Layout,
-    prepared: Prepared,
-    last_cycle: LastCycle,
-    *,
-    now: Callable[[], datetime],
-    wait_seconds: float,
-    sleep: Callable[[float], None],
-    monotonic: Callable[[], float],
-) -> FirstCycle:
+def _switch(run: UpdateRun, last_cycle: LastCycle, wait_seconds: float) -> FirstCycle:
+    layout, prepared = run.layout, run.prepared
     try:
         try:
             point(layout.previous, prepared.old.name)
             point(layout.current, prepared.new)
-            started_at = now()
-            load_agent(host, layout, BACKEND, sleep=sleep)
+            started_at = run.now()
+            load_agent(run.host, layout, BACKEND, sleep=run.sleep)
         except (HostError, OSError) as exc:
             return FirstCycle(f"the backend could not be started on the new version: {exc}")
         problem = wait_for_first_cycle(
-            host, last_cycle, started_at, wait_seconds=wait_seconds, monotonic=monotonic
+            run.host, last_cycle, started_at, wait_seconds=wait_seconds, monotonic=run.monotonic
         )
     except KeyboardInterrupt:
         return FirstCycle(INTERRUPTED, interrupted=True)

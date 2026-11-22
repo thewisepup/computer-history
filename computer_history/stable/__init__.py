@@ -85,6 +85,7 @@ from computer_history.stable.update_log import (
     AgentOutcome,
     UpdateAction,
     UpdateLogEntry,
+    last_agent_fallback,
     last_update_log_entry,
 )
 from computer_history.stable.updates import (
@@ -146,6 +147,7 @@ __all__ = [
     "holding_install_lock",
     "install",
     "installed_agent",
+    "last_agent_fallback",
     "last_update_log_entry",
     "pointed",
     "record_installed_agent",

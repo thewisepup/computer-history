@@ -72,6 +72,16 @@ def record_installed_agent(layout: Layout, built_from: str, installed_at: dateti
     )
 
 
+def record_installed_agent_or_note(
+    layout: Layout, built_from: str, installed_at: datetime, problems: list[str]
+) -> None:
+    """Record the installed agent's commit, noting a failed write among the problems."""
+    try:
+        record_installed_agent(layout, built_from, installed_at)
+    except OSError as exc:
+        problems.append(f"the installed agent's record could not be written: {exc}")
+
+
 def plan_agent(host: Host, layout: Layout, commit: str, old: InstalledVersion) -> AgentPlan:
     """Build the agent from the commit when its source differs from the installed agent's or that
     is unknown; otherwise copy the installed agent's app, from the old version when it holds it."""
@@ -160,11 +170,40 @@ def keep_installed_app(layout: Layout, version: Path) -> None:
     if not layout.capture_agent_app.is_dir():
         return
     app, note = layout.agent_app(version), layout.agent_commit(version)
-    shutil.rmtree(app, ignore_errors=True)
+    staged = _staged_copy(layout.capture_agent_app, app)
     note.unlink(missing_ok=True)
-    shutil.copytree(layout.capture_agent_app, app, symlinks=True)
+    shutil.rmtree(app, ignore_errors=True)
+    staged.rename(app)
     if built_from is not None:
         note.write_text(f"{built_from}\n", encoding="utf-8")
+
+
+def set_aside_fallen_back(layout: Layout, version: Path, restored: Path) -> Path:
+    """Move a version folder's agent app and note to its fell-back slot, then copy the restored
+    version's app and note into their place; returns the slot."""
+    app, note = layout.agent_app(version), layout.agent_commit(version)
+    kept, kept_note = layout.fell_back_agent_app(version), layout.fell_back_agent_commit(version)
+    staged = _staged_copy(layout.agent_app(restored), app)
+    shutil.rmtree(kept, ignore_errors=True)
+    app.rename(kept)
+    if note.exists():
+        note.replace(kept_note)
+    staged.rename(app)
+    built_from = _note(layout, restored)
+    if built_from is not None:
+        note.write_text(f"{built_from}\n", encoding="utf-8")
+    return kept
+
+
+def _staged_copy(source: Path, app: Path) -> Path:
+    staged = app.with_name(f".{app.name}.staged")
+    shutil.rmtree(staged, ignore_errors=True)
+    try:
+        shutil.copytree(source, staged, symlinks=True)
+    except BaseException:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
+    return staged
 
 
 def carried_agent(layout: Layout, version: Path) -> str | None:

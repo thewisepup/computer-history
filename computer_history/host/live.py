@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
@@ -20,6 +20,7 @@ from computer_history.host.contract import (
     COMMAND_NAME,
     OPEN_ACTIVITYWATCH,
     SPOOL_READS_FLAG,
+    AgentNotUnregistered,
     BackendBuild,
     CheckOutcome,
     CheckRun,
@@ -75,8 +76,14 @@ class LiveHost:
     codesign through the agent's build script, pgrep, open and osascript (off when
     $COMPUTER_HISTORY_NOTIFY is 0)."""
 
-    def __init__(self, *, sleep: Callable[[float], None] = time.sleep) -> None:
+    def __init__(
+        self,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
         self._sleep = sleep
+        self._now = now
 
     def main_commits(self, limit: int) -> list[str]:
         commits = _github(f"/commits?sha=main&per_page={limit}", "list main's newest commits")
@@ -141,7 +148,7 @@ class LiveHost:
         if found.returncode != 0:
             missing.append("Swift is not installed (run `xcode-select --install`)")
         identities = _run(
-            [SECURITY, "find-identity", "-v", "-p", "codesigning"],
+            [SECURITY, "find-identity", "-p", "codesigning"],
             "list the signing identities",
             timeout=QUICK_COMMAND_TIMEOUT_SECONDS,
         )
@@ -165,21 +172,25 @@ class LiveHost:
             app.parent.mkdir(parents=True, exist_ok=True)
             _run([DITTO, str(source / AGENT_BUILT_APP), str(app)], "copy the built agent")
 
-    def install_agent(self, app: Path, fixed: Path) -> None:
+    def install_agent(self, app: Path, fixed: Path) -> datetime:
         executable = Path("Contents") / "MacOS" / _bundle_executable(app)
         label = _bundle_label(app)
         old = _existing_executable(fixed)
         if old is not None:
-            _run([str(old), "uninstall"], "unregister the installed capture agent")
+            try:
+                _run([str(old), "uninstall"], "unregister the installed capture agent")
+            except HostError as exc:
+                raise AgentNotUnregistered(str(exc)) from exc
         if fixed.exists():
             shutil.rmtree(fixed)
         fixed.parent.mkdir(parents=True, exist_ok=True)
         _run([DITTO, str(app), str(fixed)], f"copy the capture agent to {fixed}")
         agent = str(fixed / executable)
+        registered_at = self._now()
         _run([agent, "install"], "register the capture agent")
         for attempt in range(AGENT_REGISTER_ATTEMPTS):
             if self._agent_running(label):
-                return
+                return registered_at
             if attempt == AGENT_REGISTER_ATTEMPTS - 1:
                 break
             _command([LAUNCHCTL, "kickstart", f"{_domain()}/{label}"], f"kickstart {label}")
