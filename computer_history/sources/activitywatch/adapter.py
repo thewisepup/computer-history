@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
 from computer_history.sources.activitywatch.discovery import AWSource, discover_sources
 from computer_history.sources.activitywatch.history import history_before, history_floor
 from computer_history.sources.activitywatch.normalize import PROJECTORS
-from computer_history.sources.activitywatch.position import position_at, resume_start
 from computer_history.sources.activitywatch.pull import SourcePull, pull_source
 from computer_history.sources.contract import Pull, StreamProjector
+from computer_history.store import to_utc, utc_iso
+
+RESUME_OVERLAP_SECONDS = 600
 
 
 class ActivityWatch:
@@ -60,3 +62,13 @@ class ActivityWatch:
 def _as_pull(pulled: SourcePull) -> Pull:
     position = None if pulled.frontier is None else position_at(pulled.frontier)
     return Pull(pulled.observations, pulled.held_back, position, pulled.frontier)
+
+
+def position_at(settled_until: datetime) -> str:
+    """The position of a stream whose events are all stored up to the given time."""
+    return utc_iso(settled_until)
+
+
+def resume_start(position: str) -> datetime:
+    """Where the next poll starts reading: a little before the stored position."""
+    return to_utc(position) - timedelta(seconds=RESUME_OVERLAP_SECONDS)
