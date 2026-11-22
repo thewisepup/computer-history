@@ -1,6 +1,6 @@
 ---
 name: verify-spool-handoff
-description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. The check is manual only, and agents never run it on their own. Use when a change touches SpoolWriter.swift, the capture_spool spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch): say so in the PR under "Not proven here" and leave the run to Brandon. Run it only when Brandon asks, or when he asks whether spool records can be lost.
+description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. The check is manual only, and agents never run it on their own. Use when a change touches SpoolWriter.swift, the capture_spool spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch): say so in the PR as a `[Gap]` call-out and leave the run to Brandon. Run it only when Brandon asks, or when he asks whether spool records can be lost.
 ---
 
 # Verify the spool handoff
@@ -20,7 +20,7 @@ the bounds in the configs.
 
 The check is manual only, so it never slows ordinary work. Agents do not run
 `formal/check.sh` on their own. If the diff touches any of these files, say so
-in the PR under "Not proven here": name the files and say the spool handoff
+in the PR as a `[Gap]` call-out: name the files and say the spool handoff
 model check has not been run on them. Then leave the run to Brandon, who runs
 it by hand or asks for it.
 
@@ -56,7 +56,7 @@ finding before it can show that. It matters (`--all`) when a change touches
 how two ingest processes can interleave: the both-streams gate
 (`CaptureSpool._stored_by`, `_forget_all_but`), removing or setting aside a
 file, listing, `commit_pull`, `insert_observations`, `poll`/`watch`, or
-`cli/ingest.py`. When a PR touches those, say in "Not proven here" that the
+`cli/ingest.py`. When a PR touches those, say in its `[Gap]` call-out that the
 steady-clock config is the one to run. It is also run before the coverage
 record moves forward.
 

@@ -1,24 +1,23 @@
-<!-- The shape is explained in docs/agents/pull-requests.md. A section that does not apply says "None". -->
+<!-- The shape is explained in docs/agents/pull-requests.md. Bullets only. A section that does not apply says "None". -->
 
 ## What this does
 
-## Walkthrough
+-
 
-**New files**
+## Why you should care
 
-**Data models**
+-
+- Review effort: skim | read | careful, because
 
-**Workflow**
+## Call-outs
 
-**Key functions**
+- [Action]
+- [Choice]
+- [Gap]
 
-## How to review
+## Testing
 
-## Decisions that need your eye
-
-## Not proven here
-
-## Evidence
+-
 
 <details>
 <summary>Check output</summary>
@@ -31,6 +30,11 @@
 </details>
 
 <details>
+<summary>Screenshots</summary>
+
+</details>
+
+<details>
 <summary>Fails without the change</summary>
 
 </details>
@@ -39,3 +43,25 @@
 <summary>Review findings</summary>
 
 </details>
+
+<details>
+<summary>Walkthrough</summary>
+
+**New files**
+
+**Data models**
+
+**Workflow**
+
+**Key functions**
+
+</details>
+
+<details>
+<summary>How to review</summary>
+
+</details>
+
+## Notes
+
+-
