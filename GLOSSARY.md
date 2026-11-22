@@ -79,7 +79,7 @@ Switching `current` to the previous version by hand, keeping the version left as
 _Avoid_: Downgrade, revert
 
 **Installed agent**:
-The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, and update counts it as changed.
+The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`.
 _Avoid_: Deployed agent, agent version
 
 **Agent swap**:
@@ -87,7 +87,7 @@ Update installing a changed capture agent's app from the new version folder over
 _Avoid_: Agent deploy, agent rollback (rollback is the command)
 
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one whose action it knows.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one whose action it knows, and the last agent fallback.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:
