@@ -51,8 +51,10 @@ store CLI) and `history` (the POC, the same as `python history.py`).
 
 Raw events go into an immutable `observations` table, and normalized
 `signals` are derived from them, so signals can always be rebuilt. The
-database defaults to `~/Library/Application Support/ComputerHistory/history.db`.
-Override it with `--db-path` or `$COMPUTER_HISTORY_DB`. The networked commands
+database defaults to `~/Library/Application Support/ComputerHistory-dev/history.db`
+for a run from a checkout (dev) and to `ComputerHistory/history.db`, the live
+one, for the stable install; dev is refused the live one. Override it with
+`--db-path` or `$COMPUTER_HISTORY_DB`. The networked commands
 take `--aw-url`.
 
 [computer_history/cli/README.md](computer_history/cli/README.md) documents

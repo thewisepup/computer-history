@@ -3,7 +3,7 @@
   "day": {
    "sqlite_version": "3.45.1",
    "statements": 6,
-   "vm_steps": 71816,
+   "vm_steps": 71930,
    "full_scans": [],
    "pages": 0,
    "table_pages": {},
@@ -18,7 +18,7 @@
     ],
     "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? ORDER BY started_at DESC, id DESC LIMIT ?": [
      2,
-     70
+     80
     ],
     "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
      2,
@@ -26,7 +26,7 @@
     ],
     "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
      1,
-     52531
+     52635
     ]
    }
   },
@@ -59,7 +59,7 @@
   "month": {
    "sqlite_version": "3.45.1",
    "statements": 6,
-   "vm_steps": 481525,
+   "vm_steps": 481952,
    "full_scans": [],
    "pages": 0,
    "table_pages": {},
@@ -70,7 +70,7 @@
     ],
     "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END = ? ORDER BY started_at DESC, id DESC LIMIT ?": [
      1,
-     35
+     45
     ],
     "SELECT started_at, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? ORDER BY started_at DESC, id DESC LIMIT ?": [
      2,
@@ -78,11 +78,11 @@
     ],
     "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
      2,
-     211922
+     211932
     ],
     "SELECT started_at, ended_at, source_id, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END, CASE WHEN json_valid(payload) THEN json_extract(payload, ?) END FROM observations WHERE source = ? AND started_at <= ? AND ended_at >= ? ORDER BY started_at, id": [
      1,
-     269480
+     269887
     ]
    }
   },
@@ -116,8 +116,8 @@
  "ingest": {
   "day": {
    "sqlite_version": "3.45.1",
-   "statements": 13536,
-   "vm_steps": 476037,
+   "statements": 13558,
+   "vm_steps": 476514,
    "full_scans": [],
    "pages": 4210,
    "table_pages": {
@@ -144,32 +144,32 @@
    },
    "by_statement": {
     "BEGIN IMMEDIATE": [
-     780,
-     3900
+     784,
+     3920
     ],
     "COMMIT": [
-     780,
-     2340
+     784,
+     2352
     ],
     "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO NOTHING": [
      3,
      63
     ],
     "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO UPDATE SET position = excluded.position, settled_until = excluded.settled_until, advanced_at = excluded.advanced_at WHERE position IS NOT excluded.position OR settled_until IS NOT excluded.settled_until": [
-     766,
-     26758
+     768,
+     26828
     ],
     "INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at) VALUES (?, ...) ON CONFLICT (source, source_id) DO NOTHING": [
-     5246,
-     234423
+     5250,
+     234591
     ],
     "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
-     5181,
-     196878
+     5185,
+     197030
     ],
     "SELECT position, settled_until, advanced_at FROM ingest_progress WHERE source = ?": [
-     780,
-     11675
+     784,
+     11730
     ]
    }
   },
@@ -233,26 +233,26 @@
   },
   "month": {
    "sqlite_version": "3.45.1",
-   "statements": 376193,
-   "vm_steps": 13362270,
+   "statements": 376367,
+   "vm_steps": 13367633,
    "full_scans": [],
-   "pages": 158645,
+   "pages": 158658,
    "table_pages": {
     "block_tags": 1,
     "blocks": 1,
     "blocks_started_at": 1,
     "classification_runs": 1,
     "ingest_progress": 1,
-    "observations": 102179,
+    "observations": 102183,
     "observations_screenshot_status": 641,
-    "observations_source_started_at": 2428,
+    "observations_source_started_at": 2429,
     "projects": 1,
     "reviews": 1,
-    "signals": 48967,
-    "signals_started_at": 1445,
+    "signals": 48968,
+    "signals_started_at": 1446,
     "sqlite_autoindex_block_tags_1": 1,
     "sqlite_autoindex_ingest_progress_1": 1,
-    "sqlite_autoindex_observations_1": 2969,
+    "sqlite_autoindex_observations_1": 2975,
     "sqlite_autoindex_projects_1": 1,
     "sqlite_autoindex_work_types_1": 1,
     "sqlite_schema": 3,
@@ -261,32 +261,32 @@
    },
    "by_statement": {
     "BEGIN IMMEDIATE": [
-     20250,
-     101250
+     20266,
+     101330
     ],
     "COMMIT": [
-     20250,
-     60750
+     20266,
+     60798
     ],
     "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO NOTHING": [
      3,
      63
     ],
     "INSERT INTO ingest_progress (source, position, settled_until, advanced_at) VALUES (?, ...) ON CONFLICT (source) DO UPDATE SET position = excluded.position, settled_until = excluded.settled_until, advanced_at = excluded.advanced_at WHERE position IS NOT excluded.position OR settled_until IS NOT excluded.settled_until": [
-     20224,
-     707788
+     20232,
+     708068
     ],
     "INSERT INTO observations (source, source_id, started_at, ended_at, payload, ingested_at) VALUES (?, ...) ON CONFLICT (source, source_id) DO NOTHING": [
-     148174,
-     6600822
+     148233,
+     6603300
     ],
     "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
-     147054,
-     5588052
+     147113,
+     5590294
     ],
     "SELECT position, settled_until, advanced_at FROM ingest_progress WHERE source = ?": [
-     20238,
-     303545
+     20254,
+     303780
     ]
    }
   },
@@ -352,8 +352,8 @@
  "rebuild-signals": {
   "day": {
    "sqlite_version": "3.45.1",
-   "statements": 5188,
-   "vm_steps": 337692,
+   "statements": 5192,
+   "vm_steps": 337952,
    "full_scans": [
     [
      "observations",
@@ -406,11 +406,11 @@
     ],
     "DELETE FROM signals": [
      1,
-     72544
+     72600
     ],
     "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
-     5181,
-     226294
+     5185,
+     226474
     ],
     "SELECT COUNT(*) FROM observations": [
      1,
@@ -422,7 +422,7 @@
     ],
     "SELECT DISTINCT source FROM observations ORDER BY source": [
      1,
-     31536
+     31560
     ],
     "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id": [
      1,
@@ -511,8 +511,8 @@
   },
   "month": {
    "sqlite_version": "3.45.1",
-   "statements": 147061,
-   "vm_steps": 9573191,
+   "statements": 147120,
+   "vm_steps": 9577026,
    "full_scans": [
     [
      "observations",
@@ -531,23 +531,23 @@
      "SELECT COUNT(*) FROM signals"
     ]
    ],
-   "pages": 158645,
+   "pages": 158658,
    "table_pages": {
     "block_tags": 1,
     "blocks": 1,
     "blocks_started_at": 1,
     "classification_runs": 1,
     "ingest_progress": 1,
-    "observations": 102179,
+    "observations": 102183,
     "observations_screenshot_status": 641,
-    "observations_source_started_at": 2428,
+    "observations_source_started_at": 2429,
     "projects": 1,
     "reviews": 1,
-    "signals": 48967,
-    "signals_started_at": 1445,
+    "signals": 48968,
+    "signals_started_at": 1446,
     "sqlite_autoindex_block_tags_1": 1,
     "sqlite_autoindex_ingest_progress_1": 1,
-    "sqlite_autoindex_observations_1": 2969,
+    "sqlite_autoindex_observations_1": 2975,
     "sqlite_autoindex_projects_1": 1,
     "sqlite_autoindex_work_types_1": 1,
     "sqlite_schema": 3,
@@ -565,11 +565,11 @@
     ],
     "DELETE FROM signals": [
      1,
-     2058766
+     2059592
     ],
     "INSERT INTO signals (observation_id, source, started_at, ended_at, app, domain, url, title, text, extras) VALUES (?, ...)": [
-     147054,
-     6610579
+     147113,
+     6613234
     ],
     "SELECT COUNT(*) FROM observations": [
      1,
@@ -581,7 +581,7 @@
     ],
     "SELECT DISTINCT source FROM observations ORDER BY source": [
      1,
-     889122
+     889476
     ],
     "SELECT id, source, started_at, ended_at, payload FROM observations ORDER BY id": [
      1,
@@ -727,7 +727,7 @@
   "day": {
    "sqlite_version": "3.45.1",
    "statements": 15,
-   "vm_steps": 102340,
+   "vm_steps": 102400,
    "full_scans": [
     [
      "block_tags",
@@ -835,7 +835,7 @@
     ],
     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source": [
      1,
-     79080
+     79140
     ]
    }
   },
@@ -957,7 +957,7 @@
   "month": {
    "sqlite_version": "3.45.1",
    "statements": 15,
-   "vm_steps": 2563694,
+   "vm_steps": 2564579,
    "full_scans": [
     [
      "block_tags",
@@ -1065,7 +1065,7 @@
     ],
     "WITH obs AS ( SELECT source, COUNT(*) AS n, MIN(started_at) AS earliest, MAX(ended_at) AS latest FROM observations GROUP BY source ) SELECT s.source, COALESCE(obs.n, ?), obs.earliest, obs.latest, p.settled_until, p.advanced_at FROM (SELECT source FROM obs UNION SELECT source FROM ingest_progress) AS s LEFT JOIN obs USING (source) LEFT JOIN ingest_progress AS p USING (source) ORDER BY s.source": [
      1,
-     2223045
+     2223930
     ]
    }
   },

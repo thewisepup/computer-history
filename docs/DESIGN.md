@@ -77,25 +77,34 @@ computer_history/
                 # progress (per-source ingest progress), status (read
                 # queries), screenshots (the screenshot records' status
                 # queries, read through their own index), contents (a digest
-                # of what the database holds), introspection (query plans,
-                # pages and the SQLite build, for the cost meter), timefmt, paths
+                # of what the database holds), backup (a checked copy taken
+                # with SQLite's online backup while others write, and a copy
+                # put back with the database it replaces set aside),
+                # introspection (query plans, pages and the SQLite build, for
+                # the cost meter), timefmt, paths, spool_hold (the file that
+                # keeps ingest from deleting spool files during an update)
   sources/      # contract (the adapter Protocols), runner (poll + watch),
-                # ingest_health (the watch loop's failure streak, saved beside
-                # the database, and its alerts), cycle_report (each ingest
-                # cycle's one log record),
+                # ingest_health (the watch loop's last cycle and failure
+                # streak, rewritten beside the database after each cycle, and
+                # the streak's alerts), cycle_report (each ingest cycle's one
+                # log record),
                 # backfill (plan + run in chunks), projection (routes each
                 # observation to its adapter's projector, for ingest and
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status, judged against aw-afk and aw-window),
+                # health for status and its liveness for the watchdog, judged
+                # against aw-afk and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch), position (its progress
                 # encoding), history (where a stream's history begins, for
                 # backfill), afk (stored and newest AFK spans, for status),
-                # frontmost (stored and newest aw-window app spans, for status)
-                # capture_spool/: paths (where the spool is), spool (finished files:
+                # frontmost (stored and newest aw-window app spans, for status),
+                # watchers (where this host's AFK and window buckets last
+                # advanced, for the watchdog)
+                # capture_spool/: paths (where the spool and the agent's
+                # config file are), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
                 # against format v1, and the kinds each stream takes),
                 # normalize (its projectors), adapter (CaptureSpool:
@@ -121,11 +130,34 @@ computer_history/
                 # meter), gate (costs against the committed baseline,
                 # + baseline: one file per SQLite version), bench (median
                 # wall-clock times against this machine's last baseline)
+  host/         # the host adapter, the one seam to macOS and the network:
+                # contract (Host, its answers, HostError), live (LiveHost:
+                # launchctl, GitHub's check runs, building with uv, pgrep and
+                # open for ActivityWatch, osascript for every notification,
+                # under one title and off when COMPUTER_HISTORY_NOTIFY=0);
+                # tests use a fake that records calls and plays back answers
+  stable/       # the stable install: gate (the release gate and the walk to
+                # the newest main commit passing it), versions (build a
+                # commit into a marked version folder; current and previous
+                # pointers), launch_agents (plists, loading, launchd's state
+                # for status: the backend, the daily backup, the watchdog and
+                # ActivityWatch at login), layout (where it all lives), install
+                # (install and uninstall), install_lock (the one lock on the
+                # live folder), backups (the daily and pre-update
+                # backups beside the database, and restore), updates/ (update
+                # by stage: updating, preparing, waiting, falling_back; and
+                # rolling_back), update_log (one line per update, fallback and
+                # rollback)
+  watchdog/     # run every minute from stable: thresholds (from the agent's
+                # config file), checks (the capture agent, ActivityWatch, the
+                # backend), alerts (which findings notify, how often, and which
+                # errors are due a log line), reopening (ActivityWatch, at most
+                # three times an hour), state (the file and lock beside the
+                # database), run (one run, under the lock)
   text.py       # text/URL normalization shared by every source
   logs/         # config (one setup per run: run id, stderr text, JSON lines),
                 # rotation (the JSON file, shared across processes), formatters,
                 # query (read back for `logs`), units (outcomes, progress cadence)
-  alerts.py     # macOS notifications for states someone has to act on
   classify/     # windowing, prompts, OpenRouter client, scheduler jobs
   review/       # bottleneck ranking, weekly review, suggestions
   api/          # FastAPI routes under /api
@@ -142,7 +174,14 @@ docs/
 
 ## 3. Data model (SQLite)
 
-One SQLite file (`~/Library/Application Support/ComputerHistory/history.db`).
+One SQLite file per profile: stable's live
+`~/Library/Application Support/ComputerHistory/history.db`, and dev's
+`~/Library/Application Support/ComputerHistory-dev/history.db`. A run is stable
+only when its code sits in a version folder under the live folder's
+`versions/` that carries the `installed` marker; anything else is dev, and
+path resolution refuses dev any database, spool or screenshots path in the
+live folder. The one sanctioned read of live data from dev is `dev snapshot`:
+SQLite's online backup of the live database, opened read-only, into dev's.
 Screenshots live on disk; the DB stores paths and extracted text.
 
 Global rules:
@@ -430,6 +469,22 @@ settings are provisional until they are measured on real screens (#38).
 - Denylist: listed apps produce an "excluded" record with no text.
   `pause` / `resume` each write a record. Both make the gap explained, not
   unobserved.
+- Sleep and wake: the agent writes a `slept` record from macOS's will-sleep
+  notification, synchronously before the Mac sleeps, and a `woke` record from
+  did-wake when it recorded that sleep. Both are instants with no app, window,
+  text or screenshot, in record format version 1. Neither is written while
+  capture is paused, since the pause already explains the time. Window text
+  records are written one at a time, and a capture or excluded record is
+  written only if the Mac is still awake at that moment, so none lands after
+  the `slept` record. In `status` coverage a `slept` record explains the time
+  until its `woke`, or, if that was lost to a crash or power loss, until the
+  next record or the first `aw-afk` active stretch after it, whichever comes
+  first. Ingest stores both as observations, with a signal whose extras name
+  only the kind.
+- Upgrade order: update the backend before installing an agent that writes
+  `slept` and `woke`. An older backend stores a file's other records, counts
+  these lines as unusable and sets the file aside in `spool/unreadable/`, so
+  they are kept on disk but never stored.
 - Screenshots: every capture takes one, in the same tick, right after its
   capture record is written, of the focused window only: a ScreenCaptureKit
   still of the on-screen window whose frame matches the accessibility frame
@@ -515,7 +570,8 @@ settings are provisional until they are measured on real screens (#38).
   unusable line, or that neither stream can read, is moved into
   `spool/unreadable/`, never deleted. A file only one stream failed to read is
   left for it to retry. The filesystem is the
-  queue; backend downtime just accumulates files.
+  queue; backend downtime just accumulates files. While `update` holds
+  deletion (8.5), stored files stay until the backend's first ok cycle.
 - Risks: sparse AX trees in Electron/Chrome (screenshots are the complement;
   whether to set the apps' accessibility flag is measured in M2); periodic
   macOS Screen Recording re-confirmation (accepted; a lost grant shows as
@@ -640,6 +696,210 @@ suggestions, status, disk usage, screenshot display.
 - LaunchAgents start backend + capture agent at login; immediate ingest +
   classification catch-up.
 - Localhost only, no auth. Disk usage visible via status tool + UI.
+
+### 8.5 Stable install
+
+`computer-history install`, run from a checkout, sets up the stable install
+in the live folder and starts the backend at login from it:
+
+```
+~/Library/Application Support/ComputerHistory/
+  history.db, spool/, screenshots/, agent-config.json   # data: never moved or removed
+  ingest-health.json       # {"cycle_at", "consecutive_failures", "failing_since", "last_success_at",
+                           #  "last_error", "alerted_at", "sources_unavailable" (every failure was an
+                           #  unreadable source)}, rewritten by ingest --watch after each cycle
+  update-log.jsonl         # one JSON line per update, fallback and rollback; status shows the last
+  spool-deletion-held      # placed by update: ingest keeps stored spool files until the backend's ok cycle
+  watchdog.json            # the watchdog's last findings and what it notified, see 8.6
+  .watchdog.lock           # held by a watchdog run, so two never overlap
+  backups/
+    daily/history-<YYYY-MM-DD>.db                    # one a day, the newest 7 kept
+    pre-update/history-<local time>-<version>.db     # taken by update, never pruned with the dailies
+    set-aside/history-<local time>.db                # the database a restore replaced, never deleted
+  versions/<short commit>/
+    venv/                  # built with uv on a uv-managed Python 3.12
+    packages.txt           # uv pip freeze of that venv
+    installed              # empty marker, written last: the version is complete
+  current -> versions/<short commit>
+  previous -> versions/<short commit>                  # the version update or rollback left; one is kept
+~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.ingest.plist
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.backup.plist
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.watchdog.plist
+~/Library/LaunchAgents/io.github.thewisepup.computer-history.activitywatch.plist
+~/Library/Logs/computer-history/backend.log, backup.log, watchdog.log, activitywatch.log
+~/Library/Logs/computer-history-dev/computer-history.jsonl   # dev runs log here, apart from stable
+```
+
+- **One at a time:** `install`, `uninstall`, `update`, `rollback` and a stable
+  `restore` hold an exclusive `flock` on the live folder itself while they
+  run; a second one exits 1 at once, saying another is running.
+
+- **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
+  commit must pass on its push run to `main`: `lint`, `unit`, `data`, `poc`,
+  `secrets`, `macos-capture-agent-tests`, `macos-capture-agent-e2e` (the
+  checks `main` requires on pull requests, `docs/agents/checks.md`). Failed,
+  missing, still-running and cancelled all disqualify; `typecheck` and `perf`
+  are not in the gate. The lookup walks the newest 20 `main` commits through
+  GitHub's public API, stopping at the first that passes; no token is needed,
+  and `$GITHUB_TOKEN` is sent when set.
+- **Install** with no current version builds the newest passing commit with
+  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a `--help` smoke run,
+  `uv pip freeze`), writes the marker last and points `current` at it. A
+  failed lookup, build or file write removes what it created, so nothing
+  changes. With a current version it skips GitHub and uv and only repairs:
+  the PATH link, the
+  backend plist (reloaded: boot out, wait until launchd lets go of it, then
+  bootstrap, retried while launchd answers busy), and the stopgap
+  `io.github.thewisepup.computer-history.backend` job, booted out and its plist
+  deleted before the backend loads, so two backends never ingest at once.
+- **Backend LaunchAgent:** `current/venv/bin/computer-history ingest --watch`,
+  `RunAtLoad`, `KeepAlive`, `ThrottleInterval` 30s. Through `current`, a
+  pointer switch plus a restart moves it to another version.
+- **Daily backup LaunchAgent:** `current/venv/bin/computer-history backup`,
+  `RunAtLoad` and `StartCalendarInterval` 03:00. launchd runs a time missed
+  while the Mac slept on wake, and `RunAtLoad` covers a Mac that was off. The
+  command takes the day's backup only when there is none yet: SQLite's online
+  backup of the database (the backend keeps writing), checked with
+  `PRAGMA integrity_check` before it is kept, then the oldest days past seven
+  removed. The database only; screenshots are not backed up.
+- **Restore** (`restore <day>` or `restore <file>`): for the live database it
+  boots out the daily backup, the watchdog and the backend if they are loaded
+  (loading them again if a boot-out fails), so no read connection of theirs
+  makes it refuse. Holding the database's exclusive lock, so no
+  other connection can open it meanwhile, it folds the WAL in and moves the
+  file into `set-aside/` under the time; it refuses when anything else has
+  the database open. It copies the backup in (integrity checked; the database
+  moved back on failure) and loads the agents again. A restore into any other
+  database, dev's included, never touches launchd.
+- **Update** walks the gate as install does and only moves forward: it stops
+  at `already up to date` when that commit is `current` or comes after
+  `current` in the walk (older on `main`). Otherwise: build it beside the
+  current version (a failed build or smoke, or no network, changes nothing);
+  boot the backend out; take the pre-update backup (the daily backup's
+  function, kept apart); place the spool hold; point `previous` at the old
+  version and `current` at the new; load the backend. A failure after the
+  backup and before the switch removes the backup and the build and starts
+  the backend again. Only the backend restarts. It then waits up to
+  `--wait` seconds (600 by default, a monotonic deadline) for a cycle in
+  `ingest-health.json` newer than the restart. An
+  ok cycle deletes the version `previous` named before (one previous is kept)
+  and logs `updated`. A cycle that failed only because a source was
+  unavailable (its `sources_unavailable`) is waited through; a
+  wait that ends with the sources still down falls back with that reason. A
+  failed cycle, a crash (launchd reports another process, or none, after it
+  had one), no cycle in time, or Ctrl-C or SIGTERM during the switch or the
+  wait falls back: boot out, `current` then `previous` put back, the backup
+  restored (through restore, setting the database aside) only when the
+  database's schema version is no longer the backup's, then the hold removed
+  (kept when the new backend was not confirmed stopped), the backend loaded on
+  the old version, a notification posted and `fell back` logged with the
+  reason. The new version's folder is deleted only when its backend was
+  confirmed stopped and both pointers went back. Ctrl-C and SIGTERM raise an
+  interrupt from the build on; before the switch that undoes what update did
+  and restarts the backend, and during a fallback or the last steps they are
+  only noted, so those run to their end. Update exits 1 after a fallback, 130
+  after an interrupted update.
+- **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
+  `spool-deletion-held` sits beside the database, every ingest stores spool
+  files as usual but deletes or sets aside none. `ingest --watch` removes the
+  hold after a cycle with no failure, and the next cycle reads the kept files
+  again (all duplicates, since `(source, source_id)` is unique) and deletes
+  them. After a fallback the old version reads them again the same way, so a
+  fallback loses no capture even when the backup is restored.
+- **Rollback** points `current` at the previous version, then `previous` at
+  the one it left (pointing `current` back if that fails, so both stay
+  referenced), and restarts the backend: no network, no build, no backup
+  restored. It first compares the database's schema version with the newest
+  migration in the previous version's own package and, when that version
+  cannot open it, refuses and names the pre-update backup to `restore` first.
+  With no previous version it changes nothing.
+- **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
+  `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
+  `/dev/null` and only its stderr (notifications posted, errors, config
+  problems) to `watchdog.log`, so a run a minute doesn't grow the log.
+- **ActivityWatch LaunchAgent:** `/usr/bin/open -g -b
+  net.activitywatch.ActivityWatch` once at load, so ActivityWatch starts with
+  the login session. `open` returns at once, so it is neither kept alive nor
+  rerun; the watchdog reopens ActivityWatch after that.
+- **Uninstall** boots out the stable install's LaunchAgents, waiting until
+  launchd lets go of each, and removes them, the
+  PATH link (only when it is the install's own), the pointers and `versions/`.
+  Data and logs stay.
+- **Host adapter** (`host/`): launchctl (`print`, `bootstrap`, `bootout` in the
+  `gui/<uid>` domain), the GitHub lookup, the uv build, ActivityWatch's app
+  (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and
+  user notifications. Nothing else in the install or the watchdog reaches
+  macOS or the network.
+
+### 8.6 Watchdog
+
+`computer-history watchdog` runs once a minute from its LaunchAgent. Each run
+judges three subjects, notifies, and saves its findings to `watchdog.json`
+beside the database, which `status` shows under "Stable watchdog".
+
+| Subject | Problem when | Needs you active |
+|---|---|---|
+| capture agent | its newest record (stored, or still in the spool) is older than the threshold, by the same liveness `status` computes: aw-afk shows you active for over a minute since | yes |
+| ActivityWatch | unreachable for longer than the threshold, or this host's AFK or window source has not advanced for longer than it, judged by the source's most recently advanced bucket (a dead or empty sibling bucket, or one answering an error, is ignored) | no |
+| backend | the last cycle in `ingest-health.json` is older than the threshold: it is silent or dead. Failing cycles are not its problem; `ingest --watch`'s failure streak notifies of them | yes |
+
+- **Active** means aw-afk, from stored spans plus ActivityWatch's newest
+  event, shows you active for over a minute inside the threshold before now.
+  With ActivityWatch down nothing counts as active, so only its own outage
+  notifies.
+- **Pause, idle, lock and sleep never notify.** A pause and idle are what
+  liveness already says. Sleep and a stopped watchdog are handled by when
+  silence starts counting: a run that follows the previous one by more than
+  3 minutes resumes watching, and silence counts from no earlier than that
+  run. After a wake every subject gets one full threshold to show it is
+  alive; until then the finding is "cannot tell", which neither notifies nor
+  clears. A backend whose cycles fail is running, so its finding is "ok" and
+  clears a silent backend.
+- **A database read that fails** (`sqlite3.Error`) makes the capture agent,
+  and the backend unless its last cycle is fresh, "cannot tell" for
+  that run. The state is still saved, and silence keeps counting from where
+  it started.
+- **Notifications:** a problem notifies at most once an hour per subject while
+  it stays open, and a notified problem notifies once when it clears (whether
+  or not you are active then). A clear resets the hour, so a second outage
+  gets its own notification. A notification that fails to post is not
+  recorded, so the next run tries again.
+- **One run at a time:** a run holds `.watchdog.lock` (`flock`, not blocking);
+  a run that finds it held exits quietly with code 0. The state is replaced
+  in one step through `store.replace_atomically`.
+- **Logging:** stdout (the findings) goes to `/dev/null` under launchd. A
+  config problem or error goes to stderr, so `watchdog.log`, at most once an
+  hour per distinct message (the state records when each was last logged);
+  every run still shows it on stdout and in `status`.
+- **Thresholds** live in the agent's config file, `agent-config.json` beside
+  the database, under a `watchdog` object the capture agent leaves alone:
+  `capture_agent_minutes`, `activitywatch_minutes`, `backend_minutes`, each 1
+  to 1440, default 5. A bad value falls back to 5 and is logged as a config
+  problem.
+- **Reopening ActivityWatch:** when ActivityWatch is unreachable and its app
+  (`aw-qt`) isn't running, the watchdog opens it, at most three times in any
+  hour. When the app runs but the server doesn't answer, opening it again
+  would only bring it forward, so the watchdog notifies instead. `pgrep`,
+  `open` and `osascript` each get 10 seconds, apart from the build's 10
+  minutes.
+- **Repairing:** `install` run again leaves the ActivityWatch login agent
+  loaded when its plist is unchanged, since reloading it would reopen
+  ActivityWatch.
+- **How a launchd-run process posts a notification.** The live adapter runs
+  `/usr/bin/osascript` with `display notification`, passing the title and
+  text as arguments to an `on run argv` handler, never spliced into the
+  script. It ships with macOS, needs no extra install or signing, and works
+  from a LaunchAgent in the `gui/<uid>` domain, which runs in the login
+  session's Aqua session. The alternatives were weaker: `terminal-notifier`
+  is an extra Homebrew dependency, PyObjC's `NSUserNotification` is
+  deprecated, and `UNUserNotificationCenter` needs a signed app bundle (the
+  capture agent's), which would tie backend alerts to the agent's manual
+  reinstall and add a new permission prompt to it. Notifications from
+  `osascript` are attributed to Script Editor. Expected, not yet proven on
+  the real Mac: the first one may ask for permission, and Focus modes or a
+  denied permission hide them while `osascript` still exits 0, so a post
+  that "succeeds" can go unseen; `status` shows the same findings either way.
 
 ## 9. Milestones
 

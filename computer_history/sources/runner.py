@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 import time
 from collections.abc import Callable, Sequence
@@ -16,7 +17,7 @@ from computer_history.sources.commit import (
 )
 from computer_history.sources.contract import Source, SourceUnavailable
 from computer_history.sources.projection import projector_for
-from computer_history.store import Projector, UnclaimedSource, get_progress
+from computer_history.store import Projector, SpoolHold, UnclaimedSource, get_progress
 
 __all__ = [
     "POLL_INTERVAL_SECONDS",
@@ -27,6 +28,8 @@ __all__ = [
 ]
 
 POLL_INTERVAL_SECONDS = 60
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -137,16 +140,20 @@ def watch(
     clock: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
+    hold: SpoolHold | None = None,
 ) -> NoReturn:
     """Poll forever, reporting each cycle and the seconds until the next one.
 
-    A failed cycle is reported like any other and retried on the next.
+    After an ok cycle it releases an active spool hold.
     """
     clock = clock or (lambda: datetime.now(UTC))
     monotonic = monotonic or time.monotonic
     sleep = sleep or time.sleep
     while True:
         summary = poll(conn, sources, now=clock(), monotonic=monotonic)
+        if hold is not None and summary.ok and hold.active:
+            hold.release()
+            log.info("a cycle completed: spool files are deleted again once stored")
         delay = max(0.0, interval - summary.duration_s)
         report(summary, delay)
         sleep(delay)

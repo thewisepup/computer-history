@@ -5,11 +5,11 @@ import json
 import os
 import sys
 
-from computer_history.logs import log_files, read_records, resolve_log_dir, text_line
+from computer_history.logs import log_files, read_records, text_line
 
 
 def cmd_logs(args: argparse.Namespace) -> int:
-    log_dir = resolve_log_dir()
+    log_dir = args.log_dir
     if not any(path.stat().st_size for path in log_files(log_dir)):
         print(f"no log records yet in {log_dir}", file=sys.stderr)
         return 0

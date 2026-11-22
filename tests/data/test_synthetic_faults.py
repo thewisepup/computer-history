@@ -13,10 +13,15 @@ from store_answers import stored_gaps
 
 from computer_history.sources import (
     AFK_SOURCE,
+    MOMENT_KINDS,
+    PAUSED_KIND,
+    RESUMED_KIND,
     SCREENSHOT_KIND,
+    SLEPT_KIND,
     WEB_SOURCE,
     WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
+    capture_coverage,
     parse_record,
 )
 from computer_history.store import Gap, connect, payload_values, source_summary
@@ -40,6 +45,7 @@ from computer_history.synthetic import build as synthetic_build
 from computer_history.synthetic.activitywatch import BUCKETS, ActivityWatchRenderer
 from computer_history.synthetic.days import live
 from computer_history.synthetic.persona import Rhythm
+from computer_history.synthetic.spans import merge
 from computer_history.synthetic.spool import RenderedSpool, SpoolRenderer
 from computer_history.synthetic.timeline import local_midnight
 
@@ -84,9 +90,9 @@ FAULTY_HOUR_TOTALS = Totals(
     attended_app_seconds={"1Password": 300.0, "Cursor": 1200.0, "Google Chrome": 1200.0},
     afk_seconds=0.0,
 )
-FAULTY_HOUR_COUNTS = {"aw-afk": 2, "aw-web": 2, "aw-window": 4, "ax-text": 84, "screenshot": 72}
+FAULTY_HOUR_COUNTS = {"aw-afk": 2, "aw-web": 2, "aw-window": 4, "ax-text": 85, "screenshot": 72}
 FAULTY_HOUR_CAPTURES = CaptureCounts(
-    kinds={"capture": 72, "excluded": 10, "paused": 1, "resumed": 1},
+    kinds={"capture": 72, "excluded": 10, "paused": 1, "resumed": 1, "slept": 1},
     triggers={"app": 2, "heartbeat": 80},
     apps={"1Password": 10, "Cursor": 22, "Google Chrome": 50},
 )
@@ -98,6 +104,7 @@ FAULTY_HOUR_UNOBSERVED = {
 FAULTY_HOUR_EXPLAINED = (
     ExplainedGap(at(9, 5), at(9, 10), "paused"),
     ExplainedGap(at(9, 20), at(9, 25), "excluded"),
+    ExplainedGap(at(9, 55), at(10, 0), "slept"),
 )
 
 
@@ -115,7 +122,36 @@ FAULTY_HOUR_RECORDS = [
     *((moment, "excluded", "1Password") for moment in _heartbeats(at(9, 20, 1), at(9, 24, 31))),
     *((moment, "capture", "Google Chrome") for moment in _heartbeats(at(9, 25, 1), at(9, 44, 31))),
     *((moment, "capture", "Google Chrome") for moment in _heartbeats(at(9, 50, 1), at(9, 54, 31))),
+    (at(9, 55), "slept", None),
 ]
+
+
+BLIND_ACROSS_A_NAP = Timeline(
+    at(11, 0),
+    at(15, 0),
+    "UTC",
+    (
+        Stretch(at(11, 0), at(12, 0), app="Cursor", title="a.py"),
+        Stretch(at(12, 0), at(13, 0), kind=StretchKind.ASLEEP),
+        Stretch(at(13, 0), at(15, 0), app="Cursor", title="a.py"),
+    ),
+    (Fault(at(12, 30), at(14, 0), FaultKind.PERMISSION_LOST),),
+)
+
+
+def test_a_lost_permission_across_a_sleep_is_unobserved_from_the_woke_record(
+    tmp_path: Path, plain_text: None
+) -> None:
+    dataset = build_timeline(BLIND_ACROSS_A_NAP, tmp_path / "nap", seed=1)
+    gaps, records, _ = stored_gaps(dataset)
+
+    expected = (Gap(at(13, 1), at(13, 59)),)
+    assert [(r.at, r.kind) for r in records if r.kind in MOMENT_KINDS] == [
+        (at(12, 0), "slept"),
+        (at(13, 0), "woke"),
+    ]
+    assert dataset.manifest.unobserved[WINDOW_TEXT_SOURCE] == expected
+    assert gaps[WINDOW_TEXT_SOURCE] == expected
 
 
 def test_a_hand_worked_hour_of_faults_reports_the_gaps_worked_out_by_hand(
@@ -210,7 +246,7 @@ def test_on_a_messy_day_capture_coverage_explains_the_exclusion_and_the_pause(
 ) -> None:
     dataset = build_dataset(MESSY_DAY, tmp_path / "messy")
     gaps, records, _ = stored_gaps(dataset)
-    explained = dataset.manifest.explained
+    explained = [gap for gap in dataset.manifest.explained if gap.kind != SLEPT_KIND]
     by_kind = {gap.kind: gap for gap in explained}
 
     assert sorted(by_kind) == ["excluded", "paused"] and len(explained) == 2
@@ -218,7 +254,7 @@ def test_on_a_messy_day_capture_coverage_explains_the_exclusion_and_the_pause(
         span = (gap.start, gap.end)
         assert not any(_overlaps((g.start, g.end), span) for g in gaps[WINDOW_TEXT_SOURCE])
     pause, exclusion = by_kind["paused"], by_kind["excluded"]
-    assert [(r.at, r.kind) for r in records if r.kind in ("paused", "resumed")] == [
+    assert [(r.at, r.kind) for r in records if r.kind in (PAUSED_KIND, RESUMED_KIND)] == [
         (pause.start, "paused"),
         (pause.end, "resumed"),
     ]
@@ -232,6 +268,36 @@ def test_on_a_messy_day_capture_coverage_explains_the_exclusion_and_the_pause(
         apps=dict(sorted(Counter(r.app for r in records if r.app is not None).items())),
     )
     assert stored == dataset.manifest.captures
+
+
+def test_on_a_messy_day_each_sleep_is_explained_from_its_slept_to_its_woke_record(
+    tmp_path: Path,
+) -> None:
+    dataset = build_dataset(MESSY_DAY, tmp_path / "messy")
+    gaps, records, afk = stored_gaps(dataset)
+    timeline = dataset.timeline
+    sleeps = [(g.start, g.end) for g in dataset.manifest.explained if g.kind == SLEPT_KIND]
+    unjudged = capture_coverage(
+        records,
+        active=[(s.start, s.end) for s in afk if not s.afk],
+        known=[(s.start, s.end) for s in afk],
+        start=timeline.start,
+        end=timeline.end,
+        before=None,
+        min_gap_seconds=1,
+    ).unjudged
+
+    assert sleeps == merge((s.start, s.end) for s in timeline.stretches if not s.active)
+    assert len(sleeps) == 2
+    for span in sleeps:
+        assert not any(_overlaps((g.start, g.end), span) for g in gaps[WINDOW_TEXT_SOURCE])
+        assert not any(_overlaps((g.start, g.end), span) for g in unjudged)
+    assert [(r.at, r.kind) for r in records if r.kind in MOMENT_KINDS] == [
+        (moment, kind)
+        for start, end in sleeps
+        for moment, kind in ((start, "slept"), (end, "woke"))
+        if moment < timeline.end
+    ]
 
 
 def _triggers(dataset) -> list[str | None]:

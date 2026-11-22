@@ -13,6 +13,7 @@ from store_answers import local_days, stored_days, stored_gaps, stored_totals
 from computer_history.sources import (
     AFK_SOURCE,
     SCREENSHOT_SOURCE,
+    SLEPT_KIND,
     WEB_SOURCE,
     WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
@@ -217,7 +218,8 @@ def test_the_messy_scenario_builds_for_every_persona_and_matches_its_manifest(
     assert counts == dataset.manifest.observations
     assert len(dataset.timeline.faults) == len(FaultKind)
     assert gaps == dataset.manifest.unobserved
-    assert sorted(gap.kind for gap in explained) == ["excluded", "paused"]
+    assert sorted(gap.kind for gap in explained if gap.kind != SLEPT_KIND) == ["excluded", "paused"]
+    assert [gap for gap in explained if gap.kind == SLEPT_KIND]
     for gap in explained:
         assert not [g for g in gaps[WINDOW_TEXT_SOURCE] if g.start < gap.end and gap.start < g.end]
     for gap in gaps[WINDOW_TEXT_SOURCE]:
@@ -260,7 +262,7 @@ AROUND_MIDNIGHT_COUNTS = {
     "aw-afk": 1,
     "aw-web": 1,
     "aw-window": 2,
-    "ax-text": 50,
+    "ax-text": 53,
     "screenshot": 50,
 }
 
