@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import time
 from collections.abc import Callable
@@ -8,6 +9,12 @@ from datetime import datetime
 
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import pre_update_backup_of
+from computer_history.stable.capture_agent import (
+    AgentMove,
+    AgentRollback,
+    plan_agent_rollback,
+    record_installed_agent,
+)
 from computer_history.stable.launch_agents import BACKEND, load_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
@@ -21,10 +28,12 @@ class RollbackFailed(Exception):
 
 @dataclass(frozen=True)
 class RollbackReport:
-    """The version rollback made current, the one it kept as previous, and what went wrong."""
+    """The version rollback made current, the one it kept as previous, what it did with the
+    capture agent, and what went wrong."""
 
     current: str
     previous: str
+    agent: AgentRollback
     problems: tuple[str, ...] = ()
 
 
@@ -35,7 +44,8 @@ def rollback(
     now: Callable[[], datetime],
     sleep: Callable[[float], None] = time.sleep,
 ) -> RollbackReport:
-    """Point current at the previous version, keep the current one as previous, and restart."""
+    """Point current at the previous version, keep the current one as previous, move the capture
+    agent back when the previous version can't read its records, and restart the backend."""
     current = pointed(layout.current)
     if current is None:
         raise RollbackFailed(f"there is no stable install in {layout.live}; run install first")
@@ -44,6 +54,7 @@ def rollback(
         raise RollbackFailed(f"there is no previous version to roll back to ({NOTHING_CHANGED})")
     problems: list[str] = []
     _check_schema(layout, previous.name, problems)
+    agent = plan_agent_rollback(layout, previous.name, problems)
     try:
         point(layout.current, previous.name)
     except OSError as exc:
@@ -56,6 +67,8 @@ def rollback(
         raise RollbackFailed(
             f"could not point previous at {current.name}: {exc} ({_undone(layout, current.name)})"
         ) from exc
+    if isinstance(agent, AgentMove):
+        agent = _move_agent(host, layout, agent, now, problems)
     try:
         load_agent(host, layout, BACKEND, sleep=sleep)
     except (HostError, OSError) as exc:
@@ -65,7 +78,31 @@ def rollback(
         ) from exc
     entry = UpdateLogEntry(now(), UpdateAction.ROLLED_BACK, current.name, previous.name)
     append_or_note(layout.update_log, entry, problems)
-    return RollbackReport(previous.name, current.name, tuple(problems))
+    return RollbackReport(previous.name, current.name, agent, tuple(problems))
+
+
+def _move_agent(
+    host: Host, layout: Layout, move: AgentMove, now: Callable[[], datetime], problems: list[str]
+) -> AgentRollback:
+    try:
+        host.install_agent(move.app, layout.capture_agent_app)
+    except (HostError, OSError) as exc:
+        with contextlib.suppress(OSError):
+            layout.installed_agent.unlink(missing_ok=True)
+        problems.append(
+            f"could not move the capture agent back to {move.to_version}'s build: {exc}; the next"
+            " update deploys it again"
+        )
+        return AgentRollback(moved=False)
+    try:
+        record_installed_agent(layout, move.built_from, now())
+    except OSError as exc:
+        problems.append(f"the installed capture agent's record could not be written: {exc}")
+    entry = UpdateLogEntry(
+        now(), UpdateAction.AGENT_ROLLED_BACK, move.from_version, move.to_version, move.reason
+    )
+    append_or_note(layout.update_log, entry, problems)
+    return AgentRollback(moved=True, why=move.reason)
 
 
 def _check_schema(layout: Layout, target: str, problems: list[str]) -> None:

@@ -13,9 +13,10 @@ updating.py         update: the release-gate walk, then prepare, switch and wait
                           schema changed, release the spool hold once the new
                           backend is stopped, then notify
 
-rolling_back.py     rollback: current and previous swapped and the backend
-                    restarted, refused when the previous version cannot open
-                    the database's schema
+rolling_back.py     rollback: current and previous swapped, the capture agent
+                    moved back first when the previous version can't read its
+                    records, and the backend restarted; refused when the
+                    previous version cannot open the database's schema
 """
 
 from computer_history.stable.updates.preparing import UpdateFailed

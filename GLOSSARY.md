@@ -83,7 +83,7 @@ The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgen
 _Avoid_: Deployed agent, agent version
 
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
+`update-log.jsonl` in the live folder, one line per update, fallback, rollback and agent moved by rollback; `status` shows the last one whose action it knows.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:
