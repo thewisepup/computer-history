@@ -9,8 +9,9 @@ from datetime import datetime
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import BackupFailed, take_pre_update_backup
 from computer_history.stable.capture_agent import AgentPlan, holds_agent, place_agent, plan_agent
-from computer_history.stable.launch_agents import BACKEND, start_agent, stop_agent
+from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
+from computer_history.stable.stopped_agents import StoppedAgents
 from computer_history.stable.versions import InstalledVersion, build_version, pointed, version_name
 from computer_history.store import DatabaseCopy, SpoolHold, sidecars
 
@@ -21,13 +22,15 @@ class UpdateFailed(Exception):
 
 @dataclass(frozen=True)
 class Prepared:
-    """What update readied before switching: both versions, the agent, the backup and the hold."""
+    """What update readied before switching: both versions, the agent, the stopped backend, the
+    backup and the hold."""
 
     old: InstalledVersion
     old_previous: InstalledVersion | None
     new: str
     built: bool
     agent: AgentPlan
+    stopped: StoppedAgents
     backup: DatabaseCopy | None
     hold: SpoolHold
 
@@ -68,23 +71,20 @@ def prepare(
     if placing:
         _place(host, layout, agent, name, built=built)
     hold = SpoolHold.beside(layout.database)
-    was_loaded = False
+    stopped = StoppedAgents(host, layout, sleep=sleep)
     backup = None
     try:
-        was_loaded = host.job(BACKEND.label).loaded
-        if was_loaded:
-            stop_agent(host, BACKEND.label, sleep=sleep)
+        stopped.stop((BACKEND,))
         if layout.database.is_file():
             backup = take_pre_update_backup(layout.database, version=old.name, now=now())
         hold.place()
     except BaseException as exc:
-        restart = was_loaded and not _still_loaded(host)
-        left = _undo(host, layout, name if built else None, backup, restart, sleep)
+        left = _undo(layout, name if built else None, backup, stopped)
         if isinstance(exc, HostError | BackupFailed | OSError):
             raise UpdateFailed(f"{exc} ({left})") from exc
         exc.add_note(left)
         raise
-    return Prepared(old, pointed(layout.previous), name, built, agent, backup, hold)
+    return Prepared(old, pointed(layout.previous), name, built, agent, stopped, backup, hold)
 
 
 def _place(host: Host, layout: Layout, agent: AgentPlan, name: str, *, built: bool) -> None:
@@ -100,12 +100,7 @@ def _place(host: Host, layout: Layout, agent: AgentPlan, name: str, *, built: bo
 
 
 def _undo(
-    host: Host,
-    layout: Layout,
-    built: str | None,
-    backup: DatabaseCopy | None,
-    restart: bool,
-    sleep: Callable[[float], None],
+    layout: Layout, built: str | None, backup: DatabaseCopy | None, stopped: StoppedAgents
 ) -> str:
     kept: list[str] = []
     if backup is not None:
@@ -116,18 +111,8 @@ def _undo(
             kept.append(f"the pre-update backup {backup.target} could not be removed ({exc})")
     if built is not None:
         shutil.rmtree(layout.versions / built, ignore_errors=True)
-    if restart:
-        try:
-            start_agent(host, BACKEND.plist(layout), sleep=sleep)
-        except HostError as exc:
-            kept.append(f"the backend could not be started again ({exc}; run install)")
+    for agent, exc in stopped.start_again_unless_loaded().failed:
+        kept.append(f"the {agent.name} could not be started again ({exc}; run install)")
     if not kept:
         return NOTHING_CHANGED
     return f"{NOTHING_CHANGED} to the install, but {'; '.join(kept)}"
-
-
-def _still_loaded(host: Host) -> bool:
-    try:
-        return host.job(BACKEND.label).loaded
-    except HostError:
-        return True

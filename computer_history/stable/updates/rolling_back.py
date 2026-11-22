@@ -15,8 +15,9 @@ from computer_history.stable.capture_agent import (
     plan_agent_rollback,
     record_installed_agent_or_note,
 )
-from computer_history.stable.launch_agents import BACKEND, load_agent
+from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
+from computer_history.stable.stopped_agents import StoppedAgents
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
 from computer_history.stable.versions import point, pointed, supported_schema
 from computer_history.store import stored_schema_version
@@ -70,7 +71,7 @@ def rollback(
     if isinstance(agent, AgentMove):
         agent = _move_agent(host, layout, agent, now, problems)
     try:
-        load_agent(host, layout, BACKEND, sleep=sleep)
+        StoppedAgents(host, layout, sleep=sleep).load(BACKEND)
     except (HostError, OSError) as exc:
         raise RollbackFailed(
             f"switched to version {previous.name}, but the backend could not be restarted on it:"

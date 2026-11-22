@@ -21,7 +21,9 @@
         |                     ActivityWatch), loading, stopping, starting and removing
         |                     them, and what
         |                     launchd says about each agent for status
-        +-- layout.py         where the versions, pointers, link, plists and logs live
+        +-- stopped_agents.py the agents update, rollback and restore stop for a step,
+        |                     and starting or reloading them after it, even when it fails
+        +-- layout.py        where the versions, pointers, link, plists and logs live
 
     updates/          update (build the newest passing commit, back up, switch, wait
         |             for the backend's first ok cycle with spool deletion held, swap
@@ -34,7 +36,7 @@
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
                       and starts the backend, the watchdog and the daily backup around
-                      it for the live database (uses launch_agents.py and layout.py)
+                      it for the live database (uses stopped_agents.py and layout.py)
 
     agent_guard.py    whether the capture agent in a checkout may be installed by hand:
                       on main, clean, at origin/main, its gate checks passed, and the

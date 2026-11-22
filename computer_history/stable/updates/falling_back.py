@@ -10,8 +10,9 @@ from pathlib import Path
 
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import RestoreFailed, restore_backup
-from computer_history.stable.launch_agents import BACKEND, load_agent, stop_if_loaded
+from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import Layout
+from computer_history.stable.stopped_agents import AgentNotStopped
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
 from computer_history.stable.updates.preparing import Prepared
 from computer_history.stable.versions import point
@@ -41,7 +42,7 @@ def fall_back(
     """
     problems: list[str] = []
     old, new = prepared.old.name, prepared.new
-    stopped = _stop_new_backend(host, problems, sleep)
+    stopped = _stop_new_backend(prepared, problems)
     pointed_back = _point_back(layout, prepared, problems)
     restored = _restore_if_migrated(host, layout, prepared, problems, now, sleep)
     if stopped:
@@ -52,7 +53,7 @@ def fall_back(
             " backend's next ok cycle removes it"
         )
     try:
-        load_agent(host, layout, BACKEND, sleep=sleep)
+        prepared.stopped.load(BACKEND)
     except (HostError, OSError) as exc:
         problems.append(f"the backend could not be started again: {exc} (run install)")
     folder = layout.versions / new
@@ -71,10 +72,10 @@ def fall_back(
     return FellBack(restored, tuple(problems))
 
 
-def _stop_new_backend(host: Host, problems: list[str], sleep: Callable[[float], None]) -> bool:
+def _stop_new_backend(prepared: Prepared, problems: list[str]) -> bool:
     try:
-        stop_if_loaded(host, BACKEND.label, sleep=sleep)
-    except HostError as exc:
+        prepared.stopped.stop((BACKEND,))
+    except AgentNotStopped as exc:
         problems.append(f"the new version's backend could not be confirmed stopped: {exc}")
         return False
     return True
