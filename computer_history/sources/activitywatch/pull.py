@@ -60,7 +60,7 @@ def _parse_event(raw: Any, bucket_id: str) -> _Event | None:
 
 
 @dataclass(frozen=True)
-class BucketPull:
+class _BucketPull:
     """The settled events one bucket contributed to a pull.
 
     Every event starting before the frontier is included, and held_back counts
@@ -73,7 +73,7 @@ class BucketPull:
     held_back: int
 
 
-def pull_bucket(
+def _pull_bucket(
     client: AWApi,
     source: str,
     bucket_id: str,
@@ -81,7 +81,7 @@ def pull_bucket(
     start: datetime | str | None = None,
     end: datetime | str | None = None,
     now: datetime | None = None,
-) -> BucketPull:
+) -> _BucketPull:
     """The settled events of one bucket that start in the range; writes nothing.
 
     No start means the beginning of the bucket and no end means up to now, and a pull up to now
@@ -142,7 +142,7 @@ def pull_bucket(
         frontier = min(event.start for event in held)
     else:
         frontier = now if end_dt is None else min(end_dt, now)
-    return BucketPull(bucket_id, tuple(observations), frontier, len(held))
+    return _BucketPull(bucket_id, tuple(observations), frontier, len(held))
 
 
 @dataclass(frozen=True)
@@ -171,7 +171,7 @@ def pull_source(
     """
     now = resolve_now(now)
     pulls = [
-        pull_bucket(client, source.name, bucket_id, start=start, end=end, now=now)
+        _pull_bucket(client, source.name, bucket_id, start=start, end=end, now=now)
         for bucket_id in source.bucket_ids
     ]
     return SourcePull(

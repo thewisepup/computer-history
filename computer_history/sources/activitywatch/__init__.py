@@ -9,8 +9,9 @@
       pull.py        fetch each bucket's events, keep the settled ones as raw observations
           |          (a source's frontier is the earliest bucket frontier), or fetch
           |          each bucket's newest event, for status
-      adapter.py     ActivityWatch: the adapter the ingest runner drives
-                     position.py: the frontier is the position, rewound on resume
+      adapter.py     ActivityWatch: the adapter the ingest runner drives, and the
+                     only way to pull; it owns the position (the frontier as a
+                     timestamp, rewound on resume), which nothing else decodes
                      history.py: where a stream's history begins, for backfill
                      normalize.py: its projectors, stored payload -> signal
                      (app, domain, url, title)
@@ -27,7 +28,7 @@ An event written late that reaches back past where a poll resumes (aw-watcher-af
 dates a new AFK event from the last input, even across a sleep) is refetched whole.
 """
 
-from computer_history.sources.activitywatch.adapter import ActivityWatch
+from computer_history.sources.activitywatch.adapter import RESUME_OVERLAP_SECONDS, ActivityWatch
 from computer_history.sources.activitywatch.afk import (
     AfkSpan,
     newest_afk_spans,
@@ -52,16 +53,7 @@ from computer_history.sources.activitywatch.frontmost import (
     stored_app_spans,
 )
 from computer_history.sources.activitywatch.normalize import PROJECTORS, project_signal
-from computer_history.sources.activitywatch.position import (
-    RESUME_OVERLAP_SECONDS,
-    position_at,
-)
-from computer_history.sources.activitywatch.pull import (
-    STABILITY_MARGIN_SECONDS,
-    SourcePull,
-    pull_bucket,
-    pull_source,
-)
+from computer_history.sources.activitywatch.pull import STABILITY_MARGIN_SECONDS
 from computer_history.sources.activitywatch.watchers import watcher_ends
 from computer_history.text import (
     MAX_TEXT_LENGTH,
@@ -88,17 +80,13 @@ __all__ = [
     "ActivityWatch",
     "AfkSpan",
     "AppSpan",
-    "SourcePull",
     "clean_text",
     "clean_url",
     "discover_sources",
     "extract_domain",
     "newest_afk_spans",
     "newest_app_spans",
-    "position_at",
     "project_signal",
-    "pull_bucket",
-    "pull_source",
     "stored_afk_spans",
     "stored_app_spans",
     "watcher_ends",

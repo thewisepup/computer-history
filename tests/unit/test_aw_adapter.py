@@ -5,7 +5,7 @@ import io
 import json
 import logging
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, timedelta
 from email.message import Message
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -18,6 +18,7 @@ from projectors import AW
 from computer_history.sources import (
     FailureKind,
     IngestOutcome,
+    Pull,
     SourceUnavailable,
     StreamFailure,
     poll,
@@ -33,12 +34,9 @@ from computer_history.sources.activitywatch import (
     AWClient,
     AWError,
     AWSource,
-    SourcePull,
     discover_sources,
     extract_domain,
     project_signal,
-    pull_bucket,
-    pull_source,
 )
 from computer_history.sources.activitywatch import client as aw_client
 from computer_history.sources.activitywatch.pull import CLIP_GUARD
@@ -88,6 +86,10 @@ def counts(outcome: IngestOutcome) -> tuple[int, int]:
 
 def window_aw() -> FakeAW:
     return FakeAW({WINDOW_BUCKET: "currentwindow"})
+
+
+def pull_window(fake: FakeAW, *, now: datetime) -> Pull:
+    return ActivityWatch(fake).pull_after(WINDOW_SOURCE, None, now=now)
 
 
 def rows(conn: sqlite3.Connection, source: str) -> list[sqlite3.Row]:
@@ -145,20 +147,20 @@ def test_latest_event_is_held_back_older_events_ingested() -> None:
     first = fake.add(WINDOW_BUCKET, 0, 60, {"app": "A", "title": "a"})
     second = fake.add(WINDOW_BUCKET, 1, 60, {"app": "B", "title": "b"})
     latest = fake.add(WINDOW_BUCKET, 2, 30, {"app": "C", "title": "c"})
-    pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(2.5) + timedelta(seconds=5))
+    pull = pull_window(fake, now=at(2.5) + timedelta(seconds=5))
     assert [o.source_id for o in pull.observations] == [
         f"{WINDOW_BUCKET}/{second['id']}",
         f"{WINDOW_BUCKET}/{first['id']}",
     ]
     assert pull.held_back == 1
-    assert pull.frontier == to_utc(latest["timestamp"])
+    assert pull.settled_until == to_utc(latest["timestamp"])
 
 
 def test_superseded_event_is_settled_even_if_it_just_ended() -> None:
     fake = window_aw()
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     fake.add(WINDOW_BUCKET, 1, 1, {"app": "B"})
-    pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
+    pull = pull_window(fake, now=at(1) + timedelta(seconds=2))
     assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["A"]
 
 
@@ -177,10 +179,10 @@ def test_latest_event_settles_once_its_end_is_older_than_the_margin(
     fake = window_aw()
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "A"})
     now = at(1) + timedelta(seconds=age_seconds)
-    pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=now)
+    pull = pull_window(fake, now=now)
     assert len(pull.observations) == (1 if settled else 0)
     assert pull.held_back == (0 if settled else 1)
-    assert pull.frontier == (now if settled else at(0))
+    assert pull.settled_until == (now if settled else at(0))
 
 
 def test_event_created_during_the_pull_counts_as_latest() -> None:
@@ -193,10 +195,10 @@ def test_event_created_during_the_pull_counts_as_latest() -> None:
 
     fake = RacingAW({WINDOW_BUCKET: "currentwindow"})
     fake.add(WINDOW_BUCKET, 0, 60, {"app": "Old"})
-    pull = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(1) + timedelta(seconds=2))
+    pull = pull_window(fake, now=at(1) + timedelta(seconds=2))
     assert [json.loads(o.payload)["data"]["app"] for o in pull.observations] == ["Old"]
     assert pull.held_back == 1
-    assert pull.frontier == at(1)
+    assert pull.settled_until == at(1)
 
 
 def test_window_signal() -> None:
@@ -524,7 +526,7 @@ def test_chunked_backfill_refetches_end_clipped_events_and_is_idempotent(
 
 def test_empty_range_is_rejected() -> None:
     with pytest.raises(ValueError):
-        pull_bucket(window_aw(), WINDOW_SOURCE, WINDOW_BUCKET, start=at(5), end=at(5))
+        ActivityWatch(window_aw()).pull_range(WINDOW_SOURCE, at(5), at(5), now=at(10))
 
 
 class _Response(io.BytesIO):
@@ -634,10 +636,6 @@ def test_incremental_outcome_reports_held_back_and_progress(conn: sqlite3.Connec
     assert settled(conn, WINDOW_SOURCE) == outcomes[WINDOW_SOURCE].settled_until
 
 
-def test_source_without_buckets_has_no_frontier() -> None:
-    assert pull_source(window_aw(), AWSource(WEB_SOURCE, ()), now=at(1)) == SourcePull((), 0, None)
-
-
 def test_adapter_reports_a_stream_without_buckets_as_unavailable() -> None:
     adapter = ActivityWatch(window_aw())
     assert adapter.streams() == [WINDOW_SOURCE]
@@ -656,10 +654,14 @@ def test_adapter_resumes_a_little_before_its_position() -> None:
             return super().get_events(bucket_id, **kwargs)
 
     fake = RecordingAW({WINDOW_BUCKET: "currentwindow"})
-    pulled = ActivityWatch(fake).pull_after(WINDOW_SOURCE, utc_iso(at(30)), now=at(40))
+    adapter = ActivityWatch(fake)
+    first = adapter.pull_after(WINDOW_SOURCE, None, now=at(30))
+    assert first.settled_until == at(30) and first.position is not None
+    fake.starts = []
+    pulled = adapter.pull_after(WINDOW_SOURCE, first.position, now=at(40))
     overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
     assert fake.starts == [at(30) - overlap - CLIP_GUARD]
-    assert (pulled.position, pulled.settled_until) == (utc_iso(at(40)), at(40))
+    assert pulled.settled_until == at(40) and pulled.position not in (None, first.position)
 
 
 def test_stored_url_and_domain_come_from_the_same_sanitized_string() -> None:
@@ -728,7 +730,7 @@ def test_a_malformed_event_warns_with_its_error_type_and_only_a_short_id(
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"})
     fake.events[WINDOW_BUCKET].append({"id": raw_id, "timestamp": "never", "data": {}})
 
-    pulled = pull_bucket(fake, WINDOW_SOURCE, WINDOW_BUCKET, now=at(30))
+    pulled = pull_window(fake, now=at(30))
 
     assert pulled.observations == ()
     warnings = logged(caplog, "malformed event skipped")
