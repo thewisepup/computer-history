@@ -58,6 +58,7 @@ public func runScriptedSession(
             return false
         }
     }
+    loop.stopRecordingSleep()
     loop.waitForScreenshots()
     if let failure {
         return CommandOutcome(exitCode: 1, message: "the script failed at \(mac.clock)s: \(failure)")

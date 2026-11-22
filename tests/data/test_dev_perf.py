@@ -159,7 +159,7 @@ def test_messages_name_only_flags_that_exist(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     usages = ""
-    for command in ("build-db", "perf", "bench"):
+    for command in dev.DEV_HANDLERS:
         with pytest.raises(SystemExit):
             cli.main(["dev", command, "--help"])
         usages += capsys.readouterr().out

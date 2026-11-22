@@ -27,9 +27,9 @@ Preconditions:
 - **First poll.** Seed the spool and ingest. Run `$C spool-seed` then
   `$C cli ingest`. Exit `0`; stdout has `aw-afk inserted 4 ... held back 1`,
   `aw-web inserted 2 ... held back 0`, `aw-window inserted 17 ... held back 1`,
-  `ax-text inserted 7`.
+  `ax-text inserted 9`.
 - **Stored rows.** Run `$C sql "SELECT source, COUNT(*) n FROM observations GROUP BY source"`.
-  Counts match the inserted numbers (4, 2, 17, 7).
+  Counts match the inserted numbers (4, 2, 17, 9).
 - **Spool emptied.** Run `$C spool-ls`. No `*.jsonl` file remains.
 - **Second poll.** Run `$C cli ingest` again. Every stream reports
   `inserted 0`; `held back 1` stays on `aw-afk` and `aw-window`.

@@ -143,6 +143,12 @@ func anInvalidFileIsReportedAndDefaultsAreUsed(config: String, problem: String) 
     #expect(settings.denylist == Denylist())
 }
 
+@Test func theWatchdogSectionIsLeftToTheBackend() throws {
+    let settings = try TempFolder().settings(config: #"{"watchdog": {"capture_agent_minutes": 10, "oops": 1}, "idle_threshold_seconds": 60}"#)
+    #expect(settings.problems.isEmpty)
+    #expect(settings.capture.idleThreshold == 60)
+}
+
 @Test(arguments: [
     (#"{"idle_threshold_seconds": 5}"#, "idle_threshold_seconds 5 is outside 10–86400, using 180"),
     (#"{"idle_threshold_seconds": "300"}"#, "idle_threshold_seconds must be a number of seconds, using 180"),

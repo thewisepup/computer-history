@@ -1,12 +1,12 @@
 import CryptoKit
 import Foundation
 
-/// One line of the spool: a capture of the focused window, or a labelled gap with no text.
+/// One line of the spool: a capture of the focused window, or a labelled gap or moment with no text.
 public struct SpoolRecord: Equatable, Sendable {
     public static let formatVersion = 1
 
     public enum Kind: String, CaseIterable, Sendable {
-        case capture, excluded, paused, resumed
+        case capture, excluded, paused, resumed, slept, woke
     }
 
     public enum Trigger: String, CaseIterable, Sendable {
@@ -63,6 +63,16 @@ public struct SpoolRecord: Equatable, Sendable {
     /// The moment capturing resumed.
     public static func resumed(id: UUID = UUID(), at capturedAt: Date) -> SpoolRecord {
         SpoolRecord(id: id, capturedAt: capturedAt, kind: .resumed)
+    }
+
+    /// The moment the Mac went to sleep.
+    public static func slept(id: UUID = UUID(), at capturedAt: Date) -> SpoolRecord {
+        SpoolRecord(id: id, capturedAt: capturedAt, kind: .slept)
+    }
+
+    /// The moment the Mac woke.
+    public static func woke(id: UUID = UUID(), at capturedAt: Date) -> SpoolRecord {
+        SpoolRecord(id: id, capturedAt: capturedAt, kind: .woke)
     }
 
     private init(

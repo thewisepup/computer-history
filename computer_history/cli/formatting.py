@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from collections.abc import Mapping
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
+
+from computer_history.watchdog import Check, Finding, Reason, Verdict
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def duration(seconds: float) -> str:
@@ -73,3 +80,28 @@ def human_size(n: int) -> str:
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GB"
+
+
+def finding_lines(
+    findings: tuple[Finding, ...], now: datetime, notified: Mapping[Check, datetime] | None = None
+) -> list[str]:
+    """Format each finding as a line, with when a notified problem was last notified."""
+    width = max((len(found.check.value) for found in findings), default=0)
+    lines: list[str] = []
+    for found in findings:
+        line = f"  {found.check.value:<{width}}  {_judged(found, now)}"
+        at = (notified or {}).get(found.check)
+        if at is not None and found.verdict is Verdict.PROBLEM:
+            line += f", notified {duration((now - at).total_seconds())} ago"
+        lines.append(line)
+    return lines
+
+
+def _judged(found: Finding, now: datetime) -> str:
+    shown = f"{found.verdict.value}: {found.reason.value}"
+    if found.last_seen is not None:
+        seen = "since" if found.reason is Reason.UNREACHABLE else "last seen"
+        shown += f", {seen} {ago(found.last_seen, now)}"
+    if found.detail:
+        shown += f" ({found.detail})"
+    return shown

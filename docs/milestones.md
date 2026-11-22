@@ -87,6 +87,34 @@ per keep-after limit while its text is read. All on Brandon's Mac.
 - [ ] Reboot test: recording resumes with no manual steps.
 - [ ] Sleep test: ingest progress advances across wake; the gap is ingested, and real
       coverage gaps are reported as warnings, never guessed.
+- [x] Stable and dev: the profile is decided from where the code runs; dev
+      gets its own data and log folders and is refused the live database,
+      spool and screenshots, `dev snapshot` copies the live database, and a
+      repo hook stops coding agents naming the live folder. `install` sets up
+      the stable install, its LaunchAgents and PATH link and retires the
+      stopgap; `uninstall` removes them and keeps the data. *(The real install
+      waits for the Mac verification, #110.)*
+- [x] Sleep and wake: the capture agent writes `slept` and `woke` records,
+      ingested like every other kind, and `status` counts sleep as explained,
+      a lost `woke` ending at the next record. *(The real sleep test is the
+      item above.)*
+- [x] The watchdog runs every minute and notifies, while Brandon is active, of
+      a silent capture agent, ActivityWatch or backend, at most hourly plus
+      once cleared, and reopens ActivityWatch at most three times an hour.
+      *(A notification posted from its LaunchAgent and ActivityWatch reopened
+      after quitting it wait for the Mac verification, #110.)*
+- [x] Failure-streak alerts: `ingest --watch` notifies after five failed
+      cycles in a row, at most hourly, and once when they end, through the
+      host adapter; the watchdog leaves failing cycles to it.
+- [x] A daily backup of the database, seven kept and each integrity-checked,
+      and `restore` putting one back with the current database set aside.
+      *(The LaunchAgent running a missed backup after wake waits for the Mac
+      verification, #110.)*
+- [x] `update` moves stable to the newest commit the release gate passes,
+      backing up first and falling back on its own when the new backend
+      crashes or its first cycle fails or times out; `rollback` goes back one
+      version without the network. *(One real update and one forced fallback
+      wait for the Mac verification, #110.)*
 - [ ] From here, data accumulates unattended (the eval corpus for M5).
 
 ### M5 — Classification

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import after_profile_line
 from db_states import stored_progress, write_locked
 from fake_aw import FakeAW
 from log_records import logged
@@ -544,7 +545,7 @@ def test_cli_backfill_progress_read_failure_fails_cleanly(
     damaged.close()
     code, out, err = run(capsys, "--db-path", str(db_path), "backfill", *dry_run)
     assert code == 1
-    assert out == ""
+    assert after_profile_line(out) == ""
     assert f"cannot read {db_path}: no such table: ingest_progress" in err
     assert "Traceback" not in err
 

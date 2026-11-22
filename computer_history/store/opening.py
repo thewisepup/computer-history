@@ -14,7 +14,6 @@ from computer_history.store.db import (
     schema_version,
     supported_version,
 )
-from computer_history.store.paths import resolve_db_path
 
 
 class Purpose(Enum):
@@ -54,12 +53,12 @@ class OpenedStore:
             self.conn.close()
 
 
-def open_store(db_path: str | os.PathLike[str] | None, purpose: Purpose) -> OpenedStore:
+def open_store(db_path: str | os.PathLike[str], purpose: Purpose) -> OpenedStore:
     """Open the database for reading, writing, or writing only if it already exists.
 
     Reading never creates or migrates, writing migrates, and a newer schema is always refused.
     """
-    path = resolve_db_path(db_path)
+    path = Path(db_path)
     supported = supported_version()
     if purpose is not Purpose.WRITE and not path.exists():
         return OpenedStore(path, StoreState.MISSING, supported)

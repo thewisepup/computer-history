@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from socket import gethostname
 
+from computer_history.cli import formatting
 from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import (
     ago,
     app_name,
     db_size,
     duration,
+    finding_lines,
     human_size,
     lag,
     local_midnight,
     printable,
     when,
 )
+from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
+from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
@@ -26,6 +30,7 @@ from computer_history.sources import (
     AWClient,
     CaptureHealth,
     IngestHealth,
+    Liveness,
     ScreenshotHealth,
     ScreenshotTally,
     SourceUnavailable,
@@ -35,35 +40,66 @@ from computer_history.sources import (
     resolve_spool_path,
     screenshot_health,
 )
+from computer_history.stable import (
+    DAILY_BACKUP,
+    DAILY_FOLDER_NAME,
+    DAILY_KEPT,
+    AgentStatus,
+    BackupInventory,
+    UpdateAction,
+    agent_statuses,
+    backup_inventory,
+    last_update_log_entry,
+    pointed,
+    stable_layout,
+)
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
     Coverage,
+    Profile,
     Purpose,
     SourceCoverage,
     SourceSummary,
     StoreState,
+    default_db_path,
     open_store,
-    resolve_db_path,
     source_summary,
     status_reads,
+)
+from computer_history.watchdog import (
+    REOPEN_LIMIT,
+    read_watchdog_state,
+    recent_reopens,
+    stopped,
+    watchdog_state_path,
 )
 
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
-STATUS_AW_TIMEOUT_SECONDS = 5
-
-
-def utc_now() -> datetime:
-    return datetime.now(UTC)
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    db_path = resolve_db_path(args.db_path)
-    spool_path = resolve_spool_path(args.spool_path, db_path)
-    now = utc_now()
+    """Print the database's sections, read beside the database it was given, then the stable
+    install's, which describe stable whichever database that is."""
+    db_path: Path = args.database
+    spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
+    now = formatting.utc_now()
+    code = _print_store(args, db_path, spool_path, now)
+    print()
+    _print_backups(backup_inventory(db_path), now)
+    print()
+    _print_install(args.profile, now)
+    print()
+    _print_launch_agents(args.host)
+    print()
+    _print_watchdog(now)
+    return code
+
+
+def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now: datetime) -> int:
     day_start = local_midnight(now)
-    client = AWClient(args.aw_url, timeout=STATUS_AW_TIMEOUT_SECONDS)
+    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     aw = ActivityWatch(client)
     try:
         streams = aw.streams()
@@ -128,6 +164,118 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_install(profile: Profile, now: datetime) -> None:
+    layout = stable_layout()
+    print("Stable install:")
+    print(f"  this run      {profile.value}")
+    for name, pointer in (("current", layout.current), ("previous", layout.previous)):
+        version = pointed(pointer)
+        if version is None:
+            print(f"  {name:<13} none")
+        else:
+            print(f"  {name:<13} {version.name}, installed {ago(version.installed_at, now)}")
+    print(f"  last update   {_last_update(layout.update_log, now)}")
+
+
+def _last_update(log: Path, now: datetime) -> str:
+    try:
+        entry = last_update_log_entry(log)
+    except (OSError, ValueError) as exc:
+        return f"unreadable update log: {exc}"
+    if entry is None:
+        return "none yet"
+    moved = f"{entry.from_version} -> {entry.to_version}"
+    if entry.action is UpdateAction.FELL_BACK:
+        return f"fell back {moved}, {ago(entry.at, now)}: {entry.reason}"
+    return f"{entry.action.value} {moved}, {ago(entry.at, now)}"
+
+
+def _print_launch_agents(host: Host) -> None:
+    print("Stable install's LaunchAgents:")
+    try:
+        statuses = agent_statuses(host, stable_layout())
+    except HostError as exc:
+        print(f"  cannot ask launchd: {exc}")
+        return
+    width = max(len(status.name) for status in statuses)
+    for status in statuses:
+        if not status.shown:
+            continue
+        print(f"  {status.name:<{width}}  {_job(status)}  {status.label}")
+        if status.lingering:
+            print(f"  warning: the {status.name} still runs; `computer-history install` retires it")
+
+
+def _job(status: AgentStatus) -> str:
+    state = status.state
+    if state is None or not state.loaded:
+        return "installed, not loaded" if status.installed else "not installed"
+    shown = "loaded, not running" if state.pid is None else f"loaded, running (pid {state.pid})"
+    return shown if status.installed else f"{shown}, plist deleted"
+
+
+def _print_backups(kept: BackupInventory, now: datetime) -> None:
+    print("Backups:")
+    if not kept.daily and not kept.pre_update:
+        daily = kept.folder / DAILY_FOLDER_NAME
+        print(f"  none yet (the daily backup takes one a day into {daily})")
+        return
+    if kept.daily:
+        latest = kept.daily[-1]
+        print(
+            f"  latest        {latest.day}, taken {ago(latest.taken_at, now)},"
+            f" {human_size(latest.size)}"
+        )
+        print(
+            f"  daily         {len(kept.daily)} kept (the newest {DAILY_KEPT}), oldest"
+            f" {kept.daily[0].day}"
+        )
+    else:
+        print("  daily         none yet")
+    if kept.pre_update:
+        print(
+            f"  pre-update    {len(kept.pre_update)} kept, newest taken"
+            f" {when(kept.pre_update[-1].taken_at)}"
+        )
+    print("  integrity     each passed SQLite's integrity check before it was kept")
+    print(f"  folder        {kept.folder}")
+    if kept.overdue(now):
+        missing = f"since {kept.daily[-1].day}" if kept.daily else "taken yet"
+        print(
+            f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"
+            " and read its log"
+        )
+
+
+def _print_watchdog(now: datetime) -> None:
+    print("Stable watchdog:")
+    path = watchdog_state_path(default_db_path(Profile.STABLE))
+    try:
+        state = read_watchdog_state(path)
+    except (OSError, ValueError) as exc:
+        print(f"  last run       unreadable state: {exc}")
+        return
+    if state is None or state.ran_at is None:
+        print(f"  last run       none yet (no state at {path})")
+        return
+    print(f"  last run       {ago(state.ran_at, now)}")
+    for line in finding_lines(state.findings, now, state.notified):
+        print(line)
+    reopens = recent_reopens(state.reopened, now)
+    if reopens:
+        print(
+            f"  reopened       ActivityWatch {len(reopens)} time{'' if len(reopens) == 1 else 's'}"
+            f" in the last hour (at most {REOPEN_LIMIT})"
+        )
+    for error in state.errors:
+        print(f"  error: {error}")
+    if stopped(state, now):
+        print(
+            f"  warning: the watchdog last ran {duration((now - state.ran_at).total_seconds())}"
+            " ago; it runs every minute while its LaunchAgent is loaded"
+        )
+
+
 def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
     path = health_path(db_path)
     try:
@@ -136,10 +284,10 @@ def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
         return None, f"Ingest:        cannot read {path}: {exc}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
-    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.updated_at, now)}"
+    line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"
     if health.stale(now):
         line += (
-            f"; NOT REPORTING for {duration((now - health.updated_at).total_seconds())}"
+            f"; NOT REPORTING for {duration((now - health.cycle_at).total_seconds())}"
             " (is `ingest --watch` running?)"
         )
     if not health.consecutive_failures:
@@ -232,7 +380,7 @@ def _print_capture_gaps(health: CaptureHealth) -> None:
     print(
         f"  {WINDOW_TEXT_SOURCE} from {when(coverage.start)} to {when(coverage.end)} (unobserved:"
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
-        " not paused):"
+        " not paused or asleep):"
     )
     warnings = sorted(
         [(gap, "while you were active") for gap in coverage.unobserved]
@@ -261,7 +409,7 @@ def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None
     t = health.today
     print(
         f"  today         {t.captures:,} captures stored, {t.excluded:,} excluded,"
-        f" {t.cut_off:,} cut off, {t.timed_out:,} timed out"
+        f" {t.cut_off:,} cut off, {t.timed_out:,} timed out, {t.slept:,} slept, {t.woke:,} woke"
     )
     paused = "no" if health.paused_since is None else f"yes, since {ago(health.paused_since, now)}"
     print(f"  paused        {paused}")
@@ -292,11 +440,11 @@ def _print_agreement(health: CaptureHealth) -> None:
 
 def _alive(health: CaptureHealth, now: datetime) -> str:
     last = ago(health.last_record, now)
-    if health.alive == "yes":
+    if health.alive is Liveness.ALIVE:
         return f"yes (last record {last})"
-    if health.alive == "no":
+    if health.alive is Liveness.SILENT:
         return f"NO: no record since {last}, although aw-afk shows you active since then"
-    if health.alive == "paused":
+    if health.alive is Liveness.PAUSED:
         return f"paused, so no records are expected (last record {last})"
     return f"cannot tell: no record since {last}, and aw-afk does not show you active since then"
 

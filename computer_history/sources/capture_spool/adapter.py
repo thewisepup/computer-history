@@ -25,7 +25,7 @@ from computer_history.sources.capture_spool.spool import (
     set_aside,
 )
 from computer_history.sources.contract import Pull
-from computer_history.store import Observation, utc_iso
+from computer_history.store import Observation, SpoolHold, utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +37,9 @@ class CaptureSpool:
 
     projectors = PROJECTORS
 
-    def __init__(self, folder: Path) -> None:
+    def __init__(self, folder: Path, *, hold: SpoolHold | None = None) -> None:
         self.folder = folder
+        self.hold = hold
         self._listed: dict[str, deque[Path]] = {stream: deque() for stream in STREAM_KINDS}
         self._stored: dict[tuple[Path, FileIdentity], set[str]] = {}
         self._unreadable: dict[Path, set[str]] = {}
@@ -131,6 +132,8 @@ class CaptureSpool:
 
     def _finish(self, stream: str, path: Path, finish: Finish) -> None:
         self._drop(stream, path)
+        if self.hold is not None and self.hold.active:
+            return
         try:
             finish(path)
         except SpoolError:

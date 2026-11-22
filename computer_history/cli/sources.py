@@ -4,6 +4,7 @@ import sys
 
 from computer_history.sources import SPOOL_STREAMS
 
+AW_CHECK_TIMEOUT_SECONDS = 5
 SOURCE_HINT = "Is ActivityWatch running? Check with `computer-history status`."
 SPOOL_HINT = "Can this user list, read and change files in the spool folder?"
 
