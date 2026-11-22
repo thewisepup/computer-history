@@ -25,9 +25,9 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
   store/         insert_observations, rebuild_signals (each projects through
                  the projector it is given)
 
-agent_health.py  for status and the watchdog: the capture agent's stored records
-                 and spool, judged against aw-afk and aw-window, drawing on both
-                 adapters
+agent_health.py  for status, the watchdog and update's agent check: the capture
+                 agent's stored records and spool, judged against aw-afk and
+                 aw-window, drawing on both adapters
 """
 
 from computer_history.sources.activitywatch import (
@@ -61,9 +61,12 @@ from computer_history.sources.activitywatch import (
 from computer_history.sources.agent_health import (
     CaptureHealth,
     CaptureLiveness,
+    NewestRecord,
     active_spans,
+    active_time,
     capture_health,
     capture_liveness,
+    newest_record,
 )
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
@@ -118,6 +121,7 @@ from computer_history.sources.capture_spool import (
     StoredRecord,
     agent_config_path,
     app_agreement,
+    attended_time,
     capture_coverage,
     configured_spool_path,
     day_counts,
@@ -243,6 +247,7 @@ __all__ = [
     "KeptScreenshot",
     "Liveness",
     "MissingPermission",
+    "NewestRecord",
     "Projecting",
     "Pull",
     "Recovery",
@@ -259,8 +264,10 @@ __all__ = [
     "StreamFailure",
     "StreamProjector",
     "active_spans",
+    "active_time",
     "agent_config_path",
     "app_agreement",
+    "attended_time",
     "capture_coverage",
     "capture_health",
     "capture_liveness",
@@ -277,6 +284,7 @@ __all__ = [
     "liveness",
     "newest_afk_spans",
     "newest_app_spans",
+    "newest_record",
     "newest_stored",
     "parse_record",
     "plan_all_backfills",

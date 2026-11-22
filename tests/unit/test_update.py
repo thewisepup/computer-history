@@ -121,6 +121,8 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
         "  first cycle   completed; the backend deletes stored spool files again",
         f"  current       {layout.current} -> {layout.versions / new}",
         f"  previous      {old} (rollback returns to it)",
+        "  agent         installed, not verified: ActivityWatch could not say whether you were"
+        " active",
     ]
     ((entry),) = log_lines(layout)
     assert {k: entry[k] for k in ("action", "from", "to", "reason")} == {

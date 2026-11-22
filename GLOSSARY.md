@@ -82,8 +82,12 @@ _Avoid_: Downgrade, revert
 The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, and update counts it as changed.
 _Avoid_: Deployed agent, agent version
 
+**Agent swap**:
+Update installing a changed capture agent's app from the new version folder over the fixed path, after the backend's first ok cycle, then waiting for a record captured since. A record verifies it; no record during 120 active seconds, or an agent that never starts, is an **agent fallback**: the old version's app goes back over the fixed path while the new backend stays.
+_Avoid_: Agent deploy, agent rollback (rollback is the command)
+
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback and rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:

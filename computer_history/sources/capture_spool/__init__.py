@@ -25,7 +25,7 @@
                              the day's counts
                 coverage.py  records judged against attended time: stretches no record
                              explains within the heartbeat tolerance and no pause or
-                             sleep explains, and liveness
+                             sleep explains, liveness, and the attended time between two times
                 agreement.py each capture's app judged against the app aw-window shows
                              in front, within its polling tolerance
                 screenshots.py
@@ -50,6 +50,7 @@ from computer_history.sources.capture_spool.coverage import (
     Coverage,
     Liveness,
     Span,
+    attended_time,
     capture_coverage,
     liveness,
 )
@@ -146,6 +147,7 @@ __all__ = [
     "StoredRecord",
     "agent_config_path",
     "app_agreement",
+    "attended_time",
     "capture_coverage",
     "configured_spool_path",
     "day_counts",

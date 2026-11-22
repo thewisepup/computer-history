@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import plistlib
 import shutil
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +20,13 @@ from computer_history.host import (
     JobState,
     SpoolReads,
 )
-from computer_history.sources import RECORD_KINDS, SPOOL_VERSION, IngestHealth, write_health
+from computer_history.sources import (
+    CAPTURE_KIND,
+    RECORD_KINDS,
+    SPOOL_VERSION,
+    IngestHealth,
+    write_health,
+)
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,
@@ -102,13 +110,57 @@ def crashes(host: FakeHost) -> None:
 
 
 def stays_silent(_: FakeHost) -> None:
-    """A backend that runs but never completes a cycle."""
+    """A backend that never completes a cycle, or an agent that runs but records nothing."""
+
+
+AgentStart = Callable[["FakeHost"], None]
+
+
+def write_record(spool: Path, kind: str, at: datetime) -> None:
+    """Append one record of the kind, captured at the time, to the spool's open file."""
+    content = kind == CAPTURE_KIND
+    line = {
+        "version": SPOOL_VERSION,
+        "id": str(uuid.uuid4()),
+        "captured_at": at.strftime("%Y-%m-%dT%H:%M:%S.") + f"{at.microsecond // 1000:03d}Z",
+        "kind": kind,
+        "trigger": "heartbeat" if content else None,
+        "app_name": "Editor" if content else None,
+        "bundle_id": None,
+        "window_title": "w" if content else None,
+        "text": "t" if content else None,
+        "text_sha256": "0" * 64 if content else None,
+        "full_text_bytes": 1 if content else None,
+        "text_cut_off": False if content else None,
+        "timed_out": False if content else None,
+    }
+    spool.mkdir(parents=True, exist_ok=True)
+    with (spool / "open.part").open("a", encoding="utf-8") as file:
+        file.write(json.dumps(line) + "\n")
+
+
+def records(spool: Path, at: Callable[[], datetime], kind: str = CAPTURE_KIND) -> AgentStart:
+    """An agent that writes one record of the kind as it starts."""
+
+    def start(_: FakeHost) -> None:
+        write_record(spool, kind, at())
+
+    return start
+
+
+def fails_to_register(error: str) -> AgentStart:
+    """An agent whose app is put in place but that launchd never shows running."""
+
+    def start(_: FakeHost) -> None:
+        raise HostError(error)
+
+    return start
 
 
 class FakeHost:
     """Commits, check runs, backend starts, agent source trees (one shared tree unless scripted),
-    the agent toolchain and builds as scripted, launchd as a dict, and ActivityWatch's app and
-    notifications as flags and a list.
+    the agent toolchain, builds and starts as scripted, launchd as a dict, and ActivityWatch's app
+    and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -136,6 +188,7 @@ class FakeHost:
         agent_build_error: str | None = None,
         agent_build_interrupted: bool = False,
         agent_register_error: str | None = None,
+        agent_starts: Iterable[AgentStart] = (),
     ) -> None:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
@@ -160,6 +213,7 @@ class FakeHost:
         self.agent_build_error = agent_build_error
         self.agent_build_interrupted = agent_build_interrupted
         self.agent_register_error = agent_register_error
+        self.agent_starts = list(agent_starts)
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -215,6 +269,8 @@ class FakeHost:
         shutil.copytree(app, fixed, symlinks=True)
         if self.agent_register_error is not None:
             raise HostError(self.agent_register_error)
+        if self.agent_starts:
+            self.agent_starts.pop(0)(self)
 
     def job(self, label: str) -> JobState:
         self.calls.append(("job", label))

@@ -711,7 +711,8 @@ in the live folder and starts the backend at login from it:
   ingest-health.json       # {"cycle_at", "consecutive_failures", "failing_since", "last_success_at",
                            #  "last_error", "alerted_at", "sources_unavailable" (every failure was an
                            #  unreadable source)}, rewritten by ingest --watch after each cycle
-  update-log.jsonl         # one JSON line per update, fallback and rollback; status shows the last
+  update-log.jsonl         # one JSON line per update, fallback, agent fallback and rollback; status
+                           #  shows the last; an "updated" line carries the capture agent's outcome
   installed-agent.json     # {"built_from": <full commit>, "installed_at": <ISO time>}: the commit the app
                            #  at ~/Applications/ComputerHistoryAgent.app was built from; missing = unknown
   spool-deletion-held      # placed by update: ingest keeps stored spool files until the backend's ok cycle
@@ -806,8 +807,9 @@ in the live folder and starts the backend at login from it:
   the backend again. Only the backend restarts. It then waits up to
   `--wait` seconds (600 by default, a monotonic deadline) for a cycle in
   `ingest-health.json` newer than the restart. An
-  ok cycle deletes the version `previous` named before (one previous is kept)
-  and logs `updated`. A cycle that failed only because a source was
+  ok cycle removes the hold, swaps a changed capture agent (below), deletes
+  the version `previous` named before (one previous is kept) and logs
+  `updated` with the agent's outcome. A cycle that failed only because a source was
   unavailable (its `sources_unavailable`) is waited through; a
   wait that ends with the sources still down falls back with that reason. A
   failed cycle, a crash (launchd reports another process, or none, after it
@@ -823,6 +825,25 @@ in the live folder and starts the backend at login from it:
   and restarts the backend, and during a fallback or the last steps they are
   only noted, so those run to their end. Update exits 1 after a fallback, 130
   after an interrupted update.
+- **Agent swap** (only when the agent changed, only after the ok cycle): copy
+  the app at the fixed path into the old version's folder unless its
+  `agent-commit.txt` already names the installed agent's commit, install the
+  new version's app over the fixed path through the host (unregister, replace,
+  register, confirm running, with the install script's retries) and rewrite
+  `installed-agent.json`. Then wait for a record captured at or after the
+  swap, stored or in the spool, read through an injected reader (the newest
+  record's time and kind, and aw-afk's active time between two times) built
+  on the reads status and the watchdog use, not the watchdog's verdict. A
+  record verifies it; a newest `paused` record, ActivityWatch unreachable, or
+  under 120 active seconds within 600 wall-clock seconds
+  (`AGENT_ACTIVE_SECONDS`, `AGENT_WAIT_SECONDS` beside the first-cycle wait)
+  ends it installed, not verified. 120 active seconds with no record, a
+  register or start failure (at once), or Ctrl-C or SIGTERM during the wait
+  falls the agent back: the old version's app installed again and recorded
+  (the record removed when its commit is unknown or it failed), `agent fell
+  back` logged, a notification posted, each failure a problem while the rest
+  run. The new backend, the pointers and the database stay. Update exits 3
+  after an agent fallback.
 - **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
   `spool-deletion-held` sits beside the database, every ingest stores spool
   files as usual but deletes or sets aside none. `ingest --watch` removes the

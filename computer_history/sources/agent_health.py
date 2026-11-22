@@ -32,6 +32,7 @@ from computer_history.sources.capture_spool import (
     SpoolError,
     StoredRecord,
     app_agreement,
+    attended_time,
     capture_coverage,
     day_counts,
     liveness,
@@ -45,9 +46,12 @@ from computer_history.store import SourceSummary, to_utc
 __all__ = [
     "CaptureHealth",
     "CaptureLiveness",
+    "NewestRecord",
     "active_spans",
+    "active_time",
     "capture_health",
     "capture_liveness",
+    "newest_record",
 ]
 
 
@@ -215,6 +219,38 @@ def active_spans(
     return [(span.start, span.end) for span in stored if not span.afk]
 
 
+@dataclass(frozen=True)
+class NewestRecord:
+    """When the agent's newest record, stored or still in the spool, was captured, and its kind."""
+
+    at: datetime
+    kind: str | None
+
+    @property
+    def paused(self) -> bool:
+        return self.kind == PAUSED_KIND
+
+
+def newest_record(
+    conn: sqlite3.Connection | None, spool_folder: Path, *, now: datetime
+) -> NewestRecord | None:
+    """The agent's newest record up to now, stored or still in the spool; an unreadable spool
+    counts as holding none."""
+    return _newest(conn, spool_folder, to_utc(now))[0]
+
+
+def active_time(
+    conn: sqlite3.Connection | None, client: AWApi, start: datetime, end: datetime
+) -> timedelta | None:
+    """How long aw-afk shows the user active between two times, or None when ActivityWatch is
+    unreachable."""
+    try:
+        client.get_buckets()
+    except SourceUnavailable:
+        return None
+    return attended_time(active_spans(conn, client, start, end), start, end)
+
+
 def capture_liveness(
     conn: sqlite3.Connection | None,
     spool_folder: Path,
@@ -226,6 +262,22 @@ def capture_liveness(
 ) -> CaptureLiveness:
     """Judge the agent alive from its newest record, counting silence from watched_since on."""
     now = to_utc(now)
+    newest, spool_error = _newest(conn, spool_folder, now)
+    if newest is None:
+        return CaptureLiveness(None, Liveness.UNKNOWN, spool_error)
+    alive = liveness(
+        max(newest.at, watched_since),
+        now=now,
+        paused=newest.paused,
+        active=active,
+        alive_within=alive_within,
+    )
+    return CaptureLiveness(newest.at, alive, spool_error)
+
+
+def _newest(
+    conn: sqlite3.Connection | None, spool_folder: Path, now: datetime
+) -> tuple[NewestRecord | None, str | None]:
     try:
         unstored, spool_error = spool_backlog(spool_folder).newest, None
     except SpoolError as exc:
@@ -233,13 +285,6 @@ def capture_liveness(
     stored = None if conn is None else newest_stored(conn, until=now)
     found = [record for record in (stored, unstored) if record is not None]
     if not found:
-        return CaptureLiveness(None, Liveness.UNKNOWN, spool_error)
+        return None, spool_error
     at, kind = max(found, key=lambda record: record[0])
-    alive = liveness(
-        max(at, watched_since),
-        now=now,
-        paused=kind == PAUSED_KIND,
-        active=active,
-        alive_within=alive_within,
-    )
-    return CaptureLiveness(at, alive, spool_error)
+    return NewestRecord(at, kind), spool_error

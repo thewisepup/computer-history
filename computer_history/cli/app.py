@@ -75,7 +75,8 @@ COMMANDS = {
     "update": (
         "Move the stable install to the newest main commit that passed the release gate: back"
         " up the database, restart the backend on it, and fall back on its own if its first"
-        " ingest cycle does not complete."
+        " ingest cycle does not complete; then swap in a changed capture agent and put the old"
+        " one back if it records nothing while you are active."
     ),
     "rollback": "Switch the stable install back to its previous version (no network needed).",
     "install": (
@@ -161,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
             continue
         if name in ("ingest", "status", "backfill", "watchdog"):
             parents = [db_after_command, aw]
+        elif name == "update":
+            parents = [aw]
         elif name in INSTALL_COMMANDS:
             parents = []
         else:

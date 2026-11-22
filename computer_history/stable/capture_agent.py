@@ -88,6 +88,28 @@ def place_agent(host: Host, layout: Layout, plan: AgentPlan, version: Path) -> N
         raise
 
 
+def keep_installed_app(layout: Layout, version: Path) -> None:
+    """Copy the app at the agent's fixed path into a version folder, noting its commit when known,
+    unless the folder already carries that app."""
+    installed = installed_agent(layout)
+    built_from = None if installed is None else installed.built_from
+    if built_from is not None and _note(layout, version) == built_from:
+        return
+    if not layout.capture_agent_app.is_dir():
+        return
+    app, note = layout.agent_app(version), layout.agent_commit(version)
+    shutil.rmtree(app, ignore_errors=True)
+    note.unlink(missing_ok=True)
+    shutil.copytree(layout.capture_agent_app, app, symlinks=True)
+    if built_from is not None:
+        note.write_text(f"{built_from}\n", encoding="utf-8")
+
+
+def carried_agent(layout: Layout, version: Path) -> str | None:
+    """The commit a version folder's agent app was built from, or None without an app or note."""
+    return _note(layout, version)
+
+
 def _note(layout: Layout, version: Path) -> str | None:
     if not layout.agent_app(version).is_dir():
         return None
