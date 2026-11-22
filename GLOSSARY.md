@@ -78,8 +78,16 @@ _Avoid_: Revert, auto-rollback
 Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
 _Avoid_: Downgrade, revert
 
+**Installed agent**:
+The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`.
+_Avoid_: Deployed agent, agent version
+
+**Agent swap**:
+Update installing a changed capture agent's app from the new version folder over the fixed path, after the backend's first ok cycle, then waiting for a record captured since. A record verifies it; no record during 120 active seconds, or an agent that never starts, is an **agent fallback**: the old version's app goes back over the fixed path while the new backend stays, and the build that fell back is kept aside in the new version folder as `ComputerHistoryAgent.fell-back.app`. When the installed app can't be kept in the old version folder or the installed agent can't be unregistered, the agent is **not swapped** and keeps running.
+_Avoid_: Agent deploy, agent rollback (rollback is the command)
+
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent or a rollback moves it.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:
@@ -99,7 +107,7 @@ The check the capture agent's install script runs before building: the checkout 
 _Avoid_: Preflight, safety check
 
 **Host adapter**:
-The one seam to macOS and the network (launchctl, GitHub, reading a checkout's git state, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
+The one seam to macOS and the network (launchctl, GitHub, reading a checkout's git state, building with uv, building and installing the capture agent, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
 _Avoid_: System client, platform layer
 
 **Daily backup**:

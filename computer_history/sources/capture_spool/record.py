@@ -21,7 +21,7 @@ WOKE_KIND = "woke"
 MOMENT_KINDS = (SLEPT_KIND, WOKE_KIND)  # the Mac's own moments: no app or text, yet a signal
 SCREENSHOT_KIND = "screenshot"
 WINDOW_TEXT_KINDS = (CAPTURE_KIND, EXCLUDED_KIND, PAUSED_KIND, RESUMED_KIND, SLEPT_KIND, WOKE_KIND)
-KINDS = (*WINDOW_TEXT_KINDS, SCREENSHOT_KIND)
+RECORD_KINDS = (*WINDOW_TEXT_KINDS, SCREENSHOT_KIND)
 WINDOW_TEXT_SOURCE = "ax-text"
 SCREENSHOT_SOURCE = "screenshot"
 STREAM_KINDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
@@ -143,7 +143,7 @@ def parse_record(line: str) -> ParsedRecord:
     try:
         return _checked(data, kind)
     except InvalidRecord as exc:
-        exc.kind = kind if kind in KINDS else None
+        exc.kind = kind if kind in RECORD_KINDS else None
         raise
 
 
@@ -154,7 +154,7 @@ def _checked(data: dict[str, Any], kind: Any) -> ParsedRecord:
     record_id = data.get("id")
     if not isinstance(record_id, str) or not _ID.fullmatch(record_id):
         raise InvalidRecord(f"bad id {record_id!r}", problem="bad id")
-    if kind not in KINDS:
+    if kind not in RECORD_KINDS:
         raise InvalidRecord(f"unknown kind {kind!r}", problem="unknown kind")
     for key, expected in _TYPED_FIELDS.items():
         value = data.get(key)

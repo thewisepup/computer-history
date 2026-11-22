@@ -49,9 +49,12 @@ from computer_history.stable import (
     UpdateAction,
     agent_statuses,
     backup_inventory,
+    installed_agent,
+    last_agent_fallback,
     last_update_log_entry,
     pointed,
     stable_layout,
+    version_name,
 )
 from computer_history.store import (
     MIN_GAP_SECONDS,
@@ -174,7 +177,27 @@ def _print_install(profile: Profile, now: datetime) -> None:
             print(f"  {name:<13} none")
         else:
             print(f"  {name:<13} {version.name}, installed {ago(version.installed_at, now)}")
+    agent = installed_agent(layout)
+    if agent is None:
+        print("  agent         built from unknown")
+    else:
+        built = version_name(agent.built_from)
+        print(f"  agent         built from {built}, installed {ago(agent.installed_at, now)}")
+    fallback = _last_agent_fallback(layout.update_log, now)
+    if fallback is not None:
+        print(f"                {fallback}")
     print(f"  last update   {_last_update(layout.update_log, now)}")
+
+
+def _last_agent_fallback(log: Path, now: datetime) -> str | None:
+    try:
+        entry = last_agent_fallback(log)
+    except (OSError, ValueError):
+        return None
+    if entry is None:
+        return None
+    moved = f"{entry.from_version} -> {entry.to_version}"
+    return f"fell back {moved}, {ago(entry.at, now)}: {entry.reason}"
 
 
 def _last_update(log: Path, now: datetime) -> str:

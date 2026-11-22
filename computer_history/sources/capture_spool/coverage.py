@@ -82,9 +82,13 @@ def liveness(
         return Liveness.PAUSED
     if now - last_seen <= alive_within:
         return Liveness.ALIVE
-    stretches = _clip(_merge(active), last_seen + CAPTURE_TOLERANCE, now)
-    attended = sum((b - a for a, b in stretches), timedelta())
+    attended = attended_time(active, last_seen + CAPTURE_TOLERANCE, now)
     return Liveness.SILENT if attended > CAPTURE_TOLERANCE else Liveness.UNKNOWN
+
+
+def attended_time(active: Iterable[Span], start: datetime, end: datetime) -> timedelta:
+    """How long the active stretches cover between two times, overlaps counted once."""
+    return sum((b - a for a, b in _clip(_merge(active), start, end)), timedelta())
 
 
 def _silent_spans(

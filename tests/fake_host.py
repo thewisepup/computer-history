@@ -2,15 +2,34 @@
 
 from __future__ import annotations
 
+import json
 import plistlib
 import shutil
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
 import computer_history.store
-from computer_history.host import CheckOutcome, CheckRun, GitState, HostError, JobBusy, JobState
-from computer_history.sources import IngestHealth, write_health
+from computer_history.cli import formatting as cli_formatting
+from computer_history.host import (
+    AgentNotUnregistered,
+    BackendBuild,
+    CheckOutcome,
+    CheckRun,
+    GitState,
+    HostError,
+    JobBusy,
+    JobState,
+    SpoolReads,
+)
+from computer_history.sources import (
+    CAPTURE_KIND,
+    RECORD_KINDS,
+    SPOOL_VERSION,
+    IngestHealth,
+    write_health,
+)
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,
@@ -20,6 +39,8 @@ from computer_history.stable import (
 )
 
 FAKE_PYTHON = "python3.12"
+AGENT_TREE = "e" * 40
+AGENT_EXECUTABLE = Path("Contents") / "MacOS" / "ComputerHistoryAgent"
 MIGRATIONS = Path(computer_history.store.__file__).parent / "migrations"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
 NOT_A_CHECKOUT = "could not read the checkout's HEAD: fatal: not a git repository"
@@ -42,6 +63,20 @@ def write_stopgap_plist(layout: Layout) -> Path:
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps({"Label": STOPGAP_LABEL}))
     return plist
+
+
+def agent_built_from(app: Path) -> str | None:
+    """The commit the fake build put into an agent app, or None when there is no app there."""
+    executable = app / AGENT_EXECUTABLE
+    if not executable.is_file():
+        return None
+    return executable.read_text().removeprefix("agent built from ").strip()
+
+
+def lay_out_agent(app: Path, commit: str) -> None:
+    """Put an app where a fake agent build of the commit would leave it."""
+    (app / AGENT_EXECUTABLE).parent.mkdir(parents=True)
+    (app / AGENT_EXECUTABLE).write_text(f"agent built from {commit}\n")
 
 
 BackendStart = Callable[["FakeHost"], None]
@@ -79,13 +114,57 @@ def crashes(host: FakeHost) -> None:
 
 
 def stays_silent(_: FakeHost) -> None:
-    """A backend that runs but never completes a cycle."""
+    """A backend that never completes a cycle, or an agent that runs but records nothing."""
+
+
+AgentStart = Callable[["FakeHost"], None]
+
+
+def write_record(spool: Path, kind: str, at: datetime) -> None:
+    """Append one record of the kind, captured at the time, to the spool's open file."""
+    content = kind == CAPTURE_KIND
+    line = {
+        "version": SPOOL_VERSION,
+        "id": str(uuid.uuid4()),
+        "captured_at": at.strftime("%Y-%m-%dT%H:%M:%S.") + f"{at.microsecond // 1000:03d}Z",
+        "kind": kind,
+        "trigger": "heartbeat" if content else None,
+        "app_name": "Editor" if content else None,
+        "bundle_id": None,
+        "window_title": "w" if content else None,
+        "text": "t" if content else None,
+        "text_sha256": "0" * 64 if content else None,
+        "full_text_bytes": 1 if content else None,
+        "text_cut_off": False if content else None,
+        "timed_out": False if content else None,
+    }
+    spool.mkdir(parents=True, exist_ok=True)
+    with (spool / "open.part").open("a", encoding="utf-8") as file:
+        file.write(json.dumps(line) + "\n")
+
+
+def records(spool: Path, at: Callable[[], datetime], kind: str = CAPTURE_KIND) -> AgentStart:
+    """An agent that writes one record of the kind as it starts."""
+
+    def start(_: FakeHost) -> None:
+        write_record(spool, kind, at())
+
+    return start
+
+
+def fails_to_register(error: str) -> AgentStart:
+    """An agent whose app is put in place but that launchd never shows running."""
+
+    def start(_: FakeHost) -> None:
+        raise HostError(error)
+
+    return start
 
 
 class FakeHost:
-    """Commits, check runs and the checkout's git state as scripted, a build that lays out a venv,
-    launchd as a dict, the backend's starts as scripted, and ActivityWatch's app and notifications
-    as flags and a list.
+    """Commits, check runs, the checkout's git state, backend starts, agent source trees (one
+    shared tree unless scripted), the agent toolchain, builds, unregisters and starts as scripted,
+    launchd as a dict, and ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -107,6 +186,15 @@ class FakeHost:
         activitywatch_running: bool = True,
         opening_starts_activitywatch: bool = True,
         notify_error: str | None = None,
+        spool_reads: Mapping[str, SpoolReads] | None = None,
+        agent_trees: Mapping[str, str] | None = None,
+        agent_tree_error: str | None = None,
+        agent_toolchain_missing: str | None = None,
+        agent_build_error: str | None = None,
+        agent_build_interrupted: bool = False,
+        agent_register_error: str | None = None,
+        agent_unregister_errors: Iterable[str | None] = (),
+        agent_starts: Iterable[AgentStart] = (),
     ) -> None:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
@@ -126,6 +214,15 @@ class FakeHost:
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
         self.notifications: list[str] = []
+        self.spool_reads = dict(spool_reads or {})
+        self.agent_trees = dict(agent_trees or {})
+        self.agent_tree_error = agent_tree_error
+        self.agent_toolchain_missing = agent_toolchain_missing
+        self.agent_build_error = agent_build_error
+        self.agent_build_interrupted = agent_build_interrupted
+        self.agent_register_error = agent_register_error
+        self.agent_unregister_errors = list(agent_unregister_errors)
+        self.agent_starts = list(agent_starts)
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -146,7 +243,7 @@ class FakeHost:
             raise HostError(NOT_A_CHECKOUT)
         return self.git
 
-    def build(self, commit: str, venv: Path) -> str:
+    def build(self, commit: str, venv: Path) -> BackendBuild:
         self.calls.append(("build", commit))
         (venv / "bin").mkdir(parents=True)
         if self.build_error is not None:
@@ -156,7 +253,46 @@ class FakeHost:
         shutil.copytree(MIGRATIONS, installed_package(venv) / "store" / "migrations")
         if self.build_blocks_packages:
             (venv.parent / PACKAGES_FILE_NAME).mkdir()
-        return f"computer-history @ git+https://example.invalid/repo@{commit}\n"
+        packages = f"computer-history @ git+https://example.invalid/repo@{commit}\n"
+        reads = self.spool_reads.get(commit, SpoolReads(SPOOL_VERSION, RECORD_KINDS))
+        return BackendBuild(packages, reads)
+
+    def agent_tree(self, commit: str) -> str:
+        self.calls.append(("agent_tree", commit))
+        if self.agent_tree_error is not None:
+            raise HostError(self.agent_tree_error)
+        return self.agent_trees.get(commit, AGENT_TREE)
+
+    def check_agent_toolchain(self) -> None:
+        self.calls.append(("check_agent_toolchain", ""))
+        if self.agent_toolchain_missing is not None:
+            raise HostError(self.agent_toolchain_missing)
+
+    def build_agent(self, commit: str, app: Path) -> None:
+        self.calls.append(("build_agent", commit))
+        if self.agent_build_error is not None:
+            app.mkdir(parents=True)
+            raise HostError(self.agent_build_error)
+        lay_out_agent(app, commit)
+        if self.agent_build_interrupted:
+            raise KeyboardInterrupt
+
+    def install_agent(self, app: Path, fixed: Path) -> datetime:
+        self.calls.append(("install_agent", str(app)))
+        unregister_error = (
+            self.agent_unregister_errors.pop(0) if self.agent_unregister_errors else None
+        )
+        if unregister_error is not None:
+            raise AgentNotUnregistered(unregister_error)
+        if fixed.exists():
+            shutil.rmtree(fixed)
+        shutil.copytree(app, fixed, symlinks=True)
+        registered_at = cli_formatting.utc_now()
+        if self.agent_register_error is not None:
+            raise HostError(self.agent_register_error)
+        if self.agent_starts:
+            self.agent_starts.pop(0)(self)
+        return registered_at
 
     def job(self, label: str) -> JobState:
         self.calls.append(("job", label))

@@ -16,29 +16,35 @@ from fake_host import (
     completes_a_cycle,
     crashes,
     gate_runs,
-    installed_package,
     stays_silent,
     then,
+)
+from stable_updates import (
+    NEWER,
+    NEWEST,
+    OLDER,
+    changes,
+    health,
+    install_older,
+    install_state,
+    log_lines,
+    stable_code,
+    updating,
 )
 
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import CheckOutcome
-from computer_history.sources import health_path, read_health, runner
+from computer_history.sources import read_health, runner
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,
     PRE_UPDATE_FOLDER_NAME,
     Layout,
-    stable_layout,
     version_name,
 )
 from computer_history.stable.updates import preparing, waiting
-from computer_history.store import DATABASE_NAME, sidecars, spool_hold_path
+from computer_history.store import spool_hold_path
 
-OLDEST = "a" * 40
-OLDER = "b" * 40
-NEWER = "c" * 40
-NEWEST = "d" * 40
 INSTALL = "Stable install:"
 CYCLE_ERROR = "database error: disk I/O error"
 AW_DOWN = "aw-window: ActivityWatch unreachable at http://127.0.0.1:5600/api/0"
@@ -56,63 +62,15 @@ def quick_wait(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def layout(run: RunCli, live: Path, checkout: Path) -> Layout:
-    """A stable install of OLDER over a live database holding two windows."""
-    with writer(live / DATABASE_NAME, "a", "b"):
-        pass
-    assert run(checkout, "install", host=FakeHost(checks={OLDER: gate_runs()}))[0] == 0
-    return stable_layout()
-
-
-def stable_code(layout: Layout) -> Path:
-    return installed_package(layout.current.resolve() / "venv")
-
-
-def health(layout: Layout) -> Path:
-    return health_path(layout.database)
-
-
-def updating(layout: Layout, *starts: BackendStart, **options: object) -> FakeHost:
-    """main with NEWER passing over the installed OLDER, the backend's starts scripted."""
-    return FakeHost(
-        checks={NEWER: gate_runs(), OLDER: gate_runs()},
-        loaded=[BACKEND.label],
-        backend_starts=starts,
-        **options,  # type: ignore[arg-type]
-    )
-
-
-def install_state(layout: Layout) -> dict[Path, bytes | str]:
-    """Every file and link of the live folder and the LaunchAgents, links by where they point.
-
-    The live database's journal files are left out: reading the database for a backup opens them.
-    """
-    found: dict[Path, bytes | str] = {}
-    journals = set(sidecars(layout.database))
-    for folder in (layout.live, layout.launch_agents):
-        for path in folder.rglob("*"):
-            if path in journals:
-                continue
-            if path.is_symlink():
-                found[path] = str(path.readlink())
-            elif path.is_file():
-                found[path] = path.read_bytes()
-    return found
+    return install_older(run, live, checkout)
 
 
 def pre_update_backups(layout: Layout) -> list[Path]:
     return sorted((layout.live / BACKUPS_FOLDER_NAME / PRE_UPDATE_FOLDER_NAME).glob("*.db"))
 
 
-def log_lines(layout: Layout) -> list[dict[str, object]]:
-    return [json.loads(line) for line in layout.update_log.read_text().splitlines()]
-
-
 def restarted(host: FakeHost) -> set[str]:
     return {label for call, label in host.calls if call in ("load", "unload")}
-
-
-def changes(host: FakeHost) -> list[tuple[str, str]]:
-    return [(call, label) for call, label in host.calls if call in ("build", "load", "unload")]
 
 
 def test_update_is_a_no_op_when_the_newest_passing_commit_is_current(
@@ -163,6 +121,8 @@ def test_update_backs_up_switches_and_keeps_the_old_version_once_the_first_cycle
         "  first cycle   completed; the backend deletes stored spool files again",
         f"  current       {layout.current} -> {layout.versions / new}",
         f"  previous      {old} (rollback returns to it)",
+        "  agent         installed, not verified: ActivityWatch could not say whether you were"
+        " active",
     ]
     ((entry),) = log_lines(layout)
     assert {k: entry[k] for k in ("action", "from", "to", "reason")} == {
@@ -389,6 +349,7 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     assert out[1:] == [
         f"Rolled back to version {old} from {new}",
         f"  previous      {new} (rollback again returns to it)",
+        f"  agent         not moved ({old} reads every record kind it writes)",
         "  backend       restarted",
     ]
     assert log_lines(layout)[-1]["action"] == "rolled back"
@@ -513,7 +474,7 @@ def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, li
     _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
 
     assert section(out, INSTALL)[-1] == (
-        f"  last update   unreadable update log: the last line of {layout.update_log} is not an"
+        f"  last update   unreadable update log: line 1 of {layout.update_log} is not an"
         " update log entry"
     )
 

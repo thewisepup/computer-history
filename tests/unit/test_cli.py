@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
@@ -22,6 +23,8 @@ from computer_history.cli import status as cli_status
 from computer_history.sources import (
     AFK_SOURCE,
     POLL_INTERVAL_SECONDS,
+    RECORD_KINDS,
+    SPOOL_VERSION,
     WINDOW_SOURCE,
     ActivityWatch,
     AWError,
@@ -652,3 +655,16 @@ def test_lag() -> None:
 )
 def test_bytes(n: int, text: str) -> None:
     assert formatting.human_size(n) == text
+
+
+def test_spool_reads_prints_the_spool_version_and_record_kinds_this_code_reads(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        cli.main(["--spool-reads"])
+
+    assert exited.value.code == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "spool_version": SPOOL_VERSION,
+        "kinds": list(RECORD_KINDS),
+    }

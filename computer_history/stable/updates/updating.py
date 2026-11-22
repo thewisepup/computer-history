@@ -14,9 +14,20 @@ from computer_history.host import Host, HostError
 from computer_history.stable.gate import GateVerdict, newest_passing, none_passed
 from computer_history.stable.launch_agents import BACKEND, load_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
-from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
+from computer_history.stable.update_log import (
+    AgentOutcome,
+    UpdateAction,
+    UpdateLogEntry,
+    append_or_note,
+)
+from computer_history.stable.updates.agent_waiting import (
+    AgentCheck,
+    AgentRecords,
+    wait_for_agent_record,
+)
 from computer_history.stable.updates.falling_back import fall_back
 from computer_history.stable.updates.preparing import Prepared, UpdateFailed, prepare
+from computer_history.stable.updates.swapping import AgentSwap, fall_back_agent, swap_agent
 from computer_history.stable.updates.waiting import (
     FIRST_CYCLE_WAIT_SECONDS,
     LastCycle,
@@ -26,12 +37,16 @@ from computer_history.stable.versions import InstalledVersion, point, pointed, v
 from computer_history.store import DatabaseCopy
 
 INTERRUPTED = "the update was interrupted before the backend's first ingest cycle"
+AGENT_INTERRUPTED = (
+    "the update was interrupted while waiting for the new capture agent's first record"
+)
 INTERRUPTING_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 
 
 @dataclass(frozen=True)
 class UpdateReport:
-    """What update did (no action when already up to date), its versions, backup and problems."""
+    """What update did (no action when already up to date), its versions, backup, what became of
+    the capture agent, and problems."""
 
     action: UpdateAction | None
     commit: str
@@ -44,10 +59,26 @@ class UpdateReport:
     removed: Path | None = None
     interrupted: bool = False
     problems: tuple[str, ...] = ()
+    agent: AgentCheck | None = None
 
     @property
     def version(self) -> str:
         return version_name(self.commit)
+
+
+@dataclass(frozen=True)
+class UpdateRun:
+    """One update's host and layout, the commit it moves to and those it skipped, what it
+    prepared, and its clocks."""
+
+    host: Host
+    layout: Layout
+    commit: str
+    skipped: tuple[GateVerdict, ...]
+    prepared: Prepared
+    now: Callable[[], datetime]
+    sleep: Callable[[float], None]
+    monotonic: Callable[[], float]
 
 
 @dataclass(frozen=True)
@@ -63,12 +94,14 @@ def update(
     layout: Layout,
     *,
     last_cycle: LastCycle,
+    agent_records: AgentRecords,
     now: Callable[[], datetime],
     wait_seconds: float = FIRST_CYCLE_WAIT_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> UpdateReport:
-    """Move current to the newest main commit the release gate passes, falling back on its own.
+    """Move current to the newest main commit the release gate passes, then swap in a changed
+    capture agent and wait for its first record, falling back on its own.
 
     The backend restarts on it with spool deletion held; a crash, a failed cycle, none in time or
     Ctrl-C (or SIGTERM) puts the old version back, and the fallback itself runs to its end.
@@ -88,87 +121,108 @@ def update(
         return UpdateReport(None, commit, old.name, search.skipped, behind=behind)
     with _signals_interrupt():
         prepared = prepare(host, layout, commit, old, now=now, sleep=sleep)
-        first = _switch(
-            host,
-            layout,
-            prepared,
-            last_cycle,
-            now=now,
-            wait_seconds=wait_seconds,
-            sleep=sleep,
-            monotonic=monotonic,
-        )
-    with _signals_deferred() as deferred:
-        report = _finish(host, layout, prepared, first, commit, search.skipped, now, sleep)
-    if deferred:
-        report = replace(report, interrupted=True)
-    return report
-
-
-def _finish(
-    host: Host,
-    layout: Layout,
-    prepared: Prepared,
-    first: FirstCycle,
-    commit: str,
-    skipped: tuple[GateVerdict, ...],
-    now: Callable[[], datetime],
-    sleep: Callable[[float], None],
-) -> UpdateReport:
-    old = prepared.old
+        run = UpdateRun(host, layout, commit, search.skipped, prepared, now, sleep, monotonic)
+        first = _switch(run, last_cycle, wait_seconds)
     if first.problem is not None:
-        fell_back = fall_back(host, layout, prepared, first.problem, now=now, sleep=sleep)
-        return UpdateReport(
-            UpdateAction.FELL_BACK,
-            commit,
-            old.name,
-            skipped,
-            backup=prepared.backup,
-            reason=first.problem,
-            restored=fell_back.restored,
-            interrupted=first.interrupted,
-            problems=fell_back.problems,
+        with _signals_deferred() as deferred:
+            report = _fell_back(run, first.problem, first.interrupted)
+        return replace(report, interrupted=True) if deferred else report
+    with _signals_deferred() as deferred:
+        problems = _release_hold(prepared)
+        swap = swap_agent(host, layout, prepared) if prepared.agent.changed else None
+    interrupted = bool(deferred)
+    if swap is None:
+        check = AgentCheck(AgentOutcome.UNCHANGED, "its source is the same")
+    elif not swap.swapped:
+        check = AgentCheck(
+            AgentOutcome.NOT_SWAPPED, f"{prepared.old.name}'s capture agent keeps running"
         )
-    problems: list[str] = []
-    try:
-        prepared.hold.release()
-    except OSError as exc:
-        problems.append(f"the spool hold {prepared.hold.path} could not be removed: {exc}")
-    removed = _remove_version(layout, prepared.old_previous, keep=(prepared.new, old.name))
-    entry = UpdateLogEntry(now(), UpdateAction.UPDATED, old.name, prepared.new)
-    append_or_note(layout.update_log, entry, problems)
+    elif swap.at is None or interrupted:
+        check = AgentCheck(AgentOutcome.FELL_BACK, swap.failure or AGENT_INTERRUPTED)
+    else:
+        check, interrupted = _check_agent(run, swap.at, agent_records)
+    with _signals_deferred() as deferred:
+        report = _finish(run, check, swap)
+    problems.extend(report.problems)
+    return replace(report, interrupted=interrupted or bool(deferred), problems=tuple(problems))
+
+
+def _fell_back(run: UpdateRun, problem: str, interrupted: bool) -> UpdateReport:
+    prepared = run.prepared
+    fell_back = fall_back(run.host, run.layout, prepared, problem, now=run.now, sleep=run.sleep)
     return UpdateReport(
-        UpdateAction.UPDATED,
-        commit,
-        old.name,
-        skipped,
+        UpdateAction.FELL_BACK,
+        run.commit,
+        prepared.old.name,
+        run.skipped,
         backup=prepared.backup,
-        removed=removed,
-        problems=tuple(problems),
+        reason=problem,
+        restored=fell_back.restored,
+        interrupted=interrupted,
+        problems=fell_back.problems,
     )
 
 
-def _switch(
-    host: Host,
-    layout: Layout,
-    prepared: Prepared,
-    last_cycle: LastCycle,
-    *,
-    now: Callable[[], datetime],
-    wait_seconds: float,
-    sleep: Callable[[float], None],
-    monotonic: Callable[[], float],
-) -> FirstCycle:
+def _release_hold(prepared: Prepared) -> list[str]:
+    try:
+        prepared.hold.release()
+    except OSError as exc:
+        return [f"the spool hold {prepared.hold.path} could not be removed: {exc}"]
+    return []
+
+
+def _check_agent(
+    run: UpdateRun, swapped_at: datetime, records: AgentRecords
+) -> tuple[AgentCheck, bool]:
+    try:
+        with _signals_interrupt():
+            check = wait_for_agent_record(
+                records, swapped_at, now=run.now, sleep=run.sleep, monotonic=run.monotonic
+            )
+    except KeyboardInterrupt:
+        return AgentCheck(AgentOutcome.FELL_BACK, AGENT_INTERRUPTED), True
+    return check, False
+
+
+def _finish(run: UpdateRun, check: AgentCheck, swap: AgentSwap | None) -> UpdateReport:
+    layout, prepared = run.layout, run.prepared
+    old = prepared.old
+    problems = [] if swap is None else list(swap.problems)
+    if check.outcome is AgentOutcome.FELL_BACK:
+        fell_back = fall_back_agent(
+            run.host, layout, prepared, check.detail or AGENT_INTERRUPTED, now=run.now
+        )
+        problems += fell_back.problems
+        check = replace(check, kept=fell_back.kept)
+    removed = _remove_version(layout, prepared.old_previous, keep=(prepared.new, old.name))
+    entry = UpdateLogEntry(
+        run.now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome
+    )
+    append_or_note(layout.update_log, entry, problems)
+    return UpdateReport(
+        UpdateAction.UPDATED,
+        run.commit,
+        old.name,
+        run.skipped,
+        backup=prepared.backup,
+        removed=removed,
+        problems=tuple(problems),
+        agent=check,
+    )
+
+
+def _switch(run: UpdateRun, last_cycle: LastCycle, wait_seconds: float) -> FirstCycle:
+    layout, prepared = run.layout, run.prepared
     try:
         try:
             point(layout.previous, prepared.old.name)
             point(layout.current, prepared.new)
-            started_at = now()
-            load_agent(host, layout, BACKEND, sleep=sleep)
+            started_at = run.now()
+            load_agent(run.host, layout, BACKEND, sleep=run.sleep)
         except (HostError, OSError) as exc:
             return FirstCycle(f"the backend could not be started on the new version: {exc}")
         problem = wait_for_first_cycle(
-            host, last_cycle, started_at, wait_seconds=wait_seconds, monotonic=monotonic
+            run.host, last_cycle, started_at, wait_seconds=wait_seconds, monotonic=run.monotonic
         )
     except KeyboardInterrupt:
         return FirstCycle(INTERRUPTED, interrupted=True)

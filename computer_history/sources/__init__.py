@@ -25,9 +25,10 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
   store/         insert_observations, rebuild_signals (each projects through
                  the projector it is given)
 
-agent_health.py  for status and the watchdog: the capture agent's stored records
-                 and spool, judged against aw-afk and aw-window, drawing on both
-                 adapters
+agent_health.py  for status, the watchdog and update's agent check: the capture
+                 agent's stored records and spool, judged against aw-afk and
+                 aw-window, drawing on both adapters; update reads them afresh
+                 through StoredAndSpooled
 """
 
 from computer_history.sources.activitywatch import (
@@ -61,6 +62,8 @@ from computer_history.sources.activitywatch import (
 from computer_history.sources.agent_health import (
     CaptureHealth,
     CaptureLiveness,
+    DatabaseRead,
+    StoredAndSpooled,
     active_spans,
     capture_health,
     capture_liveness,
@@ -89,6 +92,7 @@ from computer_history.sources.capture_spool import (
     MAX_WINDOW_TEXT_LENGTH,
     MOMENT_KINDS,
     PAUSED_KIND,
+    RECORD_KINDS,
     RESUMED_KIND,
     SCREENSHOT_KIND,
     SCREENSHOT_RECORD_FIELDS,
@@ -117,9 +121,11 @@ from computer_history.sources.capture_spool import (
     StoredRecord,
     agent_config_path,
     app_agreement,
+    attended_time,
     capture_coverage,
     configured_spool_path,
     day_counts,
+    default_spool_path,
     finished_files,
     liveness,
     newest_stored,
@@ -194,6 +200,7 @@ __all__ = [
     "PAUSED_KIND",
     "POLL_INTERVAL_SECONDS",
     "PROJECTORS",
+    "RECORD_KINDS",
     "RESUMED_KIND",
     "RESUME_OVERLAP_SECONDS",
     "SCREENSHOT_KIND",
@@ -230,6 +237,7 @@ __all__ = [
     "Coverage",
     "CycleReporter",
     "CycleSummary",
+    "DatabaseRead",
     "DayCounts",
     "FailureKind",
     "FailureStreak",
@@ -251,6 +259,7 @@ __all__ = [
     "Span",
     "SpoolBacklog",
     "SpoolError",
+    "StoredAndSpooled",
     "StoredRecord",
     "StrayObservation",
     "StreakAlert",
@@ -259,6 +268,7 @@ __all__ = [
     "active_spans",
     "agent_config_path",
     "app_agreement",
+    "attended_time",
     "capture_coverage",
     "capture_health",
     "capture_liveness",
@@ -267,6 +277,7 @@ __all__ = [
     "commit_pull",
     "configured_spool_path",
     "day_counts",
+    "default_spool_path",
     "discover_sources",
     "extract_domain",
     "failure_of",

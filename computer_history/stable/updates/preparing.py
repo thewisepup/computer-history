@@ -8,6 +8,7 @@ from datetime import datetime
 
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import BackupFailed, take_pre_update_backup
+from computer_history.stable.capture_agent import AgentPlan, holds_agent, place_agent, plan_agent
 from computer_history.stable.launch_agents import BACKEND, start_agent, stop_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.versions import InstalledVersion, build_version, pointed, version_name
@@ -20,12 +21,13 @@ class UpdateFailed(Exception):
 
 @dataclass(frozen=True)
 class Prepared:
-    """What update readied before switching: both versions, the backup and the spool hold."""
+    """What update readied before switching: both versions, the agent, the backup and the hold."""
 
     old: InstalledVersion
     old_previous: InstalledVersion | None
     new: str
     built: bool
+    agent: AgentPlan
     backup: DatabaseCopy | None
     hold: SpoolHold
 
@@ -39,15 +41,32 @@ def prepare(
     now: Callable[[], datetime],
     sleep: Callable[[float], None] = time.sleep,
 ) -> Prepared:
-    """Build the new version, stop the backend, back up the database and place the spool hold.
+    """Build the new version and its agent app, stop the backend, back up and place the spool hold.
 
     Anything that stops it, Ctrl-C included, undoes what it did first and restarts the backend.
     """
     name = version_name(commit)
+    folder = layout.versions / name
+    try:
+        agent = plan_agent(host, layout, commit, old)
+    except HostError as exc:
+        raise UpdateFailed(
+            f"could not tell whether the capture agent changed: {exc} ({NOTHING_CHANGED})"
+        ) from exc
+    placing = not holds_agent(layout, folder)
+    if agent.changed and placing:
+        try:
+            host.check_agent_toolchain()
+        except HostError as exc:
+            raise UpdateFailed(
+                f"cannot build the capture agent: {exc} ({NOTHING_CHANGED})"
+            ) from exc
     try:
         built = build_version(host, layout, commit)
     except (HostError, OSError) as exc:
         raise UpdateFailed(f"could not build version {name}: {exc} ({NOTHING_CHANGED})") from exc
+    if placing:
+        _place(host, layout, agent, name, built=built)
     hold = SpoolHold.beside(layout.database)
     was_loaded = False
     backup = None
@@ -65,7 +84,19 @@ def prepare(
             raise UpdateFailed(f"{exc} ({left})") from exc
         exc.add_note(left)
         raise
-    return Prepared(old, pointed(layout.previous), name, built, backup, hold)
+    return Prepared(old, pointed(layout.previous), name, built, agent, backup, hold)
+
+
+def _place(host: Host, layout: Layout, agent: AgentPlan, name: str, *, built: bool) -> None:
+    try:
+        place_agent(host, layout, agent, layout.versions / name)
+    except BaseException as exc:
+        if built:
+            shutil.rmtree(layout.versions / name, ignore_errors=True)
+        if not isinstance(exc, HostError | OSError):
+            raise
+        doing = "build the capture agent for" if agent.changed else "copy the capture agent into"
+        raise UpdateFailed(f"could not {doing} version {name}: {exc} ({NOTHING_CHANGED})") from exc
 
 
 def _undo(

@@ -93,8 +93,9 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status and its liveness for the watchdog, judged
-                # against aw-afk and aw-window),
+                # health for status, its liveness for the watchdog, and the
+                # records update's agent check reads, judged against aw-afk
+                # and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch, the only way to pull,
@@ -132,22 +133,25 @@ computer_history/
                 # wall-clock times against this machine's last baseline)
   host/         # the host adapter, the one seam to macOS and the network:
                 # contract (Host, its answers, HostError), live (LiveHost:
-                # launchctl, GitHub's check runs, building with uv, pgrep and
-                # open for ActivityWatch, osascript for every notification,
+                # launchctl, GitHub's check runs and source trees, building with
+                # uv, the capture agent's toolchain check, build and install,
+                # pgrep and open for ActivityWatch, osascript for every notification,
                 # under one title and off when COMPUTER_HISTORY_NOTIFY=0);
                 # tests use a fake that records calls and plays back answers
   stable/       # the stable install: gate (the release gate and the walk to
                 # the newest main commit passing it), versions (build a
-                # commit into a marked version folder; current and previous
-                # pointers), launch_agents (plists, loading, launchd's state
+                # commit into a marked version folder, noting what its backend
+                # reads; current and previous pointers), capture_agent (the
+                # installed agent's record, and the agent app a version folder
+                # carries, built or copied), launch_agents (plists, loading, launchd's state
                 # for status: the backend, the daily backup, the watchdog and
                 # ActivityWatch at login), layout (where it all lives), install
                 # (install and uninstall), install_lock (the one lock on the
                 # live folder), backups (the daily and pre-update
                 # backups beside the database, and restore), updates/ (update
-                # by stage: updating, preparing, waiting, falling_back; and
-                # rolling_back), update_log (one line per update, fallback and
-                # rollback)
+                # by stage: updating, preparing, waiting, falling_back,
+                # swapping, agent_waiting; and rolling_back), update_log (one
+                # line per update, fallback, rollback and agent move)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
                 # backend), alerts (which findings notify, how often, and which
@@ -708,7 +712,11 @@ in the live folder and starts the backend at login from it:
   ingest-health.json       # {"cycle_at", "consecutive_failures", "failing_since", "last_success_at",
                            #  "last_error", "alerted_at", "sources_unavailable" (every failure was an
                            #  unreadable source)}, rewritten by ingest --watch after each cycle
-  update-log.jsonl         # one JSON line per update, fallback and rollback; status shows the last
+  update-log.jsonl         # one JSON line per update, fallback, agent fallback, rollback and agent moved
+                           #  by rollback; an "updated" line carries the capture agent's outcome;
+                           #  status shows the last whose action it knows
+  installed-agent.json     # {"built_from": <full commit>, "installed_at": <ISO time>}: the commit the app
+                           #  at ~/Applications/ComputerHistoryAgent.app was built from; missing = unknown
   spool-deletion-held      # placed by update: ingest keeps stored spool files until the backend's ok cycle
   watchdog.json            # the watchdog's last findings and what it notified, see 8.6
   .watchdog.lock           # held by a watchdog run, so two never overlap
@@ -719,7 +727,10 @@ in the live folder and starts the backend at login from it:
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
-    installed              # empty marker, written last: the version is complete
+    spool-reads.json       # {"spool_version", "kinds"}: what its backend reads, from `--spool-reads`
+    installed              # empty marker: the backend is complete
+    ComputerHistoryAgent.app/   # the capture agent app for this version, signed; never registered here
+    agent-commit.txt       # the full commit that app was built from
   current -> versions/<short commit>
   previous -> versions/<short commit>                  # the version update or rollback left; one is kept
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
@@ -753,8 +764,11 @@ in the live folder and starts the backend at login from it:
   the host adapter's `git_state`), GitHub and the `current` pointer, nothing
   else.
 - **Install** with no current version builds the newest passing commit with
-  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a `--help` smoke run,
-  `uv pip freeze`), writes the marker last and points `current` at it. A
+  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a smoke run of
+  `computer-history --spool-reads` whose answer becomes `spool-reads.json`,
+  `uv pip freeze`), writes the marker last and points `current` at it.
+  Install does not build or deploy the capture agent; its first install is
+  `capture-agent/scripts/install.sh`. A
   failed lookup, build or file write removes what it created, so nothing
   changes. With a current version it skips GitHub and uv and only repairs:
   the PATH link, the
@@ -783,17 +797,30 @@ in the live folder and starts the backend at login from it:
   database, dev's included, never touches launchd.
 - **Update** walks the gate as install does and only moves forward: it stops
   at `already up to date` when that commit is `current` or comes after
-  `current` in the walk (older on `main`). Otherwise: build it beside the
-  current version (a failed build or smoke, or no network, changes nothing);
-  boot the backend out; take the pre-update backup (the daily backup's
+  `current` in the walk (older on `main`). Otherwise: decide whether the
+  capture agent changed, by comparing the git tree hash of `capture-agent/` at
+  the new commit with that at the installed agent's build commit
+  (`installed-agent.json`; missing, unreadable or no app at the fixed path
+  counts as changed); when changed, check for Swift (`xcrun --find swift`) and
+  the signing identity (`security find-identity -p codesigning`); build it
+  beside the current version; then build and sign the agent into the new
+  version folder from a fresh GitHub export of the commit with that commit's
+  own `scripts/build.sh`, or, unchanged, copy the installed agent's app
+  (from the old version's folder when its `agent-commit.txt` names that
+  commit, else from the fixed path) with its signature. A version folder
+  still on disk that holds an app keeps it. A failed tree read, toolchain
+  check, build, smoke or agent build, no network, or Ctrl-C here removes the
+  new folder and changes nothing, with the backend still running. Next it
+  boots the backend out; take the pre-update backup (the daily backup's
   function, kept apart); place the spool hold; point `previous` at the old
   version and `current` at the new; load the backend. A failure after the
   backup and before the switch removes the backup and the build and starts
   the backend again. Only the backend restarts. It then waits up to
   `--wait` seconds (600 by default, a monotonic deadline) for a cycle in
   `ingest-health.json` newer than the restart. An
-  ok cycle deletes the version `previous` named before (one previous is kept)
-  and logs `updated`. A cycle that failed only because a source was
+  ok cycle removes the hold, swaps a changed capture agent (below), deletes
+  the version `previous` named before (one previous is kept) and logs
+  `updated` with the agent's outcome. A cycle that failed only because a source was
   unavailable (its `sources_unavailable`) is waited through; a
   wait that ends with the sources still down falls back with that reason. A
   failed cycle, a crash (launchd reports another process, or none, after it
@@ -809,6 +836,40 @@ in the live folder and starts the backend at login from it:
   and restarts the backend, and during a fallback or the last steps they are
   only noted, so those run to their end. Update exits 1 after a fallback, 130
   after an interrupted update.
+- **Agent swap** (only when the agent changed, only after the ok cycle): copy
+  the app at the fixed path into the old version's folder unless its
+  `agent-commit.txt` already names the installed agent's commit, install the
+  new version's app over the fixed path through the host (unregister, replace,
+  register, confirm running, with the install script's retries) and rewrite
+  `installed-agent.json`. The swap time is when the host first registered the
+  new app, after unregistering the old one. Then wait for a record captured
+  at or after the swap, stored or in the spool beside the live database (never
+  `$COMPUTER_HISTORY_SPOOL`), read through an injected reader
+  (`sources/agent_health.py`'s `StoredAndSpooled`: the newest record's time
+  and kind, why the database could not be searched if so, and aw-afk's active
+  time between two times) built on the reads status and the watchdog use, not
+  the watchdog's verdict. A record of any kind verifies it; a newest `paused`
+  record from before the swap, ActivityWatch unreachable or without an aw-afk
+  bucket, aw-afk's stored spans unreadable, 120 active seconds without a
+  record while the database can't be read (a schema newer than the running
+  version reads, after a migration, so only the spool was seen), or
+  under 120 active seconds within 600 wall-clock seconds
+  (`AGENT_ACTIVE_SECONDS`, `AGENT_WAIT_SECONDS` beside the first-cycle wait)
+  ends it installed, not verified. 120 active seconds with no record, a
+  register or start failure (at once), or Ctrl-C or SIGTERM during the wait
+  falls the agent back: the old version's app installed again and recorded
+  (the record removed when its commit is unknown or it failed), the failed
+  build and its note moved to `ComputerHistoryAgent.fell-back.app` and
+  `agent-commit.fell-back.txt` in the new version's folder with the restored
+  app and note copied into the usual slot (so a later swap never replaces
+  it), `agent fell back` logged, a notification naming where the build is
+  kept posted, each failure a problem while the rest run. The new backend,
+  the pointers and the database stay. Update exits 3 after an agent
+  fallback. When the installed app can't be copied into the old version's
+  folder (the copy is staged beside it and renamed into place) or the host
+  can't unregister the installed agent (`AgentNotUnregistered`, raised before
+  anything changes), nothing was swapped: the outcome is `not swapped`, the
+  cause a problem, with no fallback line or notification, and update exits 0.
 - **Spool deletion held** (`store/spool_hold.py`'s `SpoolHold`): while
   `spool-deletion-held` sits beside the database, every ingest stores spool
   files as usual but deletes or sets aside none. `ingest --watch` removes the
@@ -823,6 +884,18 @@ in the live folder and starts the backend at login from it:
   migration in the previous version's own package and, when that version
   cannot open it, refuses and names the pre-update backup to `restore` first.
   With no previous version it changes nothing.
+- **Rollback takes the agent along** when the previous version can't read
+  what the installed agent writes: the `spool-reads.json` of the version
+  folder whose `agent-commit.txt` matches `installed-agent.json`'s
+  `built_from` (the spool contract fixture ties an agent's output to its
+  commit's backend), against the previous version's `spool-reads.json`. A
+  different spool version or a kind it doesn't read moves the agent: the
+  previous version's app goes over the fixed path through the host's
+  `install_agent`, before the backend restarts, and `installed-agent.json`
+  is rewritten. No record wait, no network. Either note unreadable, no
+  installed-agent record, or no app in the previous folder: a warning and
+  the agent stays. An agent that doesn't start is a warning and its record is
+  removed, so the next update counts it as unknown and deploys it.
 - **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
   `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
   `/dev/null` and only its stderr (notifications posted, errors, config
@@ -836,7 +909,14 @@ in the live folder and starts the backend at login from it:
   PATH link (only when it is the install's own), the pointers and `versions/`.
   Data and logs stay.
 - **Host adapter** (`host/`): launchctl (`print`, `bootstrap`, `bootout` in the
-  `gui/<uid>` domain), the GitHub lookup, the uv build, ActivityWatch's app
+  `gui/<uid>` domain), the GitHub lookup, the uv build, the capture agent
+  (its source tree hash from GitHub's contents listing, the toolchain check,
+  the build into a version folder, and the install over
+  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall` (a
+  failure raises `AgentNotUnregistered` and leaves everything as it was),
+  `ditto`, `install` (its time returned as the swap time), then up to three tries of waiting for launchd to show it running,
+  each retry a `launchctl kickstart`, `uninstall` and `install` as
+  `scripts/install.sh` does), ActivityWatch's app
   (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and
   user notifications. Nothing else in the install or the watchdog reaches
   macOS or the network.
