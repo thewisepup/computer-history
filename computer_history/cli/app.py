@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TextIO
 
 import computer_history
+from computer_history.cli.agent_guard import cmd_check_agent_install
 from computer_history.cli.backfill import cmd_backfill
 from computer_history.cli.backup import backup_arg, cmd_backup, cmd_restore
 from computer_history.cli.dev import add_dev_commands, cmd_dev
@@ -53,6 +54,7 @@ DATABASE_COMMANDS = frozenset(
     {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore", "watchdog"}
 )
 INSTALL_COMMANDS = frozenset({"install", "uninstall", "update", "rollback"})
+READS_THE_INSTALL = INSTALL_COMMANDS | {"check-agent-install"}
 
 COMMANDS = {
     "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
@@ -84,6 +86,11 @@ COMMANDS = {
         " and start the backend at login from it (safe to re-run)."
     ),
     "uninstall": "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
+    "check-agent-install": (
+        "Refuse to install the capture agent from this checkout by hand unless it is on main,"
+        " clean, at origin/main, its capture-agent checks passed in CI, and the stable backend"
+        " is at that commit or newer (run by the agent's install script; changes nothing)."
+    ),
     "watchdog": (
         "Check once that the capture agent, ActivityWatch and the backend are recording, post a"
         " notification for a problem or a cleared one, and reopen ActivityWatch if it is down"
@@ -110,6 +117,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "rollback": cmd_rollback,
     "install": cmd_install,
     "uninstall": cmd_uninstall,
+    "check-agent-install": cmd_check_agent_install,
     "watchdog": cmd_watchdog,
     "dev": cmd_dev,
     "logs": cmd_logs,
@@ -164,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
             parents = [db_after_command, aw]
         elif name == "update":
             parents = [aw]
-        elif name in INSTALL_COMMANDS:
+        elif name in READS_THE_INSTALL:
             parents = []
         else:
             parents = [db_after_command]
@@ -185,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
                 help="how long to wait for the backend's first ingest cycle on the new version"
                 f" before falling back (default: {FIRST_CYCLE_WAIT_SECONDS:g}; a long migration"
                 " needs more)",
+            )
+        if name == "check-agent-install":
+            sub.add_argument(
+                "--force",
+                action="store_true",
+                help="allow the install even when conditions are unmet, listing each one skipped",
             )
         if name == "restore":
             sub.add_argument(
@@ -306,6 +320,7 @@ def main(
         log_dir=args.log_dir,
     )
     args.host = LiveHost() if host is None else host
+    args.code = code
     handler = HANDLERS.get(args.command)
     if handler is None:
         print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
@@ -318,7 +333,7 @@ def main(
         return _refused(exc)
     if args.database is not None:
         uses = f"database {args.database}"
-    elif args.command in INSTALL_COMMANDS:
+    elif args.command in READS_THE_INSTALL:
         uses = f"stable install {live_folder()}"
     elif args.command == "dev" and args.dev_command == "build-db":
         uses = f"output {args.out}"

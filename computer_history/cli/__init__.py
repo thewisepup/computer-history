@@ -14,6 +14,8 @@ app.py         parser + dispatch: one entry per command, the log folder of the
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
+  +-- agent_guard.py  check-agent-install: whether this checkout's capture agent
+  |                may be installed by hand, the unmet conditions and their fixes
   +-- update.py    update (to the newest passing commit, falling back on its own)
   |                and rollback (to the previous version, if it opens the database)
   +-- backup.py    backup (the day's backup, the oldest past seven removed) and

@@ -17,6 +17,7 @@ from computer_history.host import (
     BackendBuild,
     CheckOutcome,
     CheckRun,
+    GitState,
     HostError,
     JobBusy,
     JobState,
@@ -42,6 +43,7 @@ AGENT_TREE = "e" * 40
 AGENT_EXECUTABLE = Path("Contents") / "MacOS" / "ComputerHistoryAgent"
 MIGRATIONS = Path(computer_history.store.__file__).parent / "migrations"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
+NOT_A_CHECKOUT = "could not read the checkout's HEAD: fatal: not a git repository"
 
 
 def gate_runs(**outcomes: CheckOutcome | None) -> list[CheckRun]:
@@ -160,9 +162,9 @@ def fails_to_register(error: str) -> AgentStart:
 
 
 class FakeHost:
-    """Commits, check runs, backend starts, agent source trees (one shared tree unless scripted),
-    the agent toolchain, builds, unregisters and starts as scripted, launchd as a dict, and
-    ActivityWatch's app and notifications as flags and a list.
+    """Commits, check runs, the checkout's git state, backend starts, agent source trees (one
+    shared tree unless scripted), the agent toolchain, builds, unregisters and starts as scripted,
+    launchd as a dict, and ActivityWatch's app and notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -174,6 +176,7 @@ class FakeHost:
         checks: Mapping[str, list[CheckRun]] | None = None,
         loaded: Iterable[str] = (),
         offline: bool = False,
+        git: GitState | None = None,
         build_error: str | None = None,
         build_blocks_packages: bool = False,
         job_error: str | None = None,
@@ -196,6 +199,8 @@ class FakeHost:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
         self.offline = offline
+        self.git = git
+        self.off_main: dict[str, list[CheckRun]] = {}
         self.build_error = build_error
         self.build_blocks_packages = build_blocks_packages
         self.job_error = job_error
@@ -230,7 +235,13 @@ class FakeHost:
         self.calls.append(("check_runs", commit))
         if self.offline:
             raise HostError(OFFLINE)
-        return self.checks[commit]
+        return (self.checks | self.off_main)[commit]
+
+    def git_state(self, checkout: Path) -> GitState:
+        self.calls.append(("git_state", str(checkout)))
+        if self.git is None:
+            raise HostError(NOT_A_CHECKOUT)
+        return self.git
 
     def build(self, commit: str, venv: Path) -> BackendBuild:
         self.calls.append(("build", commit))

@@ -24,6 +24,7 @@ from computer_history.host.contract import (
     BackendBuild,
     CheckOutcome,
     CheckRun,
+    GitState,
     HostError,
     JobBusy,
     JobState,
@@ -39,6 +40,9 @@ GITHUB_TIMEOUT_SECONDS = 15
 CHECK_RUNS_PAGE = 100
 RATE_LIMITED_STATUSES = frozenset({403, 429})
 PYTHON_VERSION = "3.12"
+GIT_REF_MISSING = 1
+ORIGIN_MAIN_REF = "refs/remotes/origin/main"
+GIT_LOCATION_VARS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"})
 LAUNCHCTL = "/bin/launchctl"
 LAUNCHCTL_BUSY_CODES = frozenset({5, 37})  # EIO, EALREADY: a boot-out still in progress
 LAUNCHCTL_NO_SUCH_SERVICE = 113
@@ -96,6 +100,34 @@ class LiveHost:
         )
         runs = cast(list[dict[str, Any]], cast(dict[str, Any], found)["check_runs"])
         return [CheckRun(str(run["name"]), _outcome(run)) for run in runs]
+
+    def git_state(self, checkout: Path) -> GitState:
+        found = shutil.which("git")
+        if found is None:
+            raise HostError("git is not installed (install it with `xcode-select --install`)")
+        git = [found, "-C", str(checkout)]
+        env = {key: value for key, value in os.environ.items() if key not in GIT_LOCATION_VARS}
+        quick = QUICK_COMMAND_TIMEOUT_SECONDS
+        head = _run(
+            [*git, "rev-parse", "--verify", "HEAD"],
+            "read the checkout's HEAD",
+            timeout=quick,
+            env=env,
+        ).strip()
+        branch = _ref(
+            [*git, "symbolic-ref", "--quiet", "--short", "HEAD"],
+            "read the checkout's branch",
+            env=env,
+        )
+        status = _run(
+            [*git, "status", "--porcelain"], "read the checkout's status", timeout=quick, env=env
+        )
+        origin_main = _ref(
+            [*git, "rev-parse", "--verify", "--quiet", ORIGIN_MAIN_REF],
+            "read the checkout's origin/main",
+            env=env,
+        )
+        return GitState(branch, clean=not status.strip(), head=head, origin_main=origin_main)
 
     def build(self, commit: str, venv: Path) -> BackendBuild:
         uv = shutil.which("uv")
@@ -377,6 +409,15 @@ def _command(
 def _failure(doing: str, done: subprocess.CompletedProcess[str]) -> str:
     detail = (done.stderr or done.stdout).strip().splitlines()
     return f"could not {doing}: {detail[-1] if detail else f'exit code {done.returncode}'}"
+
+
+def _ref(command: list[str], doing: str, *, env: dict[str, str] | None = None) -> str | None:
+    done = _command(command, doing, timeout=QUICK_COMMAND_TIMEOUT_SECONDS, env=env)
+    if done.returncode == GIT_REF_MISSING:
+        return None
+    if done.returncode != 0:
+        raise HostError(_failure(doing, done))
+    return done.stdout.strip()
 
 
 def _run(

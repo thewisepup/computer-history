@@ -754,6 +754,15 @@ in the live folder and starts the backend at login from it:
   are not in the gate. The lookup walks the newest 20 `main` commits through
   GitHub's public API, stopping at the first that passes; no token is needed,
   and `$GITHUB_TOKEN` is sent when set.
+- **Agent install guard:** the capture agent's `scripts/install.sh` first runs
+  `computer-history check-agent-install` (`stable/agent_guard.py`), passing
+  `--force` on. It refuses unless the checkout is on `main`, clean, at
+  `origin/main`, the gate's `CAPTURE_AGENT_GATE` checks passed on `HEAD`, and
+  `current` is `HEAD` or a newer commit in the gate walk's list of `main`
+  commits. Every unmet condition is listed with its fix; GitHub out of reach
+  refuses; `--force` passes and lists what it skipped. It reads git (through
+  the host adapter's `git_state`), GitHub and the `current` pointer, nothing
+  else.
 - **Install** with no current version builds the newest passing commit with
   `uv` (`uv venv`, `uv pip install git+...@<commit>`, a smoke run of
   `computer-history --spool-reads` whose answer becomes `spool-reads.json`,

@@ -6,8 +6,9 @@
     install_lock.py   the one lock on the live folder that install, uninstall,
         |             update, rollback and a stable restore hold while they run
         |
-        +-- gate.py           the release gate: the checks a main commit must pass,
-        |                     and the walk to the newest one that does
+        +-- gate.py           the release gate: the checks a main commit must pass
+        |                     (the capture agent's among them), and the walk to the
+        |                     newest one that does
         +-- versions.py       build a commit into its marked version folder, noting what
         |                     its backend reads, and point current at it, undoing it all
         |                     on failure; the pointers
@@ -35,9 +36,18 @@
                       and starts the backend, the watchdog and the daily backup around
                       it for the live database (uses launch_agents.py and layout.py)
 
-Everything that reaches launchctl, GitHub or uv goes through the host adapter it is given.
+    agent_guard.py    whether the capture agent in a checkout may be installed by hand:
+                      on main, clean, at origin/main, its gate checks passed, and the
+                      stable backend at that commit or newer (uses gate.py, versions.py)
+
+Everything that reaches launchctl, GitHub, git or uv goes through the host adapter it is given.
 """
 
+from computer_history.stable.agent_guard import (
+    GuardFailed,
+    Unmet,
+    check_agent_install,
+)
 from computer_history.stable.backups import (
     BACKUPS_FOLDER_NAME,
     DAILY_FOLDER_NAME,
@@ -130,6 +140,7 @@ __all__ = [
     "BackupFailed",
     "BackupInventory",
     "DailyOutcome",
+    "GuardFailed",
     "InstallBusy",
     "InstallFailed",
     "LaunchAgent",
@@ -137,12 +148,14 @@ __all__ = [
     "RestoreFailed",
     "RollbackFailed",
     "Schedule",
+    "Unmet",
     "UpdateAction",
     "UpdateFailed",
     "UpdateLogEntry",
     "UpdateReport",
     "agent_statuses",
     "backup_inventory",
+    "check_agent_install",
     "daily_backup_path",
     "holding_install_lock",
     "install",
