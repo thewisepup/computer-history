@@ -94,8 +94,12 @@ _Avoid_: Mode, environment
 The named CI checks a `main` commit must all have passed on its push run before the stable install may hold it.
 _Avoid_: Required checks, green build
 
+**Agent install guard**:
+The check the capture agent's install script runs before building: the checkout must be on `main`, clean, at `origin/main`, with the release gate's capture-agent checks passed, and the stable install at that commit or newer. `--force` skips it.
+_Avoid_: Preflight, safety check
+
 **Host adapter**:
-The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
+The one seam to macOS and the network (launchctl, GitHub, reading a checkout's git state, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
 _Avoid_: System client, platform layer
 
 **Daily backup**:

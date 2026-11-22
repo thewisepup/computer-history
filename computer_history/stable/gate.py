@@ -4,15 +4,8 @@ from dataclasses import dataclass
 
 from computer_history.host import CheckOutcome, CheckRun, Host
 
-RELEASE_GATE = (
-    "lint",
-    "unit",
-    "data",
-    "poc",
-    "secrets",
-    "macos-capture-agent-tests",
-    "macos-capture-agent-e2e",
-)
+CAPTURE_AGENT_GATE = ("macos-capture-agent-tests", "macos-capture-agent-e2e")
+RELEASE_GATE = ("lint", "unit", "data", "poc", "secrets", *CAPTURE_AGENT_GATE)
 COMMITS_SEARCHED = 20
 
 
@@ -43,10 +36,12 @@ class GateSearch:
     skipped: tuple[GateVerdict, ...]
 
 
-def gate_verdict(commit: str, runs: list[CheckRun]) -> GateVerdict:
-    """Judge a commit's check runs: every release-gate check must have run and succeeded."""
+def gate_verdict(
+    commit: str, runs: list[CheckRun], checks: tuple[str, ...] = RELEASE_GATE
+) -> GateVerdict:
+    """Judge a commit's check runs: every one of the checks must have run and succeeded."""
     failing: dict[str, CheckOutcome | None] = {}
-    for name in RELEASE_GATE:
+    for name in checks:
         outcomes = [run.outcome for run in runs if run.name == name]
         if not outcomes:
             failing[name] = None

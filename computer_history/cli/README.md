@@ -21,6 +21,8 @@ app.py         parser + dispatch: one entry per command, the profile's log
   +-- rebuild.py   rebuild-signals
   +-- backfill.py  plan, then ingest history chunk by chunk through the runner
   +-- install.py   install and uninstall the stable install, through the host adapter
+  +-- agent_guard.py  check-agent-install: whether this checkout's capture agent
+  |                may be installed by hand, the unmet conditions and their fixes
   +-- update.py    update (to the newest passing commit, falling back on its own)
   |                and rollback (to the previous version, if it opens the database)
   +-- backup.py    backup (the day's backup, seven days kept) and restore (a backup
@@ -325,6 +327,61 @@ Rolled back to version 572c48b from 8d23e3a
 A failed first cycle says why, from `ingest-health.json` (`the backend's first
 ingest cycle failed: ...`), and a schema change reads `restored <backup> (the
 new version changed the schema)`.
+
+## check-agent-install — guarding the capture agent's hand install
+
+```bash
+capture-agent/scripts/install.sh            # runs the guard first; a refusal stops it before the build
+capture-agent/scripts/install.sh --force    # passes --force on: install anyway, listing what was skipped
+.venv/bin/computer-history check-agent-install [--force]   # the guard alone
+```
+
+The capture agent is installed by hand with its install script, which asks
+this command first and holds no checks of its own. It allows the install only
+when all of these hold for the checkout in the current directory:
+
+| Condition | Unmet when | Fix it names |
+|---|---|---|
+| on main | another branch, or HEAD detached | `git switch main` |
+| clean working tree | `git status --porcelain` lists anything, untracked files included | commit or stash |
+| HEAD is origin/main | they differ, or there is no `origin/main` (read locally; nothing is fetched) | `git pull` / `git fetch origin main` |
+| capture-agent checks passed on HEAD | `macos-capture-agent-tests` or `macos-capture-agent-e2e`, the release gate's capture-agent checks, failed, was cancelled, is still running or never ran | wait for CI, or fix and re-run |
+| stable backend at HEAD or newer | there is no stable install, or `current` is a version older than HEAD among `main`'s newest 20 commits (the release gate's walk, never local ancestry), or HEAD is not among them | `computer-history install` / `update` / `git pull` |
+
+Every unmet condition is listed at once with its fix, on stderr, and the exit
+code is 1. GitHub out of reach is a refusal too, with the host's error, since
+an unverified commit needs an explicit `--force`. `--force` exits 0 and lists
+each condition it skipped. A checkout git can't read refuses (or, with
+`--force`, says the guard could not run and passes). The command only reads:
+git, GitHub, and the stable install's `current` pointer, which a dev checkout
+may read; it opens no database or spool and takes no install lock.
+
+Real output through the CLI with the test suite's fake host adapter (live
+folder shortened to `.../ComputerHistory`):
+
+```
+$ .venv/bin/computer-history check-agent-install
+Profile dev (branch main at 572c48b), stable install .../ComputerHistory
+Agent install refused: 3 unmet conditions for HEAD 572c48b (pass --force to install anyway)
+  clean working tree: the working tree has uncommitted changes; commit or stash them
+  capture-agent checks passed on HEAD: macos-capture-agent-e2e running; wait for CI to finish on it
+  stable backend at HEAD or newer: the stable backend is version 5e26ac9, older than HEAD 572c48b; move it forward first: computer-history update
+```
+
+Real output from a feature-branch checkout with real git and GitHub, in a
+temporary home with no stable install:
+
+```
+$ .venv/bin/computer-history check-agent-install --force
+Profile dev (branch 134-agent-install-guard at 4de83b8), stable install .../ComputerHistory
+Agent install allowed by --force, skipping 3 unmet conditions for HEAD 4de83b8:
+  on main: the checkout is on 134-agent-install-guard; switch: git switch main
+  clean working tree: the working tree has uncommitted changes; commit or stash them
+  stable backend at HEAD or newer: there is no stable install; set it up first: computer-history install
+```
+
+With every condition met it prints `Agent install allowed: every condition
+holds for HEAD 572c48b` and exits 0.
 
 ## backup and restore — the daily backup and putting one back
 
