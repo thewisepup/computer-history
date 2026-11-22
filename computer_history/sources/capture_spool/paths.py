@@ -18,6 +18,11 @@ def configured_spool_path(explicit: str | os.PathLike[str] | None, db_path: Path
     for candidate in (explicit, os.environ.get(SPOOL_ENV_VAR)):
         if candidate:
             return Path(candidate).expanduser()
+    return default_spool_path(db_path)
+
+
+def default_spool_path(db_path: Path) -> Path:
+    """The spool folder beside the database, where the agent writes when nothing overrides it."""
     return db_path.parent / SPOOL_FOLDER_NAME
 
 
@@ -26,7 +31,7 @@ def resolve_spool_path(
 ) -> Path:
     """The configured spool for a command that reads it; dev is refused the live folder."""
     path = configured_spool_path(explicit, db_path)
-    default = db_path.parent / SPOOL_FOLDER_NAME
+    default = default_spool_path(db_path)
     refuse_live_in_dev(path, profile, flag="--spool-path", env_var=SPOOL_ENV_VAR, default=default)
     return path
 

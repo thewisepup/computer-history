@@ -50,6 +50,7 @@ from computer_history.stable import (
     agent_statuses,
     backup_inventory,
     installed_agent,
+    last_agent_fallback,
     last_update_log_entry,
     pointed,
     stable_layout,
@@ -190,7 +191,7 @@ def _print_install(profile: Profile, now: datetime) -> None:
 
 def _last_agent_fallback(log: Path, now: datetime) -> str | None:
     try:
-        entry = last_update_log_entry(log, UpdateAction.AGENT_FELL_BACK)
+        entry = last_agent_fallback(log)
     except (OSError, ValueError):
         return None
     if entry is None:

@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import computer_history.store
+from computer_history.cli import formatting as cli_formatting
 from computer_history.host import (
     BackendBuild,
     CheckOutcome,
@@ -262,15 +263,17 @@ class FakeHost:
         if self.agent_build_interrupted:
             raise KeyboardInterrupt
 
-    def install_agent(self, app: Path, fixed: Path) -> None:
+    def install_agent(self, app: Path, fixed: Path) -> datetime:
         self.calls.append(("install_agent", str(app)))
         if fixed.exists():
             shutil.rmtree(fixed)
         shutil.copytree(app, fixed, symlinks=True)
+        registered_at = cli_formatting.utc_now()
         if self.agent_register_error is not None:
             raise HostError(self.agent_register_error)
         if self.agent_starts:
             self.agent_starts.pop(0)(self)
+        return registered_at
 
     def job(self, label: str) -> JobState:
         self.calls.append(("job", label))

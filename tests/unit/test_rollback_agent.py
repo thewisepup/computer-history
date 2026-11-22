@@ -147,6 +147,24 @@ def test_rollback_moves_the_agent_back_before_the_backend_restarts_when_it_write
     )
 
 
+def test_status_names_the_last_update_not_the_agent_line_of_a_rollback_that_failed(
+    run: RunCli, live: Path, checkout: Path
+) -> None:
+    layout = updated_with_newer_agent(run, live, checkout)
+    host = offline()
+    host.job_error = "launchd is not answering"
+
+    code, _, err = run(stable_code(layout), "rollback", host=host)
+
+    assert code == 1
+    assert "the backend could not be restarted on it" in err
+    assert log_lines(layout)[-1]["action"] == "agent rolled back"
+    _, out, _ = run(stable_code(layout), *STATUS, host=offline())
+    assert section(out, "Stable install:")[-1].startswith(
+        f"  last update   updated {OLD} -> {NEW}, "
+    )
+
+
 def no_record(layout: Layout) -> None:
     layout.installed_agent.unlink()
 

@@ -792,7 +792,7 @@ in the live folder and starts the backend at login from it:
   the new commit with that at the installed agent's build commit
   (`installed-agent.json`; missing, unreadable or no app at the fixed path
   counts as changed); when changed, check for Swift (`xcrun --find swift`) and
-  the signing identity (`security find-identity -v -p codesigning`); build it
+  the signing identity (`security find-identity -p codesigning`); build it
   beside the current version; then build and sign the agent into the new
   version folder from a fresh GitHub export of the commit with that commit's
   own `scripts/build.sh`, or, unchanged, copy the installed agent's app
@@ -831,11 +831,18 @@ in the live folder and starts the backend at login from it:
   `agent-commit.txt` already names the installed agent's commit, install the
   new version's app over the fixed path through the host (unregister, replace,
   register, confirm running, with the install script's retries) and rewrite
-  `installed-agent.json`. Then wait for a record captured at or after the
-  swap, stored or in the spool, read through an injected reader (the newest
-  record's time and kind, and aw-afk's active time between two times) built
-  on the reads status and the watchdog use, not the watchdog's verdict. A
-  record verifies it; a newest `paused` record, ActivityWatch unreachable, or
+  `installed-agent.json`. The swap time is when the host first registered the
+  new app, after unregistering the old one. Then wait for a record captured
+  at or after the swap, stored or in the spool beside the live database (never
+  `$COMPUTER_HISTORY_SPOOL`), read through an injected reader
+  (`sources/agent_health.py`'s `StoredAndSpooled`: the newest record's time
+  and kind, why the database could not be searched if so, and aw-afk's active
+  time between two times) built on the reads status and the watchdog use, not
+  the watchdog's verdict. A record of any kind verifies it; a newest `paused`
+  record from before the swap, ActivityWatch unreachable or without an aw-afk
+  bucket, aw-afk's stored spans unreadable, 120 active seconds without a
+  record while the database can't be read (a schema newer than the running
+  version reads, after a migration, so only the spool was seen), or
   under 120 active seconds within 600 wall-clock seconds
   (`AGENT_ACTIVE_SECONDS`, `AGENT_WAIT_SECONDS` beside the first-cycle wait)
   ends it installed, not verified. 120 active seconds with no record, a

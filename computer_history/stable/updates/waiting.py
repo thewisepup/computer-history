@@ -98,11 +98,22 @@ class SeenRecord(Protocol):
     def paused(self) -> bool: ...
 
 
+class NewestSeen(Protocol):
+    """The capture agent's newest record found, and why the database could not be searched for
+    one, if it could not."""
+
+    @property
+    def record(self) -> SeenRecord | None: ...
+
+    @property
+    def database_unread(self) -> str | None: ...
+
+
 class AgentRecords(Protocol):
     """The capture agent's newest record, stored or in the spool, and how long aw-afk shows the
-    user active between two times (None when ActivityWatch is unreachable)."""
+    user active between two times (None when ActivityWatch can't say)."""
 
-    def newest_record(self) -> SeenRecord | None: ...
+    def newest_record(self) -> NewestSeen: ...
 
     def active_between(self, start: datetime, end: datetime) -> timedelta | None: ...
 
@@ -123,26 +134,37 @@ def wait_for_agent_record(
     sleep: Callable[[float], None],
     monotonic: Callable[[], float],
 ) -> AgentCheck:
-    """Wait for a record captured since the swap, counting only time the user is active; a pause,
-    unknown activity or too little of it within the wall-clock bound ends it unverified."""
+    """Wait for a record captured since the swap, counting only time the user is active; a pause
+    before it, unknown activity or too little of it within the wall-clock bound leaves it
+    unverified."""
     deadline = monotonic() + AGENT_WAIT_SECONDS
     while True:
-        newest = _newest(records)
-        if newest is not None and newest.paused:
-            return AgentCheck(AgentOutcome.NOT_VERIFIED, "capture is paused")
+        newest, unread = _newest(records)
         if newest is not None and newest.at >= swapped_at:
             return AgentCheck(AgentOutcome.VERIFIED, "the new capture agent records")
-        attended = records.active_between(swapped_at, now())
+        if newest is not None and newest.paused:
+            return AgentCheck(AgentOutcome.NOT_VERIFIED, "capture is paused")
+        try:
+            attended = records.active_between(swapped_at, now())
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            return AgentCheck(
+                AgentOutcome.NOT_VERIFIED, f"your activity since the swap could not be read: {exc}"
+            )
         if attended is None:
             return AgentCheck(
                 AgentOutcome.NOT_VERIFIED, "ActivityWatch could not say whether you were active"
             )
         if attended.total_seconds() >= AGENT_ACTIVE_SECONDS:
-            return AgentCheck(
-                AgentOutcome.FELL_BACK,
+            silent = (
                 f"the new capture agent recorded nothing in {AGENT_ACTIVE_SECONDS:g}s while you"
-                " were active",
+                " were active"
             )
+            if unread is not None:
+                return AgentCheck(
+                    AgentOutcome.NOT_VERIFIED,
+                    f"{silent}, but {unread}, so only the spool was checked",
+                )
+            return AgentCheck(AgentOutcome.FELL_BACK, silent)
         if monotonic() >= deadline:
             return AgentCheck(
                 AgentOutcome.NOT_VERIFIED,
@@ -152,8 +174,9 @@ def wait_for_agent_record(
         sleep(AGENT_POLL_SECONDS)
 
 
-def _newest(records: AgentRecords) -> SeenRecord | None:
+def _newest(records: AgentRecords) -> tuple[SeenRecord | None, str | None]:
     try:
-        return records.newest_record()
-    except (OSError, ValueError, sqlite3.Error):
-        return None
+        seen = records.newest_record()
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return None, f"the database could not be read ({exc})"
+    return seen.record, seen.database_unread

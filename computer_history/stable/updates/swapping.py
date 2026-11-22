@@ -28,9 +28,7 @@ class AgentSwap:
     problems: tuple[str, ...] = ()
 
 
-def swap_agent(
-    host: Host, layout: Layout, prepared: Prepared, *, now: Callable[[], datetime]
-) -> AgentSwap:
+def swap_agent(host: Host, layout: Layout, prepared: Prepared) -> AgentSwap:
     """Keep the installed app in the old version's folder, then install the new version's app
     over the fixed path and record it."""
     old = layout.versions / prepared.old.name
@@ -41,12 +39,11 @@ def swap_agent(
         return AgentSwap(None, failure, touched=False)
     try:
         layout.installed_agent.unlink(missing_ok=True)
-        host.install_agent(
+        at = host.install_agent(
             layout.agent_app(layout.versions / prepared.new), layout.capture_agent_app
         )
     except (HostError, OSError) as exc:
         return AgentSwap(None, f"the new capture agent could not be started: {exc}")
-    at = now()
     try:
         record_installed_agent(layout, prepared.agent.built_from, at)
     except OSError as exc:

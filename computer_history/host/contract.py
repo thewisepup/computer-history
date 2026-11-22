@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Protocol, cast
@@ -104,8 +104,9 @@ class Host(Protocol):
         """Build and sign the capture agent from a fresh export of a commit, into the app path."""
         ...
 
-    def install_agent(self, app: Path, fixed: Path) -> None:
-        """Put an app over the agent's fixed path and register it, retrying until it runs."""
+    def install_agent(self, app: Path, fixed: Path) -> datetime:
+        """Put an app over the agent's fixed path and register it, retrying until it runs; returns
+        when it was first registered, once the old one was unregistered."""
         ...
 
     def job(self, label: str) -> JobState:

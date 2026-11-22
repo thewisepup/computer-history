@@ -160,11 +160,23 @@ def keep_installed_app(layout: Layout, version: Path) -> None:
     if not layout.capture_agent_app.is_dir():
         return
     app, note = layout.agent_app(version), layout.agent_commit(version)
-    shutil.rmtree(app, ignore_errors=True)
+    staged = _staged_copy(layout.capture_agent_app, app)
     note.unlink(missing_ok=True)
-    shutil.copytree(layout.capture_agent_app, app, symlinks=True)
+    shutil.rmtree(app, ignore_errors=True)
+    staged.rename(app)
     if built_from is not None:
         note.write_text(f"{built_from}\n", encoding="utf-8")
+
+
+def _staged_copy(source: Path, app: Path) -> Path:
+    staged = app.with_name(f".{app.name}.staged")
+    shutil.rmtree(staged, ignore_errors=True)
+    try:
+        shutil.copytree(source, staged, symlinks=True)
+    except BaseException:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
+    return staged
 
 
 def carried_agent(layout: Layout, version: Path) -> str | None:

@@ -130,7 +130,7 @@ def update(
         return replace(report, interrupted=True) if deferred else report
     with _signals_deferred() as deferred:
         problems = _release_hold(prepared)
-        swap = swap_agent(host, layout, prepared, now=now) if prepared.agent.changed else None
+        swap = swap_agent(host, layout, prepared) if prepared.agent.changed else None
     interrupted = bool(deferred)
     if swap is None:
         check = AgentCheck(AgentOutcome.UNCHANGED, "its source is the same")
