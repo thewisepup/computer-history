@@ -20,9 +20,15 @@ from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
-from computer_history.host import Host, LiveHost
+from computer_history.host import SPOOL_READS_FLAG, Host, LiveHost, SpoolReads
 from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
-from computer_history.sources import DEFAULT_AW_URL, POLL_INTERVAL_SECONDS, SPOOL_ENV_VAR
+from computer_history.sources import (
+    DEFAULT_AW_URL,
+    POLL_INTERVAL_SECONDS,
+    RECORD_KINDS,
+    SPOOL_ENV_VAR,
+    SPOOL_VERSION,
+)
 from computer_history.stable import (
     FIRST_CYCLE_WAIT_SECONDS,
     InstallBusy,
@@ -122,6 +128,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db-path", help=db_help)
     parser.add_argument(
+        SPOOL_READS_FLAG,
+        action=PrintSpoolReads,
+        nargs=0,
+        default=argparse.SUPPRESS,
+        help="print the spool version and record kinds this code reads, as JSON, and exit"
+        " (update asks it of every version it builds)",
+    )
+    parser.add_argument(
         "--log-level",
         type=str.upper,
         choices=LEVEL_NAMES,
@@ -207,6 +221,20 @@ def build_parser() -> argparse.ArgumentParser:
                 help=f"poll every {POLL_INTERVAL_SECONDS}s until interrupted (Ctrl-C)",
             )
     return parser
+
+
+class PrintSpoolReads(argparse.Action):
+    """Print what this code reads from the spool and exit, before any command runs."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        print(SpoolReads(SPOOL_VERSION, RECORD_KINDS).as_json())
+        parser.exit()
 
 
 def add_logs_arguments(sub: argparse.ArgumentParser) -> None:

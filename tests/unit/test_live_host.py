@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import plistlib
 import subprocess
+import tarfile
 import urllib.error
 import urllib.request
 from email.message import Message
@@ -15,15 +18,17 @@ import pytest
 
 from computer_history.host import (
     OPEN_ACTIVITYWATCH,
+    BackendBuild,
     CheckOutcome,
     CheckRun,
     HostError,
     JobBusy,
     JobState,
     LiveHost,
+    SpoolReads,
     live,
 )
-from computer_history.stable import BACKEND
+from computer_history.stable import BACKEND, CAPTURE_AGENT_LABEL
 
 LAUNCHCTL_RUNNING = f"""gui/501/{BACKEND.label} = {{
 \tactive count = 1
@@ -80,6 +85,21 @@ def commands_answer(
     def run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
         ran.append(command)
         return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+    return ran
+
+
+def commands_answer_each(
+    monkeypatch: pytest.MonkeyPatch, answers: dict[str, tuple[int, str, str]]
+) -> list[list[str]]:
+    """Commands answered by their program: exit code, stdout and stderr; any other succeeds."""
+    ran: list[list[str]] = []
+
+    def run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        ran.append(command)
+        code, stdout, stderr = answers.get(command[0], (0, "", ""))
+        return subprocess.CompletedProcess(command, code, stdout, stderr)
 
     monkeypatch.setattr(live.subprocess, "run", run)
     return ran
@@ -209,15 +229,22 @@ def test_another_bootstrap_failure_is_a_plain_host_error(
     assert not isinstance(raised.value, JobBusy)
 
 
-def test_the_build_creates_installs_smokes_and_freezes_with_uv(
+def test_the_build_creates_installs_asks_what_it_reads_and_freezes_with_uv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(live.shutil, "which", lambda _: UV)
-    ran = commands_answer(monkeypatch, stdout="computer-history @ git+...\n")
     venv = tmp_path / "venv"
     python = str(venv / "bin" / "python")
+    command = str(venv / "bin" / "computer-history")
+    ran = commands_answer_each(
+        monkeypatch,
+        {
+            command: (0, '{"spool_version": 3, "kinds": ["capture", "paused"]}\n', ""),
+            UV: (0, "computer-history @ git+...\n", ""),
+        },
+    )
 
-    packages = LiveHost().build("abc123", venv)
+    built = LiveHost().build("abc123", venv)
 
     assert ran == [
         [
@@ -237,10 +264,28 @@ def test_the_build_creates_installs_smokes_and_freezes_with_uv(
             python,
             f"computer-history @ git+{live.REPO_GIT_URL}@abc123",
         ],
-        [str(venv / "bin" / "computer-history"), "--help"],
+        [command, "--spool-reads"],
         [UV, "pip", "freeze", "--python", python],
     ]
-    assert packages == "computer-history @ git+...\n"
+    assert built == BackendBuild(
+        "computer-history @ git+...\n", SpoolReads(3, ("capture", "paused"))
+    )
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["usage: computer-history [-h]\n", '{"spool_version": "1", "kinds": []}\n', '{"kinds": []}\n'],
+    ids=["not json", "version not a number", "no version"],
+)
+def test_a_built_command_that_cannot_say_what_it_reads_fails_the_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str
+) -> None:
+    monkeypatch.setattr(live.shutil, "which", lambda _: UV)
+    venv = tmp_path / "venv"
+    commands_answer_each(monkeypatch, {str(venv / "bin" / "computer-history"): (0, answer, "")})
+
+    with pytest.raises(HostError, match="could not ask the built command what it reads: "):
+        LiveHost().build("abc123", venv)
 
 
 def test_a_failed_build_step_names_the_step(
@@ -356,3 +401,259 @@ def test_a_hung_osascript_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(HostError, match="could not post a notification"):
         LiveHost().notify("hello")
+
+
+def test_the_agent_tree_is_the_hash_github_lists_for_its_source_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    listing = [
+        {"name": "README.md", "type": "file", "sha": "1" * 40},
+        {"name": live.AGENT_SOURCE_FOLDER, "type": "dir", "sha": "2" * 40},
+    ]
+    asked = github_answers(monkeypatch, listing)
+
+    assert LiveHost().agent_tree("abc123") == "2" * 40
+    assert [request.full_url for request in asked] == [f"{live.GITHUB_API}/contents?ref=abc123"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [[{"name": "README.md", "type": "file", "sha": "1" * 40}], {"message": "Not Found"}],
+    ids=["no agent folder", "not a listing"],
+)
+def test_an_agent_tree_github_does_not_list_is_a_host_error(
+    monkeypatch: pytest.MonkeyPatch, answer: object
+) -> None:
+    github_answers(monkeypatch, answer)
+
+    with pytest.raises(HostError, match="could not read the capture agent's source tree at abc"):
+        LiveHost().agent_tree("abc123")
+
+
+def test_an_agent_tree_out_of_reach_is_a_host_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    github_answers(monkeypatch, OSError("nodename nor servname provided"))
+
+    with pytest.raises(HostError, match="source tree at abc123 from GitHub: nodename"):
+        LiveHost().agent_tree("abc123")
+
+
+IDENTITIES = (
+    '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Computer History Code Signing"\n'
+    "     1 valid identities found\n"
+)
+
+
+def test_the_agent_toolchain_asks_xcrun_for_swift_and_security_for_the_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ran = commands_answer_each(monkeypatch, {live.SECURITY: (0, IDENTITIES, "")})
+
+    LiveHost().check_agent_toolchain()
+
+    assert ran == [
+        [live.XCRUN, "--find", "swift"],
+        [live.SECURITY, "find-identity", "-v", "-p", "codesigning"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("answers", "missing"),
+    [
+        (
+            {
+                live.XCRUN: (1, "", "xcrun: error: invalid active developer path"),
+                live.SECURITY: (0, IDENTITIES, ""),
+            },
+            ["Swift is not installed (run `xcode-select --install`)"],
+        ),
+        (
+            {live.SECURITY: (0, "     0 valid identities found\n", "")},
+            [
+                'the signing identity "Computer History Code Signing" is not in your keychain'
+                " (create a code-signing certificate of that name in Keychain Access)"
+            ],
+        ),
+        (
+            {
+                live.XCRUN: (1, "", "xcrun: error: invalid active developer path"),
+                live.SECURITY: (0, "     0 valid identities found\n", ""),
+            },
+            [
+                "Swift is not installed (run `xcode-select --install`)",
+                'the signing identity "Computer History Code Signing" is not in your keychain'
+                " (create a code-signing certificate of that name in Keychain Access)",
+            ],
+        ),
+    ],
+    ids=["no swift", "no identity", "neither"],
+)
+def test_a_missing_agent_toolchain_names_everything_missing_and_how_to_get_it(
+    monkeypatch: pytest.MonkeyPatch, answers: dict[str, tuple[int, str, str]], missing: list[str]
+) -> None:
+    commands_answer_each(monkeypatch, answers)
+
+    with pytest.raises(HostError) as raised:
+        LiveHost().check_agent_toolchain()
+
+    assert str(raised.value) == "; ".join(missing)
+
+
+def source_tarball(commit: str) -> bytes:
+    """A GitHub tarball of a commit: one top folder holding the agent's build script."""
+    packed = io.BytesIO()
+    with tarfile.open(fileobj=packed, mode="w:gz") as archive:
+        script = b"#!/bin/sh\necho built\n"
+        entry = tarfile.TarInfo(
+            f"thewisepup-computer-history-{commit[:7]}/capture-agent/scripts/build.sh"
+        )
+        entry.size, entry.mode = len(script), 0o755
+        archive.addfile(entry, io.BytesIO(script))
+    return packed.getvalue()
+
+
+def tarball_answers(monkeypatch: pytest.MonkeyPatch, answer: bytes) -> list[str]:
+    asked: list[str] = []
+
+    def urlopen(request: urllib.request.Request, timeout: float) -> io.BytesIO:
+        asked.append(request.full_url)
+        return io.BytesIO(answer)
+
+    monkeypatch.setattr(live.urllib.request, "urlopen", urlopen)
+    return asked
+
+
+def test_the_agent_is_built_by_its_own_commits_script_from_a_fresh_export(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    asked = tarball_answers(monkeypatch, source_tarball("abc1234"))
+    seen: list[tuple[list[str], dict[str, str]]] = []
+
+    def run(command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:
+        seen.append((command, dict(options.get("env") or {})))
+        if command[0] == "/bin/sh":
+            assert Path(command[1]).read_bytes() == b"#!/bin/sh\necho built\n"
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+    app = tmp_path / "version" / "ComputerHistoryAgent.app"
+
+    LiveHost().build_agent("abc1234", app)
+
+    assert asked == [f"{live.GITHUB_API}/tarball/abc1234"]
+    (build, build_env), (copy, _) = seen
+    export = Path(build[1]).parents[2]
+    assert build == ["/bin/sh", str(export / "capture-agent" / "scripts" / "build.sh")]
+    assert build_env["CODESIGN_IDENTITY"] == live.SIGNING_IDENTITY
+    assert copy == [live.DITTO, str(export / "capture-agent" / ".build" / app.name), str(app)]
+    assert not export.exists()
+
+
+def test_a_failed_agent_build_is_a_host_error_with_the_builds_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tarball_answers(monkeypatch, source_tarball("abc1234"))
+    commands_answer_each(
+        monkeypatch, {"/bin/sh": (1, "error: no such module 'CaptureAgent'\n", "")}
+    )
+
+    with pytest.raises(
+        HostError,
+        match="could not build and sign the capture agent at abc1234: error: no such module",
+    ):
+        LiveHost().build_agent("abc1234", tmp_path / "ComputerHistoryAgent.app")
+
+
+def agent_app(folder: Path, executable: str = "ComputerHistoryAgent") -> Path:
+    """An agent bundle with its Info.plist and LaunchAgent plist, as the build script lays out."""
+    app = folder / "ComputerHistoryAgent.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    (app / "Contents" / "MacOS" / executable).write_text("#!/bin/sh\n")
+    (app / "Contents" / "Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleExecutable": executable})
+    )
+    agents = app / "Contents" / "Library" / "LaunchAgents"
+    agents.mkdir(parents=True)
+    (agents / f"{CAPTURE_AGENT_LABEL}.plist").write_bytes(
+        plistlib.dumps({"Label": CAPTURE_AGENT_LABEL})
+    )
+    return app
+
+
+def launchd_runs_after(
+    monkeypatch: pytest.MonkeyPatch, prints: int, register: tuple[int, str] = (0, "")
+) -> list[list[str]]:
+    """Commands answered as launchd would: the agent shows running from the given print on."""
+    ran: list[list[str]] = []
+
+    def run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        ran.append(command)
+        if command[:2] == [live.LAUNCHCTL, "print"]:
+            shown = sum(1 for c in ran if c[:2] == [live.LAUNCHCTL, "print"])
+            out = LAUNCHCTL_RUNNING if shown >= prints else LAUNCHCTL_WAITING
+            return subprocess.CompletedProcess(command, 0, out, "")
+        if command[-1] == "install":
+            return subprocess.CompletedProcess(command, register[0], "", register[1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(live.subprocess, "run", run)
+    return ran
+
+
+def test_installing_the_agent_unregisters_the_old_app_replaces_it_and_registers_the_new(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    fixed = agent_app(tmp_path / "Applications", executable="OldAgent")
+    ran = launchd_runs_after(monkeypatch, prints=1)
+
+    LiveHost(sleep=lambda _: None).install_agent(app, fixed)
+
+    job = f"gui/{os.getuid()}/{CAPTURE_AGENT_LABEL}"
+    assert ran == [
+        [str(fixed / "Contents" / "MacOS" / "OldAgent"), "uninstall"],
+        [live.DITTO, str(app), str(fixed)],
+        [str(fixed / "Contents" / "MacOS" / "ComputerHistoryAgent"), "install"],
+        [live.LAUNCHCTL, "print", job],
+    ]
+    assert not fixed.exists()
+
+
+def test_an_agent_that_does_not_start_is_kickstarted_and_registered_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    fixed = tmp_path / "Applications" / app.name
+    ran = launchd_runs_after(monkeypatch, prints=live.AGENT_RUNNING_CHECKS + 1)
+
+    LiveHost(sleep=lambda _: None).install_agent(app, fixed)
+
+    job = f"gui/{os.getuid()}/{CAPTURE_AGENT_LABEL}"
+    executable = str(fixed / "Contents" / "MacOS" / "ComputerHistoryAgent")
+    retry = ran.index([live.LAUNCHCTL, "kickstart", job])
+    assert ran[retry : retry + 3] == [
+        [live.LAUNCHCTL, "kickstart", job],
+        [executable, "uninstall"],
+        [executable, "install"],
+    ]
+    assert ran[-1] == [live.LAUNCHCTL, "print", job]
+    assert ran[0] == [live.DITTO, str(app), str(fixed)]
+
+
+def test_an_agent_that_never_starts_is_a_host_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    launchd_runs_after(monkeypatch, prints=10_000)
+
+    with pytest.raises(HostError, match="the capture agent is registered but did not start"):
+        LiveHost(sleep=lambda _: None).install_agent(app, tmp_path / "Applications" / app.name)
+
+
+def test_an_agent_that_cannot_register_is_a_host_error_with_its_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = agent_app(tmp_path / "version")
+    launchd_runs_after(monkeypatch, prints=1, register=(1, "Operation not permitted"))
+
+    with pytest.raises(HostError, match="could not register the capture agent: Operation not"):
+        LiveHost(sleep=lambda _: None).install_agent(app, tmp_path / "Applications" / app.name)

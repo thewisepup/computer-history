@@ -9,8 +9,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import computer_history.store
-from computer_history.host import CheckOutcome, CheckRun, HostError, JobBusy, JobState
-from computer_history.sources import IngestHealth, write_health
+from computer_history.host import (
+    BackendBuild,
+    CheckOutcome,
+    CheckRun,
+    HostError,
+    JobBusy,
+    JobState,
+    SpoolReads,
+)
+from computer_history.sources import RECORD_KINDS, SPOOL_VERSION, IngestHealth, write_health
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,
@@ -20,6 +28,8 @@ from computer_history.stable import (
 )
 
 FAKE_PYTHON = "python3.12"
+AGENT_TREE = "e" * 40
+AGENT_EXECUTABLE = Path("Contents") / "MacOS" / "ComputerHistoryAgent"
 MIGRATIONS = Path(computer_history.store.__file__).parent / "migrations"
 OFFLINE = "could not list main's newest commits from GitHub: offline"
 
@@ -41,6 +51,20 @@ def write_stopgap_plist(layout: Layout) -> Path:
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps({"Label": STOPGAP_LABEL}))
     return plist
+
+
+def agent_built_from(app: Path) -> str | None:
+    """The commit the fake build put into an agent app, or None when there is no app there."""
+    executable = app / AGENT_EXECUTABLE
+    if not executable.is_file():
+        return None
+    return executable.read_text().removeprefix("agent built from ").strip()
+
+
+def lay_out_agent(app: Path, commit: str) -> None:
+    """Put an app where a fake agent build of the commit would leave it."""
+    (app / AGENT_EXECUTABLE).parent.mkdir(parents=True)
+    (app / AGENT_EXECUTABLE).write_text(f"agent built from {commit}\n")
 
 
 BackendStart = Callable[["FakeHost"], None]
@@ -82,8 +106,9 @@ def stays_silent(_: FakeHost) -> None:
 
 
 class FakeHost:
-    """Commits and check runs as scripted, a build that lays out a venv, launchd as a dict, the
-    backend's starts as scripted, and ActivityWatch's app and notifications as flags and a list.
+    """Commits, check runs, backend starts, agent source trees (one shared tree unless scripted),
+    the agent toolchain and builds as scripted, launchd as a dict, and ActivityWatch's app and
+    notifications as flags and a list.
 
     A booted-out job can stay loaded for a few more lookups or loads (which fail busy meanwhile),
     and loads can fail busy first.
@@ -104,6 +129,13 @@ class FakeHost:
         activitywatch_running: bool = True,
         opening_starts_activitywatch: bool = True,
         notify_error: str | None = None,
+        spool_reads: Mapping[str, SpoolReads] | None = None,
+        agent_trees: Mapping[str, str] | None = None,
+        agent_tree_error: str | None = None,
+        agent_toolchain_missing: str | None = None,
+        agent_build_error: str | None = None,
+        agent_build_interrupted: bool = False,
+        agent_register_error: str | None = None,
     ) -> None:
         self.checks = dict(checks or {})
         self.jobs = {label: JobState(loaded=True, pid=100 + n) for n, label in enumerate(loaded)}
@@ -121,6 +153,13 @@ class FakeHost:
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
         self.notifications: list[str] = []
+        self.spool_reads = dict(spool_reads or {})
+        self.agent_trees = dict(agent_trees or {})
+        self.agent_tree_error = agent_tree_error
+        self.agent_toolchain_missing = agent_toolchain_missing
+        self.agent_build_error = agent_build_error
+        self.agent_build_interrupted = agent_build_interrupted
+        self.agent_register_error = agent_register_error
         self.calls: list[tuple[str, str]] = []
 
     def main_commits(self, limit: int) -> list[str]:
@@ -135,7 +174,7 @@ class FakeHost:
             raise HostError(OFFLINE)
         return self.checks[commit]
 
-    def build(self, commit: str, venv: Path) -> str:
+    def build(self, commit: str, venv: Path) -> BackendBuild:
         self.calls.append(("build", commit))
         (venv / "bin").mkdir(parents=True)
         if self.build_error is not None:
@@ -145,7 +184,37 @@ class FakeHost:
         shutil.copytree(MIGRATIONS, installed_package(venv) / "store" / "migrations")
         if self.build_blocks_packages:
             (venv.parent / PACKAGES_FILE_NAME).mkdir()
-        return f"computer-history @ git+https://example.invalid/repo@{commit}\n"
+        packages = f"computer-history @ git+https://example.invalid/repo@{commit}\n"
+        reads = self.spool_reads.get(commit, SpoolReads(SPOOL_VERSION, RECORD_KINDS))
+        return BackendBuild(packages, reads)
+
+    def agent_tree(self, commit: str) -> str:
+        self.calls.append(("agent_tree", commit))
+        if self.agent_tree_error is not None:
+            raise HostError(self.agent_tree_error)
+        return self.agent_trees.get(commit, AGENT_TREE)
+
+    def check_agent_toolchain(self) -> None:
+        self.calls.append(("check_agent_toolchain", ""))
+        if self.agent_toolchain_missing is not None:
+            raise HostError(self.agent_toolchain_missing)
+
+    def build_agent(self, commit: str, app: Path) -> None:
+        self.calls.append(("build_agent", commit))
+        if self.agent_build_error is not None:
+            app.mkdir(parents=True)
+            raise HostError(self.agent_build_error)
+        lay_out_agent(app, commit)
+        if self.agent_build_interrupted:
+            raise KeyboardInterrupt
+
+    def install_agent(self, app: Path, fixed: Path) -> None:
+        self.calls.append(("install_agent", str(app)))
+        if fixed.exists():
+            shutil.rmtree(fixed)
+        shutil.copytree(app, fixed, symlinks=True)
+        if self.agent_register_error is not None:
+            raise HostError(self.agent_register_error)
 
     def job(self, label: str) -> JobState:
         self.calls.append(("job", label))

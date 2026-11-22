@@ -8,8 +8,8 @@ connection, calls one function, and formats the result.
 
 ```
 app.py         parser + dispatch: one entry per command, the profile's log
-  |              folder, and the install lock around the commands that change
-  |              the stable install
+  |              folder, the install lock around the commands that change
+  |              the stable install, and --spool-reads
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop), with
   |                the ingest health file and the failure streak's notification
@@ -194,6 +194,21 @@ install failed: uv is not installed (install it with `brew install uv`) (nothing
 logs and the backups. Both commands reach launchctl, GitHub and `uv` only through the host
 adapter (`computer_history/host/`), so tests run them against a fake.
 
+## --spool-reads — what this code reads from the spool
+
+```bash
+computer-history --spool-reads
+```
+
+Prints the spool version and record kinds this code's backend reads, as one
+JSON line, and exits before any command runs (no profile line, no database).
+`install` and `update` ask it of every version they build and keep the answer
+as that version's `spool-reads.json`. Real output:
+
+```
+{"spool_version": 1, "kinds": ["capture", "excluded", "paused", "resumed", "slept", "woke", "screenshot"]}
+```
+
 ## update and rollback — moving the stable install
 
 ```bash
@@ -206,10 +221,31 @@ computer-history rollback            # back to the previous version; no network
 does. It only moves forward: when that commit is `current`, or older than
 `current` on `main` (say `current`'s checks were re-run and cancelled since
 it was installed), it says `Already up to date` and changes nothing.
-Otherwise it builds the commit beside the current version into
-`versions/<short commit>/` and smokes it (`--help`); a failed build or smoke
-removes that folder and changes nothing, as does being offline. Then it boots
-out the backend, takes the pre-update backup
+Otherwise it first readies the capture agent, then builds the commit beside
+the current version into `versions/<short commit>/` and smokes it by asking
+the built command what it reads (`--spool-reads`, kept as `spool-reads.json`);
+a failed build or smoke removes that folder and changes nothing, as does being
+offline.
+
+The capture agent counts as changed when the git tree hash of
+`capture-agent/` at the new commit differs from the one at the commit the
+installed agent was built from, read from GitHub. That commit is
+`installed-agent.json` in the live folder; when it is missing, unreadable or
+no app sits at `~/Applications/ComputerHistoryAgent.app`, the agent counts as
+changed. Changed, `update` checks for Swift and the `Computer History Code
+Signing` identity before building anything, then builds and signs the agent
+from a fresh export of the commit with that commit's own
+`capture-agent/scripts/build.sh` into the new version's
+`ComputerHistoryAgent.app/`, noting the commit in `agent-commit.txt`.
+Unchanged, it copies the installed agent's app there with its signature: from
+the old version's folder when that holds it, else from the fixed path. A
+version folder still on disk that already holds an app (an update back to the
+version a rollback left) keeps it. A missing toolchain, an unreadable tree
+hash, a failed build or signing, or Ctrl-C during the build removes the new
+folder and ends with `nothing was changed`, the backend still running. The
+app at the fixed path is not touched yet.
+
+Then it boots out the backend, takes the pre-update backup
 (`backups/pre-update/history-<local time>-<old version>.db`, the same SQLite
 online backup and integrity check as the daily one), places the spool hold
 (`spool-deletion-held` beside the database), points `previous` at the old
@@ -252,7 +288,7 @@ monotonic clock) for a cycle in `ingest-health.json` newer than the restart:
   a `warning:` line and the rest still run. A Ctrl-C or SIGTERM during a
   fallback is noted and the fallback runs to its end, then `update` exits 130.
 
-Ctrl-C or SIGTERM before the switch (during the build, the backend's stop,
+Ctrl-C or SIGTERM before the switch (during either build, the backend's stop,
 the backup or the hold) undoes what `update` did, starts the backend again and
 exits 130: `update interrupted before switching versions (nothing was
 changed)`.
@@ -312,6 +348,12 @@ update failed: could not build version 9f0e1d2: could not install commit 9f0e1d2
 $ computer-history update
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 update failed: could not list main's newest commits from GitHub: offline (nothing was changed)
+$ computer-history update
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+update failed: cannot build the capture agent: Swift is not installed (run `xcode-select --install`) (nothing was changed)
+$ computer-history update
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+update failed: could not build the capture agent for version 9f0e1d2: could not build and sign the capture agent at 9f0e1d2...: error: no such module 'CaptureAgent' (nothing was changed)
 $ computer-history update
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Already up to date: version 8d23e3a is current (the newest passing commit, 572c48b, is older than current)

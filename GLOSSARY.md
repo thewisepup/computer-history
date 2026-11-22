@@ -78,6 +78,10 @@ _Avoid_: Revert, auto-rollback
 Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
 _Avoid_: Downgrade, revert
 
+**Installed agent**:
+The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, and update counts it as changed.
+_Avoid_: Deployed agent, agent version
+
 **Update log**:
 `update-log.jsonl` in the live folder, one line per update, fallback and rollback; `status` shows the last.
 _Avoid_: Changelog, audit log
@@ -95,7 +99,7 @@ The named CI checks a `main` commit must all have passed on its push run before 
 _Avoid_: Required checks, green build
 
 **Host adapter**:
-The one seam to macOS and the network (launchctl, GitHub, building with uv, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
+The one seam to macOS and the network (launchctl, GitHub, building with uv, building and installing the capture agent, checking and opening ActivityWatch's app, posting a notification), live on the Mac and a fake in tests. Every notification goes through it, under one title, and `COMPUTER_HISTORY_NOTIFY=0` turns them off.
 _Avoid_: System client, platform layer
 
 **Daily backup**:

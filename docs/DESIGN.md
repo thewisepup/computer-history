@@ -132,14 +132,17 @@ computer_history/
                 # wall-clock times against this machine's last baseline)
   host/         # the host adapter, the one seam to macOS and the network:
                 # contract (Host, its answers, HostError), live (LiveHost:
-                # launchctl, GitHub's check runs, building with uv, pgrep and
-                # open for ActivityWatch, osascript for every notification,
+                # launchctl, GitHub's check runs and source trees, building with
+                # uv, the capture agent's toolchain check, build and install,
+                # pgrep and open for ActivityWatch, osascript for every notification,
                 # under one title and off when COMPUTER_HISTORY_NOTIFY=0);
                 # tests use a fake that records calls and plays back answers
   stable/       # the stable install: gate (the release gate and the walk to
                 # the newest main commit passing it), versions (build a
-                # commit into a marked version folder; current and previous
-                # pointers), launch_agents (plists, loading, launchd's state
+                # commit into a marked version folder, noting what its backend
+                # reads; current and previous pointers), capture_agent (the
+                # installed agent's record, and the agent app a version folder
+                # carries, built or copied), launch_agents (plists, loading, launchd's state
                 # for status: the backend, the daily backup, the watchdog and
                 # ActivityWatch at login), layout (where it all lives), install
                 # (install and uninstall), install_lock (the one lock on the
@@ -709,6 +712,8 @@ in the live folder and starts the backend at login from it:
                            #  "last_error", "alerted_at", "sources_unavailable" (every failure was an
                            #  unreadable source)}, rewritten by ingest --watch after each cycle
   update-log.jsonl         # one JSON line per update, fallback and rollback; status shows the last
+  installed-agent.json     # {"built_from": <full commit>, "installed_at": <ISO time>}: the commit the app
+                           #  at ~/Applications/ComputerHistoryAgent.app was built from; missing = unknown
   spool-deletion-held      # placed by update: ingest keeps stored spool files until the backend's ok cycle
   watchdog.json            # the watchdog's last findings and what it notified, see 8.6
   .watchdog.lock           # held by a watchdog run, so two never overlap
@@ -719,7 +724,10 @@ in the live folder and starts the backend at login from it:
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
-    installed              # empty marker, written last: the version is complete
+    spool-reads.json       # {"spool_version", "kinds"}: what its backend reads, from `--spool-reads`
+    installed              # empty marker: the backend is complete
+    ComputerHistoryAgent.app/   # the capture agent app for this version, signed; never registered here
+    agent-commit.txt       # the full commit that app was built from
   current -> versions/<short commit>
   previous -> versions/<short commit>                  # the version update or rollback left; one is kept
 ~/.local/bin/computer-history -> .../ComputerHistory/current/venv/bin/computer-history
@@ -744,8 +752,11 @@ in the live folder and starts the backend at login from it:
   GitHub's public API, stopping at the first that passes; no token is needed,
   and `$GITHUB_TOKEN` is sent when set.
 - **Install** with no current version builds the newest passing commit with
-  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a `--help` smoke run,
-  `uv pip freeze`), writes the marker last and points `current` at it. A
+  `uv` (`uv venv`, `uv pip install git+...@<commit>`, a smoke run of
+  `computer-history --spool-reads` whose answer becomes `spool-reads.json`,
+  `uv pip freeze`), writes the marker last and points `current` at it.
+  Install does not build or deploy the capture agent; its first install is
+  `capture-agent/scripts/install.sh`. A
   failed lookup, build or file write removes what it created, so nothing
   changes. With a current version it skips GitHub and uv and only repairs:
   the PATH link, the
@@ -774,9 +785,21 @@ in the live folder and starts the backend at login from it:
   database, dev's included, never touches launchd.
 - **Update** walks the gate as install does and only moves forward: it stops
   at `already up to date` when that commit is `current` or comes after
-  `current` in the walk (older on `main`). Otherwise: build it beside the
-  current version (a failed build or smoke, or no network, changes nothing);
-  boot the backend out; take the pre-update backup (the daily backup's
+  `current` in the walk (older on `main`). Otherwise: decide whether the
+  capture agent changed, by comparing the git tree hash of `capture-agent/` at
+  the new commit with that at the installed agent's build commit
+  (`installed-agent.json`; missing, unreadable or no app at the fixed path
+  counts as changed); when changed, check for Swift (`xcrun --find swift`) and
+  the signing identity (`security find-identity -v -p codesigning`); build it
+  beside the current version; then build and sign the agent into the new
+  version folder from a fresh GitHub export of the commit with that commit's
+  own `scripts/build.sh`, or, unchanged, copy the installed agent's app
+  (from the old version's folder when its `agent-commit.txt` names that
+  commit, else from the fixed path) with its signature. A version folder
+  still on disk that holds an app keeps it. A failed tree read, toolchain
+  check, build, smoke or agent build, no network, or Ctrl-C here removes the
+  new folder and changes nothing, with the backend still running. Next it
+  boots the backend out; take the pre-update backup (the daily backup's
   function, kept apart); place the spool hold; point `previous` at the old
   version and `current` at the new; load the backend. A failure after the
   backup and before the switch removes the backup and the build and starts
@@ -827,7 +850,13 @@ in the live folder and starts the backend at login from it:
   PATH link (only when it is the install's own), the pointers and `versions/`.
   Data and logs stay.
 - **Host adapter** (`host/`): launchctl (`print`, `bootstrap`, `bootout` in the
-  `gui/<uid>` domain), the GitHub lookup, the uv build, ActivityWatch's app
+  `gui/<uid>` domain), the GitHub lookup, the uv build, the capture agent
+  (its source tree hash from GitHub's contents listing, the toolchain check,
+  the build into a version folder, and the install over
+  `~/Applications/ComputerHistoryAgent.app`: the old app's `uninstall`, `ditto`,
+  `install`, then up to three tries of waiting for launchd to show it running,
+  each retry a `launchctl kickstart`, `uninstall` and `install` as
+  `scripts/install.sh` does), ActivityWatch's app
   (`pgrep -x -U <uid> aw-qt`, and the same `open` the login agent runs) and
   user notifications. Nothing else in the install or the watchdog reaches
   macOS or the network.
