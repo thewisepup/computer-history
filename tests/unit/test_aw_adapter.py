@@ -653,13 +653,14 @@ def test_adapter_resumes_a_little_before_its_position() -> None:
                 self.starts.append(kwargs.get("start"))
             return super().get_events(bucket_id, **kwargs)
 
-    adapter = ActivityWatch(RecordingAW({WINDOW_BUCKET: "currentwindow"}))
+    fake = RecordingAW({WINDOW_BUCKET: "currentwindow"})
+    adapter = ActivityWatch(fake)
     first = adapter.pull_after(WINDOW_SOURCE, None, now=at(30))
     assert first.settled_until == at(30) and first.position is not None
-    RecordingAW.starts.clear()
+    fake.starts = []
     pulled = adapter.pull_after(WINDOW_SOURCE, first.position, now=at(40))
     overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
-    assert RecordingAW.starts == [at(30) - overlap - CLIP_GUARD]
+    assert fake.starts == [at(30) - overlap - CLIP_GUARD]
     assert pulled.settled_until == at(40) and pulled.position not in (None, first.position)
 
 

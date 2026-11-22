@@ -91,9 +91,9 @@ computer_history/
                 # health for status, judged against aw-afk and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
-                # projectors), adapter (ActivityWatch), position (its progress
-                # encoding), history (where a stream's history begins, for
-                # backfill), afk (stored and newest AFK spans, for status),
+                # projectors), adapter (ActivityWatch, the only way to pull,
+                # owning its position encoding), history (where a stream's
+                # history begins, for backfill), afk (stored and newest AFK spans, for status),
                 # frontmost (stored and newest aw-window app spans, for status)
                 # capture_spool/: paths (where the spool is), spool (finished files:
                 # list, read, remove, set aside), record (one line checked
