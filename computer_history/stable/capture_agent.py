@@ -72,6 +72,16 @@ def record_installed_agent(layout: Layout, built_from: str, installed_at: dateti
     )
 
 
+def record_installed_agent_or_note(
+    layout: Layout, built_from: str, installed_at: datetime, problems: list[str]
+) -> None:
+    """Record the installed agent's commit, noting a failed write among the problems."""
+    try:
+        record_installed_agent(layout, built_from, installed_at)
+    except OSError as exc:
+        problems.append(f"the installed agent's record could not be written: {exc}")
+
+
 def plan_agent(host: Host, layout: Layout, commit: str, old: InstalledVersion) -> AgentPlan:
     """Build the agent from the commit when its source differs from the installed agent's or that
     is unknown; otherwise copy the installed agent's app, from the old version when it holds it."""

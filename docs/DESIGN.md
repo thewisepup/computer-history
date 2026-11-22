@@ -93,8 +93,9 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status and its liveness for the watchdog, judged
-                # against aw-afk and aw-window),
+                # health for status, its liveness for the watchdog, and the
+                # records update's agent check reads, judged against aw-afk
+                # and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch, the only way to pull,
@@ -148,9 +149,9 @@ computer_history/
                 # (install and uninstall), install_lock (the one lock on the
                 # live folder), backups (the daily and pre-update
                 # backups beside the database, and restore), updates/ (update
-                # by stage: updating, preparing, waiting, falling_back; and
-                # rolling_back), update_log (one line per update, fallback and
-                # rollback)
+                # by stage: updating, preparing, waiting, falling_back,
+                # swapping, agent_waiting; and rolling_back), update_log (one
+                # line per update, fallback, rollback and agent move)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
                 # backend), alerts (which findings notify, how often, and which

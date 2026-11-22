@@ -10,7 +10,7 @@ from computer_history.stable.capture_agent import (
     carried_agent,
     installed_agent,
     keep_installed_app,
-    record_installed_agent,
+    record_installed_agent_or_note,
     set_aside_fallen_back,
 )
 from computer_history.stable.layout import Layout
@@ -59,20 +59,15 @@ def swap_agent(host: Host, layout: Layout, prepared: Prepared) -> AgentSwap:
             f"the installed capture agent could not be unregistered, so it keeps running: {exc}"
         ]
         if installed is not None:
-            try:
-                record_installed_agent(layout, installed.built_from, installed.installed_at)
-            except OSError as error:
-                problems.append(f"the installed agent's record could not be written: {error}")
+            record_installed_agent_or_note(
+                layout, installed.built_from, installed.installed_at, problems
+            )
         return AgentSwap(None, swapped=False, problems=tuple(problems))
     except (HostError, OSError) as exc:
         return AgentSwap(None, f"the new capture agent could not be started: {exc}")
-    try:
-        record_installed_agent(layout, prepared.agent.built_from, at)
-    except OSError as exc:
-        return AgentSwap(
-            at, problems=(f"the installed agent's record could not be written: {exc}",)
-        )
-    return AgentSwap(at)
+    problems: list[str] = []
+    record_installed_agent_or_note(layout, prepared.agent.built_from, at, problems)
+    return AgentSwap(at, problems=tuple(problems))
 
 
 def fall_back_agent(
@@ -125,12 +120,8 @@ def _reinstall(host: Host, layout: Layout, old: str, problems: list[str]) -> boo
         problems.append(f"{old}'s capture agent could not be put back: {exc} ({REINSTALL_HINT})")
         return False
     built_from = carried_agent(layout, folder)
-    if built_from is None:
-        return True
-    try:
-        record_installed_agent(layout, built_from, at)
-    except OSError as exc:
-        problems.append(f"the installed agent's record could not be written: {exc}")
+    if built_from is not None:
+        record_installed_agent_or_note(layout, built_from, at, problems)
     return True
 
 

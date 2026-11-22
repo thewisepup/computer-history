@@ -13,7 +13,7 @@ from computer_history.stable.capture_agent import (
     AgentMove,
     AgentRollback,
     plan_agent_rollback,
-    record_installed_agent,
+    record_installed_agent_or_note,
 )
 from computer_history.stable.launch_agents import BACKEND, load_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
@@ -100,10 +100,7 @@ def _move_agent(
             " update deploys it again"
         )
         return AgentRollback(moved=False)
-    try:
-        record_installed_agent(layout, move.built_from, at)
-    except OSError as exc:
-        problems.append(f"the installed capture agent's record could not be written: {exc}")
+    record_installed_agent_or_note(layout, move.built_from, at, problems)
     entry = UpdateLogEntry(
         now(), UpdateAction.AGENT_ROLLED_BACK, move.from_version, move.to_version, move.reason
     )
