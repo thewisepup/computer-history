@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
-from fake_aw import T0, FakeAW
+from fake_aw import T0, FakeAW, UnreachableAW
 from fake_host import FakeHost, gate_runs, installed_package
 
 from computer_history.cli import formatting as cli_formatting
@@ -47,11 +47,6 @@ CAPTURE_BACK = "The capture agent is recording again."
 AW_DOWN = "ActivityWatch has been unreachable for over 5 min."
 AW_BACK = "ActivityWatch is recording again."
 BACKEND_SILENT = "The backend has finished no ingest cycle for over 5 min while you were active."
-
-
-class UnreachableAW(FakeAW):
-    def get_buckets(self) -> dict[str, dict[str, object]]:
-        raise AWError("ActivityWatch unreachable at http://127.0.0.1:5600/api/0: refused")
 
 
 class WatchedAW(FakeAW):

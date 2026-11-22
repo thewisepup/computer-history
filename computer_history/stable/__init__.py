@@ -13,7 +13,8 @@
         |                     on failure; the pointers
         +-- capture_agent.py  the installed agent's record, the agent app a version
         |                     folder carries (built when its source changed, else
-        |                     copied), and whether rollback must move the agent back
+        |                     copied), the installed app kept in the old version before
+        |                     a swap, and whether rollback must move the agent back
         +-- launch_agents.py  the plists (kept running, run every minute, run daily or
         |                     once at login: the backend, the backup, the watchdog and
         |                     ActivityWatch), loading, stopping, starting and removing
@@ -22,11 +23,12 @@
         +-- layout.py         where the versions, pointers, link, plists and logs live
 
     updates/          update (build the newest passing commit, back up, switch, wait
-        |             for the backend's first ok cycle with spool deletion held, and
+        |             for the backend's first ok cycle with spool deletion held, swap
+        |             in a changed capture agent and wait for its first record, and
         |             fall back on its own) and rollback (current and previous swapped,
         |             the agent moved back when needed), one module per stage
-        +-- update_log.py  one line per update, fallback, rollback and agent move, read
-                           by status, which skips actions it doesn't know
+        +-- update_log.py  one line per update, fallback, agent fallback, rollback and
+                           agent move, read by status, which skips actions it doesn't know
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
@@ -53,7 +55,7 @@ from computer_history.stable.backups import (
     take_daily_backup,
     take_pre_update_backup,
 )
-from computer_history.stable.capture_agent import record_installed_agent
+from computer_history.stable.capture_agent import installed_agent, record_installed_agent
 from computer_history.stable.gate import RELEASE_GATE
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.install_lock import InstallBusy, holding_install_lock
@@ -80,12 +82,16 @@ from computer_history.stable.layout import (
     stable_layout,
 )
 from computer_history.stable.update_log import (
+    AgentOutcome,
     UpdateAction,
     UpdateLogEntry,
     last_update_log_entry,
 )
 from computer_history.stable.updates import (
+    AGENT_ACTIVE_SECONDS,
+    AGENT_WAIT_SECONDS,
     FIRST_CYCLE_WAIT_SECONDS,
+    AgentCheck,
     RollbackFailed,
     UpdateFailed,
     UpdateReport,
@@ -96,6 +102,8 @@ from computer_history.stable.versions import pointed, version_name
 
 __all__ = [
     "ACTIVITYWATCH_AT_LOGIN",
+    "AGENT_ACTIVE_SECONDS",
+    "AGENT_WAIT_SECONDS",
     "BACKEND",
     "BACKUPS_FOLDER_NAME",
     "CAPTURE_AGENT_LABEL",
@@ -115,6 +123,8 @@ __all__ = [
     "STOPGAP_LABEL",
     "TAKEN_AT_STAMP",
     "WATCHDOG",
+    "AgentCheck",
+    "AgentOutcome",
     "AgentStatus",
     "BackupFailed",
     "BackupInventory",
@@ -135,6 +145,7 @@ __all__ = [
     "daily_backup_path",
     "holding_install_lock",
     "install",
+    "installed_agent",
     "last_update_log_entry",
     "pointed",
     "record_installed_agent",

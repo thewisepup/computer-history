@@ -1,17 +1,22 @@
 """Update and rollback: moving the stable install between versions.
 
 updating.py         update: the release-gate walk, then prepare, switch and wait,
-    |               or fall back; Ctrl-C and SIGTERM interrupt it until the
-    |               fallback or the last steps, which run to their end
+    |               or fall back; then swap and check a changed agent, or put
+    |               it back; Ctrl-C and SIGTERM interrupt the waits, and each
+    |               fallback and the last steps run to their end
     +-- preparing.py      decide whether the capture agent changed, build the new
     |                     version and its agent app (or copy the app unchanged),
     |                     stop the backend, back up the database and place the
     |                     spool hold; undone on any failure
     +-- waiting.py        wait until a deadline for the backend's first ok cycle
-    |                     on the new version
+    |                     on the new version, then for the swapped-in capture
+    |                     agent's first record during 120 active seconds
     +-- falling_back.py   put the old version back, restoring the backup when the
-                          schema changed, release the spool hold once the new
-                          backend is stopped, then notify
+    |                     schema changed, release the spool hold once the new
+    |                     backend is stopped, then notify
+    +-- swapping.py       once the backend is through, keep the installed agent
+                          app in the old version, install the new one over the
+                          fixed path; or put the old app back, log and notify
 
 rolling_back.py     rollback: current and previous swapped, the capture agent
                     moved back first when the previous version can't read its
@@ -22,10 +27,18 @@ rolling_back.py     rollback: current and previous swapped, the capture agent
 from computer_history.stable.updates.preparing import UpdateFailed
 from computer_history.stable.updates.rolling_back import RollbackFailed, rollback
 from computer_history.stable.updates.updating import UpdateReport, update
-from computer_history.stable.updates.waiting import FIRST_CYCLE_WAIT_SECONDS
+from computer_history.stable.updates.waiting import (
+    AGENT_ACTIVE_SECONDS,
+    AGENT_WAIT_SECONDS,
+    FIRST_CYCLE_WAIT_SECONDS,
+    AgentCheck,
+)
 
 __all__ = [
+    "AGENT_ACTIVE_SECONDS",
+    "AGENT_WAIT_SECONDS",
     "FIRST_CYCLE_WAIT_SECONDS",
+    "AgentCheck",
     "RollbackFailed",
     "UpdateFailed",
     "UpdateReport",

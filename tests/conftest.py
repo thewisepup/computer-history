@@ -3,10 +3,12 @@ from pathlib import Path
 
 import live_data_guard  # noqa: F401
 import pytest
+from fake_aw import UnreachableAW
 from fake_host import FakeHost
 from hypothesis import HealthCheck, settings
 
 from computer_history.cli import app as cli_app
+from computer_history.cli import update as cli_update
 from computer_history.host import NOTIFY_ENV_VAR
 from computer_history.logs import LOG_DIR_ENV_VAR, LOG_LEVEL_ENV_VAR
 from computer_history.logs import reset as reset_logging
@@ -49,6 +51,11 @@ def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def no_live_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_app, "LiveHost", FakeHost)
+
+
+@pytest.fixture(autouse=True)
+def no_live_activitywatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_update, "AWClient", UnreachableAW)
 
 
 @pytest.fixture(autouse=True)

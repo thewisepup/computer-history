@@ -243,7 +243,7 @@ version folder still on disk that already holds an app (an update back to the
 version a rollback left) keeps it. A missing toolchain, an unreadable tree
 hash, a failed build or signing, or Ctrl-C during the build removes the new
 folder and ends with `nothing was changed`, the backend still running. The
-app at the fixed path is not touched yet.
+app at the fixed path is touched only after the backend's first ok cycle (below).
 
 Then it boots out the backend, takes the pre-update backup
 (`backups/pre-update/history-<local time>-<old version>.db`, the same SQLite
@@ -264,8 +264,10 @@ and deletes them as usual. `update` waits up to `--wait` seconds (600 by
 default; **a long migration needs a longer wait**; a deadline on the
 monotonic clock) for a cycle in `ingest-health.json` newer than the restart:
 
-- **ok**: it deletes the version `previous` pointed at before (one previous
-  version is kept), logs `updated` and exits 0.
+- **ok**: it removes the hold, swaps the capture agent when it changed (below),
+  deletes the version `previous` pointed at before (one previous version is
+  kept), logs `updated` with the agent's outcome and exits 0 (3 when the
+  agent fell back).
 - **failed only because a source was unavailable** (ActivityWatch down, the
   file's `sources_unavailable`): not a reason to fall back; it keeps
   waiting for a cycle that succeeds or fails for another reason. If the
@@ -287,6 +289,40 @@ monotonic clock) for a cycle in `ingest-health.json` newer than the restart:
   folder so whatever still names it runs. Each step that fails is printed as
   a `warning:` line and the rest still run. A Ctrl-C or SIGTERM during a
   fallback is noted and the fallback runs to its end, then `update` exits 130.
+
+A changed capture agent is swapped only after that ok cycle, so a new record
+kind always meets a backend that reads it; a backend fallback never touches
+the agent. First the app at the fixed path is copied into the old version's
+folder when that folder doesn't already carry it (its `agent-commit.txt`
+naming the installed agent's commit), so there is always an app to put back.
+Then the new version's app is installed over
+`~/Applications/ComputerHistoryAgent.app` and registered, and
+`installed-agent.json` is rewritten. `update` then polls every 2 seconds for
+a record, stored or still in the spool, captured at or after the swap,
+counting only time aw-afk shows you active:
+
+| What it sees | Agent outcome | Exit |
+|---|---|---|
+| a record from the new agent | `updated and verified` | 0 |
+| the newest record is `paused` | `installed, not verified: capture is paused` | 0 |
+| ActivityWatch unreachable | `installed, not verified: ActivityWatch could not say whether you were active` | 0 |
+| under 120 active seconds within 600 wall-clock seconds | `installed, not verified: you were not active for 120s within the 600s wait` | 0 |
+| 120 active seconds, no record | `fell back` | 3 |
+| the new agent could not be registered or started | `fell back`, at once | 3 |
+| Ctrl-C or SIGTERM during the wait | `fell back` | 130 |
+
+An agent fallback installs the old version's app over the fixed path again,
+rewrites `installed-agent.json` (removes it when that app's commit is
+unknown or it could not be put back, so the next update rebuilds the agent),
+logs `agent fell back`, and posts a notification (`The capture agent from
+9f0e1d2 fell back to 8d23e3a's: the new capture agent recorded nothing in
+120s while you were active.`). Each step that fails is a `warning:` line and
+the rest still run. The new backend, the pointers and the database stay; the
+failed build stays in the new version's folder until a later swap replaces
+it with the app it falls back to. Because the next update compares against
+the installed agent's commit, it tries the agent again even when its source
+didn't change since. The record reads use the live database and spool, and
+aw-afk at `--aw-url` (default `http://127.0.0.1:5600/api/0`).
 
 Ctrl-C or SIGTERM before the switch (during either build, the backend's stop,
 the backup or the hold) undoes what `update` did, starts the backend again and
@@ -347,15 +383,25 @@ one exits 1 at once (`update refused: another install, uninstall, update,
 rollback or restore is using .../ComputerHistory; run it again once that one
 has finished`).
 
-Every update, fallback and rollback adds a JSON line to `update-log.jsonl`
-in the live folder (`{"at": ..., "action": "updated" | "fell back" | "rolled
-back" | "agent rolled back", "from": ..., "to": ..., "reason": ...}`);
-`status` shows the last one. A rollback that moves the agent writes its
-`agent rolled back` line (from and to are the versions whose agent builds
-were swapped, the reason says what the older one can't read) before its
-`rolled back` line. `status` skips lines whose action it doesn't know, so a
-version reached by rollback shows the last line it understands instead of
-calling the log unreadable.
+Every update, fallback, agent fallback and rollback adds a JSON line to
+`update-log.jsonl` in the live folder (`{"at": ..., "action": "updated" |
+"fell back" | "agent fell back" | "rolled back" | "agent rolled back", "from":
+..., "to": ..., "reason": ...}`); `status` shows the last one. An `updated`
+line adds `"agent"`, the capture agent's outcome (`unchanged`, `updated and
+verified`, `installed, not verified` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
+version, to the old one, with the reason) before the run's `updated` line
+(illustrative):
+
+```
+{"at": "2026-11-20T19:24:31+00:00", "action": "agent fell back", "from": "9f0e1d2", "to": "8d23e3a", "reason": "the new capture agent recorded nothing in 120s while you were active"}
+{"at": "2026-11-20T19:24:31+00:00", "action": "updated", "from": "8d23e3a", "to": "9f0e1d2", "reason": null, "agent": "fell back"}
+```
+
+A rollback that moves the agent writes its `agent rolled back` line (from and
+to are the versions whose agent builds were swapped, the reason says what the
+older one can't read) before its `rolled back` line. `status` skips lines
+whose action it doesn't know, so a version reached by rollback shows the last
+line it understands instead of calling the log unreadable.
 
 Real output through the CLI with the test suite's fake host adapter scripting
 check results, a clean first cycle, a crash and a failed build, in a
@@ -374,6 +420,7 @@ Updated to version 8d23e3a (commit 8d23e3a222222222222222222222222222222222) fro
   first cycle   completed; the backend deletes stored spool files again
   current       .../ComputerHistory/current -> .../ComputerHistory/versions/8d23e3a
   previous      572c48b (rollback returns to it)
+  agent         updated and verified: the new capture agent records
 $ computer-history update
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Release gate: lint, unit, data, poc, secrets, macos-capture-agent-tests, macos-capture-agent-e2e

@@ -78,7 +78,7 @@ def test_an_unknown_installed_agent_counts_as_changed_and_is_built_into_the_new_
     assert toolchain < host.calls.index(("build", NEWER))
     assert host.calls.index(("build_agent", NEWER)) < host.calls.index(("unload", BACKEND.label))
     assert not any(call == "agent_tree" for call, _ in host.calls)
-    assert not layout.capture_agent_app.exists()
+    assert agent_built_from(layout.capture_agent_app) == NEWER
 
 
 @pytest.mark.parametrize("in_old_version", [True, False], ids=["old version", "installed app"])
@@ -106,7 +106,6 @@ def test_an_unchanged_agent_source_copies_the_installed_agents_app_and_leaves_it
 
 def test_a_changed_agent_source_is_built_from_the_new_commit(run: RunCli, layout: Layout) -> None:
     agent_installed(layout, OLDER)
-    installed = tree(layout.capture_agent_app)
     host = updating(layout, completes_a_cycle(health(layout)), agent_trees={NEWER: "f" * 40})
 
     code, _, err = run(stable_code(layout), "update", host=host)
@@ -115,7 +114,7 @@ def test_a_changed_agent_source_is_built_from_the_new_commit(run: RunCli, layout
     assert agent_built_from(layout.agent_app(new_version(layout))) == NEWER
     assert layout.agent_commit(new_version(layout)).read_text() == f"{NEWER}\n"
     assert agent_built_from(layout.agent_app(old_version(layout))) == OLDER
-    assert tree(layout.capture_agent_app) == installed
+    assert agent_built_from(layout.capture_agent_app) == NEWER
 
 
 @pytest.mark.parametrize(

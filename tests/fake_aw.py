@@ -10,6 +10,7 @@ import copy
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from computer_history.sources import AWError
 from computer_history.store import to_utc
 
 T0 = datetime(2026, 11, 17, 10, 0, 0, 250000, tzinfo=UTC)
@@ -102,3 +103,13 @@ def _sort_key(event: dict[str, Any]) -> datetime:
         return to_utc(event["timestamp"])
     except (KeyError, ValueError):
         return datetime.min.replace(tzinfo=UTC)
+
+
+class UnreachableAW(FakeAW):
+    """An ActivityWatch whose server refuses every connection."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__({})
+
+    def get_buckets(self) -> dict[str, dict[str, object]]:
+        raise AWError("ActivityWatch unreachable at http://127.0.0.1:5600/api/0: refused")

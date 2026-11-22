@@ -54,8 +54,7 @@ def updated_with_newer_agent(
         agent_trees={NEWER: "f" * 40},
     )
     assert run(stable_code(layout), "update", host=host)[0] == 0
-    lay_out_agent(layout.capture_agent_app, NEWER)
-    record_installed_agent(layout, NEWER, INSTALLED_AT)
+    assert agent_built_from(layout.capture_agent_app) == NEWER
     return layout
 
 

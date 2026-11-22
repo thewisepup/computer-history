@@ -11,18 +11,28 @@ class UpdateAction(Enum):
     UPDATED = "updated"
     FELL_BACK = "fell back"
     ROLLED_BACK = "rolled back"
+    AGENT_FELL_BACK = "agent fell back"
     AGENT_ROLLED_BACK = "agent rolled back"
+
+
+class AgentOutcome(Enum):
+    UNCHANGED = "unchanged"
+    VERIFIED = "updated and verified"
+    NOT_VERIFIED = "installed, not verified"
+    FELL_BACK = "fell back"
 
 
 @dataclass(frozen=True)
 class UpdateLogEntry:
-    """One update log line: what moved current, from which version to which, and why."""
+    """One update log line: what moved current or the capture agent, from which version to which,
+    why, and what an update did to the agent."""
 
     at: datetime
     action: UpdateAction
     from_version: str
     to_version: str
     reason: str | None = None
+    agent: AgentOutcome | None = None
 
 
 def append_update_log(path: Path, entry: UpdateLogEntry) -> None:
@@ -34,6 +44,8 @@ def append_update_log(path: Path, entry: UpdateLogEntry) -> None:
         "to": entry.to_version,
         "reason": entry.reason,
     }
+    if entry.agent is not None:
+        line["agent"] = entry.agent.value
     with path.open("a", encoding="utf-8") as log:
         log.write(json.dumps(line) + "\n")
 
@@ -62,6 +74,8 @@ def _entry(path: Path, number: int, line: str) -> UpdateLogEntry | None:
         at = datetime.fromisoformat(written["at"])
         action = UpdateAction(written["action"])
         from_version, to_version, reason = written["from"], written["to"], written.get("reason")
+        outcomes = {outcome.value: outcome for outcome in AgentOutcome}
+        agent = outcomes.get(written.get("agent"))
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
         raise ValueError(problem) from exc
     names = (from_version, to_version)
@@ -69,7 +83,7 @@ def _entry(path: Path, number: int, line: str) -> UpdateLogEntry | None:
         raise ValueError(problem)
     if reason is not None and not isinstance(reason, str):
         raise ValueError(problem)
-    return UpdateLogEntry(at, action, from_version, to_version, reason)
+    return UpdateLogEntry(at, action, from_version, to_version, reason, agent)
 
 
 def append_or_note(path: Path, entry: UpdateLogEntry, problems: list[str]) -> None:
