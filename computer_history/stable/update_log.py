@@ -12,6 +12,7 @@ class UpdateAction(Enum):
     FELL_BACK = "fell back"
     ROLLED_BACK = "rolled back"
     AGENT_FELL_BACK = "agent fell back"
+    AGENT_ROLLED_BACK = "agent rolled back"
 
 
 class AgentOutcome(Enum):
@@ -42,27 +43,39 @@ def append_update_log(path: Path, entry: UpdateLogEntry) -> None:
         "from": entry.from_version,
         "to": entry.to_version,
         "reason": entry.reason,
-        "agent": None if entry.agent is None else entry.agent.value,
     }
+    if entry.agent is not None:
+        line["agent"] = entry.agent.value
     with path.open("a", encoding="utf-8") as log:
         log.write(json.dumps(line) + "\n")
 
 
 def last_update_log_entry(path: Path) -> UpdateLogEntry | None:
-    """The update log's last line, or None without one; ValueError when it is unreadable."""
+    """The update log's last line with an action this version knows, skipping lines a newer one
+    wrote, or None without one; ValueError when that line is unreadable."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         return None
-    if not lines:
-        return None
-    problem = f"the last line of {path} is not an update log entry"
+    for number in range(len(lines), 0, -1):
+        entry = _entry(path, number, lines[number - 1])
+        if entry is not None:
+            return entry
+    return None
+
+
+def _entry(path: Path, number: int, line: str) -> UpdateLogEntry | None:
+    problem = f"line {number} of {path} is not an update log entry"
     try:
-        written = json.loads(lines[-1])
+        written = json.loads(line)
+        known = {action.value for action in UpdateAction}
+        if isinstance(written["action"], str) and written["action"] not in known:
+            return None
         at = datetime.fromisoformat(written["at"])
         action = UpdateAction(written["action"])
         from_version, to_version, reason = written["from"], written["to"], written.get("reason")
-        agent = None if written.get("agent") is None else AgentOutcome(written["agent"])
+        outcomes = {outcome.value: outcome for outcome in AgentOutcome}
+        agent = outcomes.get(written.get("agent"))
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
         raise ValueError(problem) from exc
     names = (from_version, to_version)

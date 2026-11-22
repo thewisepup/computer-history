@@ -11,9 +11,10 @@
         +-- versions.py       build a commit into its marked version folder, noting what
         |                     its backend reads, and point current at it, undoing it all
         |                     on failure; the pointers
-        +-- capture_agent.py  the installed agent's record, and the agent app a version
-        |                     folder carries: built when its source changed, else copied,
-        |                     and the installed app kept in the old version before a swap
+        +-- capture_agent.py  the installed agent's record, the agent app a version
+        |                     folder carries (built when its source changed, else
+        |                     copied), the installed app kept in the old version before
+        |                     a swap, and whether rollback must move the agent back
         +-- launch_agents.py  the plists (kept running, run every minute, run daily or
         |                     once at login: the backend, the backup, the watchdog and
         |                     ActivityWatch), loading, stopping, starting and removing
@@ -24,10 +25,10 @@
     updates/          update (build the newest passing commit, back up, switch, wait
         |             for the backend's first ok cycle with spool deletion held, swap
         |             in a changed capture agent and wait for its first record, and
-        |             fall back on its own) and rollback (current and previous swapped),
-        |             one module per stage
-        +-- update_log.py  one line per update, fallback, agent fallback and rollback,
-                           read by status
+        |             fall back on its own) and rollback (current and previous swapped,
+        |             the agent moved back when needed), one module per stage
+        +-- update_log.py  one line per update, fallback, agent fallback, rollback and
+                           agent move, read by status, which skips actions it doesn't know
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops

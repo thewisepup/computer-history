@@ -18,9 +18,10 @@ updating.py         update: the release-gate walk, then prepare, switch and wait
                           app in the old version, install the new one over the
                           fixed path; or put the old app back, log and notify
 
-rolling_back.py     rollback: current and previous swapped and the backend
-                    restarted, refused when the previous version cannot open
-                    the database's schema
+rolling_back.py     rollback: current and previous swapped, the capture agent
+                    moved back first when the previous version can't read its
+                    records, and the backend restarted; refused when the
+                    previous version cannot open the database's schema
 """
 
 from computer_history.stable.updates.preparing import UpdateFailed

@@ -349,6 +349,7 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     assert out[1:] == [
         f"Rolled back to version {old} from {new}",
         f"  previous      {new} (rollback again returns to it)",
+        f"  agent         not moved ({old} reads every record kind it writes)",
         "  backend       restarted",
     ]
     assert log_lines(layout)[-1]["action"] == "rolled back"
@@ -473,7 +474,7 @@ def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, li
     _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
 
     assert section(out, INSTALL)[-1] == (
-        f"  last update   unreadable update log: the last line of {layout.update_log} is not an"
+        f"  last update   unreadable update log: line 1 of {layout.update_log} is not an"
         " update log entry"
     )
 

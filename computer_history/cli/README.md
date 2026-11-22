@@ -344,6 +344,39 @@ rollback failed: the database is at schema v6, newer than version 572c48b can op
 
 With no previous version it fails and changes nothing.
 
+`rollback` also takes the capture agent back when the previous version can't
+read what the installed agent writes. What the agent writes is the
+`spool-reads.json` of the version folder whose `agent-commit.txt` names the
+agent's `built_from` in `installed-agent.json`; what the previous version
+reads is its own `spool-reads.json`. When the previous version reads that
+spool version and every kind (or carries the same build), the agent stays.
+Otherwise the previous version's app is installed over
+`~/Applications/ComputerHistoryAgent.app` and registered before the backend
+restarts, and `installed-agent.json` is rewritten. There is no record wait:
+the install only confirms launchd shows the agent running, and the watchdog
+covers the rest. When either side is unknown (a version from before this
+note existed, no installed-agent record) or the previous version carries no
+app, it warns and leaves the agent; it never refuses over the agent. An
+agent that doesn't start after the move is a warning too, and its record is
+removed so the next `update` deploys it again. Output from the tests' fake
+host (illustrative names):
+
+```
+$ computer-history rollback
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Rolled back to version 572c48b from 8d23e3a
+  previous      8d23e3a (rollback again returns to it)
+  agent         moved back to 572c48b's build (572c48b does not read its heartbeat records)
+  backend       restarted
+$ computer-history rollback      # previous version from before spool-reads.json
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Rolled back to version 572c48b from 8d23e3a
+  previous      8d23e3a (rollback again returns to it)
+  agent         not moved
+  backend       restarted
+  warning: could not tell which record kinds 572c48b reads; the capture agent was left as it is
+```
+
 `install`, `uninstall`, `update`, `rollback` and a stable `restore` take turns:
 each holds an exclusive lock on the live folder while it runs, and a second
 one exits 1 at once (`update refused: another install, uninstall, update,
@@ -352,17 +385,23 @@ has finished`).
 
 Every update, fallback, agent fallback and rollback adds a JSON line to
 `update-log.jsonl` in the live folder (`{"at": ..., "action": "updated" |
-"fell back" | "agent fell back" | "rolled back", "from": ..., "to": ...,
-"reason": ..., "agent": ...}`); `status` shows the last one. `agent` is the
-capture agent's outcome on an `updated` line (`unchanged`, `updated and
-verified`, `installed, not verified` or `fell back`) and null otherwise. An
-agent fallback writes its `agent fell back` line (from the new version, to
-the old one, with the reason) before the run's `updated` line (illustrative):
+"fell back" | "agent fell back" | "rolled back" | "agent rolled back", "from":
+..., "to": ..., "reason": ...}`); `status` shows the last one. An `updated`
+line adds `"agent"`, the capture agent's outcome (`unchanged`, `updated and
+verified`, `installed, not verified` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
+version, to the old one, with the reason) before the run's `updated` line
+(illustrative):
 
 ```
-{"at": "2026-11-20T19:24:31+00:00", "action": "agent fell back", "from": "9f0e1d2", "to": "8d23e3a", "reason": "the new capture agent recorded nothing in 120s while you were active", "agent": null}
+{"at": "2026-11-20T19:24:31+00:00", "action": "agent fell back", "from": "9f0e1d2", "to": "8d23e3a", "reason": "the new capture agent recorded nothing in 120s while you were active"}
 {"at": "2026-11-20T19:24:31+00:00", "action": "updated", "from": "8d23e3a", "to": "9f0e1d2", "reason": null, "agent": "fell back"}
 ```
+
+A rollback that moves the agent writes its `agent rolled back` line (from and
+to are the versions whose agent builds were swapped, the reason says what the
+older one can't read) before its `rolled back` line. `status` skips lines
+whose action it doesn't know, so a version reached by rollback shows the last
+line it understands instead of calling the log unreadable.
 
 Real output through the CLI with the test suite's fake host adapter scripting
 check results, a clean first cycle, a crash and a failed build, in a
@@ -408,6 +447,7 @@ $ computer-history rollback
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Rolled back to version 572c48b from 8d23e3a
   previous      8d23e3a (rollback again returns to it)
+  agent         not moved (572c48b reads every record kind it writes)
   backend       restarted
 ```
 

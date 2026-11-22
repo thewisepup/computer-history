@@ -150,6 +150,9 @@ def cmd_rollback(args: argparse.Namespace) -> int:
         return 1
     print(f"Rolled back to version {report.current} from {report.previous}")
     print(f"  previous      {report.previous} (rollback again returns to it)")
+    agent = report.agent
+    shown = f"moved back to {report.current}'s build" if agent.moved else "not moved"
+    print(f"  agent         {shown}" + ("" if agent.why is None else f" ({agent.why})"))
     print("  backend       restarted")
     for problem in report.problems:
         print(f"  warning: {problem}")
