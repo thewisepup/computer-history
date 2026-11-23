@@ -77,7 +77,7 @@ Tests sit in four folders, and the folder decides where a test runs:
 | Folder | Holds | Runs in |
 |---|---|---|
 | `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | the pre-commit hook and CI's `unit` job |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | CI's `data` job; locally `-n auto --dist worksteal` |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | CI's `data` job; locally `-n 4 --dist worksteal` |
 | `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf`; CI's `perf` job |
 | `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` and CI's `macos-capture-agent-e2e` job |
 
@@ -90,6 +90,13 @@ Agents that edit code work in their own git worktree, never in the main
 checkout. `scripts/prune-worktrees` removes clean worktrees whose work has
 landed on `origin/main` (`--dry-run` to preview); the post-merge hook runs it
 after every pull in the main checkout.
+
+Several agents in several worktrees share one laptop, so local test runs stay
+small: `pytest -n 4`, never `-n auto` (one worker per core in each worktree
+at once freezes the machine), and run `tests/data/`, `dev perf`, `dev bench`
+and `scripts/mutate.sh` only when the task needs them, leaving the rest to CI.
+Never run TLC (`formal/check.sh`) unless Brandon asks for that run. CI keeps
+`-n auto` on its own runners.
 
 After changing the capture agent, the spool contract or the end-to-end tests,
 run (see the agent's README; CI runs both on macOS too):
