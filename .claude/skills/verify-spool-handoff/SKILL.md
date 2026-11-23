@@ -1,6 +1,6 @@
 ---
 name: verify-spool-handoff
-description: Model-check the spool handoff between the Swift capture agent and Python ingest (TLA+/TLC) to prove no captured record is lost across crashes, restarts and concurrent ingests. The check is manual only, and agents never run it on their own. Use when a change touches SpoolWriter.swift, the capture_spool spool adapter (adapter.py, spool.py), commit_pull, insert_observations, or how ingest runs (poll/watch): say so in the PR as a `[Gap]` call-out and leave the run to Brandon. Run it only when Brandon asks, or when he asks whether spool records can be lost.
+description: TLA+ model check that no spool record is lost between the Swift capture agent and Python ingest. Manual only. Use when a diff touches SpoolWriter.swift, capture_spool (adapter.py, spool.py), commit_pull, insert_observations or poll/watch (add a `[Gap]` call-out, don't run it), or when Brandon asks for a run or whether spool records can be lost.
 ---
 
 # Verify the spool handoff
@@ -18,11 +18,9 @@ the bounds in the configs.
 
 ## Does your change touch it?
 
-The check is manual only, so it never slows ordinary work. Agents do not run
-`formal/check.sh` on their own. If the diff touches any of these files, say so
-in the PR as a `[Gap]` call-out: name the files and say the spool handoff
-model check has not been run on them. Then leave the run to Brandon, who runs
-it by hand or asks for it.
+The check is manual only: agents never run `formal/check.sh` on their own.
+If the diff touches any of these files, add a PR `[Gap]` call-out naming them
+and saying the model check has not been run, and leave the run to Brandon.
 
 | Code | Model action |
 |---|---|
@@ -41,7 +39,6 @@ not touch it.
 
 ## Run
 
-Brandon runs these by hand, or asks an agent to:
 
 ```bash
 formal/check.sh              # one_ingest and two_ingests, about 2 minutes on 18 cores
@@ -118,9 +115,8 @@ When a config gives an unexpected result:
 
 ## Update the model for an intended change
 
-Mirror the code change in the matching action. The run is still Brandon's:
-say in the PR that the model changed and has not been rerun, and read the
-result as above once it is run. When a config's expected result legitimately changes (for example, a
+Mirror the code change in the matching action, and say in the PR that the
+model changed and has not been rerun. When a config's expected result legitimately changes (for example, a
 fix for the known finding makes `two_ingests` pass), update `expect()` in
 `formal/check.sh` and the table here. If the change adds a new step that can
 interleave (a new syscall on the spool, a second transaction), it needs its

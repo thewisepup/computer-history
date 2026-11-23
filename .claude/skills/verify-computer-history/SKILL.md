@@ -121,4 +121,4 @@ its folder under `$TMPDIR/chv/`; for a `live` one, `CHV_RUN=<id> $C down`.
 - The Swift capture agent: `capture-agent/scripts/e2e.sh` drives a scripted
   agent session into a temp spool and ingests it (needs `swift`).
 - The frozen POC (`history.py` REST + `history_mcp.py`): see `README.md`;
-  out of scope until M6 replaces it.
+  out of scope until M5 deletes it.

@@ -13,9 +13,7 @@ earliest stage it fits; move it later when it outgrows that stage.
 `typecheck` is required on pull requests too; the release gate leaves it out.
 Push to `main` reruns pull request CI; there is no separate main-only stage.
 The Python jobs install with uv (`astral-sh/setup-uv`, no cache: a cold
-install takes about 3s). Every test HTTP server is a `LoopbackHTTPServer` from
-`tests/aw_http.py`: the standard library's `HTTPServer` names itself with
-`socket.getfqdn`, which takes 35s on the macOS runner.
+install takes about 3s).
 Installing the agent (`install.sh`) needs a login session and your signing
 certificate, so it stays a step you run by hand.
 
