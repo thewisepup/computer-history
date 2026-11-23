@@ -109,7 +109,9 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
   and `--spool-path`.
 - Coding agents never write to or run commands against the live data folder
   either. `.claude/hooks/guard-live-data.py` blocks Bash and edit calls that
-  name it; it guards against accidents and is not a security boundary. When it
+  name it, and Bash calls that run a bare `computer-history` (the stable
+  install, on live data: use `.venv/bin/computer-history`); it guards against
+  accidents and is not a security boundary. When it
   blocks a call Brandon asked for, tell him and let him run it himself.
 - Raw observations are immutable; signals are derived and rebuildable.
 - Read-only toward ActivityWatch.
