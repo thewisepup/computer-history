@@ -191,7 +191,8 @@ def test_updating_drops_entries_of_operations_that_are_gone(tmp_path: Path) -> N
 
 
 def test_the_baseline_names_the_sqlite_its_costs_were_counted_on() -> None:
-    assert baseline_sqlite(Path("perf_baselines/sqlite-3.45.1.json")) == "3.45.1"
+    assert baseline_sqlite(Path("perf_baselines/sqlite-9.8.7.json")) == "9.8.7"
+    assert BASELINE.name == f"sqlite-{baseline_sqlite(BASELINE)}.json"
     assert [path.name for path in BASELINE.parent.iterdir()] == [BASELINE.name]
 
 

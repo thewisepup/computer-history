@@ -351,5 +351,5 @@ One deterministic measure of the SQLite work an operation does: statements run, 
 _Avoid_: Metric, timing, benchmark
 
 **Baseline**:
-The committed cost counters per operation and dataset that the performance gate compares against, counted on the SQLite version CI runs; on another version the gate compares all but VM steps. It changes only on purpose, with the reason in the pull request.
+The committed cost counters per operation and dataset that the performance gate compares against (`computer_history/cli/README.md`, `dev perf`). It changes only on purpose, with the reason in the pull request.
 _Avoid_: Budget, threshold
