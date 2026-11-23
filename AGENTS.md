@@ -97,6 +97,11 @@ at once freezes the machine), and run `tests/data/`, `dev perf`, `dev bench`
 and `scripts/mutate.sh` only when the task needs them, leaving the rest to CI.
 Never run TLC (`formal/check.sh`) unless Brandon asks for that run. CI keeps
 `-n auto` on its own runners.
+`setproctitle` stays out of every venv (`tests/unit/test_no_setproctitle.py`
+fails while it is installed): pytest-xdist uses it to rename each worker
+before every test, and on macOS each rename goes through LaunchServices,
+which stalls every open app. mutmut, which pulls it in, is the `mutation`
+extra that `scripts/mutate.sh` installs and then strips it from.
 
 After changing the capture agent, the spool contract or the end-to-end tests,
 run (see the agent's README; CI runs both on macOS for pull requests that can

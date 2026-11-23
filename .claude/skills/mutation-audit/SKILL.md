@@ -16,7 +16,9 @@ scripts/mutate.sh                        # whole package, about an hour
 scripts/mutate.sh computer_history.store # one module's mutants only
 ```
 
-It deletes `mutants/`, runs `mutmut run`, then:
+It installs mutmut (the `mutation` extra) when the venv lacks it, removes the
+`setproctitle` it pulls in (see AGENTS.md), deletes `mutants/`, runs
+`mutmut run`, then:
 
 1. `scripts/mutation/matrix.py` reruns every killed mutant against every test
    that calls the mutated function, without stopping at the first failure,
