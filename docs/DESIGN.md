@@ -750,7 +750,8 @@ in the live folder and starts the backend at login from it:
 - **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
   commit must pass on its push run to `main`: `lint`, `unit`, `data`, `poc`,
   `secrets`, `macos-capture-agent-tests`, `macos-capture-agent-e2e` (the
-  checks `main` requires on pull requests, `docs/agents/checks.md`). Failed,
+  checks `main` requires on pull requests except `typecheck`,
+  `docs/agents/checks.md`). Failed,
   missing, still-running and cancelled all disqualify; `typecheck` and `perf`
   are not in the gate. The lookup walks the newest 20 `main` commits through
   GitHub's public API, stopping at the first that passes; no token is needed,
