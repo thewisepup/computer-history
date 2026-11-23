@@ -14,6 +14,19 @@ Push to `main` reruns pull request CI; there is no separate main-only stage.
 Installing the agent (`install.sh`) needs a login session and your signing
 certificate, so it stays a step you run by hand.
 
+## Merge conflicts
+
+`.github/workflows/fix-conflicts.yml` is not a check and never blocks a
+merge. On every push its `find` job lists the open pull requests based on the
+pushed branch that now conflict, and its `fix` job has Claude Code merge the
+base into each: Sonnet 5.5
+first, then Opus 5.5 at high effort. It pushes a merge commit only after ruff
+and `tests/unit` pass, then comments on the pull request. A real disagreement
+gets a "needs you" comment and no push. It runs on Brandon's subscription
+(the `CLAUDE_CODE_OAUTH_TOKEN` secret) through the Claude GitHub App. Label a
+pull request `no-autofix` to opt it out; run it by hand with
+`gh workflow run fix-conflicts.yml -f pr=<number>`.
+
 ## Choosing a stage
 
 - **Pre-commit** holds checks that are fast, deterministic and local: no
