@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Read changed paths on stdin and print which CI jobs they reach, as `job=true|false` lines.
+
+The rules are in docs/agents/checks.md, "Skipping what a pull request can't reach".
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+
+READ_BY_TESTS = (
+    "docs/DESIGN.md",
+    "docs/agents/checks.md",
+    "docs/agents/pull-requests.md",
+    ".github/pull_request_template.md",
+)
+DOCS = re.compile(r"(\.md|\.png|\.jpe?g|\.gif|\.svg)$|^\.scratch/")
+OFF_THE_E2E_PATH = re.compile(
+    r"^(computer_history/synthetic/perf_baselines/"
+    r"|computer_history/cli/(agent_guard|backfill|backup|dev|install|logs|update|watchdog)\.py$"
+    r"|tests/unit/|tests/perf/|tests/data/(?!test_synthetic_spool\.py$)"
+    r"|(history|history_mcp|test_history|test_mcp)\.py$|formal/"
+    r"|\.(claude|codex|agents|githooks)/|scripts/(mutate\.sh|mutation/|prune-worktrees)"
+    r"|\.github/workflows/(nightly|fix-conflicts)\.yml$)"
+)
+AGENT = re.compile(r"^(capture-agent/|fixtures/spool/|\.github/workflows/ci\.yml$|scripts/ci-changes$)")
+
+
+def is_doc(path: str) -> bool:
+    return bool(DOCS.search(path)) and path not in READ_BY_TESTS
+
+
+def reaches(paths: list[str]) -> dict[str, bool]:
+    if not paths:
+        return {"python": True, "e2e": True, "agent": True}
+    return {
+        "python": not all(is_doc(p) for p in paths),
+        "e2e": not all(is_doc(p) or p in READ_BY_TESTS or OFF_THE_E2E_PATH.match(p) for p in paths),
+        "agent": any(AGENT.match(p) for p in paths),
+    }
+
+
+def main() -> None:
+    paths = [line.strip() for line in sys.stdin if line.strip()]
+    for job, run in reaches(paths).items():
+        print(f"{job}={str(run).lower()}")
+
+
+if __name__ == "__main__":
+    main()
