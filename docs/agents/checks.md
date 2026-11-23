@@ -5,13 +5,33 @@ earliest stage it fits; move it later when it outgrows that stage.
 
 | Stage | Runs | Budget | Holds |
 |---|---|---|---|
-| Pre-commit hook (`.githooks/pre-commit`) | on every commit, on your machine | seconds; nothing enforces it. A slow unit test is made faster; a test that builds a dataset goes in `tests/data/` | gitleaks on the staged changes, ruff check and format, `pytest -n auto tests/unit`, pyright. Beside it, `.githooks/commit-msg` refuses a ticket or milestone prefix on the subject |
-| Pull request CI (`.github/workflows/ci.yml`) | on every pull request and push to `main` | about 20 min per job | `lint`: ruff check and ruff format --check. `unit`: `pytest -n auto tests/unit`, with its temporary files on tmpfs (`/dev/shm`). `data`: `pytest -n auto --dist worksteal tests/data`, one pytest-xdist worker per core. `poc`: the POC suite (`python -m unittest`). `secrets`: gitleaks on the history. `typecheck`: pyright (`computer_history` strict, `tests` standard). `perf`: the performance gate on day and month datasets, every counter against the one baseline, which is counted on this job's SQLite; its scratch on tmpfs. `macos-capture-agent-tests`: the Swift tests and a release build of the app bundle, signed ad hoc, on every push to `main` and on pull requests whose diff touches `capture-agent/`, `fixtures/spool/` or `ci.yml` (the job's `REACHES`); otherwise it passes with a "Skipped" notice, and it runs everything when the diff can't be read. `macos-capture-agent-e2e`: the end-to-end check through the real agent |
+| Pre-commit hook (`.githooks/pre-commit`) | on every commit, on your machine | seconds; nothing enforces it. A slow unit test is made faster; a test that builds a dataset goes in `tests/data/` | gitleaks on the staged changes, ruff check and format, `pytest -n 4 tests/unit`, pyright. Beside it, `.githooks/commit-msg` refuses a ticket or milestone prefix on the subject |
+| Pull request CI (`.github/workflows/ci.yml`) | on every pull request and push to `main` | about 20 min per job | `lint`: ruff check and ruff format --check. `unit`: `pytest -n auto tests/unit`, with its temporary files on tmpfs (`/dev/shm`). `data`: `pytest -n auto --dist worksteal tests/data`, one pytest-xdist worker per core. `poc`: the POC suite (`python -m unittest`). `secrets`: gitleaks on the history. `typecheck`: pyright (`computer_history` strict, `tests` standard). `perf`: the performance gate on day and month datasets, every counter against the one baseline, which is counted on this job's SQLite; its scratch on tmpfs. `changes`: decides which of the others a pull request's diff reaches (see below). `macos-capture-agent-tests`: the Swift tests and a release build of the app bundle, signed ad hoc. `macos-capture-agent-e2e`: the end-to-end check through the real agent |
 | Nightly (`.github/workflows/nightly.yml`) | once a day, and on demand | hours | `perf`: the gate on year and heavy-year datasets. |
 
 `main` requires `lint`, `unit`, `data`, `poc`, `secrets`, `macos-capture-agent-tests` and `macos-capture-agent-e2e` to pass before a merge.
 `typecheck` is required on pull requests too; the release gate leaves it out.
 Push to `main` reruns pull request CI; there is no separate main-only stage.
+
+## Skipping what a pull request can't reach
+
+On a pull request, the `changes` job feeds the diff's paths to
+`scripts/ci-changes`, and each job runs only if some path can reach it.
+Every push to `main` runs every job, so the release gate always sees a full
+run, and a wrong skip shows up on `main` before `install` or `update` takes
+that commit.
+
+| Jobs | Skipped when every changed path is |
+|---|---|
+| `lint`, `unit`, `data`, `poc`, `typecheck`, `perf` | Markdown, an image or `.scratch/`, except the docs a test reads (`READ_BY_TESTS`: `docs/DESIGN.md`, `docs/agents/checks.md`) |
+| `macos-capture-agent-e2e` | Markdown, an image or `.scratch/` (test-read docs included), or off the agent -> spool -> ingest -> signals -> status path (`OFF_THE_E2E_PATH`: CLI commands the e2e never runs, `tests/unit/`, most of `tests/data/`, the POC, `.claude/`, `formal/`, ...). `stable/`, `host/` and `watchdog/` stay on it: the e2e is the one run of the real host adapter |
+| `macos-capture-agent-tests` | outside `capture-agent/` and `fixtures/spool/`, and neither `ci.yml` nor `scripts/ci-changes` |
+
+`secrets` always runs. A skipped job counts as passed for the merge rule.
+The lists name what is known not to matter, so a new path runs everything
+until someone adds it. A diff that can't be read, or a `changes` job that
+fails, runs everything too. `tests/unit/test_ci_changes.py` pins the rules and
+fails when a test starts naming a Markdown file the first rule would skip.
 The Python jobs install with uv (`astral-sh/setup-uv`, no cache: a cold
 install takes about 3s).
 Installing the agent (`install.sh`) needs a login session and your signing
