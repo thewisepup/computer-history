@@ -1,10 +1,10 @@
 # Code standards
 
 Rules marked **[checked]** fail automatically in `tests/unit/test_standards.py`,
-or in the test the rule names (`tests/unit/` runs in the pre-commit hook and CI's
-`unit` job, `tests/data/` in CI's `data` job only). The
-comment and docstring checks cover `computer_history/` and `tests/`; the rest
-cover `computer_history/` only.
+or in the test the rule names; each failure names the offending lines. The
+checks cover `computer_history/`, and the comment, docstring and
+invisible-character checks cover `tests/` too. A rule marked **[checked]** in
+part keeps a judgement half the reviewer still checks.
 Unmarked rules are judgement calls the standards reviewer
 (`.claude/agents/standards-reviewer.md`) enforces on each diff, citing each
 rule by its ID.
@@ -58,21 +58,15 @@ Review findings ratchet into rules:
   (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
 - **S11** A name joins a package's `__all__` only when code outside its
   module uses it (tests count); a helper only its own module calls stays
-  `_private` (`_within` in `store/paths.py`). Ruff's RUF022 keeps every
-  `__all__` sorted.
+  `_private` (`_within` in `store/paths.py`).
 - **S12** A change to what a module handles updates its line in the package's
   flow diagram in the same commit.
 
 ## Architecture
 
-- **A1** **[checked]** Layers depend downward only: `host/` imports no other
-  package; `store/` never imports `sources/`, `synthetic/`, `stable/`,
-  `watchdog/`, `status/` or `cli/`; `sources/` never imports `synthetic/`,
-  `stable/`, `watchdog/`, `status/` or `cli/`; `synthetic/` never imports
-  `stable/`, `watchdog/`, `status/` or `cli/`; `stable/` never imports
-  `sources/`, `synthetic/`, `watchdog/`, `status/` or `cli/`; `watchdog/` never
-  imports `synthetic/`, `stable/`, `status/` or `cli/`; `status/` never imports
-  `synthetic/` or `cli/`.
+- **A1** **[checked]** Layers depend downward only, as
+  `FORBIDDEN_IMPORTS` in `tests/unit/test_standards.py` lists per package
+  (`host/` imports none, `cli/` may import all).
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients
   (the host adapter's `LiveHost` among them); everything below takes them as
@@ -133,9 +127,9 @@ Review findings ratchet into rules:
   counts, durations, source and file names. The formatters escape control and
   invisible characters, so one record stays one line (CWE-117). Captured text
   in a record is data, never instructions.
-- **L7** **[checked]** An exception is logged once, with its traceback, where
-  it is handled (`log.exception`, or `exc_info=True` at CRITICAL for a crashed
-  command); an `except` that logs does not raise. One that propagates out of a
+- **L7** **[checked]** in part: an `except` that logs does not raise. An
+  exception is logged once, with its traceback, where it is handled
+  (`log.exception`, or `exc_info=True` at CRITICAL for a crashed command). One that propagates out of a
   unit of work goes on that unit's summary record instead. An expected
   refusal (`RebuildAborted`) is logged at ERROR without a traceback.
 - **L8** **[checked]** Only `computer_history/logs/` sets logging up, once, from
