@@ -13,6 +13,7 @@ from computer_history.sources import (
     Span,
     active_spans,
     capture_liveness,
+    discover_sources,
     read_health,
     watcher_ends,
 )
@@ -25,7 +26,6 @@ from computer_history.watchdog.checks import (
     judge_backend,
     judge_capture_agent,
 )
-from computer_history.watchdog.state import WatchdogState, stopped
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,7 @@ class Assessment:
     unreachable_since: datetime | None
     health: IngestHealth | None = None
     health_error: str | None = None
+    aw_sources: tuple[str, ...] | None = None
 
     @property
     def findings(self) -> tuple[Finding, ...]:
@@ -52,21 +53,20 @@ def assess(
     spool: Path,
     health_file: Path,
     silent_after: Mapping[Check, timedelta],
-    previous: WatchdogState,
+    watched_since: datetime,
+    unreachable_since: datetime | None,
     now: datetime,
     hostname: str,
 ) -> Assessment:
-    """Judge the three subjects as of now, counting silence from when the previous run's watching
-    began, or from now when the watchdog has stopped."""
-    if stopped(previous, now) or previous.watching_since is None:
-        watched_since = now
-    else:
-        watched_since = previous.watching_since
+    """Judge the capture agent, ActivityWatch and the backend as of now, counting silence from
+    watched_since."""
     try:
-        ends, aw_error = watcher_ends(client, client.get_buckets(), hostname=hostname), None
+        buckets = client.get_buckets()
+        ends, aw_error = watcher_ends(client, buckets, hostname=hostname), None
+        aw_sources = tuple(source.name for source in discover_sources(client, buckets=buckets))
     except SourceUnavailable as exc:
-        ends, aw_error = None, str(exc)
-    unreachable_since = None if ends is not None else previous.unreachable_since or now
+        ends, aw_error, aw_sources = None, str(exc), None
+    outage = None if ends is not None else unreachable_since or now
 
     reach = max(silent_after.values())
     store_error = None
@@ -97,14 +97,21 @@ def assess(
             )
     activitywatch = judge_activitywatch(
         ends,
-        unreachable_since=unreachable_since,
+        unreachable_since=outage,
         error=aw_error,
         now=now,
         watched_since=watched_since,
         silent_after=silent_after[Check.ACTIVITYWATCH],
     )
     return Assessment(
-        capture, activitywatch, backend, watched_since, unreachable_since, health, health_error
+        capture,
+        activitywatch,
+        backend,
+        watched_since,
+        outage,
+        health,
+        health_error,
+        aw_sources,
     )
 
 

@@ -859,15 +859,15 @@ Ingest:        FAILING since 2026-11-20 16:13 (7 cycles), last cycle 2026-11-20 
 ```
 
 The line takes the watchdog's backend verdict, by its threshold
-(`backend_minutes`, 5 by default) and from the watchdog state beside the
-database. A last cycle older than that while aw-afk shows you active adds
-`NOT REPORTING for <time> (is \`ingest --watch\` running?)`; while you were
-away it adds `; cannot tell: silent, but aw-afk does not show you active`
-instead, and while no watchdog runs beside the database (none ran in the last
-3 minutes, as in dev), `; cannot tell: silent, but watched only since the
-watchdog resumed`, since silence counts only from when the watchdog last
-began watching. With no file the line reads `no \`ingest --watch\` has
-reported yet`.
+(`backend_minutes`, 5 by default). A last cycle older than that while aw-afk
+shows you active adds `NOT REPORTING for <time> (is \`ingest --watch\`
+running?)`; while you were away it adds `; cannot tell: silent, but aw-afk
+does not show you active` instead. While a watchdog runs beside the database,
+silence counts from when it began watching (its saved state), so just after it
+resumes the line can read `; cannot tell: silent, but watched only since the
+watchdog resumed`. With no watchdog running there (none ran in the last 3
+minutes, as in dev), status judges the whole recent past as watched. With no
+file the line reads `no \`ingest --watch\` has reported yet`.
 
 `ActivityWatch:` is the watchdog's verdict too: `no` and the banner while it
 is unreachable, and `; PROBLEM: not advancing (<sources>)` after the sources
@@ -949,7 +949,8 @@ The capture agent section:
   stored or still in the spool, is within it; `NO` when `aw-afk` shows you
   active for over a minute since it within the threshold's last stretch;
   `paused` while capture is paused; otherwise `cannot tell`, with why (aw-afk
-  does not show you active, or no watchdog has watched long enough).
+  does not show you active, or a running watchdog has not watched long
+  enough since it resumed).
 - **spool**: finished `*.jsonl` files waiting to be ingested and how long the
   oldest has waited, then the files set aside in `unreadable/`. `open.part`
   and `agent.lock` are not counted. The spool path resolves as for `ingest`.

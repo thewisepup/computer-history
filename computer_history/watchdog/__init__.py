@@ -27,7 +27,8 @@ from computer_history.watchdog.reopening import REOPEN_LIMIT, recent_reopens
 from computer_history.watchdog.run import WatchdogRun, WatchPaths, watch_once
 from computer_history.watchdog.state import (
     WatchdogState,
-    read_watchdog_state,
+    read_state_or_fresh,
+    running_since,
     stopped,
     watchdog_lock_path,
     watchdog_state_path,
@@ -45,9 +46,10 @@ __all__ = [
     "WatchdogRun",
     "WatchdogState",
     "assess",
+    "read_state_or_fresh",
     "read_thresholds",
-    "read_watchdog_state",
     "recent_reopens",
+    "running_since",
     "stopped",
     "watch_once",
     "watchdog_lock_path",

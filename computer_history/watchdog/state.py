@@ -37,6 +37,19 @@ def stopped(state: WatchdogState, now: datetime) -> bool:
     return state.ran_at is None or now - state.ran_at > WATCH_GAP
 
 
+def running_since(state: WatchdogState, now: datetime) -> datetime | None:
+    """When a still-running watchdog began watching, or None when it has stopped."""
+    return None if stopped(state, now) else state.watching_since
+
+
+def read_state_or_fresh(path: Path) -> tuple[WatchdogState, str | None]:
+    """Read the saved state, or a fresh one with why when the file is unreadable."""
+    try:
+        return read_watchdog_state(path) or WatchdogState(), None
+    except (OSError, ValueError) as exc:
+        return WatchdogState(), str(exc)
+
+
 def watchdog_state_path(db_path: Path) -> Path:
     """Find the watchdog's state file beside the database it watches."""
     return db_path.parent / WATCHDOG_STATE_NAME

@@ -14,7 +14,8 @@ from computer_history.watchdog.reopening import Reopening, recent_reopens, reope
 from computer_history.watchdog.state import (
     WatchdogState,
     holding,
-    read_watchdog_state,
+    read_state_or_fresh,
+    running_since,
     write_watchdog_state,
 )
 from computer_history.watchdog.thresholds import Thresholds, read_thresholds
@@ -72,18 +73,17 @@ def _watch(
     thresholds = read_thresholds(paths.config)
     silent_after = thresholds.silent_after
     errors: list[str] = []
-    try:
-        previous = read_watchdog_state(paths.state) or WatchdogState()
-    except (OSError, ValueError) as exc:
-        errors.append(f"started afresh: {exc}")
-        previous = WatchdogState()
+    previous, unreadable = read_state_or_fresh(paths.state)
+    if unreadable is not None:
+        errors.append(f"started afresh: {unreadable}")
     assessment = assess(
         conn,
         client,
         spool=paths.spool,
         health_file=paths.health,
         silent_after=silent_after,
-        previous=previous,
+        watched_since=running_since(previous, now) or now,
+        unreachable_since=previous.unreachable_since,
         now=now,
         hostname=hostname,
     )

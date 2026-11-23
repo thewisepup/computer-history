@@ -19,13 +19,16 @@ from computer_history.sources import (
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     WINDOW_TEXT_SOURCE,
+    AWError,
     IngestHealth,
     agent_config_path,
     health_path,
     write_health,
 )
+from computer_history.stable import stable_layout
 from computer_history.status import CaptureGaps, StatusReport, status_report
 from computer_history.store import (
+    STATUS_WINDOW,
     Observation,
     ProgressUpdate,
     Purpose,
@@ -93,13 +96,20 @@ def spool_record(spool: Path, when: datetime) -> None:
 
 
 def report(
-    db_path: Path, aw: FakeAW, *, host: FakeHost | None = None, now: datetime = NOW
+    db_path: Path,
+    aw: FakeAW,
+    *,
+    host: FakeHost | None = None,
+    stable_state: Path | None = None,
+    now: datetime = NOW,
 ) -> StatusReport:
     with open_store(db_path, Purpose.READ) as store:
         return status_report(
             store,
             aw,
             host or FakeHost(),
+            layout=stable_layout(),
+            stable_state=stable_state or db_path.parent / "stable" / "watchdog.json",
             spool=db_path.parent / "spool",
             now=now,
             hostname=HOST,
@@ -131,31 +141,68 @@ def test_a_backend_silent_while_you_were_active_is_a_problem(db: Path) -> None:
     assert backend == Finding(Check.BACKEND, Verdict.PROBLEM, Reason.SILENT, at(40))
 
 
-def test_after_the_laptop_was_closed_twenty_minutes_nothing_is_called_silent(db: Path) -> None:
+def test_just_after_the_laptop_opens_from_twenty_minutes_closed_you_were_away(db: Path) -> None:
     afk, window = f"aw-watcher-afk_{HOST}", f"aw-watcher-window_{HOST}"
-    asleep = FakeAW({afk: "afkstatus", window: "currentwindow"}, t0=T0)
-    asleep.add(window, 0, 40 * 60, {"app": "Editor", "title": "w"})
-    asleep.add(afk, 0, 40 * 60, {"status": "not-afk"})
+    woke = FakeAW({afk: "afkstatus", window: "currentwindow"}, t0=T0)
+    woke.add(window, 0, 40 * 60, {"app": "Editor", "title": "w"})
+    woke.add(window, 59.9, 6, {"app": "Editor", "title": "w"})
+    woke.add(afk, 0, 40 * 60, {"status": "not-afk"})
+    woke.add(afk, 59.9, 6, {"status": "not-afk"})
     spool_record(db.parent / "spool", at(40))
     last_cycle(db, at(40))
     watching(db, since=at(-60), ran_at=at(40))
 
-    assessment = report(db, asleep).assessment
+    assessment = report(db, woke).assessment
 
-    assert [found.verdict for found in assessment.findings] == [Verdict.UNKNOWN] * 3
-    assert assessment.backend.reason is Reason.RESUMED
+    assert assessment.backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.AFK, at(40))
+    assert assessment.capture_agent.reason is Reason.AFK
+    assert assessment.activitywatch.verdict is Verdict.OK
+
+
+def test_a_running_watchdog_just_resumed_cannot_tell_yet(db: Path) -> None:
+    last_cycle(db, at(40))
+    watching(db, since=at(58), ran_at=at(59))
+
+    backend = report(db, watchers()).assessment.backend
+
+    assert backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.RESUMED, at(40))
 
 
 @pytest.mark.parametrize("saved", ["none", "stopped"])
-def test_without_a_running_watchdog_silence_counts_from_now(db: Path, saved: str) -> None:
-    last_cycle(db, at(40))
+def test_without_a_running_watchdog_the_recent_past_counts_as_watched(db: Path, saved: str) -> None:
     if saved == "stopped":
-        watching(db, since=at(-60), ran_at=at(50))
+        watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
+    last_cycle(db, at(40))
+    spool_record(db.parent / "spool", at(30))
+    aw = watchers()
+    aw.events[f"aw-watcher-window_{HOST}"][0]["duration"] = 40 * 60
 
-    assessment = report(db, watchers()).assessment
+    assessment = report(db, aw).assessment
 
-    assert assessment.watched_since == NOW
-    assert assessment.backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.RESUMED, at(40))
+    assert assessment.watched_since == NOW - STATUS_WINDOW
+    assert assessment.backend == Finding(Check.BACKEND, Verdict.PROBLEM, Reason.SILENT, at(40))
+    assert assessment.capture_agent == Finding(
+        Check.CAPTURE_AGENT, Verdict.PROBLEM, Reason.SILENT, at(30)
+    )
+    assert assessment.activitywatch.verdict is Verdict.PROBLEM
+    assert assessment.activitywatch.reason is Reason.STALLED
+
+
+def test_without_a_running_watchdog_an_outage_counts_from_now(db: Path) -> None:
+    watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
+
+    activitywatch = report(db, UnreachableAW()).assessment.activitywatch
+
+    assert (activitywatch.verdict, activitywatch.last_seen) == (Verdict.UNKNOWN, NOW)
+
+
+def test_the_stable_watchdog_state_beside_the_database_is_read_for_both_uses(db: Path) -> None:
+    watching(db, since=at(-60), ran_at=at(59))
+
+    found = report(db, watchers(), stable_state=watchdog_state_path(db))
+
+    assert found.assessment.watched_since == at(-60)
+    assert found.watchdog.state.ran_at == at(59) and found.watchdog.error is None
 
 
 def test_the_configured_threshold_decides_when_the_backend_is_silent(db: Path) -> None:
@@ -186,7 +233,25 @@ def test_activitywatch_unreachable_since_the_saved_outage(db: Path) -> None:
     assert activitywatch == Finding(
         Check.ACTIVITYWATCH, Verdict.PROBLEM, Reason.UNREACHABLE, at(50), UNREACHABLE_ERROR
     )
-    assert found.aw_streams is None
+    assert found.assessment.aw_sources is None
+
+
+def test_the_activitywatch_line_rests_on_one_bucket_listing(db: Path) -> None:
+    aw = watchers()
+    listing = aw.get_buckets
+    listings: list[int] = []
+
+    def gone_after_the_first() -> dict[str, dict[str, object]]:
+        listings.append(1)
+        if len(listings) > 1:
+            raise AWError("ActivityWatch unreachable: refused")
+        return listing()
+
+    aw.get_buckets = gone_after_the_first
+    assessment = report(db, aw).assessment
+
+    assert assessment.aw_sources == ("aw-afk", "aw-window")
+    assert assessment.activitywatch.reason is not Reason.UNREACHABLE
 
 
 def test_status_writes_no_state_notifies_nothing_and_never_reopens_activitywatch(
@@ -271,18 +336,32 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     assert not any(line.startswith("!! ") for line in lines)
 
 
-def test_status_without_a_running_watchdog_cannot_tell_a_silent_backend(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, db: Path
+@pytest.mark.parametrize("saved", ["none", "stopped"])
+@pytest.mark.parametrize(
+    ("away_from", "suffix"),
+    [
+        (60, "; NOT REPORTING for 20m (is `ingest --watch` running?)"),
+        (40, "; cannot tell: silent, but aw-afk does not show you active"),
+    ],
+    ids=["active", "away"],
+)
+def test_status_without_a_running_watchdog_judges_the_recent_past(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    db: Path,
+    saved: str,
+    away_from: float,
+    suffix: str,
 ) -> None:
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
     now = datetime.now(UTC)
     start = now - timedelta(minutes=60)
     last_cycle(db, at(40, start))
-    aw = watchers(socket.gethostname(), t0=start)
+    if saved == "stopped":
+        watching(db, since=at(-60, start), ran_at=at(45, start))
+    aw = watchers(socket.gethostname(), t0=start, away_from=away_from)
 
     with served_over_http(aw) as url:
         lines = status_out(capsys, db, url)
 
-    assert ingest_line(lines).endswith(
-        "; cannot tell: silent, but watched only since the watchdog resumed"
-    )
+    assert ingest_line(lines).endswith(suffix)

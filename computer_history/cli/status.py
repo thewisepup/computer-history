@@ -41,6 +41,7 @@ from computer_history.stable import (
     AgentStatus,
     BackupInventory,
     UpdateAction,
+    stable_layout,
     version_name,
 )
 from computer_history.status import (
@@ -61,17 +62,17 @@ from computer_history.store import (
     Purpose,
     SourceSummary,
     StoreState,
+    default_db_path,
     open_store,
 )
-from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, Verdict
+from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, Verdict, watchdog_state_path
 
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Print the database's sections, read beside the database it was given, then the stable
-    install's, which describe stable whichever database that is."""
+    """Print the given database's sections, then the stable install's."""
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = formatting.utc_now()
@@ -81,6 +82,8 @@ def cmd_status(args: argparse.Namespace) -> int:
             store,
             client,
             args.host,
+            layout=stable_layout(),
+            stable_state=watchdog_state_path(default_db_path(Profile.STABLE)),
             spool=spool_path,
             now=now,
             hostname=gethostname(),
@@ -109,7 +112,7 @@ def _print_store(
     if banner is not None:
         print(banner)
         print()
-    aw_line = _activitywatch(assessment.activitywatch, report.aw_streams, aw_url)
+    aw_line = _activitywatch(assessment.activitywatch, assessment.aw_sources, aw_url)
     aw_line += "\n" + ingest_line
 
     if store.state is StoreState.MISSING:
@@ -140,7 +143,7 @@ def _print_store(
     return 0
 
 
-def _activitywatch(found: Finding, streams: list[str] | None, aw_url: str) -> str:
+def _activitywatch(found: Finding, streams: tuple[str, ...] | None, aw_url: str) -> str:
     if found.reason is Reason.UNREACHABLE:
         print(f"!! ActivityWatch is UNREACHABLE at {aw_url}: nothing new can be ingested.")
         print(f"!! {found.detail}")
@@ -252,7 +255,7 @@ def _print_watchdog(saved: SavedWatchdog, now: datetime) -> None:
         print(f"  last run       unreadable state: {saved.error}")
         return
     state = saved.state
-    if state is None or state.ran_at is None:
+    if state.ran_at is None:
         print(f"  last run       none yet (no state at {saved.path})")
         return
     print(f"  last run       {ago(state.ran_at, now)}")

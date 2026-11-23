@@ -93,9 +93,9 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status, its liveness for the watchdog and status, and the
-                # records update's agent check reads, judged against aw-afk
-                # and aw-window),
+                # health for status, its liveness for the watchdog and
+                # status, and the records update's agent check reads, judged
+                # against aw-afk and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch, the only way to pull,
