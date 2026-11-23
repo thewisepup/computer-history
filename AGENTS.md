@@ -72,14 +72,15 @@ first use (about a minute), since the main checkout's venv imports the main
 checkout's source. `docs/agents/checks.md` lists what the pre-commit hook and
 each CI job run, which checks `main` requires, and where a new check belongs.
 
-Tests sit in four folders, and the folder decides where a test runs:
+Tests sit in four folders, and the folder decides which stage runs a test
+(`docs/agents/checks.md` has the stages):
 
-| Folder | Holds | Runs in |
+| Folder | Holds | Run locally |
 |---|---|---|
-| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | the pre-commit hook and CI's `unit` job |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | CI's `data` job; locally `-n 4 --dist worksteal` |
-| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf`; CI's `perf` job |
-| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` and CI's `macos-capture-agent-e2e` job |
+| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | `pytest -n 4 tests/unit` |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | `pytest -n 4 --dist worksteal tests/data` |
+| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf` |
+| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` |
 
 Bare `pytest` runs every folder but `perf/`; shared fakes and helpers sit in
 `tests/`. Hypothesis tests run derandomized; to hunt for new failures, run

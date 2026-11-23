@@ -44,12 +44,10 @@ and lists what it skipped. The conditions are in
 `computer_history/cli/README.md` under check-agent-install.
 
 With Xcode installed, plain `swift test` works too. Under Command Line Tools
-alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI's
-`macos-capture-agent-tests` job runs `scripts/test.sh` and `scripts/build.sh`
-(signed ad hoc, with `CODESIGN_IDENTITY=-`) on every push to `main` and on pull
-requests that can reach the agent (`docs/agents/checks.md` lists the paths), and
-`macos-capture-agent-e2e` runs `scripts/e2e.sh` on every pull request. The pre-commit hook runs neither, so run them
-after changing this folder, `fixtures/spool/` or the end-to-end tests.
+alone it cannot find the `Testing` module, so use `scripts/test.sh`. CI runs
+both scripts (`docs/agents/checks.md` says when); the pre-commit hook runs
+neither, so run them after changing this folder, `fixtures/spool/` or the
+end-to-end tests.
 
 The installed binary takes the same commands directly:
 
