@@ -87,7 +87,9 @@ does: `$COMPUTER_HISTORY_DB` names the database and the folder is its parent;
 otherwise the folder is the one above. `$COMPUTER_HISTORY_SPOOL` overrides the
 spool, which otherwise is `spool/` in the folder. Empty values count as unset,
 and `$HOME` and a leading `~` are honoured. Neither command reads the Mac, so
-the end-to-end check points them at scratch folders.
+the end-to-end check points them at scratch folders. `check-config` also
+prints `capturing agent folder, whatever the environment says: <folder>`, so a
+shell with the variables set can see that `run` would not use them.
 
 `agent-config.json` in the folder holds the settings. Every key is optional:
 
@@ -464,7 +466,9 @@ the reminder's saved time, and every line of the screenshots section in
 `status`. The backend runs with the screenshots folder closed to it (mode
 `000`), and the images must come out byte for byte the same. It also checks
 that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder. It also runs the agent test in
+and spool for a scratch home folder, and that with `$HOME`,
+`$CFFIXED_USER_HOME` and both overrides pointing at a scratch folder it still
+names the account's real folder as the capturing agent's. It also runs the agent test in
 `tests/data/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
 synthetic spool renderer writes the same captures (time, trigger, app, bundle
 id and title) as the agent.

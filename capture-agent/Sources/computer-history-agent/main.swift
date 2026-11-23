@@ -15,7 +15,7 @@ func finish(_ outcome: CommandOutcome) -> Never {
 let loginItem = SMAppService.agent(plistName: AgentIdentity.launchAgentPlistName)
 let command = AgentCommand(arguments: Array(CommandLine.arguments.dropFirst()))
 guard let home = accountHome() else {
-    finish(.noAccountHome)
+    finish(CommandOutcome(exitCode: 1, message: "the user database has no home folder for user \(getuid())"))
 }
 let settings = AgentSettings.load(for: command, accountHome: home)
 let pause = settings.pause
@@ -28,7 +28,7 @@ case .run:
     let captureStop = CaptureStop()
     exit(AgentLifecycle(
         report: settings.report,
-        instanceLock: InstanceLock(accountHome: home),
+        instanceLock: settings.instanceLockFile.map(InstanceLock.init(file:)),
         isPaused: { pause.isPaused },
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
         spool: spool,
@@ -61,7 +61,7 @@ case .pause:
 case .resume:
     finish(resumeCapture(pause))
 case .checkConfig:
-    finish(checkConfig(settings))
+    finish(checkConfig(settings, accountHome: home))
 case .requestScreenRecording:
     finish(requestScreenRecording(open: NSWorkspace.shared.open))
 case .scriptedSession(let script):

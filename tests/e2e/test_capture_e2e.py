@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from aw_http import LoopbackHTTPServer
+from live_data_guard import LIVE_DATA_DIR
 
 from computer_history.cli.formatting import human_size, local_midnight, when
 from computer_history.sources.capture_spool import (
@@ -546,6 +547,25 @@ def test_the_agent_and_the_backend_default_to_the_same_folder_and_spool(
     assert Path(agent["folder"]) == db.parent
     assert Path(agent["spool"]) == resolve_spool_path(None, db, Profile.STABLE)
     assert not (home / "Library").exists()
+
+
+def test_the_capturing_agents_folder_ignores_the_environment(tmp_path: Path) -> None:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COMPUTER_HISTORY_")}
+    env["HOME"] = str(tmp_path)
+    env["CFFIXED_USER_HOME"] = str(tmp_path)
+    env[DB_ENV_VAR] = str(tmp_path / "elsewhere" / "history.db")
+    env[SPOOL_ENV_VAR] = str(tmp_path / "elsewhere" / "spool")
+    run = subprocess.run(
+        [os.environ[AGENT_ENV_VAR], "check-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    agent = dict(line.split(": ", 1) for line in run.stdout.splitlines() if ": " in line)
+    assert Path(agent["folder"]) == tmp_path / "elsewhere"
+    assert Path(agent["capturing agent folder, whatever the environment says"]) == LIVE_DATA_DIR
 
 
 def _sleep_script(start: datetime) -> dict:

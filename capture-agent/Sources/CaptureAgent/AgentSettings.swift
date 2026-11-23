@@ -20,6 +20,7 @@ public struct AgentSettings: Equatable, Sendable {
     public var screenshots = ScreenshotSettings()
     public var configFile: ConfigFile = .missing
     public var problems: [String] = []
+    public var instanceLockFile: URL?
 
     public var configPath: URL { folder.appendingPathComponent(Self.configFileName) }
     public var pause: PauseSwitch { PauseSwitch(file: folder.appendingPathComponent(Self.pauseFileName)) }
@@ -34,21 +35,18 @@ public struct AgentSettings: Equatable, Sendable {
         let folder = nonEmpty(environment[databaseEnvironmentVariable])
             .map { expandingTilde($0, home: home).deletingLastPathComponent() } ?? defaultFolder(home: home)
         let spool = nonEmpty(environment[spoolEnvironmentVariable]).map { expandingTilde($0, home: home) }
-            ?? folder.appendingPathComponent("spool", isDirectory: true)
-        var settings = AgentSettings(folder: folder, spoolDirectory: spool)
-        settings.readConfigFile()
-        return settings
+        return reading(folder: folder, spoolDirectory: spool)
     }
 
-    /// Reads the config file in the account's real folder, ignoring HOME and the folder and spool overrides.
+    /// Reads the config file in the account's real folder, ignoring HOME and the folder and spool overrides, with the instance lock there.
     public static func fixed(accountHome: URL) -> AgentSettings {
         let folder = defaultFolder(home: accountHome)
-        var settings = AgentSettings(folder: folder, spoolDirectory: folder.appendingPathComponent("spool", isDirectory: true))
-        settings.readConfigFile()
+        var settings = reading(folder: folder, spoolDirectory: nil)
+        settings.instanceLockFile = folder.appendingPathComponent(InstanceLock.fileName)
         return settings
     }
 
-    /// The settings a command runs with: check-config and scripted-session follow the environment, every other command uses the account's real folder.
+    /// Loads the settings a command runs with.
     public static func load(
         for command: AgentCommand,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -58,6 +56,12 @@ public struct AgentSettings: Equatable, Sendable {
         case .checkConfig, .scriptedSession: load(environment: environment, home: accountHome)
         case .run, .install, .uninstall, .status, .pause, .resume, .requestScreenRecording, .usage: fixed(accountHome: accountHome)
         }
+    }
+
+    private static func reading(folder: URL, spoolDirectory: URL?) -> AgentSettings {
+        var settings = AgentSettings(folder: folder, spoolDirectory: spoolDirectory ?? folder.appendingPathComponent("spool", isDirectory: true))
+        settings.readConfigFile()
+        return settings
     }
 
     static func defaultFolder(home: URL) -> URL {
@@ -202,12 +206,13 @@ private enum ConfigKey: String, CaseIterable {
     case watchdog
 }
 
-/// Prints where the settings came from, every problem in the config file, and the settings in effect.
-public func checkConfig(_ settings: AgentSettings) -> CommandOutcome {
+/// Prints where the settings came from, every problem in the config file, the settings in effect, and the capturing agent's folder.
+public func checkConfig(_ settings: AgentSettings, accountHome: URL) -> CommandOutcome {
     var lines = settings.report
     lines += [
         "folder: \(settings.folder.path)",
         "spool: \(settings.spoolDirectory.path)",
+        "capturing agent folder, whatever the environment says: \(AgentSettings.defaultFolder(home: accountHome).path)",
         "denylist, built-in plus config: \(settings.denylist.bundleIDs.sorted().joined(separator: ", "))",
         "accessibility flag off-list: \(settings.windowText.flagOffList.sorted().joined(separator: ", "))",
         "idle threshold: \(formatted(settings.capture.idleThreshold))s",
@@ -233,6 +238,13 @@ private func formatted(_ value: Double) -> String {
 
 private func nonEmpty(_ value: String?) -> String? {
     value?.isEmpty == false ? value : nil
+}
+
+/// The current user's home folder from the user database, which no environment variable changes.
+public func accountHome() -> URL? {
+    guard let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir else { return nil }
+    let path = String(cString: directory)
+    return path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
 }
 
 private func expandingTilde(_ path: String, home: URL) -> URL {

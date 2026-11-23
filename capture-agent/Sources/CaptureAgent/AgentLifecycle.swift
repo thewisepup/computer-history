@@ -38,7 +38,7 @@ public struct AgentLifecycle: Sendable {
         self.log = log
     }
 
-    /// Returns exit status 1 at once if another agent holds the instance lock or the spool; otherwise starts capturing and runs the minute log line and the spool finish on the main run loop until SIGTERM.
+    /// Exits with status 1 if another agent holds the instance lock or the spool, otherwise captures until SIGTERM.
     public func run() -> Int32 {
         guard start() == .started else { return 1 }
         signal(SIGTERM, SIG_IGN)

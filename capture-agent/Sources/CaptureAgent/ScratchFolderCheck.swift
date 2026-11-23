@@ -24,13 +24,6 @@ public func userHomes() -> [URL] {
     return homes
 }
 
-/// The current user's home folder from the user database, which no environment variable changes.
-public func accountHome() -> URL? {
-    guard let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir else { return nil }
-    let path = String(cString: directory)
-    return path.isEmpty ? nil : URL(fileURLWithPath: path, isDirectory: true)
-}
-
 private func resolved(_ url: URL) -> URL {
     var existing = url.standardizedFileURL
     var rest: [String] = []
