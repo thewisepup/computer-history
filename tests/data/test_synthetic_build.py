@@ -6,6 +6,7 @@ import random
 import subprocess
 import sys
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -202,20 +203,26 @@ def test_separate_processes_with_other_hash_seeds_and_timezones_build_the_same_d
     tmp_path: Path, inputs: DatasetInputs
 ) -> None:
     manifests = []
-    for hash_seed, timezone in (("0", "UTC"), ("4242", "Asia/Kolkata")):
-        env = {**os.environ, "PYTHONHASHSEED": hash_seed, "TZ": timezone}
-        folder = tmp_path / f"{hash_seed}-{timezone.replace('/', '-')}"
-        argv = [inputs.persona, inputs.scenario, inputs.tier, str(inputs.heavy), str(folder)]
-        built = subprocess.run(
-            [sys.executable, "-c", BUILD_IN_A_NEW_PROCESS, *argv],
-            cwd=REPO,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        manifests.append(json.loads(built.stdout))
-    here = json.loads(build_dataset(inputs, tmp_path / "here").manifest_path.read_text())
+    with ExitStack() as running:
+        builds: list[subprocess.Popen[str]] = []
+        for hash_seed, timezone in (("0", "UTC"), ("4242", "Asia/Kolkata")):
+            env = {**os.environ, "PYTHONHASHSEED": hash_seed, "TZ": timezone}
+            folder = tmp_path / f"{hash_seed}-{timezone.replace('/', '-')}"
+            argv = [inputs.persona, inputs.scenario, inputs.tier, str(inputs.heavy), str(folder)]
+            build = subprocess.Popen(
+                [sys.executable, "-c", BUILD_IN_A_NEW_PROCESS, *argv],
+                cwd=REPO,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            builds.append(running.enter_context(build))
+        here = json.loads(build_dataset(inputs, tmp_path / "here").manifest_path.read_text())
+        for build in builds:
+            out, err = build.communicate()
+            assert build.returncode == 0, err
+            manifests.append(json.loads(out))
 
     assert manifests[0] == manifests[1] == here
 
