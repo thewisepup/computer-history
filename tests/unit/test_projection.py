@@ -17,11 +17,7 @@ from projectors import no_signal
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
-    AFK_SOURCE,
     KNOWN_SOURCES,
-    WEB_SOURCE,
-    WINDOW_SOURCE,
-    ActivityWatch,
     CycleReporter,
     FailureKind,
     StreamFailure,
@@ -32,6 +28,12 @@ from computer_history.sources import (
     reproject_signals,
     run_backfill,
     watch,
+)
+from computer_history.sources.activitywatch import (
+    AFK_SOURCE,
+    WEB_SOURCE,
+    WINDOW_SOURCE,
+    ActivityWatch,
 )
 from computer_history.store import (
     Observation,

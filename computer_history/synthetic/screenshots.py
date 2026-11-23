@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import NamedTuple
 
-from computer_history.sources import CAPTURE_KIND, DUPLICATE_STATUS, KEPT_STATUS
+from computer_history.sources.capture_spool import CAPTURE_KIND, DUPLICATE_STATUS, KEPT_STATUS
 from computer_history.synthetic.captures import Capture
 
 REMEMBERED_WINDOWS = 12

@@ -16,7 +16,8 @@ from types import CodeType
 import pytest
 
 import computer_history.store as store
-from computer_history.sources import KNOWN_SOURCES, WINDOW_SOURCE
+from computer_history.sources import KNOWN_SOURCES
+from computer_history.sources.activitywatch import WINDOW_SOURCE
 from computer_history.store import source_summary, table_counts
 from computer_history.synthetic import (
     GATE_DATASETS,

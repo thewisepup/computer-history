@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from computer_history.sources import SPOOL_STREAMS
+from computer_history.sources.capture_spool import SPOOL_STREAMS
 
 AW_CHECK_TIMEOUT_SECONDS = 5
 SOURCE_HINT = "Is ActivityWatch running? Check with `computer-history status`."

@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from computer_history.sources import CaptureLiveness, IngestHealth, Liveness, Span, liveness
+from computer_history.sources import CaptureLiveness, IngestHealth
+from computer_history.sources.capture_spool import Liveness, Span, liveness
 
 
 class Check(Enum):

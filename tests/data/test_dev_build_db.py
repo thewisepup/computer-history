@@ -9,7 +9,7 @@ from store_answers import DATASET_FILES
 
 from computer_history import cli
 from computer_history.cli import dev
-from computer_history.sources import SPOOL_ENV_VAR, resolve_spool_path
+from computer_history.sources.capture_spool import SPOOL_ENV_VAR, resolve_spool_path
 from computer_history.store import DB_ENV_VAR, Profile, connect, content_digest
 from computer_history.store.db import WalUnavailable
 from computer_history.synthetic import (

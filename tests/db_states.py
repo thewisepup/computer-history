@@ -8,7 +8,7 @@ from pathlib import Path
 
 from projectors import payload_fields
 
-from computer_history.sources import WINDOW_SOURCE
+from computer_history.sources.activitywatch import WINDOW_SOURCE
 from computer_history.store import (
     DATABASE_NAME,
     Observation,

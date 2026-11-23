@@ -11,15 +11,13 @@ from zoneinfo import ZoneInfo
 import pytest
 from store_answers import stored_gaps
 
-from computer_history.sources import (
-    AFK_SOURCE,
+from computer_history.sources.activitywatch import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources.capture_spool import (
     MOMENT_KINDS,
     PAUSED_KIND,
     RESUMED_KIND,
     SCREENSHOT_KIND,
     SLEPT_KIND,
-    WEB_SOURCE,
-    WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
     capture_coverage,
     parse_record,

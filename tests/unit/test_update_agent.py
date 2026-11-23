@@ -21,7 +21,7 @@ from stable_updates import (
 )
 
 from computer_history.host import SpoolReads
-from computer_history.sources import RECORD_KINDS, SPOOL_VERSION
+from computer_history.sources.capture_spool import RECORD_KINDS, SPOOL_VERSION
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,

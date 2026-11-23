@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import NamedTuple
 
-from computer_history.sources import (
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     EXCLUDED_KIND,
     HEARTBEAT_SECONDS,
