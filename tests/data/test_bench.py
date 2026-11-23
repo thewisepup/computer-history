@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import cast
 
@@ -19,7 +19,10 @@ from computer_history.synthetic import (
     Timing,
     time_operation,
 )
+from computer_history.synthetic import bench as bench_module
 from computer_history.synthetic.operations import Session
+
+Bench = Callable[..., tuple[int, str]]
 
 
 def test_more_than_a_quarter_slower_than_the_baseline_is_flagged() -> None:
@@ -59,19 +62,36 @@ def dataset_cache(monkeypatch: pytest.MonkeyPatch, shared_cache: Path) -> Path:
     return shared_cache
 
 
-def bench(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str]:
-    code = cli.main(["dev", "bench", "--dataset", SMALLEST_DATASET, *argv])
-    captured = capsys.readouterr()
-    return code, captured.out + captured.err
+@pytest.fixture
+def bench(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> Bench:
+    """Runs `dev bench` with each operation timed once."""
+    monkeypatch.setattr(bench_module, "RUNS", 1)
+
+    def run(*argv: str) -> tuple[int, str]:
+        code = cli.main(["dev", "bench", "--dataset", SMALLEST_DATASET, *argv])
+        captured = capsys.readouterr()
+        return code, captured.out + captured.err
+
+    return run
+
+
+def write_baseline(path: Path, seconds: Callable[[str], float]) -> None:
+    """Writes a baseline file with the given median for each operation."""
+    timings = {name: {SMALLEST_DATASET: seconds(name)} for name in OPERATIONS}
+    path.write_text(json.dumps(timings))
+
+
+SLOWER_THAN_ANY_RUN = 1e6
+FASTER_THAN_ANY_RUN = 1e-9
 
 
 def test_a_first_run_records_the_machines_baseline_and_the_next_compares_with_it(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
+    bench: Bench, tmp_path: Path
 ) -> None:
     baseline = tmp_path / "bench.json"
 
-    first, recorded = bench(capsys, "--baseline", str(baseline))
-    second, compared = bench(capsys, "--baseline", str(baseline))
+    first, recorded = bench("--baseline", str(baseline))
+    second, compared = bench("--baseline", str(baseline))
 
     assert (first, second) == (0, 0)
     assert sorted(json.loads(baseline.read_text())) == sorted(OPERATIONS)
@@ -83,16 +103,14 @@ def test_a_first_run_records_the_machines_baseline_and_the_next_compares_with_it
         assert name in compared
 
 
-def test_a_slowdown_is_flagged_and_still_exits_zero(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
+def test_a_slowdown_is_flagged_and_still_exits_zero(bench: Bench, tmp_path: Path) -> None:
     baseline = tmp_path / "bench.json"
-    bench(capsys, "--baseline", str(baseline))
-    recorded = json.loads(baseline.read_text())
-    recorded["status-reads"][SMALLEST_DATASET] /= 10
-    baseline.write_text(json.dumps(recorded))
+    write_baseline(
+        baseline,
+        lambda name: FASTER_THAN_ANY_RUN if name == "status-reads" else SLOWER_THAN_ANY_RUN,
+    )
 
-    code, printed = bench(capsys, "--baseline", str(baseline))
+    code, printed = bench("--baseline", str(baseline))
 
     assert code == 0
     flagged = [line for line in printed.splitlines() if line.endswith("SLOWER")]
@@ -104,15 +122,15 @@ def test_a_slowdown_is_flagged_and_still_exits_zero(
 
 
 def test_timings_new_to_the_baseline_are_counted_apart_from_the_compared(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
+    bench: Bench, tmp_path: Path
 ) -> None:
     baseline = tmp_path / "bench.json"
-    bench(capsys, "--baseline", str(baseline))
+    write_baseline(baseline, lambda name: SLOWER_THAN_ANY_RUN)
     recorded = json.loads(baseline.read_text())
     del recorded["ingest"]
     baseline.write_text(json.dumps(recorded))
 
-    _, printed = bench(capsys, "--baseline", str(baseline))
+    _, printed = bench("--baseline", str(baseline))
 
     compared = len(OPERATIONS) - 1
     tolerance = f"{SLOWDOWN_TOLERANCE:.0%}"
@@ -124,12 +142,14 @@ def test_timings_new_to_the_baseline_are_counted_apart_from_the_compared(
 
 
 def test_updating_says_the_baseline_was_rewritten_not_that_there_was_none(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
+    bench: Bench, tmp_path: Path
 ) -> None:
     baseline = tmp_path / "bench.json"
-    bench(capsys, "--baseline", str(baseline))
+    write_baseline(baseline, lambda name: SLOWER_THAN_ANY_RUN)
 
-    _, printed = bench(capsys, "--baseline", str(baseline), "--update-baselines")
+    _, printed = bench("--baseline", str(baseline), "--update-baselines")
 
     assert "Baseline rewritten from these medians, nothing compared." in printed
     assert "No baseline" not in printed
+    rewritten = json.loads(baseline.read_text())
+    assert all(timings[SMALLEST_DATASET] < SLOWER_THAN_ANY_RUN for timings in rewritten.values())
