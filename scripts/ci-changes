@@ -1,16 +1,7 @@
 #!/usr/bin/env python3
-"""Decide which CI jobs a pull request's changed files can reach.
+"""Read changed paths on stdin and print which CI jobs they reach, as `job=true|false` lines.
 
-Reads changed paths on stdin, one per line, and prints `name=true|false` lines
-for $GITHUB_OUTPUT. Every rule is a list of paths known not to matter, so a path
-nobody listed runs the job; an empty list runs everything.
-
-  python  lint, unit, data, poc, typecheck, perf: off when every path is a doc
-          no check reads.
-  e2e     macos-capture-agent-e2e: off when every path is a doc or sits outside
-          the agent -> spool -> ingest -> signals -> status path.
-  agent   macos-capture-agent-tests: on when a path is Swift or the spool
-          contract, the only inputs of the Swift build and tests.
+The rules are in docs/agents/checks.md, "Skipping what a pull request can't reach".
 """
 
 from __future__ import annotations
@@ -21,8 +12,7 @@ import sys
 READ_BY_TESTS = ("docs/DESIGN.md", "docs/agents/checks.md")
 DOCS = re.compile(r"(\.md|\.png|\.jpe?g|\.gif|\.svg)$|^\.scratch/")
 OFF_THE_E2E_PATH = re.compile(
-    r"^(computer_history/(stable|host|watchdog)/"
-    r"|computer_history/synthetic/perf_baselines/"
+    r"^(computer_history/synthetic/perf_baselines/"
     r"|computer_history/cli/(agent_guard|backfill|backup|dev|install|logs|update|watchdog)\.py$"
     r"|tests/unit/|tests/perf/|tests/data/(?!test_synthetic_spool\.py$)"
     r"|(history|history_mcp|test_history|test_mcp)\.py$|formal/"

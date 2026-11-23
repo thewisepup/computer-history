@@ -12,10 +12,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "ci-changes"
-NOT_REPO_DOCS = {
-    "README.md": "test_live_host's fake GitHub listing and test_synthetic_cache's temp tree",
-    "posts/sqlite-wal.md": "a file name in the developer persona's invented timeline",
-}
+# Names in fake data, never a file of this repo read.
+NOT_REPO_DOCS = {"README.md", "posts/sqlite-wal.md"}
 
 
 def reaches(*paths: str) -> dict[str, bool]:
@@ -34,7 +32,9 @@ def reaches(*paths: str) -> dict[str, bool]:
     [
         (("GLOSSARY.md", "docs/milestones.md", ".claude/x/SKILL.md"), False, False, False),
         (("docs/DESIGN.md",), True, False, False),
-        (("computer_history/stable/install.py", "tests/unit/test_install.py"), True, False, False),
+        (("tests/unit/test_install.py", "computer_history/cli/install.py"), True, False, False),
+        (("computer_history/stable/install.py",), True, True, False),
+        (("computer_history/host/live.py",), True, True, False),
         (("computer_history/cli/update.py", "README.md"), True, False, False),
         (("computer_history/cli/status.py",), True, True, False),
         (("computer_history/sources/capture_spool/adapter.py",), True, True, False),
@@ -69,7 +69,7 @@ def test_every_markdown_file_the_code_names_runs_the_python_checks() -> None:
 
     unchecked = [
         doc
-        for name in named - NOT_REPO_DOCS.keys()
+        for name in named - NOT_REPO_DOCS
         for doc in tracked
         if doc.endswith(name) and not reaches(doc)["python"]
     ]

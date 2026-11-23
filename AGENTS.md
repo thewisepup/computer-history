@@ -123,9 +123,8 @@ landed on `origin/main`, counting only pull requests merged into `main`
 main checkout, never from inside a worktree.
 
 Two commands cover the capture agent, and neither runs in the pre-commit hook.
-CI runs both on macOS: `macos-capture-agent-e2e` on every pull request, and
-`macos-capture-agent-tests` on every push to `main` and on pull requests that
-can reach the agent (`docs/agents/checks.md` lists the paths). Run them yourself after changing
+CI runs both on macOS, on every push to `main` and on pull requests that can
+reach them (`docs/agents/checks.md` lists the paths). Run them yourself after changing
 the agent, the spool contract or the end-to-end tests (see the agent's README):
 
 ```bash

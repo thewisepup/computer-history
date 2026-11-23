@@ -24,8 +24,8 @@ that commit.
 | Jobs | Skipped when every changed path is |
 |---|---|
 | `lint`, `unit`, `data`, `poc`, `typecheck`, `perf` | Markdown, an image or `.scratch/`, except the docs a test reads (`READ_BY_TESTS`: `docs/DESIGN.md`, `docs/agents/checks.md`) |
-| `macos-capture-agent-e2e` | one of those docs, or off the agent -> spool -> ingest -> signals -> status path (`OFF_THE_E2E_PATH`: `stable/`, `host/`, `watchdog/`, CLI commands the e2e never runs, `tests/unit/`, most of `tests/data/`, the POC, `.claude/`, ...) |
-| `macos-capture-agent-tests` | anything but `capture-agent/`, `fixtures/spool/`, `ci.yml` or `scripts/ci-changes` |
+| `macos-capture-agent-e2e` | Markdown, an image or `.scratch/` (test-read docs included), or off the agent -> spool -> ingest -> signals -> status path (`OFF_THE_E2E_PATH`: CLI commands the e2e never runs, `tests/unit/`, most of `tests/data/`, the POC, `.claude/`, `formal/`, ...). `stable/`, `host/` and `watchdog/` stay on it: the e2e is the one run of the real host adapter |
+| `macos-capture-agent-tests` | outside `capture-agent/` and `fixtures/spool/`, and neither `ci.yml` nor `scripts/ci-changes` |
 
 `secrets` always runs. A skipped job counts as passed for the merge rule.
 The lists name what is known not to matter, so a new path runs everything
