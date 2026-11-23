@@ -147,7 +147,11 @@ capture-agent/scripts/e2e.sh    # scripted agent session -> spool -> ingest -> s
   `~/Library/Application Support/ComputerHistory/` (by `~`, `$HOME`, an
   absolute path or any case; file paths are also followed through symlinks).
   `ComputerHistory-dev/` and other paths pass, and so does text inside a file
-  being written. Read, Grep and Glob are not guarded. It guards against
+  being written. It also blocks a Bash command that runs `computer-history`
+  through PATH or `~/.local/bin/` (the stable install, on live data), so run
+  `.venv/bin/computer-history`; a mention in an argument, a quoted string or a
+  heredoc passes. Hook input it cannot read is blocked, never let through.
+  Read, Grep and Glob are not guarded. It guards against
   accidents and is not a security boundary: a command that reaches the folder
   without naming it, or through a symlink, still runs. It sits beside any
   global hooks in `~/.claude/settings.json`, and Claude Code runs both. When it
