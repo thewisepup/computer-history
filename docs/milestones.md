@@ -6,7 +6,7 @@ Section references (§3, §8.1) point into [DESIGN.md](DESIGN.md).
 is built once against the full signal set; weeks of data accumulate as an
 eval corpus; the scariest risk (TCC under LaunchAgents) is exercised first.
 Accepted cost: the aha moment arrives at M5. The POC serves AI clients until
-M6 replaces it.
+M5 deletes it; AI clients wait for M6.
 
 ### M1 — Package + store + AW ingest ✅ (2026-11-17)
 
@@ -132,8 +132,28 @@ per keep-after limit while its text is read. All on Brandon's Mac.
       block mid-run, verify it survives).
 - [ ] Hourly scheduler + 14-day horizon; `classification_runs` recorded;
       `classify-backfill` command for older data.
+- [ ] Secrets scrubbed in the signals projection (a typed marker; raw keeps
+      the original), and a test that only signals ever leave the Mac.
+- [ ] Work types from the CLI: `work-types add` / `list`, a
+      `work-types suggest` that proposes types from real activity and stores
+      nothing, and the bootstrap re-label on the first add.
+- [ ] Results visible without SQL: a `timeline` command and a classification
+      section in `status`.
+- [ ] POC (`history.py` / `history_mcp.py`, its tests and CI job) deleted.
 - [ ] A day of multi-source activity → labelled blocks within an hour;
       re-running the same range changes nothing.
+
+### M5.5 — Evals
+
+Its own wayfinder map. Scope so far: hand-labelled gold days, synthetic eval
+data, a score for every prompt or model change, and cutting cost from about
+$20 toward $5 a month.
+
+### M5.6 — REST API
+
+Its own milestone between classification and MCP: the server, its
+LaunchAgent, the read routes and their design, over a service layer M6's MCP
+tools wrap.
 
 ### M6 — MCP + corrections
 
@@ -146,7 +166,6 @@ per keep-after limit while its text is read. All on Brandon's Mac.
 - [ ] Bootstrap re-label fires on the first work-type approval; 14-day
       re-label fires on project changes; corrections survive both (test).
 - [ ] Swagger `/docs` usable as the admin tool for every route.
-- [ ] POC (`history.py` / `history_mcp.py`) deleted.
 
 ### M7 — Weekly review
 
