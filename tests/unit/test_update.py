@@ -222,6 +222,27 @@ def test_an_update_that_fails_before_switching_changes_nothing(
     assert [call for call in changes(host) if call[0] != "build"] == []
 
 
+@pytest.mark.parametrize("commit", ["..", "../../."])
+def test_an_update_to_a_commit_naming_a_folder_outside_versions_changes_nothing(
+    run: RunCli, layout: Layout, commit: str
+) -> None:
+    host = FakeHost(checks={commit: gate_runs(), OLDER: gate_runs()}, loaded=[BACKEND.label])
+    neighbour = layout.live.parent / "Another App" / "keep.txt"
+    neighbour.parent.mkdir()
+    neighbour.write_text("not ours\n")
+    before = install_state(layout)
+
+    code, _, err = run(stable_code(layout), "update", host=host)
+
+    assert code == 1
+    assert err.startswith("update failed: ")
+    assert "not a short commit hash" in err
+    assert err.rstrip().endswith("(nothing was changed)")
+    assert install_state(layout) == before
+    assert neighbour.read_text() == "not ours\n"
+    assert changes(host) == []
+
+
 def test_an_update_whose_backup_fails_changes_nothing_and_restarts_the_backend(
     run: RunCli, layout: Layout
 ) -> None:

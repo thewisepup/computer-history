@@ -18,7 +18,13 @@ from computer_history.stable.launch_agents import (
     stopgap_plist,
 )
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
-from computer_history.stable.versions import make_current, pointed, replace_symlink, version_name
+from computer_history.stable.versions import (
+    UnsafeVersionFolder,
+    make_current,
+    pointed,
+    replace_symlink,
+    version_name,
+)
 
 
 class InstallFailed(Exception):
@@ -65,7 +71,7 @@ def install(
                 raise InstallFailed(f"{none_passed(search.skipped)} ({NOTHING_CHANGED})")
             built, skipped = search.chosen.commit, search.skipped
             make_current(host, layout, built)
-        except (HostError, OSError) as exc:
+        except (HostError, OSError, UnsafeVersionFolder) as exc:
             raise InstallFailed(f"{exc} ({NOTHING_CHANGED})") from exc
     try:
         layout.link.parent.mkdir(parents=True, exist_ok=True)

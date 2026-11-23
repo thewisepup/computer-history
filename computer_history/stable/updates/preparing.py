@@ -12,7 +12,13 @@ from computer_history.stable.capture_agent import AgentPlan, holds_agent, place_
 from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.stopped_agents import StoppedAgents
-from computer_history.stable.versions import InstalledVersion, build_version, pointed, version_name
+from computer_history.stable.versions import (
+    InstalledVersion,
+    UnsafeVersionFolder,
+    build_version,
+    pointed,
+    version_name,
+)
 from computer_history.store import DatabaseCopy, SpoolHold, sidecars
 
 
@@ -65,7 +71,7 @@ def prepare(
             ) from exc
     try:
         built = build_version(host, layout, commit)
-    except (HostError, OSError) as exc:
+    except (HostError, OSError, UnsafeVersionFolder) as exc:
         raise UpdateFailed(f"could not build version {name}: {exc} ({NOTHING_CHANGED})") from exc
     if placing:
         _place(host, layout, agent, name, built=built)
