@@ -64,7 +64,7 @@ def dataset_cache(monkeypatch: pytest.MonkeyPatch, shared_cache: Path) -> Path:
 
 @pytest.fixture
 def bench(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> Bench:
-    """`dev bench` timing each operation once: these tests check recording and comparing."""
+    """Runs `dev bench` with each operation timed once."""
     monkeypatch.setattr(bench_module, "RUNS", 1)
 
     def run(*argv: str) -> tuple[int, str]:
@@ -76,12 +76,13 @@ def bench(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -
 
 
 def write_baseline(path: Path, seconds: Callable[[str], float]) -> None:
-    """A baseline whose medians are set, so a comparison never turns on this run's timings."""
+    """Writes a baseline file with the given median for each operation."""
     timings = {name: {SMALLEST_DATASET: seconds(name)} for name in OPERATIONS}
     path.write_text(json.dumps(timings))
 
 
 SLOWER_THAN_ANY_RUN = 1e6
+FASTER_THAN_ANY_RUN = 1e-9
 
 
 def test_a_first_run_records_the_machines_baseline_and_the_next_compares_with_it(
@@ -104,7 +105,10 @@ def test_a_first_run_records_the_machines_baseline_and_the_next_compares_with_it
 
 def test_a_slowdown_is_flagged_and_still_exits_zero(bench: Bench, tmp_path: Path) -> None:
     baseline = tmp_path / "bench.json"
-    write_baseline(baseline, lambda name: 1e-9 if name == "status-reads" else SLOWER_THAN_ANY_RUN)
+    write_baseline(
+        baseline,
+        lambda name: FASTER_THAN_ANY_RUN if name == "status-reads" else SLOWER_THAN_ANY_RUN,
+    )
 
     code, printed = bench("--baseline", str(baseline))
 
