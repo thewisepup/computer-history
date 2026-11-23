@@ -71,7 +71,8 @@ final class TempFolder {
     #expect(settings.denylist == Denylist())
     #expect(settings.screenshots == ScreenshotSettings(enabled: true, longEdge: 1440, quality: 60, changePixels: 6, keepAfter: 600))
     #expect(Denylist.builtIn == [
-        "com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess", "com.apple.Passwords",
+        "com.1password", "com.agilebits", "com.apple.keychainaccess", "com.apple.Passwords", "com.bitwarden.desktop", "com.dashlane",
+        "com.lastpass", "in.sinew.Enpass-Desktop", "me.proton.pass", "org.keepassxc.keepassxc",
     ])
     #expect(settings.report == ["config not found at \(settings.configPath.path), using defaults, \(Denylist.builtIn.count) apps denylisted"])
 }
@@ -201,7 +202,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
 @Test func checkConfigPrintsTheSettingsAndFailsOnProblems() throws {
     let good = checkConfig(try TempFolder().settings())
     #expect(good.exitCode == 0)
-    #expect(good.message.contains("denylist, built-in plus config: com.1password.1password, com.agilebits.onepassword7, com.apple.keychainaccess, com.apple.passwords"))
+    #expect(good.message.contains("denylist, built-in plus config: com.1password, com.agilebits, com.apple.keychainaccess, com.apple.passwords, com.bitwarden.desktop, "))
     #expect(good.message.contains("idle threshold: 180s"))
     #expect(good.message.contains(
         "screenshots: on, long edge 1440 px, JPEG quality 60, duplicate when under 6 thumbnail pixels (9x9 points each) changed, "

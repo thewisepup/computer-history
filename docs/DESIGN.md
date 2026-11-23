@@ -478,7 +478,9 @@ settings are provisional until they are measured on real screens (#38).
   full length and a cut-off flag recorded, 0.25s per-call and 2s per-window
   timeouts. Full text and its hash are written on every capture, changed or
   not. Secure fields (`kAXSecureTextField`) always skipped.
-- Denylist: listed apps produce an "excluded" record with no text.
+- Denylist: listed apps (by bundle id or a prefix of it) produce an
+  "excluded" record with no text, and so do private browser windows and
+  password-manager pages.
   `pause` / `resume` each write a record. Both make the gap explained, not
   unobserved.
 - Sleep and wake: the agent writes a `slept` record from macOS's will-sleep

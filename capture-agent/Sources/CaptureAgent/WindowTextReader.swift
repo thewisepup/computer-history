@@ -20,17 +20,21 @@ public struct WindowTextSettings: Equatable, Sendable {
     }
 }
 
-/// What one read of the focused window found: the title, the kept text, the full length in UTF-8 bytes, and whether the read timed out.
+/// What one read of the focused window found: the title, the kept text, the full length in UTF-8 bytes, whether the read timed out, and whether the window is one never to capture.
 public struct WindowText: Equatable, Sendable {
     public let title: String?
     public let text: String
     public let fullLength: Int
     public let timedOut: Bool
+    public let excluded: Bool
+
+    static let excluded = WindowText(title: nil, text: "", fullLength: 0, timedOut: false, excluded: true)
 }
 
 /// Reads the focused window's title and content text from an application's accessibility tree.
 public final class WindowTextReader<Element: AccessibilityElement> {
     let settings: WindowTextSettings
+    let denylist: Denylist
     let applicationElement: (pid_t) -> Element
     let hasElectronFramework: (URL) -> Bool
     let now: () -> TimeInterval
@@ -38,17 +42,19 @@ public final class WindowTextReader<Element: AccessibilityElement> {
 
     public init(
         settings: WindowTextSettings,
+        denylist: Denylist,
         applicationElement: @escaping (pid_t) -> Element,
         hasElectronFramework: @escaping (URL) -> Bool,
         now: @escaping () -> TimeInterval
     ) {
         self.settings = settings
+        self.denylist = denylist
         self.applicationElement = applicationElement
         self.hasElectronFramework = hasElectronFramework
         self.now = now
     }
 
-    /// Reads the application's focused window, stopping early with the text so far if a call or the window budget times out.
+    /// Reads the application's focused window, stopping early with the text so far if a call or the window budget times out, and reading nothing of a private window or password-manager page.
     public func read(_ application: FocusedApplication) -> WindowText {
         var walk = WindowWalk<Element>(
             capBytes: settings.textCapBytes,
@@ -58,7 +64,9 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         let app = applicationElement(application.processIdentifier)
         let launch = ProcessLaunch(application)
         if !flagChecked.contains(launch) {
-            let needsFlag = needsAccessibilityFlag(application, offList: settings.flagOffList, hasElectronFramework: hasElectronFramework)
+            let needsFlag = needsAccessibilityFlag(
+                application, offList: settings.flagOffList, denylist: denylist, hasElectronFramework: hasElectronFramework
+            )
             if !needsFlag || setAccessibilityFlags(on: app) {
                 flagChecked.insert(launch)
             }
@@ -66,13 +74,17 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         var title: String?
         if let window = walk.call({ app.element("AXFocusedWindow") }) {
             title = walk.call { window.string("AXTitle") }
+            let document = walk.call { window.string("AXDocument") }
+            if WindowExclusion.excludesWindow(of: application, title: title, document: document) { return .excluded }
             walk.visit(window)
         }
+        if walk.excludedPage { return .excluded }
         return WindowText(
             title: title,
             text: walk.text.text,
             fullLength: walk.text.fullLength,
-            timedOut: walk.timedOut
+            timedOut: walk.timedOut,
+            excluded: false
         )
     }
 

@@ -37,6 +37,7 @@ final class CaptureLoop<M: Mac> {
         self.pollInterval = settings.capture.pollInterval
         self.reader = WindowTextReader(
             settings: settings.windowText,
+            denylist: settings.denylist,
             applicationElement: mac.applicationElement,
             hasElectronFramework: mac.hasElectronFramework,
             now: mac.uptime
@@ -105,10 +106,7 @@ final class CaptureLoop<M: Mac> {
         case .resumed:
             if writer.write(SpoolRecord.resumed(at: mac.now())) { decision.recordedPause(false) }
         case .excluded(let application, let trigger):
-            let record = SpoolRecord.excluded(at: mac.now(), trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)
-            if writer.write(record, if: awake) {
-                counts.recordExcluded()
-            }
+            exclude(application, trigger: trigger, at: mac.now())
         case .capture(let application, let trigger):
             capture(application, trigger: trigger)
         }
@@ -119,6 +117,7 @@ final class CaptureLoop<M: Mac> {
         let started = mac.uptime()
         let window = reader.read(application)
         counts.recordRead(seconds: mac.uptime() - started)
+        guard !window.excluded else { return exclude(application, trigger: trigger, at: capturedAt) }
         let record = SpoolRecord.capture(
             at: capturedAt,
             trigger: trigger,
@@ -138,6 +137,13 @@ final class CaptureLoop<M: Mac> {
         )
         guard let shot = screenshots?.stage.take(for: record, of: application) else { return }
         screenshots?.queue.add(shot)
+    }
+
+    private func exclude(_ application: FocusedApplication, trigger: SpoolRecord.Trigger, at time: Date) {
+        let record = SpoolRecord.excluded(at: time, trigger: trigger, appName: name(of: application), bundleID: application.bundleIdentifier)
+        if writer.write(record, if: awake) {
+            counts.recordExcluded()
+        }
     }
 
     private func awake() -> Bool {

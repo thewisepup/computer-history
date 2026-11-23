@@ -81,10 +81,12 @@ extension ScriptedMac {
     func reader(
         _ apps: [pid_t: ScriptedElement],
         settings: WindowTextSettings = WindowTextSettings(),
-        electronBundles: Set<String> = []
+        electronBundles: Set<String> = [],
+        denylist: Denylist = Denylist()
     ) -> WindowTextReader<ScriptedElement> {
         WindowTextReader(
             settings: settings,
+            denylist: denylist,
             applicationElement: { apps[$0]! },
             hasElectronFramework: { electronBundles.contains($0.path) },
             now: { self.clock }

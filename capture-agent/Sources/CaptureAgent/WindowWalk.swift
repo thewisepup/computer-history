@@ -5,10 +5,12 @@ private let nameRoles: Set<String> = ["AXHeading", "AXLink"]
 private let controlRoles: Set<String> = ["AXButton", "AXPopUpButton", "AXCheckBox", "AXRadioButton"]
 private let secureRole = "AXSecureTextField"
 private let applicationRole = "AXApplication"
+private let webAreaRole = "AXWebArea"
 
 struct WindowWalk<Element: AccessibilityElement> {
     private(set) var text: CappedText
     private(set) var timedOut = false
+    private(set) var excludedPage = false
     private var visited: Set<Element> = []
     let deadline: TimeInterval
     let now: () -> TimeInterval
@@ -40,6 +42,10 @@ struct WindowWalk<Element: AccessibilityElement> {
         guard !timedOut, role != secureRole, role != applicationRole else { return }
         let subrole = call { element.string("AXSubrole") }
         guard !timedOut, subrole != secureRole, !controlRoles.contains(role ?? "") else { return }
+        if role == webAreaRole, let address = call({ element.string("AXURL") }), WindowExclusion.excludesPage(address) {
+            excludedPage = true
+            return
+        }
         if valueRoles.contains(role ?? "") {
             if let value = call({ element.string("AXValue") }), !value.isEmpty {
                 text.append(value)
@@ -49,7 +55,7 @@ struct WindowWalk<Element: AccessibilityElement> {
         } else if nameRoles.contains(role ?? "") {
             let piecesBefore = text.pieces
             visitChildren(of: element)
-            guard !timedOut, text.pieces == piecesBefore else { return }
+            guard !timedOut, !excludedPage, text.pieces == piecesBefore else { return }
             if let name = nonEmpty(call { element.string("AXTitle") }) ?? nonEmpty(call { element.string("AXDescription") }) {
                 text.append(name)
             }
@@ -60,7 +66,7 @@ struct WindowWalk<Element: AccessibilityElement> {
 
     private mutating func visitChildren(of element: Element) {
         for child in call({ element.elements("AXChildren") }) ?? [] {
-            guard !timedOut else { return }
+            guard !timedOut, !excludedPage else { return }
             visit(child)
         }
     }

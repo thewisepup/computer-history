@@ -157,7 +157,8 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
     let elements = (0..<3).map { _ in mac.app(window: mac.window("Tab", children: [])) }
     var current = elements[0]
     let reader = WindowTextReader(
-        settings: WindowTextSettings(), applicationElement: { _ in current }, hasElectronFramework: { _ in true }, now: { mac.clock }
+        settings: WindowTextSettings(), denylist: Denylist(), applicationElement: { _ in current }, hasElectronFramework: { _ in true },
+        now: { mac.clock }
     )
     let launched = FocusedApplication(
         processIdentifier: 200, bundleIdentifier: chrome.bundleIdentifier, bundleURL: chrome.bundleURL, name: chrome.name,
@@ -266,8 +267,76 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
 }
 
 @Test func theFlagOffListMatchesBundleIDsIgnoringCase() {
-    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], hasElectronFramework: { _ in false }))
-    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], hasElectronFramework: { _ in false }))
+    #expect(!needsAccessibilityFlag(chrome, offList: ["COM.GOOGLE.chrome"], denylist: Denylist(), hasElectronFramework: { _ in false }))
+    #expect(needsAccessibilityFlag(chrome, offList: ["com.google.chrome.beta"], denylist: Denylist(), hasElectronFramework: { _ in false }))
+}
+
+@Test func neverSetsTheFlagOnADenylistedElectronApp() {
+    let mac = ScriptedMac()
+    let bitwarden = FocusedApplication(
+        processIdentifier: 500, bundleIdentifier: "com.bitwarden.desktop", bundleURL: URL(filePath: "/Applications/Bitwarden.app"), name: "Bitwarden"
+    )
+    let vault = mac.app(window: nil)
+    let listed = mac.app(window: nil)
+    let reader = mac.reader(
+        [bitwarden.processIdentifier: vault, cursor.processIdentifier: listed],
+        electronBundles: ["/Applications/Bitwarden.app", "/Applications/Cursor.app"],
+        denylist: Denylist(adding: [cursor.bundleIdentifier!])
+    )
+    _ = reader.read(bitwarden)
+    _ = reader.read(cursor)
+    #expect(vault.flagsSet.isEmpty)
+    #expect(listed.flagsSet.isEmpty)
+    #expect(!needsAccessibilityFlag(bitwarden, offList: [], denylist: Denylist(), hasElectronFramework: { _ in true }))
+}
+
+@Test func aPrivateWindowIsExcludedWithoutReadingItsContent() {
+    let mac = ScriptedMac()
+    let window = mac.window("Inbox - Google Chrome (Incognito)", children: [mac.text("private mail")])
+    let result = mac.reader([chrome.processIdentifier: mac.app(window: window)]).read(chrome)
+    #expect(result.excluded)
+    #expect(result.title == nil)
+    #expect(result.text.isEmpty)
+    #expect(result.fullLength == 0)
+    #expect(mac.reads(of: "private mail").isEmpty)
+    #expect(mac.reads(of: "window") == ["window.AXTitle", "window.AXDocument"])
+}
+
+@Test func aPasswordManagerTabIsExcludedByTheWindowsDocument() {
+    let mac = ScriptedMac()
+    let window = mac.window("Untitled - Google Chrome", children: [mac.text("github.com brandon")])
+    window.attributes["AXDocument"] = "chrome://password-manager/passwords"
+    let result = mac.reader([chrome.processIdentifier: mac.app(window: window)]).read(chrome)
+    #expect(result.excluded)
+    #expect(result.text.isEmpty)
+    #expect(mac.reads(of: "github.com brandon").isEmpty)
+}
+
+@Test func anExtensionPopupOfAPasswordManagerIsExcludedByItsWebArea() {
+    let mac = ScriptedMac()
+    let popup = mac.node(
+        "popup", role: "AXWebArea", ["AXURL": "chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa/popup/index.html"],
+        children: [mac.text("revealed password")]
+    )
+    let window = mac.window("", children: [mac.text("toolbar"), mac.node("frame", role: "AXGroup", children: [popup]), mac.text("after")])
+    let result = mac.reader([chrome.processIdentifier: mac.app(window: window)]).read(chrome)
+    #expect(result.excluded)
+    #expect(result.title == nil)
+    #expect(result.text.isEmpty)
+    #expect(result.fullLength == 0)
+    #expect(mac.reads(of: "revealed password").isEmpty)
+    #expect(mac.reads(of: "after").isEmpty)
+}
+
+@Test func anOrdinaryWebAreaIsRead() {
+    let mac = ScriptedMac()
+    let page = mac.node("page", role: "AXWebArea", ["AXURL": "https://example.com/"], children: [mac.text("article")])
+    let window = mac.window("Example - Google Chrome", children: [page])
+    window.attributes["AXDocument"] = "https://example.com/"
+    let result = mac.reader([chrome.processIdentifier: mac.app(window: window)]).read(chrome)
+    #expect(!result.excluded)
+    #expect(result.title == "Example - Google Chrome")
+    #expect(result.text == "article")
 }
 
 @Test func anAppIsElectronWhenItsBundleShipsTheElectronFramework() throws {
