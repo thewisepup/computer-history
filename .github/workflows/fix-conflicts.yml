@@ -1,8 +1,6 @@
 name: Fix merge conflicts
 
-# When a branch moves, open pull requests based on it that now conflict get
-# the base merged in by Claude Code. A conflict that needs a human gets a
-# comment instead of a push. Label a pull request `no-autofix` to opt it out.
+# Merges the base into open pull requests that conflict, using Claude Code.
 
 on:
   push:
@@ -13,18 +11,17 @@ on:
         description: Pull request number to fix
         required: true
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write
-  actions: write
+permissions: {}
 
 jobs:
   find:
     if: github.event_name == 'workflow_dispatch' || !github.event.deleted
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
     outputs:
       prs: ${{ steps.find.outputs.prs }}
     steps:
@@ -33,31 +30,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BASE: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR: ${{ inputs.pr }}
         run: |
           if [ -n "$PR" ]; then
             numbers="$PR"
           else
-            numbers=$(gh pr list --repo "$REPO" --base "$BASE" --state open --json number --jq '.[].number')
+            numbers=$(gh pr list --repo "$REPO" --base "$BASE" --state open --limit 200 --json number --jq '.[].number')
             # GitHub works out mergeability a few seconds after a push.
             [ -n "$numbers" ] && sleep 20
           fi
           prs='[]'
           for n in $numbers; do
             for _ in 1 2 3 4 5 6; do
-              info=$(gh pr view "$n" --repo "$REPO" --json number,headRefName,baseRefName,mergeable,isCrossRepository,labels)
+              info=$(gh pr view "$n" --repo "$REPO" --json number,headRefName,baseRefName,mergeable,isCrossRepository,labels) || info='{"mergeable":"UNKNOWN"}'
               [ "$(jq -r .mergeable <<<"$info")" != UNKNOWN ] && break
               sleep 10
             done
             echo "#$n: $(jq -r .mergeable <<<"$info")"
-            jq -e '.mergeable == "CONFLICTING" and (.isCrossRepository | not)
-                   and ([.labels[].name] | index("no-autofix") | not)' <<<"$info" >/dev/null || continue
+            jq -e '.mergeable == "CONFLICTING" and (.isCrossRepository | not)' <<<"$info" >/dev/null || continue
             if [ -n "$PR" ]; then
               prs=$(jq -c '[{number, head: .headRefName, base: .baseRefName}]' <<<"$info")
-            else
-              # The Claude action runs on workflow_dispatch but not on push,
-              # so a push starts one dispatched run per pull request.
-              gh workflow run fix-conflicts.yml --repo "$REPO" --ref "$BASE" -f pr="$n"
+            elif jq -e '[.labels[].name] | index("no-autofix") | not' <<<"$info" >/dev/null; then
+              # The Claude action only runs on workflow_dispatch, from the default branch's copy.
+              gh workflow run fix-conflicts.yml --repo "$REPO" --ref "$DEFAULT_BRANCH" -f pr="$n" \
+                || echo "::warning::could not start a fix for #$n"
             fi
           done
           echo "prs=$prs" >> "$GITHUB_OUTPUT"
@@ -67,6 +64,11 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && needs.find.outputs.prs != '[]' && needs.find.outputs.prs != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +83,7 @@ jobs:
       BASE_BRANCH: ${{ matrix.pr.base }}
       REPORT: ${{ github.workspace }}/.conflict-report.md
     steps:
-      # No persisted GITHUB_TOKEN: its pushes would not start CI on the fix.
+      # Credentials are not persisted, so the push uses the Claude app's token and starts CI.
       - uses: actions/checkout@v4
         with:
           ref: ${{ matrix.pr.head }}
@@ -126,12 +128,14 @@ jobs:
           1. For each conflicted file, read both sides and the surrounding code, and write the
              version that keeps both changes. Taking one side whole is right only when the other
              side's change is already included or was deliberately removed.
-          2. Run \`python -m ruff format computer_history tests\`, then
+          2. If the merge changed \`pyproject.toml\`, run \`python -m pip install -e '.[test,dev]'\`.
+             Then run \`python -m ruff format computer_history tests\`,
              \`python -m ruff check computer_history tests\` and \`python -m pytest -q tests/unit\`.
              Fix anything the merge broke.
-          3. When no conflict markers are left and both checks pass:
-             \`git add -A\`, \`git commit -m "Merge $BASE_BRANCH into $HEAD_BRANCH"\`,
-             \`git push origin HEAD:$HEAD_BRANCH\`.
+          3. When no conflict markers are left and the checks pass:
+             \`git add -A\`, \`git commit -m "Merge $BASE_BRANCH into $HEAD_BRANCH"\`, then a plain
+             \`git push origin HEAD:$HEAD_BRANCH\`. If the push is rejected, someone pushed to the
+             branch meanwhile: stop and say so in the report.
 
           Stop without committing when a conflict is a real disagreement about behaviour (both
           sides changed the same logic in different directions), or the checks still fail after
@@ -143,7 +147,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Resolve (Sonnet)
+        id: sonnet
         if: steps.merge.outputs.conflicts != ''
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -151,7 +157,8 @@ jobs:
           claude_args: >-
             --model claude-sonnet-5-5 --effort medium --max-turns 60
             --permission-mode acceptEdits
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(python -m ruff:*),Bash(python -m pytest:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(python -m ruff:*),Bash(python -m pytest:*),Bash(python -m pip install:*)"
+            --disallowedTools "Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git push --delete:*),Bash(git reset:*),Bash(git rebase:*)"
 
       - name: Check the push
         id: first
@@ -160,18 +167,20 @@ jobs:
           git fetch -q origin "$HEAD_BRANCH"
           if git merge-base --is-ancestor "origin/$BASE_BRANCH" "origin/$HEAD_BRANCH"; then
             echo "resolved=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "resolved=false" >> "$GITHUB_OUTPUT"
-            [ -f "$REPORT" ] && cp "$REPORT" "$RUNNER_TEMP/first-report.md"
-            git merge --abort 2>/dev/null || git reset -q --hard HEAD
-            git clean -fdq
-            git merge --no-ff --no-commit "origin/$BASE_BRANCH" || true
-            [ -f "$RUNNER_TEMP/first-report.md" ] && cp "$RUNNER_TEMP/first-report.md" .conflict-first-attempt.md
-            true
+            exit 0
           fi
+          echo "resolved=false" >> "$GITHUB_OUTPUT"
+          if [ -f "$REPORT" ]; then cp "$REPORT" "$RUNNER_TEMP/first-report.md"; fi
+          git merge --abort 2>/dev/null || true
+          git reset -q --hard "origin/$HEAD_BRANCH"
+          git clean -fdq
+          git merge --no-ff --no-commit "origin/$BASE_BRANCH" || true
+          if [ -f "$RUNNER_TEMP/first-report.md" ]; then cp "$RUNNER_TEMP/first-report.md" .conflict-first-attempt.md; fi
 
       - name: Resolve (Opus)
+        id: opus
         if: steps.first.outputs.resolved == 'false'
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -179,25 +188,35 @@ jobs:
           claude_args: >-
             --model claude-opus-5-5 --effort high --max-turns 80
             --permission-mode acceptEdits
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(python -m ruff:*),Bash(python -m pytest:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(python -m ruff:*),Bash(python -m pytest:*),Bash(python -m pip install:*)"
+            --disallowedTools "Bash(git push --force:*),Bash(git push -f:*),Bash(git push --force-with-lease:*),Bash(git push --delete:*),Bash(git reset:*),Bash(git rebase:*)"
 
       - name: Report
         if: always() && steps.merge.outputs.conflicts != ''
         env:
           CONFLICTS: ${{ steps.merge.outputs.conflicts }}
           FIRST: ${{ steps.first.outputs.resolved }}
+          OPUS: ${{ steps.opus.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           git fetch -q origin "$HEAD_BRANCH"
           files=${CONFLICTS// /\`, \`}
           if git merge-base --is-ancestor "origin/$BASE_BRANCH" "origin/$HEAD_BRANCH"; then
             model=$([ "$FIRST" = true ] && echo "Sonnet 5.5" || echo "Opus 5.5")
             gh pr comment "$PR" --body "Merged \`$BASE_BRANCH\` into this branch and resolved conflicts in \`$files\` ($model). Ruff and \`tests/unit\` passed before the push; CI is checking the rest."
-          else
-            {
-              echo "**Needs you:** merging \`$BASE_BRANCH\` into this branch has conflicts I could not resolve safely, in \`$files\`. Nothing was pushed."
-              echo
-              [ -f "$REPORT" ] && cat "$REPORT" || echo "No report was written; see the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
-            } > "$RUNNER_TEMP/comment.md"
-            gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
-            exit 1
+            exit 0
           fi
+          {
+            if [ -f "$REPORT" ]; then
+              echo "**Needs you:** merging \`$BASE_BRANCH\` into this branch has conflicts that need a decision, in \`$files\`. Nothing was pushed."
+              echo
+              cat "$REPORT"
+            else
+              echo "**Needs you:** the conflict fixer stopped without resolving \`$files\` or writing a report (Opus step: $OPUS). Nothing was pushed. See the [workflow run]($RUN_URL)."
+            fi
+            echo
+            echo "Labelled \`no-autofix\` so later pushes skip this PR. To try again: \`gh workflow run fix-conflicts.yml -f pr=$PR\`."
+          } > "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
+          gh pr edit "$PR" --add-label no-autofix || true
+          exit 1
