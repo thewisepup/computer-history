@@ -888,6 +888,63 @@ beside the database, which `status` shows under "Stable watchdog".
   denied permission hide them while `osascript` still exits 0, so a post
   that "succeeds" can go unseen; `status` shows the same findings either way.
 
+### 8.7 Status
+
+`computer-history status` reads and never writes: it creates, migrates and
+notifies nothing, and leaves the spool and the watchdog's state alone.
+Everything down to "Backups" is the given database's own, read beside it;
+the three "Stable" sections describe the stable install whichever profile
+runs.
+
+- **Ingest:** read from `ingest-health.json` beside the database, before the
+  database itself; while cycles fail, a banner opens the report. The line
+  takes the watchdog's backend verdict by its threshold: a last cycle older
+  than it while aw-afk shows you active adds `NOT REPORTING for <time>`,
+  while you were away `cannot tell: silent, but aw-afk does not show you
+  active`. While a watchdog runs beside the database, silence counts from
+  when it began watching, so just after it resumes the line can read `cannot
+  tell: ... watched only since the watchdog resumed`; with none run in the
+  last 3 minutes (as in dev) the whole recent past counts as watched. No file
+  reads `no ingest --watch has reported yet`.
+- **ActivityWatch:** the watchdog's verdict too: `no` and the banner while
+  it is unreachable, and `PROBLEM: not advancing (<sources>)` when this
+  host's AFK or window source has not advanced past its threshold.
+- **Coverage gaps** are unobserved time, never idle, checked up to each
+  source's settled-until time. `ax-text` captures are instants, so its gaps
+  have their own rule: a record of any kind explains the minute on either
+  side of it (twice the agent's 30s heartbeat); a pause explains the time
+  until the next record; a sleep explains the time until its `woke`, or, if
+  that was lost, until the next record or the first aw-afk active stretch,
+  whichever comes first; a pause or sleep from before the range counts too.
+  A stretch of 5 minutes or more that nothing explains is unobserved where
+  aw-afk shows you active, and *cannot be judged* where aw-afk has no data.
+  The range ends at the last stored record while the spool still holds
+  records, otherwise now. `screenshot` coverage is not checked: it is judged
+  from `ax-text`.
+- **Capture agent:** `last capture` is the newest capture, stored or in the
+  spool (excluded, pause and sleep records are not captures). `alive` is the
+  watchdog's capture-agent verdict by its threshold: `yes` when the newest
+  record, stored or in the spool, is within it; `NO` when aw-afk shows you
+  active for over a minute since it; `paused` while capture is paused;
+  otherwise `cannot tell`, with why. `paused` is the newest record being a
+  `paused` one. `app agreement` checks each stored capture in the coverage
+  range against an `aw-window` span of this machine's buckets within 2s of
+  it (the window watcher polls once a second): the same app, ignoring case,
+  matches; otherwise it differs from the nearest span; with no span within
+  2s it is counted apart. The three most common differing pairs follow, as
+  app names only.
+- **Screenshots** come from stored `screenshot` records only, through an
+  index on status, capture time and image size, never the folder. A warning
+  shows when a `no-permission` record is newer than every `kept` and
+  `duplicate` record and at most 5 minutes old; once older, a `permission`
+  line says when the grant was last recorded missing, as information.
+- **Backups** are read from the files beside the database alone, with a
+  warning when the newest daily one is older than yesterday. **Stable
+  install** shows `current`, `previous`, the installed agent's build and the
+  update log's last line it knows; **LaunchAgents** shows what launchd says
+  of each, or one `cannot ask launchd` line; **Stable watchdog** shows
+  `watchdog.json`, with a warning when it last ran more than 3 minutes ago.
+
 ## 9. Milestones
 
 Moved to [milestones.md](milestones.md).

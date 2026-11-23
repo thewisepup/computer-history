@@ -4,9 +4,10 @@ The command line for the local activity store: it ingests settled
 ActivityWatch events and the capture agent's spool into SQLite and reports on
 what is stored. Each command parses its flags, calls one function in the
 layers below and formats the result; `computer_history/cli/__init__.py` maps
-the modules. The full behaviour of the stable install's commands (`install`,
-`update`, `rollback`, `backup`, `restore`, `watchdog`) is `docs/DESIGN.md`
-§8.5 and §8.6; this page shows how to run each command and what it prints.
+the modules. This page shows how to run each command and what it prints.
+`docs/DESIGN.md` has the full rules for the stable install's commands
+(`install`, `update`, `rollback`, `backup`, `restore`: §8.5), `watchdog`
+(§8.6) and `status` (§8.7).
 
 Run it as `.venv/bin/computer-history`, or bare `computer-history` with the
 venv activated (or aliased). `-h` on any command prints its flags.
@@ -413,7 +414,8 @@ never notifies. Everything down to `Backups:` is the given database's own; the
 three `Stable` sections describe the stable install whichever profile runs.
 `Ingest:`, `ActivityWatch:` and the capture agent's `alive` take the
 watchdog's verdicts by its thresholds. Gaps are unobserved time, never assumed
-idle; where aw-afk has no data the stretch *cannot be judged*. While ingest
+idle; where aw-afk has no data the stretch *cannot be judged*.
+`docs/DESIGN.md` §8.7 has how each line is judged. While ingest
 cycles fail, status opens with a banner (real output, seven cycles into a
 renamed `ingest_progress`):
 
@@ -508,7 +510,9 @@ It refuses, with exit code 1, to write into a live folder (after resolving
 symlinks and ignoring case), and an `--out` that already holds a file it would
 write (`... already holds history.db, manifest.json; pass --force to replace
 them`). The cache is `$COMPUTER_HISTORY_DATASET_CACHE`, else
-`~/Library/Caches/ComputerHistory/datasets/`, shared by every worktree and
+`~/Library/Caches/ComputerHistory/datasets/` on macOS (`$XDG_CACHE_HOME`, or
+`~/.cache`, then `computer-history/datasets/` elsewhere), shared by every
+worktree and
 keyed by the inputs and the code, so any change to ingest rebuilds it. Delete
 it at any time.
 
