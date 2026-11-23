@@ -75,7 +75,7 @@ What an update does on its own when the new version's backend crashes, fails its
 _Avoid_: Revert, auto-rollback
 
 **Rollback**:
-Switching `current` to the previous version by hand, keeping the version left as previous; no network and no backup restored. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
+Switching `current` to the previous version by hand, keeping the version left as previous; no network, no backup restored, and the capture agent left as it is. It is refused when the database's schema is newer than the previous version can open, until its pre-update backup is restored.
 _Avoid_: Downgrade, revert
 
 **Installed agent**:
@@ -87,7 +87,7 @@ Update installing a changed capture agent's app from the new version folder over
 _Avoid_: Agent deploy, agent rollback (rollback is the command)
 
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback, rollback and agent moved by rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent or a rollback moves it.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback and rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent.
 _Avoid_: Changelog, audit log
 
 **Spool hold**:

@@ -80,8 +80,7 @@ def point(pointer: Path, name: str) -> None:
 
 
 def build_version(host: Host, layout: Layout, commit: str) -> bool:
-    """Build a commit into its marked version folder, noting what its backend reads, unless marked
-    already; True if it built one."""
+    """Build a commit into its marked version folder unless marked already; True if it built one."""
     folder = version_folder(layout, version_name(commit))
     if (folder / INSTALL_MARKER_NAME).is_file():
         return False
@@ -89,9 +88,8 @@ def build_version(host: Host, layout: Layout, commit: str) -> bool:
         if folder.exists():
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
-        built = host.build(commit, folder / VENV_FOLDER_NAME)
-        (folder / PACKAGES_FILE_NAME).write_text(built.packages, encoding="utf-8")
-        layout.spool_reads(folder).write_text(f"{built.reads.as_json()}\n", encoding="utf-8")
+        packages = host.build(commit, folder / VENV_FOLDER_NAME)
+        (folder / PACKAGES_FILE_NAME).write_text(packages, encoding="utf-8")
         (folder / INSTALL_MARKER_NAME).write_text("")
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)

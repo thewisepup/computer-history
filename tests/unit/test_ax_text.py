@@ -443,6 +443,27 @@ def test_a_record_failing_validation_says_why(line: str, problem: str) -> None:
         parse_record(line)
 
 
+@pytest.mark.parametrize(
+    "newer",
+    [{"kind": "heartbeat"}, {"version": SPOOL_VERSION + 1}],
+    ids=["newer kind", "newer spool version"],
+)
+def test_records_from_a_newer_agent_are_moved_aside_not_deleted(
+    conn: sqlite3.Connection, spool_dir: Path, newer: dict[str, Any]
+) -> None:
+    known = record(1, T0)
+    path = write_file(spool_dir, file_name(1), [known, record(2, T0, **newer)])
+    kept = path.read_bytes()
+    write_file(spool_dir, file_name(2), [record(3, T0 + timedelta(seconds=1))])
+
+    summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
+
+    assert summary.ok
+    assert [row[3] for row in observations(conn)][0] == known
+    assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
+    assert finished_files(spool_dir) == []
+
+
 def test_a_file_with_no_usable_record_is_moved_aside_not_deleted(
     conn: sqlite3.Connection, spool_dir: Path
 ) -> None:

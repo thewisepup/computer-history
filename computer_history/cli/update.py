@@ -10,6 +10,7 @@ from pathlib import Path
 from computer_history.cli import formatting
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
+    UNREADABLE_FOLDER,
     AWClient,
     DatabaseRead,
     StoredAndSpooled,
@@ -139,17 +140,21 @@ def _agent(agent: AgentCheck, old: str) -> str:
 
 
 def cmd_rollback(args: argparse.Namespace) -> int:
+    layout = stable_layout()
     try:
-        report = rollback(args.host, stable_layout(), now=formatting.utc_now)
+        report = rollback(args.host, layout, now=formatting.utc_now)
     except RollbackFailed as exc:
         print(f"rollback failed: {exc}", file=sys.stderr)
         return 1
+    agent = "its build unknown" if report.agent is None else f"{version_name(report.agent)}'s build"
+    unreadable = default_spool_path(layout.database) / UNREADABLE_FOLDER
     print(f"Rolled back to version {report.current} from {report.previous}")
     print(f"  previous      {report.previous} (rollback again returns to it)")
-    agent = report.agent
-    shown = f"moved back to {report.current}'s build" if agent.moved else "not moved"
-    print(f"  agent         {shown}" + ("" if agent.why is None else f" ({agent.why})"))
+    print(f"  agent         left as it is ({agent})")
     print("  backend       restarted")
+    print(
+        f"  note: spool files {report.current} can't read are moved to {unreadable}/, not deleted"
+    )
     for problem in report.problems:
         print(f"  warning: {problem}")
     return 0

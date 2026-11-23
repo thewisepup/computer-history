@@ -358,6 +358,8 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     )
     host = FakeHost(offline=True, loaded=[BACKEND.label])
     new, old = version_name(NEWER), version_name(OLDER)
+    agent = layout.installed_agent.read_bytes()
+    unreadable = layout.live / "spool" / "unreadable"
 
     code, out, err = run(stable_code(layout), "rollback", host=host)
 
@@ -367,14 +369,52 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     assert ("main_commits", "20") not in host.calls
     assert restarted(host) == {BACKEND.label}
     assert host.calls.index(("unload", BACKEND.label)) < host.calls.index(("load", BACKEND.label))
+    assert not any(call == "install_agent" for call, _ in host.calls)
+    assert layout.installed_agent.read_bytes() == agent
     assert out[1:] == [
         f"Rolled back to version {old} from {new}",
         f"  previous      {new} (rollback again returns to it)",
-        f"  agent         not moved ({old} reads every record kind it writes)",
+        f"  agent         left as it is ({new}'s build)",
         "  backend       restarted",
+        f"  note: spool files {old} can't read are moved to {unreadable}/, not deleted",
     ]
     assert log_lines(layout)[-1]["action"] == "rolled back"
     _, out, _ = run(stable_code(layout), *STATUS, host=host)
+    assert section(out, INSTALL)[-1].startswith(f"  last update   rolled back {new} -> {old}, ")
+
+
+def test_rollback_with_no_record_of_the_agent_says_its_build_is_unknown(
+    run: RunCli, layout: Layout
+) -> None:
+    assert (
+        run(
+            stable_code(layout), "update", host=updating(layout, completes_a_cycle(health(layout)))
+        )[0]
+        == 0
+    )
+    layout.installed_agent.unlink()
+
+    code, out, err = run(stable_code(layout), "rollback", host=FakeHost(loaded=[BACKEND.label]))
+
+    assert code == 0, err
+    assert out[3] == "  agent         left as it is (its build unknown)"
+
+
+def test_status_skips_update_log_lines_whose_action_it_does_not_know(
+    run: RunCli, layout: Layout
+) -> None:
+    new, old = version_name(NEWER), version_name(OLDER)
+    known = {"at": "2026-11-20T17:22:03+00:00", "action": "rolled back", "from": new, "to": old}
+    unknown = {
+        "at": "2026-11-21T09:00:00+00:00",
+        "action": "agent wandered",
+        "from": "x",
+        "to": "y",
+    }
+    layout.update_log.write_text(f"{json.dumps(known)}\n{json.dumps(unknown)}\n")
+
+    _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
+
     assert section(out, INSTALL)[-1].startswith(f"  last update   rolled back {new} -> {old}, ")
 
 

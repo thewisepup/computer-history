@@ -9,7 +9,7 @@ connection, calls one function, and formats the result.
 ```
 app.py         parser + dispatch: one entry per command, the profile's log
   |              folder, the install lock around the commands that change
-  |              the stable install, and --spool-reads
+  |              the stable install, and --spool-reads for older installs
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop), with
   |                the ingest health file and the failure streak's notification
@@ -206,8 +206,9 @@ computer-history --spool-reads
 
 Prints the spool version and record kinds this code's backend reads, as one
 JSON line, and exits before any command runs (no profile line, no database).
-`install` and `update` ask it of every version they build and keep the answer
-as that version's `spool-reads.json`. Real output:
+It is hidden from `--help`: nothing in this code reads the answer, but stable
+versions from before rollback stopped moving the capture agent ask it of
+every version they build, and fail the build without it. Real output:
 
 ```
 {"spool_version": 1, "kinds": ["capture", "excluded", "paused", "resumed", "slept", "woke", "screenshot"]}
@@ -226,10 +227,9 @@ does. It only moves forward: when that commit is `current`, or older than
 `current` on `main` (say `current`'s checks were re-run and cancelled since
 it was installed), it says `Already up to date` and changes nothing.
 Otherwise it first readies the capture agent, then builds the commit beside
-the current version into `versions/<short commit>/` and smokes it by asking
-the built command what it reads (`--spool-reads`, kept as `spool-reads.json`);
-a failed build or smoke removes that folder and changes nothing, as does being
-offline.
+the current version into `versions/<short commit>/` and smokes it by running
+the built command for its `--help`; a failed build or smoke removes that
+folder and changes nothing, as does being offline.
 
 The capture agent counts as changed when the git tree hash of
 `capture-agent/` at the new commit differs from the one at the commit the
@@ -364,37 +364,22 @@ rollback failed: the database is at schema v6, newer than version 572c48b can op
 
 With no previous version it fails and changes nothing.
 
-`rollback` also takes the capture agent back when the previous version can't
-read what the installed agent writes. What the agent writes is the
-`spool-reads.json` of the version folder whose `agent-commit.txt` names the
-agent's `built_from` in `installed-agent.json`; what the previous version
-reads is its own `spool-reads.json`. When the previous version reads that
-spool version and every kind (or carries the same build), the agent stays.
-Otherwise the previous version's app is installed over
-`~/Applications/ComputerHistoryAgent.app` and registered before the backend
-restarts, and `installed-agent.json` is rewritten. There is no record wait:
-the install only confirms launchd shows the agent running, and the watchdog
-covers the rest. When either side is unknown (a version from before this
-note existed, no installed-agent record) or the previous version carries no
-app, it warns and leaves the agent; it never refuses over the agent. An
-agent that doesn't start after the move is a warning too, and its record is
-removed so the next `update` deploys it again. Output from the tests' fake
-host (illustrative names):
+`rollback` moves the backend only: the capture agent stays at the build
+`installed-agent.json` names. When that agent writes a record kind or spool
+version the older backend doesn't know, ingest stores the file's other
+records and moves the file to `spool/unreadable/`, never deleting it; nothing
+reads it from there, so once a version that reads it is current again, move
+the file back into `spool/` to ingest it. Output from the tests' fake host
+(illustrative names):
 
 ```
 $ computer-history rollback
 Profile stable (version 8d23e3a), stable install .../ComputerHistory
 Rolled back to version 572c48b from 8d23e3a
   previous      8d23e3a (rollback again returns to it)
-  agent         moved back to 572c48b's build (572c48b does not read its heartbeat records)
+  agent         left as it is (8d23e3a's build)
   backend       restarted
-$ computer-history rollback      # previous version from before spool-reads.json
-Profile stable (version 8d23e3a), stable install .../ComputerHistory
-Rolled back to version 572c48b from 8d23e3a
-  previous      8d23e3a (rollback again returns to it)
-  agent         not moved
-  backend       restarted
-  warning: could not tell which record kinds 572c48b reads; the capture agent was left as it is
+  note: spool files 572c48b can't read are moved to .../ComputerHistory/spool/unreadable/, not deleted
 ```
 
 `install`, `uninstall`, `update`, `rollback` and a stable `restore` take turns:
@@ -405,8 +390,8 @@ has finished`).
 
 Every update, fallback, agent fallback and rollback adds a JSON line to
 `update-log.jsonl` in the live folder (`{"at": ..., "action": "updated" |
-"fell back" | "agent fell back" | "rolled back" | "agent rolled back", "from":
-..., "to": ..., "reason": ...}`); `status` shows the last one. An `updated`
+"fell back" | "agent fell back" | "rolled back", "from": ..., "to": ...,
+"reason": ...}`); `status` shows the last one. An `updated`
 line adds `"agent"`, the capture agent's outcome (`unchanged`, `updated and
 verified`, `installed, not verified`, `not swapped` or `fell back`). An agent fallback writes its `agent fell back` line (from the new
 version, to the old one, with the reason) before the run's `updated` line
@@ -417,10 +402,8 @@ version, to the old one, with the reason) before the run's `updated` line
 {"at": "2026-11-20T19:24:31+00:00", "action": "updated", "from": "8d23e3a", "to": "9f0e1d2", "reason": null, "agent": "fell back"}
 ```
 
-A rollback that moves the agent writes its `agent rolled back` line (from and
-to are the versions whose agent builds were swapped, the reason says what the
-older one can't read) before its `rolled back` line. `status` skips lines
-whose action it doesn't know, so a version reached by rollback shows the last
+`status` skips lines whose action it doesn't know (such as the `agent rolled
+back` lines older versions wrote), so a version reached by rollback shows the last
 line it understands instead of calling the log unreadable.
 
 Real output through the CLI with the test suite's fake host adapter scripting

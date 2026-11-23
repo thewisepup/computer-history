@@ -14,19 +14,15 @@ import computer_history.store
 from computer_history.cli import formatting as cli_formatting
 from computer_history.host import (
     AgentNotUnregistered,
-    BackendBuild,
     CheckOutcome,
     CheckRun,
     GitState,
     HostError,
     JobBusy,
     JobState,
-    SpoolReads,
 )
 from computer_history.sources import (
     CAPTURE_KIND,
-    RECORD_KINDS,
-    SPOOL_VERSION,
     IngestHealth,
     write_health,
 )
@@ -170,7 +166,6 @@ class FakeHost:
         activitywatch_running: bool = True,
         opening_starts_activitywatch: bool = True,
         notify_error: str | None = None,
-        spool_reads: Mapping[str, SpoolReads] | None = None,
         agent_trees: Mapping[str, str] | None = None,
         agent_tree_error: str | None = None,
         agent_toolchain_missing: str | None = None,
@@ -198,7 +193,6 @@ class FakeHost:
         self.opening_starts_activitywatch = opening_starts_activitywatch
         self.notify_error = notify_error
         self.notifications: list[str] = []
-        self.spool_reads = dict(spool_reads or {})
         self.agent_trees = dict(agent_trees or {})
         self.agent_tree_error = agent_tree_error
         self.agent_toolchain_missing = agent_toolchain_missing
@@ -227,7 +221,7 @@ class FakeHost:
             raise HostError(NOT_A_CHECKOUT)
         return self.git
 
-    def build(self, commit: str, venv: Path) -> BackendBuild:
+    def build(self, commit: str, venv: Path) -> str:
         self.calls.append(("build", commit))
         (venv / "bin").mkdir(parents=True)
         if self.build_error is not None:
@@ -237,9 +231,7 @@ class FakeHost:
         shutil.copytree(MIGRATIONS, installed_package(venv) / "store" / "migrations")
         if self.build_blocks_packages:
             (venv.parent / PACKAGES_FILE_NAME).mkdir()
-        packages = f"computer-history @ git+https://example.invalid/repo@{commit}\n"
-        reads = self.spool_reads.get(commit, SpoolReads(SPOOL_VERSION, RECORD_KINDS))
-        return BackendBuild(packages, reads)
+        return f"computer-history @ git+https://example.invalid/repo@{commit}\n"
 
     def agent_tree(self, commit: str) -> str:
         self.calls.append(("agent_tree", commit))

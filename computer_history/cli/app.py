@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Callable, Sequence
@@ -21,7 +22,7 @@ from computer_history.cli.rebuild import cmd_rebuild_signals
 from computer_history.cli.status import cmd_status
 from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
-from computer_history.host import SPOOL_READS_FLAG, Host, LiveHost, SpoolReads
+from computer_history.host import Host, LiveHost
 from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
 from computer_history.sources import (
     DEFAULT_AW_URL,
@@ -137,12 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db-path", help=db_help)
     parser.add_argument(
-        SPOOL_READS_FLAG,
+        "--spool-reads",
         action=PrintSpoolReads,
         nargs=0,
         default=argparse.SUPPRESS,
-        help="print the spool version and record kinds this code reads, as JSON, and exit"
-        " (update asks it of every version it builds)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--log-level",
@@ -241,7 +241,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 class PrintSpoolReads(argparse.Action):
-    """Print what this code reads from the spool and exit, before any command runs."""
+    """Answer the question stable versions built before rollback stopped moving the capture agent
+    ask of every version they build, so they can still update to this one."""
 
     def __call__(
         self,
@@ -250,7 +251,7 @@ class PrintSpoolReads(argparse.Action):
         values: object,
         option_string: str | None = None,
     ) -> None:
-        print(SpoolReads(SPOOL_VERSION, RECORD_KINDS).as_json())
+        print(json.dumps({"spool_version": SPOOL_VERSION, "kinds": list(RECORD_KINDS)}))
         parser.exit()
 
 

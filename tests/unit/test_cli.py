@@ -653,7 +653,7 @@ def test_bytes(n: int, text: str) -> None:
     assert formatting.human_size(n) == text
 
 
-def test_spool_reads_prints_the_spool_version_and_record_kinds_this_code_reads(
+def test_spool_reads_still_answers_the_older_installs_that_ask_every_version_they_build(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exited:

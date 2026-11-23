@@ -737,7 +737,6 @@ in the live folder and starts the backend at login from it:
   versions/<short commit>/
     venv/                  # built with uv on a uv-managed Python 3.12
     packages.txt           # uv pip freeze of that venv
-    spool-reads.json       # {"spool_version", "kinds"}: what its backend reads, from `--spool-reads`
     installed              # empty marker: the backend is complete
     ComputerHistoryAgent.app/   # the capture agent app for this version, signed; never registered here
     agent-commit.txt       # the full commit that app was built from
@@ -776,8 +775,8 @@ in the live folder and starts the backend at login from it:
   else.
 - **Install** with no current version builds the newest passing commit with
   `uv` (`uv venv`, `uv pip install git+...@<commit>`, a smoke run of
-  `computer-history --spool-reads` whose answer becomes `spool-reads.json`,
-  `uv pip freeze`), writes the marker last and points `current` at it.
+  `computer-history --help`, `uv pip freeze`), writes the marker last and
+  points `current` at it.
   Install does not build or deploy the capture agent; its first install is
   `capture-agent/scripts/install.sh`. A
   failed lookup, build or file write removes what it created, so nothing
@@ -895,18 +894,14 @@ in the live folder and starts the backend at login from it:
   migration in the previous version's own package and, when that version
   cannot open it, refuses and names the pre-update backup to `restore` first.
   With no previous version it changes nothing.
-- **Rollback takes the agent along** when the previous version can't read
-  what the installed agent writes: the `spool-reads.json` of the version
-  folder whose `agent-commit.txt` matches `installed-agent.json`'s
-  `built_from` (the spool contract fixture ties an agent's output to its
-  commit's backend), against the previous version's `spool-reads.json`. A
-  different spool version or a kind it doesn't read moves the agent: the
-  previous version's app goes over the fixed path through the host's
-  `install_agent`, before the backend restarts, and `installed-agent.json`
-  is rewritten. No record wait, no network. Either note unreadable, no
-  installed-agent record, or no app in the previous folder: a warning and
-  the agent stays. An agent that doesn't start is a warning and its record is
-  removed, so the next update counts it as unknown and deploys it.
+- **Rollback leaves the capture agent** at the build `installed-agent.json`
+  names and says so. A record kind or spool version the older backend doesn't
+  read is an unusable line: ingest stores the file's other records and moves
+  the file to `spool/unreadable/` (4.2), never deleting it, and rollback's
+  output names that folder. Nothing reads it from there; once a version that
+  reads it is current, moving the file back into `spool/` ingests it
+  (duplicates are skipped). `--spool-reads` stays, hidden, only because
+  versions from before this ask it of every version they build.
 - **Watchdog LaunchAgent:** `current/venv/bin/computer-history watchdog`,
   `RunAtLoad`, `StartInterval` 60s, no `KeepAlive`. Its stdout goes to
   `/dev/null` and only its stderr (notifications posted, errors, config

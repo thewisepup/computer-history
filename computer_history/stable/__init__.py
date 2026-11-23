@@ -30,9 +30,9 @@
         |             for the backend's first ok cycle with spool deletion held, swap
         |             in a changed capture agent and wait for its first record, and
         |             fall back on its own) and rollback (current and previous swapped,
-        |             the agent moved back when needed), one module per stage
-        +-- update_log.py  one line per update, fallback, agent fallback, rollback and
-                           agent move, read by status, which skips actions it doesn't know
+        |             the backend only), one module per stage
+        +-- update_log.py  one line per update, fallback, agent fallback and rollback,
+                           read by status, which skips actions it doesn't know
 
     backups.py        the daily backup (seven kept) and the pre-update one beside the
                       database, the inventory status shows, and restore, which stops
