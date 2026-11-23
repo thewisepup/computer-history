@@ -582,7 +582,9 @@ def _script(timeline: Timeline) -> dict:
             app,
             {"name": stretch.app, "bundle_id": BUNDLE_IDS.get(stretch.app), "windows": {}},
         )
-        spec["windows"].setdefault(window, {"role": "AXWindow", "title": stretch.title})
+        spec["windows"].setdefault(
+            window, {"role": "AXWindow", "title": stretch.title, "document": "https://example.com/"}
+        )
         spec.setdefault("focused_window", window)
         titles.setdefault((app, window), stretch.title)
         focused.setdefault(app, window)

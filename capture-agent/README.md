@@ -138,11 +138,78 @@ window leaves focus with the previous app). While one is in front it writes an
 the `app` trigger when it comes to the front and on every heartbeat while it
 stays there. Window and title changes inside it go unnoticed.
 
-The built-in denylist is `com.1password.1password`,
-`com.agilebits.onepassword7`, `com.apple.keychainaccess` and
-`com.apple.Passwords`. The config's `denylist` adds to it and cannot remove
-from it, so no config, however wrong, captures one of these. Bundle ids match
-ignoring case.
+An entry covers its own bundle id and every id under it, ignoring case:
+`com.apple.Passwords` covers `com.apple.Passwords.MenuBarExtra`, the
+Passwords menu-bar extra, but not `com.apple.PasswordsHelper`. The built-in
+denylist:
+
+| Entry | Covers |
+|---|---|
+| `com.1password` | 1Password 8 (`com.1password.1password`) and its helpers |
+| `com.agilebits` | 1Password 7 and older (`com.agilebits.onepassword7`, ...) |
+| `com.apple.keychainaccess` | Keychain Access |
+| `com.apple.Passwords` | Passwords and its menu-bar extra |
+| `com.bitwarden.desktop` | Bitwarden and `com.bitwarden.desktop.helper` |
+| `com.dashlane` | any Dashlane app (Dashlane has no current Mac app) |
+| `com.lastpass` | LastPass (`com.lastpass.LastPass`, `com.lastpass.lastpassmacdesktop`) |
+| `in.sinew.Enpass-Desktop` | Enpass |
+| `me.proton.pass` | Proton Pass (`me.proton.pass.electron`) |
+| `org.keepassxc.keepassxc` | KeePassXC |
+
+The config's `denylist` adds to it and cannot remove from it, so no config,
+however wrong, captures one of these. A denylisted app never gets the
+accessibility flags (see Window text), even when it is an Electron app.
+
+## Private windows and password pages
+
+Some windows of allowed apps are never read either: private browser windows
+and password-manager pages. Before walking the focused window, the reader
+takes its title and `AXDocument` (in Chromium browsers, the active tab's
+address); while walking, it reads `AXURL` of every `AXWebArea` before its
+contents. A match ends the read with nothing kept, and the agent writes an
+`excluded` record, with the app name and bundle id and no title or text,
+instead of the capture, and takes no screenshot. Title changes in the window
+still trigger, so a private window yields `excluded` records on the same
+triggers a capture would have.
+
+| Browser | Bundle ids (and ids under them) | Private window title ends with |
+|---|---|---|
+| Chrome, Chromium | `com.google.Chrome`, `org.chromium.Chromium` | ` (Incognito)` |
+| Brave | `com.brave.Browser` | ` (Private)` |
+| Firefox | `org.mozilla.firefox`, `org.mozilla.firefoxdeveloperedition`, `org.mozilla.nightly` | `Private Browsing` or `(Private Browsing)` |
+| Safari | `com.apple.Safari`, `com.apple.SafariTechnologyPreview` | `Private Browsing` |
+
+Chromium on macOS gives the window the accessible title from
+`BrowserView::GetAccessibleWindowTitle`, which ends with Chrome's
+`IDS_ACCESSIBLE_INCOGNITO_WINDOW_TITLE_FORMAT` (`$1 (Incognito)`, Brave's
+override `$1 (Private)`). Firefox on macOS titles a private window
+`<page> — Private Browsing`. Safari ships the strings `Private Browsing`
+(window title) and `%@, Private Browsing`. All of these are English: a Mac in
+another language is not covered.
+
+A page is a password-manager page when its address starts with
+`chrome://password-manager`, `chrome://settings/passwords`,
+`brave://password-manager`, `about:logins`, or `chrome-extension://<id>/`
+for the Chrome Web Store ids of 1Password, 1Password Beta, Bitwarden,
+LastPass, Dashlane, Proton Pass, Enpass and KeePassXC-Browser (popups,
+vault pages and their inline menus, which are frames inside the page). Where
+the address is not given, a Chrome window titled `Google Password Manager`
+and a Firefox window titled `Passwords` count too.
+
+A window of a Chromium browser (Chrome and its channels, Chromium, Brave, Edge, Arc,
+Vivaldi and Opera)
+whose read found no address at all, neither a non-empty `AXDocument` nor an
+`AXURL` on a web area, is excluded as well: an extension popup gives no
+`AXDocument`, and its page may not be in the tree yet (or ever, with the app
+on `accessibility_flag_off_list`). Such a browser on the off list therefore
+captures nothing.
+
+Not covered yet, so captured as ordinary windows: Arc
+(`company.thebrowser.Browser`), Edge (`com.microsoft.edgemac`), Vivaldi and
+Opera private windows; Brave's private windows with Tor; Chrome guest
+windows; extension popups in Safari and Firefox, whose addresses carry a
+per-install id; and Edge's password pages. None of the title formats has been
+checked against a running browser on a Mac yet.
 
 ## Pause and resume
 
@@ -165,7 +232,8 @@ writes `resumed` and captures once it is unlocked.
 
 `WindowTextReader` reads the focused window of a `FocusedApplication` and
 returns a `WindowText`: the window title, the content text, the full text
-length in UTF-8 bytes and whether the read timed out. The `SpoolRecord` made
+length in UTF-8 bytes, whether the read timed out, and whether the window is
+excluded (see Private windows and password pages). The `SpoolRecord` made
 from it derives the text's SHA-256 and whether it was cut off, for the spool
 line and the minute log line alike. `focusedApplication()` asks the
 system-wide accessibility element for the focused app and falls back to
@@ -190,8 +258,9 @@ the cap. Each accessibility call times out after 0.25s and the whole read
 after 2s; either ends the read with the text collected so far. Electron apps
 and Chromium browsers get `AXManualAccessibility` and
 `AXEnhancedUserInterface` set once per launch (process id, app bundle and
-launch time, so a reused process id gets them again), unless their bundle id is on
-the config's `accessibility_flag_off_list` (ignoring case). A flag call that
+launch time, so a reused process id gets them again), unless they are
+denylisted or their bundle id is on the config's `accessibility_flag_off_list`
+(ignoring case). A flag call that
 times out does not end the read; the flags are tried again on the next read.
 
 ## Capturing
@@ -447,7 +516,8 @@ in time order, each `at` seconds after the start with exactly one action:
 
 A window is an element: `role`, and optionally `id` (unique in its window,
 for `focus_element`), `title`, `subrole`, `description`, `value` (repeated
-`repeat` times), `hangs` (attributes whose calls time out) and `children`. A
+`repeat` times), `document` (`AXDocument`), `url` (`AXURL`), `hangs`
+(attributes whose calls time out) and `children`. A
 window may also set `recognized_text`: the text the scripted recognition reads
 from each picture kept of it (otherwise empty).
 
@@ -518,7 +588,7 @@ launchctl print "gui/$(id -u)/io.github.thewisepup.computer-history.agent"
 ```
 
 Expected lines: `started, accessibility granted` (or `missing, asked macOS to
-prompt for it`), `config read from <path>, 4 apps denylisted` (or `config not
+prompt for it`), `config read from <path>, 10 apps denylisted` (or `config not
 found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3

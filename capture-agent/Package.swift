@@ -52,14 +52,16 @@ import PackageDescription
 ///           |                              recognized text
 ///     CaptureDecision.swift what a tick does: paused, silent, excluded, capture due or nothing,
 ///           |               and whether the focused app's window may be touched
-///     Denylist.swift        the apps never read: the built-in password managers plus the config's
+///     Denylist.swift        the apps never read, by bundle id or prefix: the built-in password managers
+///                           plus the config's
 ///     CaptureSchedule.swift capture timing: settle delay, minimum gap, heartbeat, silence gating
 ///     CaptureCounts.swift   captures written, excluded, timed out and cut off, for the minute log line
 ///     AppAndWindowWatch.swift   focus changes: the app from the focused app alone, the window and
 ///                               title by polling that app's accessibility tree
 ///     Presence.swift        idle seconds, screen lock, sleep and wake; the reasons for silence
 ///     FocusedApplication.swift   the focused app, asked of the system-wide accessibility element
-///     WindowTextReader.swift     reads the focused window's title and text
+///     WindowTextReader.swift     reads the focused window's title and text, or nothing of an excluded window
+///     WindowExclusion.swift private browser windows and password-manager pages, told by title and address
 ///     WindowWalk.swift      the tree walk: content roles only, each element once, within timeouts
 ///     CappedText.swift      joins text pieces up to the byte cap, counting the full length past it
 ///     AccessibilityElement.swift  the accessibility tree behind a protocol, and its live form

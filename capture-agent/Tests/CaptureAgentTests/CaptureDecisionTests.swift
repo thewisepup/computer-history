@@ -15,6 +15,31 @@ import Testing
     #expect(!denylist.contains(FocusedApplication(processIdentifier: 1, bundleIdentifier: nil, bundleURL: nil, name: "1Password")))
 }
 
+@Test func theDenylistCoversTheBundleIDsUnderAnEntry() {
+    let denylist = Denylist(adding: ["com.example.vault"])
+    let app = { (id: String) in FocusedApplication(processIdentifier: 1, bundleIdentifier: id, bundleURL: nil, name: id) }
+    for id in [
+        "com.apple.Passwords.MenuBarExtra", "com.bitwarden.desktop", "com.bitwarden.desktop.helper", "COM.1PASSWORD.1password",
+        "com.agilebits.onepassword7", "org.keepassxc.keepassxc", "me.proton.pass.electron", "in.sinew.Enpass-Desktop",
+        "com.lastpass.LastPass", "com.dashlane.dashlanephonefinal", "com.example.vault.helper",
+    ] {
+        #expect(denylist.contains(app(id)), "\(id)")
+    }
+    for id in ["com.apple.PasswordsHelper", "com.example.vaultkeeper", "com.example", "com.apple.Safari", "com.bitwarden"] {
+        #expect(!denylist.contains(app(id)), "\(id)")
+    }
+}
+
+@Test func aDenylistedMenuBarExtraInFrontIsExcludedWithoutTouchingIt() {
+    let fixture = DecisionFixture()
+    let extra = FocusedApplication(
+        processIdentifier: 400, bundleIdentifier: "com.apple.Passwords.MenuBarExtra", bundleURL: nil, name: "Passwords"
+    )
+    fixture.mac.focused = extra
+    #expect(fixture.run(for: 2) == [.excluded(extra, .heartbeat)])
+    #expect(fixture.mac.calls.isEmpty)
+}
+
 final class DecisionFixture {
     let focus = FocusFixture()
     var mac: ScriptedMac { focus.mac }
