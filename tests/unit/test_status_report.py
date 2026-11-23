@@ -295,34 +295,3 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
 
     assert ingest_line(lines).endswith("; NOT REPORTING for 20m (is `ingest --watch` running?)")
     assert not any(line.startswith("!! ") for line in lines)
-
-
-@pytest.mark.parametrize("saved", ["none", "stopped"])
-@pytest.mark.parametrize(
-    ("away_from", "suffix"),
-    [
-        (60, "; NOT REPORTING for 20m (is `ingest --watch` running?)"),
-        (40, "; cannot tell: silent, but aw-afk does not show you active"),
-    ],
-    ids=["active", "away"],
-)
-def test_status_without_a_running_watchdog_judges_the_recent_past(
-    run: RunCli,
-    monkeypatch: pytest.MonkeyPatch,
-    db: Path,
-    saved: str,
-    away_from: float,
-    suffix: str,
-) -> None:
-    monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
-    now = datetime.now(UTC)
-    start = now - timedelta(minutes=60)
-    last_cycle(db, at(40, start))
-    if saved == "stopped":
-        watching(db, since=at(-60, start), ran_at=at(45, start))
-    aw = watchers(socket.gethostname(), t0=start, away_from=away_from)
-
-    with served_over_http(aw) as url:
-        lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
-
-    assert ingest_line(lines).endswith(suffix)

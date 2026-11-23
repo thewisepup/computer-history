@@ -152,7 +152,6 @@ class BackfillProgress(Enum):
     KEPT = "kept"  # the stream already had progress with a settled-until time
     KEPT_UNSETTLED = "kept unsettled"  # the stream already had progress without one
     NOT_COVERED = "not covered"  # the range starts after some of the stream's history
-    NO_POSITION = "no position"  # the source gave no position to resume from
     SET_MEANWHILE = "set meanwhile"  # another ingest set the stream's progress first
 
 
@@ -353,7 +352,7 @@ def _backfill_stream(
             result.incomplete.append((piece, incomplete_from))
         if index == last:
             result.complete_until = result.incomplete[0][1] if result.incomplete else plan.end
-            result.progress = _progress_outcome(plan, written.progress_sent, written.progress_moved)
+            result.progress = _progress_outcome(plan, written.progress_moved)
         if on_chunk is not None:
             on_chunk(
                 ChunkDone(
@@ -376,11 +375,9 @@ def _incomplete_from(pulled: Pull, piece: Chunk) -> datetime | None:
     return pulled.settled_until if pulled.settled_until < piece.end else None
 
 
-def _progress_outcome(plan: BackfillPlan, sent: bool, moved: bool) -> BackfillProgress:
+def _progress_outcome(plan: BackfillPlan, moved: bool) -> BackfillProgress:
     if plan.has_progress:
         return BackfillProgress.KEPT if plan.settled_until else BackfillProgress.KEPT_UNSETTLED
     if not plan.covers_history:
         return BackfillProgress.NOT_COVERED
-    if not sent:
-        return BackfillProgress.NO_POSITION
     return BackfillProgress.SET if moved else BackfillProgress.SET_MEANWHILE

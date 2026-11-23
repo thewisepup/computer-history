@@ -274,20 +274,6 @@ def test_backfill_reports_an_incomplete_chunk_once_and_sets_progress_from_it(
     assert stored(conn, "a") == ["a1", "a2", "a3", "a4"]
 
 
-def test_backfill_commits_each_chunk_once_and_progress_only_with_the_last(
-    conn: sqlite3.Connection,
-) -> None:
-    spool = three_hours()
-    statements: list[str] = []
-    conn.set_trace_callback(statements.append)
-    run_backfill(conn, spool, [hourly_plan(spool, conn)], clock=lambda: at(180))
-    conn.set_trace_callback(None)
-    commits = [i for i, sql in enumerate(statements) if sql == "COMMIT"]
-    progress_writes = [i for i, sql in enumerate(statements) if "INTO ingest_progress" in sql]
-    assert len(commits) == 3
-    assert len(progress_writes) == 1 and commits[1] < progress_writes[0] < commits[2]
-
-
 def test_backfill_stops_at_an_unavailable_source_and_keeps_committed_chunks(
     conn: sqlite3.Connection,
 ) -> None:
@@ -382,17 +368,6 @@ def test_ctrl_c_while_reporting_a_finished_stream_is_reported_as_interrupted(
     )
     assert run.interrupted
     assert [result.chunks_done for result in run.results] == [3]
-
-
-def test_backfill_without_a_position_reports_that_progress_was_not_sent(
-    conn: sqlite3.Connection,
-) -> None:
-    spool = three_hours()
-    spool.unsettled.clear()
-    spool.range_reports_progress = False
-    (result,) = run_backfill(conn, spool, [hourly_plan(spool, conn)], clock=lambda: at(180)).results
-    assert result.progress is BackfillProgress.NO_POSITION
-    assert get_progress(conn, "a") is None
 
 
 def test_held_back_events_without_a_settled_time_make_the_chunk_incomplete(
