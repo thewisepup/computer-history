@@ -10,19 +10,23 @@ from types import ModuleType
 
 import pytest
 
-HOOK = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "guard-live-data.py"
-LIVE = "~/Library/Application Support/ComputerHistory"
+HOOKS = Path(__file__).resolve().parents[2] / ".claude" / "hooks"
+HOOK = HOOKS / "guard-live-data.py"
+SHELL_COMMANDS = HOOKS / "shell_commands.py"
 
 
-def _load_hook() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("guard_live_data", HOOK)
+def _load(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
-guard = _load_hook()
+_load("shell_commands", SHELL_COMMANDS)
+guard = _load("guard_live_data", HOOK)
+LIVE = guard.LIVE_FOLDER_PATH
 
 
 def _run(stdin: str) -> subprocess.CompletedProcess[str]:
@@ -67,6 +71,19 @@ BARE_CLI = [
     "ls\ncomputer-history ingest",
     "~/.local/bin/computer-history ingest",
     "$HOME/.local/bin/computer-history ingest",
+    "/usr/bin/env computer-history status",
+    "/usr/bin/time -l computer-history ingest",
+    "bash -o pipefail -c 'computer-history ingest'",
+    "sh -e -o pipefail -c 'computer-history ingest'",
+    "x=$(cat <<EOF\nhi\nEOF)\ncomputer-history status",
+    "watch -n 5 computer-history status",
+    "watch 'computer-history status'",
+    "arch -arm64 computer-history ingest",
+    "stdbuf -oL computer-history ingest",
+    "script -q /dev/null computer-history ingest",
+    "$(which computer-history) status",
+    "`command -v computer-history` status",
+    "2>/dev/null computer-history status",
 ]
 
 ALLOWED = [
@@ -93,6 +110,9 @@ ALLOWED = [
     "git commit -m \"$(cat <<'EOF'\nSubject\n\ncomputer-history ingest\nEOF\n)\"",
     "cat <<-EOF\n\tcomputer-history ingest\n\tEOF\necho done",
     "bash scripts/check.sh computer-history",
+    'case "$1" in\n  status) echo a;;\n  computer-history) echo b;;\nesac',
+    "echo $(which computer-history)",
+    "ls 2>/dev/null computer-history",
     "",
 ]
 
@@ -132,7 +152,7 @@ def test_the_dev_folder_is_not_the_live_folder() -> None:
 def test_hook_blocks_a_bare_cli_call_with_exit_2() -> None:
     result = _run(_bash("cd /tmp && computer-history ingest"))
     assert result.returncode == 2
-    assert ".venv/bin/computer-history" in result.stderr
+    assert result.stderr.strip() == guard.BARE_CLI_MESSAGE
 
 
 def test_hook_allows_the_dev_cli() -> None:
@@ -144,7 +164,7 @@ def test_hook_blocks_a_write_into_the_live_folder() -> None:
     event = {"tool_name": "Write", "tool_input": {"file_path": f"{LIVE}/x.txt"}, "cwd": "/tmp"}
     result = _run(json.dumps(event))
     assert result.returncode == 2
-    assert "live data folder" in result.stderr
+    assert result.stderr.strip() == guard.LIVE_FOLDER_MESSAGE
 
 
 @pytest.mark.parametrize(
@@ -154,8 +174,9 @@ def test_hook_blocks_a_write_into_the_live_folder() -> None:
 def test_hook_blocks_input_it_cannot_check(stdin: str) -> None:
     result = _run(stdin)
     assert result.returncode == 2
-    assert "could not check this call" in result.stderr
+    assert result.stderr.startswith(guard.UNCHECKED_MESSAGE.split("(")[0])
 
 
-def test_hook_parses_as_python_3_9() -> None:
-    ast.parse(HOOK.read_text(encoding="utf-8"), feature_version=(3, 9))
+@pytest.mark.parametrize("path", [HOOK, SHELL_COMMANDS], ids=lambda p: p.name)
+def test_hook_parses_as_python_3_9(path: Path) -> None:
+    ast.parse(path.read_text(encoding="utf-8"), feature_version=(3, 9))
