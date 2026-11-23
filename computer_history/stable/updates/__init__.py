@@ -29,6 +29,7 @@ from computer_history.stable.updates.agent_waiting import (
     AGENT_ACTIVE_SECONDS,
     AGENT_WAIT_SECONDS,
     AgentCheck,
+    NewestSeen,
 )
 from computer_history.stable.updates.preparing import UpdateFailed
 from computer_history.stable.updates.rolling_back import RollbackFailed, rollback
@@ -40,6 +41,7 @@ __all__ = [
     "AGENT_WAIT_SECONDS",
     "FIRST_CYCLE_WAIT_SECONDS",
     "AgentCheck",
+    "NewestSeen",
     "RollbackFailed",
     "UpdateFailed",
     "UpdateReport",
