@@ -222,5 +222,5 @@ def test_an_operation_leaves_no_scratch_and_keeps_one_copy_at_a_time(tmp_path: P
     measure_operation(_scratch_operation(True, seen), dataset, tmp_path / "fresh")
     measure_operation(_scratch_operation(False, seen), dataset, tmp_path / "reused")
 
-    assert seen == [[], [], []]
+    assert seen == [[], []]
     assert list(tmp_path.iterdir()) == []

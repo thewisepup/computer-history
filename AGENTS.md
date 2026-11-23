@@ -78,10 +78,11 @@ default run leaves out, and the shared fakes and helpers sit beside it in
 `tests/`. A test file directly in `tests/` fails `tests/unit/test_standards.py`,
 since no job would run it. Bare `pytest` runs every folder but `perf/`. The
 pre-commit hook runs a gitleaks scan of the staged changes, ruff,
-`pytest tests/unit` and pyright, in about ten seconds.
+`pytest -n auto tests/unit` and pyright, in about ten seconds.
 CI runs ruff (`lint`), `tests/unit` and `tests/data` each in its own job
-(`tests/data` across one pytest-xdist worker per core: run it locally the same
-way with `-n auto --dist worksteal`, about 45s instead of over two minutes), the
+(both across one pytest-xdist worker per core: run them locally the same way
+with `-n auto`, plus `--dist worksteal` for `tests/data`, about 30s instead of
+over a minute), the
 POC suite (`poc`, `python -m unittest`) and gitleaks on every pull request and push to `main`,
 and `main` only merges pull requests whose required checks pass
 (`docs/agents/checks.md` lists them). `docs/agents/checks.md` says where a new check

@@ -17,8 +17,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[test,dev]'
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e '.[test,dev]'
       - run: python -m ruff check computer_history tests
       - run: python -m ruff format --check computer_history tests
 
@@ -30,9 +32,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[test,dev]'
-      - run: python -m pytest -q tests/unit
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e '.[test,dev]'
+      - run: python -m pytest -q -n auto tests/unit
+        env:
+          TMPDIR: /dev/shm
 
   data:
     runs-on: ubuntu-24.04
@@ -42,8 +48,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[test,dev]'
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e '.[test,dev]'
       - run: python -m pytest -q -n auto --dist worksteal tests/data
 
   poc:
@@ -53,8 +61,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[test,dev]'
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e '.[test,dev]'
       - run: python -m unittest -q
 
   typecheck:
@@ -64,8 +74,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e '.[test,dev]'
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e '.[test,dev]'
       - run: python -m pyright --pythonpath "$(command -v python)"
 
   perf:
@@ -79,8 +91,10 @@ jobs:
         id: python
         with:
           python-version: "3.12"
-          cache: pip
-      - run: python -m pip install -e .
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+      - run: uv pip install --system -e .
       - id: runner
         run: |
           echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
@@ -94,6 +108,8 @@ jobs:
         run: |
           set -o pipefail
           computer-history dev perf --counters perf-counters.json | tee perf-gate.txt
+        env:
+          TMPDIR: /dev/shm
       - if: failure()
         run: >-
           echo "::notice title=Performance gate::If the change of cost is intended, take this
@@ -156,10 +172,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
       - run: |
-          python -m venv .venv
-          .venv/bin/python -m pip install -e '.[test,dev]'
+          uv venv --python "$(command -v python)" .venv
+          uv pip install --python .venv/bin/python -e '.[test,dev]'
       - run: capture-agent/scripts/e2e.sh
 
   secrets:

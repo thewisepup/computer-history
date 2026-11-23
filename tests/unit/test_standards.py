@@ -352,6 +352,22 @@ def test_every_test_file_sits_in_a_test_folder() -> None:
     assert stray == [], f"move these into one of tests/{{{','.join(TEST_FOLDERS)}}}: {stray}"
 
 
+HTTP_SERVER = re.compile(r"\b(?:Threading)?HTTPServer\(")
+LOOPBACK_SERVER = REPO / "tests" / "aw_http.py"
+
+
+def test_test_http_servers_bind_without_a_reverse_dns_lookup() -> None:
+    bad = [
+        _rel(path)
+        for path in TESTS
+        if path != LOOPBACK_SERVER and HTTP_SERVER.search(path.read_text(encoding="utf-8"))
+    ]
+    assert bad == [], (
+        f"serve with LoopbackHTTPServer from tests/aw_http.py: HTTPServer looks up its"
+        f" address with getfqdn, which takes 35s on the macOS CI runner: {bad}"
+    )
+
+
 LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical"}
 LOGGING_PACKAGE = PACKAGE / "logs"
 UNCONFIGURED = [path for path in SOURCES if not path.is_relative_to(LOGGING_PACKAGE)]
