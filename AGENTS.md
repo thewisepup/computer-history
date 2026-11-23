@@ -29,7 +29,7 @@ summaries.
 - `fixtures/spool/records.jsonl` — example spool records, the contract the
   Swift encoder and the Python spool adapter are both tested against.
 - `history.py`, `history_mcp.py` — the frozen proof of concept serving REST +
-  MCP until M6 replaces it; `README.md` is its API reference.
+  MCP until M5 deletes it; `README.md` is its API reference.
 - `formal/` — a TLA+ model of the spool handoff (agent -> spool -> ingest).
   `formal/check.sh` is run by hand only, and agents never run it on their own.
   When a diff touches the handoff files listed in

@@ -158,6 +158,10 @@ _Avoid_: Raw event, log entry, record
 The cleaned, uniform reading of an observation's content. Can always be thrown away and rebuilt from observations.
 _Avoid_: Feature, normalized event
 
+**Scrubbed secret**:
+A secret (an API key, token or password) replaced by a typed marker such as `[secret:api-key]` in a signal. The observation keeps the original; only signals ever leave the Mac.
+_Avoid_: Redaction (the wider, later feature), masked
+
 **Ingest**:
 Moving settled activity from a source into stored observations and signals.
 _Avoid_: Import, sync
@@ -225,6 +229,10 @@ _Avoid_: Combine, dedupe
 **Work type**:
 The kind of labor being done, from a closed vocabulary only the user owns. The AI selects one and never invents one.
 _Avoid_: Category, activity type, task type
+
+**Work-type suggestion**:
+A candidate work type, with a description, that the AI offers from real activity. Nothing is stored until the user adds it.
+_Avoid_: Proposed work type (work types have no proposed status), seed list
 
 **Tag**:
 A free-form label the AI attaches to a block for search. Never counted in time totals.

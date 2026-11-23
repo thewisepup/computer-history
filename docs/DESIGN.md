@@ -320,9 +320,10 @@ AI freedom per axis is inversely proportional to the damage a wrong AI does:
 **Work-type cold start (no seed list):**
 
 - Day 0: capture starts; classification runs with `work_type_id = NULL`.
-- Day 1–2: user asks their assistant to propose ~8–12 types from real
-  activity; on approval the assistant calls `add_work_type`. No dedicated
-  endpoint.
+- Day 1–2: `work-types suggest` (later its MCP tool, so every client gets
+  the same answer) proposes ~8–12 types with descriptions from real
+  activity and stores nothing; each one the user approves is added through
+  `work-types add` / `add_work_type`.
 - First empty → non-empty transition: one-time **bootstrap re-label** of auto
   blocks (the only exception to deferred relabel-on-type-change).
 - The **nudge** in `get_recording_status` and reviews ("no work types yet…")
@@ -1120,3 +1121,16 @@ Context and rationale for decisions live here, not in the sections above.
   notification was really posted. Disk use is summed from records, not by
   measuring the folder, so only text crosses into Python; `status` reads them
   through a partial index to stay quick at months of records.
+- **2026-11-22 — M5 charting.** Secrets are scrubbed in the signals
+  projection, not in observations: detectors flag git SHAs, UUIDs and hashes,
+  and a wrong scrub in raw deletes real text forever, while in signals it is
+  fixed by a rule change and `rebuild-signals`, which also carries better
+  rules back over all history. "Fix it once for every exporter" is kept by a
+  test that only signals ever leave the Mac. Secrets in raw data on disk are
+  their own follow-up (#149). Work-type suggestions became a built-in command
+  rather than each user's assistant improvising them (reversing "no dedicated
+  endpoint"), so onboarding is the same in every client and testable; it still
+  stores nothing, so the AI never creates a type. The work-types CLI and the
+  bootstrap re-label moved into M5 so its blocks carry both labels before M6.
+  Evals (M5.5) and the REST API (M5.6) split out as their own milestones; the
+  POC is deleted in M5.
