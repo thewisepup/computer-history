@@ -10,7 +10,9 @@ from typing import NamedTuple
 
 from computer_history.store import page_counts, scanned_tables
 
-_LITERAL = re.compile(r"X'[0-9A-Fa-f]*'|'(?:[^']|'')*'|\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\b|\bNULL\b")
+_LITERAL = re.compile(
+    r"X'[0-9A-Fa-f]*'|'[^']*(?:''[^']*)*'|\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\b|\bNULL\b"
+)
 _PLACEHOLDER_LIST = re.compile(r"\?(?:\s*,\s*\?)+")
 _SPACE = re.compile(r"\s+")
 _READ = re.compile(r"(?:SELECT|WITH)\b", re.I)

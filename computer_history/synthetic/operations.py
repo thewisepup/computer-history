@@ -92,17 +92,16 @@ def started(
 
 
 def measure_operation(operation: Operation, dataset: GateDataset, folder: Path) -> Costs:
-    """Run the operation once uncounted, then once under the cost meter, in a scratch folder.
+    """Run the operation under the cost meter in a scratch folder, removed afterwards.
 
-    The folder is removed afterwards, and a fresh run's warm copy before the counted one starts.
+    A fresh operation is counted on its only run; any other runs once uncounted first, so the
+    counted run finds its connection warm.
     """
     try:
-        with started(operation, dataset, folder / "warm") as warm:
-            warm.action()
+        with started(operation, dataset, folder / "run") as session:
             if not operation.fresh:
-                return measure(warm.conn, warm.action)
-        with started(operation, dataset, folder / "measured") as measured:
-            return measure(measured.conn, measured.action)
+                session.action()
+            return measure(session.conn, session.action)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
@@ -168,7 +167,7 @@ OPERATIONS: Mapping[str, Operation] = MappingProxyType(
         operation.name: operation
         for operation in (
             Operation("ingest", _ingest, fresh=True, writes=True),
-            Operation("rebuild-signals", _rebuild_signals, writes=True),
+            Operation("rebuild-signals", _rebuild_signals, fresh=True, writes=True),
             Operation("status-reads", _status_reads, windowed=True),
             Operation("capture-health", _capture_health, windowed=True),
             Operation("screenshot-health", _screenshot_health, windowed=True),

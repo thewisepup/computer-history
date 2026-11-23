@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from computer_history.synthetic import measure
+from computer_history.synthetic import measure, statement_text
 
 ROWS = (
     ("aw-window", "1", "2026-01-05T09:00:00.000Z", "2026-01-05T09:05:00.000Z", '{"app": "Cursor"}'),
@@ -130,3 +130,22 @@ def test_pages_are_left_at_zero_when_not_asked_for(stored: sqlite3.Connection) -
     costs = measure(stored, lambda: _read_apps(stored), pages=False)
 
     assert (costs.pages, costs.table_pages, costs.statements) == (0, {}, 1)
+
+
+@pytest.mark.parametrize(
+    ("sql", "text"),
+    [
+        ("SELECT 'it''s', '', 'a''''b' FROM t", "SELECT ?, ... FROM t"),
+        (
+            "INSERT INTO t VALUES ('{\"a\": 1}', X'0aFF', 3.5e-2, NULL);",
+            "INSERT INTO t VALUES (?, ...)",
+        ),
+        (
+            "SELECT a1 FROM t WHERE b = 'x'\n  AND c = 'y''' LIMIT 10",
+            "SELECT a1 FROM t WHERE b = ? AND c = ? LIMIT ?",
+        ),
+        ("SELECT 'unclosed''", "SELECT ?'"),
+    ],
+)
+def test_a_statements_literals_become_placeholders_on_one_line(sql: str, text: str) -> None:
+    assert statement_text(sql) == text
