@@ -3,40 +3,22 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from computer_history.host import Host, HostError
-from computer_history.sources import (
-    AWApi,
-    IngestHealth,
-    SourceUnavailable,
-    Span,
-    active_spans,
-    capture_liveness,
-    read_health,
-    watcher_ends,
-)
+from computer_history.sources import AWApi
 from computer_history.watchdog.alerts import Notice, due_to_log, notices
-from computer_history.watchdog.checks import (
-    Check,
-    Finding,
-    Reason,
-    Verdict,
-    judge_activitywatch,
-    judge_backend,
-    judge_capture_agent,
-)
+from computer_history.watchdog.assessment import assess
 from computer_history.watchdog.reopening import Reopening, recent_reopens, reopen_if_closed
 from computer_history.watchdog.state import (
     WatchdogState,
     holding,
-    read_watchdog_state,
+    read_state_or_fresh,
+    running_since,
     write_watchdog_state,
 )
 from computer_history.watchdog.thresholds import Thresholds, read_thresholds
-
-WATCH_GAP = timedelta(minutes=3)
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +43,6 @@ class WatchdogRun:
     posted: tuple[Notice, ...]
     reopening: Reopening | None
     to_log: tuple[str, ...]
-
-
-def stopped(state: WatchdogState, now: datetime) -> bool:
-    """Whether the watchdog has gone longer without a run than its every-minute schedule allows."""
-    return state.ran_at is None or now - state.ran_at > WATCH_GAP
 
 
 def watch_once(
@@ -96,57 +73,26 @@ def _watch(
     thresholds = read_thresholds(paths.config)
     silent_after = thresholds.silent_after
     errors: list[str] = []
-    try:
-        previous = read_watchdog_state(paths.state) or WatchdogState()
-    except (OSError, ValueError) as exc:
-        errors.append(f"started afresh: {exc}")
-        previous = WatchdogState()
-    if stopped(previous, now) or previous.watching_since is None:
-        watched_since = now
-    else:
-        watched_since = previous.watching_since
-
-    try:
-        ends, aw_error = watcher_ends(client, client.get_buckets(), hostname=hostname), None
-    except SourceUnavailable as exc:
-        ends, aw_error = None, str(exc)
-    unreachable_since = None if ends is not None else previous.unreachable_since or now
-    reopening = None if ends is not None else reopen_if_closed(host, previous.reopened, now)
+    previous, unreadable = read_state_or_fresh(paths.state)
+    if unreadable is not None:
+        errors.append(f"started afresh: {unreadable}")
+    assessment = assess(
+        conn,
+        client,
+        spool=paths.spool,
+        health_file=paths.health,
+        silent_after=silent_after,
+        watched_since=running_since(previous, now) or now,
+        unreachable_since=previous.unreachable_since,
+        now=now,
+        hostname=hostname,
+    )
+    reopening = None
+    if assessment.unreachable_since is not None:
+        reopening = reopen_if_closed(host, previous.reopened, now)
     if reopening is not None and reopening.error is not None:
         errors.append(reopening.error)
-
-    reach = max(silent_after.values())
-    store_error = None
-    try:
-        active = active_spans(conn, client if ends is not None else None, now - reach, now)
-    except sqlite3.Error as exc:
-        active, store_error = [], f"database read failed: {exc}"
-    capture = _capture_agent(conn, paths, active, store_error, now, watched_since, thresholds)
-    health, backend = _health(paths.health)
-    if backend is None:
-        backend = judge_backend(
-            health,
-            now=now,
-            active=_since(active, now - silent_after[Check.BACKEND]),
-            watched_since=watched_since,
-            silent_after=silent_after[Check.BACKEND],
-        )
-        if store_error is not None and backend.verdict is not Verdict.OK:
-            backend = replace(
-                backend, verdict=Verdict.UNKNOWN, reason=Reason.UNREADABLE, detail=store_error
-            )
-    findings = [
-        capture,
-        judge_activitywatch(
-            ends,
-            unreachable_since=unreachable_since,
-            error=aw_error,
-            now=now,
-            watched_since=watched_since,
-            silent_after=silent_after[Check.ACTIVITYWATCH],
-        ),
-        backend,
-    ]
+    findings = assessment.findings
 
     notified, open_problems = dict(previous.notified), set(previous.open)
     posted: list[Notice] = []
@@ -177,12 +123,12 @@ def _watch(
     )
     state = WatchdogState(
         ran_at=now,
-        watching_since=watched_since,
-        findings=tuple(findings),
+        watching_since=assessment.watched_since,
+        findings=findings,
         notified=notified,
         open=frozenset(open_problems),
         reopened=recent_reopens(previous.reopened, now) if reopening is None else reopening.reopens,
-        unreachable_since=unreachable_since,
+        unreachable_since=assessment.unreachable_since,
         logged=logged,
         errors=tuple(errors),
     )
@@ -193,41 +139,3 @@ def _watch(
         state = replace(state, errors=(*state.errors, failed.removeprefix("error: ")))
         to_log = (*to_log, failed)
     return WatchdogRun(state, thresholds, tuple(posted), reopening, to_log)
-
-
-def _capture_agent(
-    conn: sqlite3.Connection | None,
-    paths: WatchPaths,
-    active: list[Span],
-    store_error: str | None,
-    now: datetime,
-    watched_since: datetime,
-    thresholds: Thresholds,
-) -> Finding:
-    silent_after = thresholds.silent_after[Check.CAPTURE_AGENT]
-    if store_error is None:
-        try:
-            found = capture_liveness(
-                conn,
-                paths.spool,
-                now=now,
-                active=_since(active, now - silent_after),
-                watched_since=watched_since,
-                alive_within=silent_after,
-            )
-            return judge_capture_agent(found, now=now, silent_after=silent_after)
-        except sqlite3.Error as exc:
-            store_error = f"database read failed: {exc}"
-    return Finding(Check.CAPTURE_AGENT, Verdict.UNKNOWN, Reason.UNREADABLE, detail=store_error)
-
-
-def _health(path: Path) -> tuple[IngestHealth | None, Finding | None]:
-    try:
-        return read_health(path), None
-    except (OSError, ValueError) as exc:
-        unreadable = Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.UNREADABLE, detail=str(exc))
-        return None, unreadable
-
-
-def _since(active: list[Span], start: datetime) -> list[Span]:
-    return [(max(a, start), b) for a, b in active if b > start]

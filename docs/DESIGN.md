@@ -93,9 +93,9 @@ computer_history/
                 # rebuild-signals), commit (the one write step, a pull, its
                 # signals and its progress, and failure classification, shared
                 # by poll and backfill), agent_health (the capture agent's
-                # health for status, its liveness for the watchdog, and the
-                # records update's agent check reads, judged against aw-afk
-                # and aw-window),
+                # health for status, its liveness for the watchdog and
+                # status, and the records update's agent check reads, judged
+                # against aw-afk and aw-window),
                 # then one adapter per source: activitywatch/, capture_spool/
                 # activitywatch/: client, discovery, pull, normalize (its
                 # projectors), adapter (ActivityWatch, the only way to pull,
@@ -156,10 +156,15 @@ computer_history/
                 # line per update, fallback, rollback and agent move)
   watchdog/     # run every minute from stable: thresholds (from the agent's
                 # config file), checks (the capture agent, ActivityWatch, the
-                # backend), alerts (which findings notify, how often, and which
-                # errors are due a log line), reopening (ActivityWatch, at most
-                # three times an hour), state (the file and lock beside the
-                # database), run (one run, under the lock)
+                # backend), assessment (what the checks judge from, gathered
+                # and judged, for a run and for status), alerts (which findings
+                # notify, how often, and which errors are due a log line),
+                # reopening (ActivityWatch, at most three times an hour), state
+                # (the file and lock beside the database), run (one run, under
+                # the lock)
+  status/       # report (everything `status` shows, as one value: the
+                # watchdog's assessment, the database's details, the backups
+                # and the stable install, read and never written)
   text.py       # text/URL normalization shared by every source
   logs/         # config (one setup per run: run id, stderr text, JSON lines),
                 # rotation (the JSON file, shared across processes), formatters,

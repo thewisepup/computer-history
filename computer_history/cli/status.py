@@ -20,7 +20,6 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.host import Host, HostError
 from computer_history.sources import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
@@ -30,15 +29,10 @@ from computer_history.sources import (
     AWClient,
     CaptureHealth,
     IngestHealth,
-    Liveness,
     ScreenshotHealth,
     ScreenshotTally,
-    SourceUnavailable,
-    capture_health,
     health_path,
-    read_health,
     resolve_spool_path,
-    screenshot_health,
 )
 from computer_history.stable import (
     DAILY_BACKUP,
@@ -47,84 +41,80 @@ from computer_history.stable import (
     AgentStatus,
     BackupInventory,
     UpdateAction,
-    agent_statuses,
-    backup_inventory,
-    installed_agent,
-    last_agent_fallback,
-    last_update_log_entry,
-    pointed,
     stable_layout,
     version_name,
+)
+from computer_history.status import (
+    CaptureGaps,
+    InstallDetails,
+    JudgedElsewhere,
+    SavedWatchdog,
+    StatusReport,
+    StoreDetails,
+    status_report,
 )
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
     Coverage,
+    OpenedStore,
     Profile,
     Purpose,
-    SourceCoverage,
     SourceSummary,
     StoreState,
     default_db_path,
     open_store,
-    source_summary,
-    status_reads,
 )
-from computer_history.watchdog import (
-    REOPEN_LIMIT,
-    read_watchdog_state,
-    recent_reopens,
-    stopped,
-    watchdog_state_path,
-)
+from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, Verdict, watchdog_state_path
 
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Print the database's sections, read beside the database it was given, then the stable
-    install's, which describe stable whichever database that is."""
+    """Print the given database's sections, then the stable install's."""
     db_path: Path = args.database
     spool_path = resolve_spool_path(args.spool_path, db_path, args.profile)
     now = formatting.utc_now()
-    code = _print_store(args, db_path, spool_path, now)
+    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
+    with open_store(db_path, Purpose.READ) as store:
+        report = status_report(
+            store,
+            client,
+            args.host,
+            layout=stable_layout(),
+            stable_state=watchdog_state_path(default_db_path(Profile.STABLE)),
+            spool=spool_path,
+            now=now,
+            hostname=gethostname(),
+            day_start=local_midnight(now),
+        )
+    code = _print_store(store, report, args.aw_url, spool_path, now)
     print()
-    _print_backups(backup_inventory(db_path), now)
+    _print_backups(report.backups, report.backups_overdue, now)
     print()
-    _print_install(args.profile, now)
+    _print_install(report.install, args.profile, now)
     print()
-    _print_launch_agents(args.host)
+    _print_launch_agents(report.agents, report.agents_error)
     print()
-    _print_watchdog(now)
+    _print_watchdog(report.watchdog, now)
     return code
 
 
-def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now: datetime) -> int:
-    day_start = local_midnight(now)
-    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
-    aw = ActivityWatch(client)
-    try:
-        streams = aw.streams()
-        aw_error = None
-    except SourceUnavailable as exc:
-        streams, aw_error = [], str(exc)
-
-    banner, ingest_line = _ingest(db_path, now)
+def _print_store(
+    store: OpenedStore, report: StatusReport, aw_url: str, spool_path: Path, now: datetime
+) -> int:
+    db_path = store.path
+    assessment = report.assessment
+    banner, ingest_line = _ingest(
+        assessment.health, assessment.health_error, assessment.backend, db_path, now
+    )
     if banner is not None:
         print(banner)
         print()
-    if aw_error is not None:
-        print(f"!! ActivityWatch is UNREACHABLE at {args.aw_url}: nothing new can be ingested.")
-        print(f"!! {aw_error}")
-        print()
-        aw_line = f"ActivityWatch: no  ({args.aw_url})"
-    else:
-        names = ", ".join(streams) or "none of window/AFK/web"
-        aw_line = f"ActivityWatch: yes ({args.aw_url}; sources: {names})"
+    aw_line = _activitywatch(assessment.activitywatch, assessment.aw_sources, aw_url)
     aw_line += "\n" + ingest_line
 
-    store = open_store(db_path, Purpose.READ)
     if store.state is StoreState.MISSING:
         print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
         print(aw_line)
@@ -137,74 +127,65 @@ def _print_store(args: argparse.Namespace, db_path: Path, spool_path: Path, now:
     if store.state is StoreState.OUTDATED:
         print(f"  note: {outdated_note(store)}. No store details until then.")
         return 0
-    if store.conn is None:
+    details = report.store
+    if details is None:
         return store_unavailable(store)
-    with store:
-        summaries = source_summary(store.conn)
-        health = capture_health(
-            store.conn,
-            summaries,
-            spool_path,
-            client if aw_error is None else None,
-            now=now,
-            window=STATUS_WINDOW,
-            hostname=gethostname(),
-            min_gap_seconds=MIN_GAP_SECONDS,
-            day_start=day_start,
-        )
-        skip = {SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE} if health.reported else {SCREENSHOT_SOURCE}
-        reads = status_reads(store.conn, summaries, skip=skip)
-        print()
-        _print_sources(summaries, now)
-        print()
-        _print_gaps(summaries, reads.coverage, health)
-        print()
-        _print_agent(health, spool_path, now)
-        print()
-        _print_screenshots(screenshot_health(store.conn, day_start=day_start, now=now), now)
-        print()
-        _print_counts(reads.counts)
+    print()
+    _print_sources(details.sources, now)
+    print()
+    _print_gaps(details)
+    print()
+    _print_agent(details.capture, assessment.capture_agent, spool_path, now)
+    print()
+    _print_screenshots(details.screenshots, now)
+    print()
+    _print_counts(details.counts)
     return 0
 
 
-def _print_install(profile: Profile, now: datetime) -> None:
-    layout = stable_layout()
+def _activitywatch(found: Finding, streams: tuple[str, ...] | None, aw_url: str) -> str:
+    if found.reason is Reason.UNREACHABLE:
+        print(f"!! ActivityWatch is UNREACHABLE at {aw_url}: nothing new can be ingested.")
+        print(f"!! {found.detail}")
+        print()
+        return f"ActivityWatch: no  ({aw_url})"
+    names = ", ".join(streams or []) or "none of window/AFK/web"
+    line = f"ActivityWatch: yes ({aw_url}; sources: {names})"
+    if found.verdict is Verdict.PROBLEM:
+        line += f"; {_verdict(found)}"
+    return line
+
+
+def _verdict(found: Finding) -> str:
+    detail = f" ({found.detail})" if found.detail else ""
+    return f"{found.verdict.value}: {found.reason.value}{detail}"
+
+
+def _print_install(install: InstallDetails, profile: Profile, now: datetime) -> None:
     print("Stable install:")
     print(f"  this run      {profile.value}")
-    for name, pointer in (("current", layout.current), ("previous", layout.previous)):
-        version = pointed(pointer)
+    for name, version in (("current", install.current), ("previous", install.previous)):
         if version is None:
             print(f"  {name:<13} none")
         else:
             print(f"  {name:<13} {version.name}, installed {ago(version.installed_at, now)}")
-    agent = installed_agent(layout)
+    agent = install.agent
     if agent is None:
         print("  agent         built from unknown")
     else:
         built = version_name(agent.built_from)
         print(f"  agent         built from {built}, installed {ago(agent.installed_at, now)}")
-    fallback = _last_agent_fallback(layout.update_log, now)
+    fallback = install.agent_fallback
     if fallback is not None:
-        print(f"                {fallback}")
-    print(f"  last update   {_last_update(layout.update_log, now)}")
+        moved = f"{fallback.from_version} -> {fallback.to_version}"
+        print(f"                fell back {moved}, {ago(fallback.at, now)}: {fallback.reason}")
+    print(f"  last update   {_last_update(install, now)}")
 
 
-def _last_agent_fallback(log: Path, now: datetime) -> str | None:
-    try:
-        entry = last_agent_fallback(log)
-    except (OSError, ValueError):
-        return None
-    if entry is None:
-        return None
-    moved = f"{entry.from_version} -> {entry.to_version}"
-    return f"fell back {moved}, {ago(entry.at, now)}: {entry.reason}"
-
-
-def _last_update(log: Path, now: datetime) -> str:
-    try:
-        entry = last_update_log_entry(log)
-    except (OSError, ValueError) as exc:
-        return f"unreadable update log: {exc}"
+def _last_update(install: InstallDetails, now: datetime) -> str:
+    if install.update_log_error is not None:
+        return f"unreadable update log: {install.update_log_error}"
+    entry = install.last_update
     if entry is None:
         return "none yet"
     moved = f"{entry.from_version} -> {entry.to_version}"
@@ -213,12 +194,10 @@ def _last_update(log: Path, now: datetime) -> str:
     return f"{entry.action.value} {moved}, {ago(entry.at, now)}"
 
 
-def _print_launch_agents(host: Host) -> None:
+def _print_launch_agents(statuses: list[AgentStatus] | None, error: str | None) -> None:
     print("Stable install's LaunchAgents:")
-    try:
-        statuses = agent_statuses(host, stable_layout())
-    except HostError as exc:
-        print(f"  cannot ask launchd: {exc}")
+    if statuses is None:
+        print(f"  cannot ask launchd: {error}")
         return
     width = max(len(status.name) for status in statuses)
     for status in statuses:
@@ -237,7 +216,7 @@ def _job(status: AgentStatus) -> str:
     return shown if status.installed else f"{shown}, plist deleted"
 
 
-def _print_backups(kept: BackupInventory, now: datetime) -> None:
+def _print_backups(kept: BackupInventory, overdue: bool, now: datetime) -> None:
     print("Backups:")
     if not kept.daily and not kept.pre_update:
         daily = kept.folder / DAILY_FOLDER_NAME
@@ -262,7 +241,7 @@ def _print_backups(kept: BackupInventory, now: datetime) -> None:
         )
     print("  integrity     each passed SQLite's integrity check before it was kept")
     print(f"  folder        {kept.folder}")
-    if kept.overdue(now):
+    if overdue:
         missing = f"since {kept.daily[-1].day}" if kept.daily else "taken yet"
         print(
             f"  warning: no daily backup {missing}; check that {DAILY_BACKUP.label} is loaded"
@@ -270,21 +249,19 @@ def _print_backups(kept: BackupInventory, now: datetime) -> None:
         )
 
 
-def _print_watchdog(now: datetime) -> None:
+def _print_watchdog(saved: SavedWatchdog, now: datetime) -> None:
     print("Stable watchdog:")
-    path = watchdog_state_path(default_db_path(Profile.STABLE))
-    try:
-        state = read_watchdog_state(path)
-    except (OSError, ValueError) as exc:
-        print(f"  last run       unreadable state: {exc}")
+    if saved.error is not None:
+        print(f"  last run       unreadable state: {saved.error}")
         return
-    if state is None or state.ran_at is None:
-        print(f"  last run       none yet (no state at {path})")
+    state = saved.state
+    if state.ran_at is None:
+        print(f"  last run       none yet (no state at {saved.path})")
         return
     print(f"  last run       {ago(state.ran_at, now)}")
     for line in finding_lines(state.findings, now, state.notified):
         print(line)
-    reopens = recent_reopens(state.reopened, now)
+    reopens = saved.reopens
     if reopens:
         print(
             f"  reopened       ActivityWatch {len(reopens)} time{'' if len(reopens) == 1 else 's'}"
@@ -292,27 +269,32 @@ def _print_watchdog(now: datetime) -> None:
         )
     for error in state.errors:
         print(f"  error: {error}")
-    if stopped(state, now):
+    if saved.stopped:
         print(
             f"  warning: the watchdog last ran {duration((now - state.ran_at).total_seconds())}"
             " ago; it runs every minute while its LaunchAgent is loaded"
         )
 
 
-def _ingest(db_path: Path, now: datetime) -> tuple[str | None, str]:
-    path = health_path(db_path)
-    try:
-        health = read_health(path)
-    except (OSError, ValueError) as exc:
-        return None, f"Ingest:        cannot read {path}: {exc}"
+def _ingest(
+    health: IngestHealth | None,
+    error: str | None,
+    backend: Finding,
+    db_path: Path,
+    now: datetime,
+) -> tuple[str | None, str]:
+    if error is not None:
+        return None, f"Ingest:        cannot read {health_path(db_path)}: {error}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
     line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"
-    if health.stale(now):
+    if backend.verdict is Verdict.PROBLEM:
         line += (
             f"; NOT REPORTING for {duration((now - health.cycle_at).total_seconds())}"
             " (is `ingest --watch` running?)"
         )
+    elif backend.verdict is Verdict.UNKNOWN:
+        line += f"; {_verdict(backend)}"
     if not health.consecutive_failures:
         return None, line
     last = "never" if health.last_success_at is None else ago(health.last_success_at, now)
@@ -353,50 +335,43 @@ def _freshness(summary: SourceSummary, now: datetime) -> str:
     return lag(now - summary.settled_until)
 
 
-def _print_gaps(
-    summaries: list[SourceSummary], coverage: list[SourceCoverage], health: CaptureHealth
-) -> None:
+def _print_gaps(details: StoreDetails) -> None:
     print(
         f"Coverage gaps (unobserved: nothing recorded) of {duration(MIN_GAP_SECONDS)} or"
         f" more, in the {STATUS_WINDOW.total_seconds() / 3600:g}h up to each source's"
         " settled-until time (or its latest observation, if it has none):"
     )
-    if not summaries:
+    if not details.sources:
         print("  nothing to check yet")
-    by_source = {source.summary.source: source for source in coverage}
-    for s in summaries:
-        if s.source == WINDOW_TEXT_SOURCE and health.reported:
-            _print_capture_gaps(health)
+    for checked in details.gaps:
+        if isinstance(checked, CaptureGaps):
+            _print_capture_gaps(checked)
             continue
-        if s.source == SCREENSHOT_SOURCE:
-            if health.coverage is not None:
-                print(
-                    f"  {s.source}: not checked"
-                    f" (coverage is judged from {WINDOW_TEXT_SOURCE} records)"
-                )
+        if isinstance(checked, JudgedElsewhere):
+            print(f"  {checked.source}: not checked (coverage is judged from {checked.by} records)")
             continue
-        checked = by_source[s.source]
+        source = checked.summary.source
         if checked.coverage is Coverage.NO_OBSERVATIONS:
-            print(f"  {s.source}: no observations yet")
+            print(f"  {source}: no observations yet")
             continue
         if checked.coverage is Coverage.UNSETTLED:
-            print(f"  {s.source}: no settled span to check yet")
+            print(f"  {source}: no settled span to check yet")
             continue
         assert checked.span is not None
         start, gaps = checked.span[0], checked.gaps
         if not gaps:
-            print(f"  {s.source}: no gaps since {when(start)}")
+            print(f"  {source}: no gaps since {when(start)}")
         for gap in gaps[:MAX_GAPS_SHOWN]:
             print(
-                f"  warning: no {s.source} coverage from {when(gap.start)} to"
+                f"  warning: no {source} coverage from {when(gap.start)} to"
                 f" {when(gap.end)} ({duration(gap.seconds)})"
             )
         if len(gaps) > MAX_GAPS_SHOWN:
-            print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {s.source} gaps")
+            print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {source} gaps")
 
 
-def _print_capture_gaps(health: CaptureHealth) -> None:
-    coverage = health.coverage
+def _print_capture_gaps(checked: CaptureGaps) -> None:
+    coverage = checked.coverage
     if coverage is None:
         print(f"  {WINDOW_TEXT_SOURCE}: no settled span to check yet")
         return
@@ -405,29 +380,26 @@ def _print_capture_gaps(health: CaptureHealth) -> None:
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
         " not paused or asleep):"
     )
-    warnings = sorted(
-        [(gap, "while you were active") for gap in coverage.unobserved]
-        + [(gap, "cannot be judged: no aw-afk data") for gap in coverage.unjudged]
-    )
-    if not warnings:
+    gaps = checked.gaps
+    if not gaps:
         print(f"  {WINDOW_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
-    for gap, why in warnings[:MAX_GAPS_SHOWN]:
+    for gap, cause in gaps[:MAX_GAPS_SHOWN]:
         print(
             f"  warning: no {WINDOW_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
-            f" ({duration(gap.seconds)}), {why}"
+            f" ({duration(gap.seconds)}), {cause.value}"
         )
-    if len(warnings) > MAX_GAPS_SHOWN:
-        print(f"  warning: ... and {len(warnings) - MAX_GAPS_SHOWN} more {WINDOW_TEXT_SOURCE} gaps")
+    if len(gaps) > MAX_GAPS_SHOWN:
+        print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {WINDOW_TEXT_SOURCE} gaps")
 
 
-def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None:
+def _print_agent(health: CaptureHealth, found: Finding, spool_path: Path, now: datetime) -> None:
     if not health.reported:
         print(f"Capture agent: has not reported yet (no {WINDOW_TEXT_SOURCE} records stored)")
         print(f"  spool         {_spool(health, spool_path, now)}")
         return
     print("Capture agent:")
     print(f"  last capture  {ago(health.last_capture, now)}")
-    print(f"  alive         {_alive(health, now)}")
+    print(f"  alive         {_alive(found, now)}")
     print(f"  spool         {_spool(health, spool_path, now)}")
     t = health.today
     print(
@@ -461,15 +433,24 @@ def _print_agreement(health: CaptureHealth) -> None:
         print(f"                {n:,} x {app_name(captured)} -> {app_name(seen)}")
 
 
-def _alive(health: CaptureHealth, now: datetime) -> str:
-    last = ago(health.last_record, now)
-    if health.alive is Liveness.ALIVE:
-        return f"yes (last record {last})"
-    if health.alive is Liveness.SILENT:
-        return f"NO: no record since {last}, although aw-afk shows you active since then"
-    if health.alive is Liveness.PAUSED:
-        return f"paused, so no records are expected (last record {last})"
-    return f"cannot tell: no record since {last}, and aw-afk does not show you active since then"
+def _alive(found: Finding, now: datetime) -> str:
+    last = ago(found.last_seen, now)
+    match found.reason:
+        case Reason.RECORDING:
+            return f"yes (last record {last})"
+        case Reason.SILENT:
+            return f"NO: no record since {last}, although aw-afk shows you active since then"
+        case Reason.PAUSED:
+            return f"paused, so no records are expected (last record {last})"
+        case Reason.AFK:
+            return (
+                f"cannot tell: no record since {last}, and aw-afk does not show you active since"
+                " then"
+            )
+        case Reason.RESUMED:
+            return f"cannot tell: no record since {last}, watched only since the watchdog resumed"
+        case _:
+            return _verdict(found)
 
 
 def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:

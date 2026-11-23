@@ -5,7 +5,7 @@ import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,7 @@ from computer_history.watchdog.checks import Check, Finding, Reason, Verdict
 
 WATCHDOG_STATE_NAME = "watchdog.json"
 WATCHDOG_LOCK_NAME = ".watchdog.lock"
+WATCH_GAP = timedelta(minutes=3)
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,24 @@ class WatchdogState:
     unreachable_since: datetime | None = None
     logged: dict[str, datetime] = field(default_factory=lambda: {})
     errors: tuple[str, ...] = ()
+
+
+def stopped(state: WatchdogState, now: datetime) -> bool:
+    """Whether the watchdog has gone longer without a run than its every-minute schedule allows."""
+    return state.ran_at is None or now - state.ran_at > WATCH_GAP
+
+
+def running_since(state: WatchdogState, now: datetime) -> datetime | None:
+    """When a still-running watchdog began watching, or None when it has stopped."""
+    return None if stopped(state, now) else state.watching_since
+
+
+def read_state_or_fresh(path: Path) -> tuple[WatchdogState, str | None]:
+    """Read the saved state, or a fresh one with why when the file is unreadable."""
+    try:
+        return read_watchdog_state(path) or WatchdogState(), None
+    except (OSError, ValueError) as exc:
+        return WatchdogState(), str(exc)
 
 
 def watchdog_state_path(db_path: Path) -> Path:

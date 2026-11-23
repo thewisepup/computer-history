@@ -127,7 +127,7 @@ The stable install's every-minute check that the capture agent, ActivityWatch an
 _Avoid_: Monitor, health check, supervisor
 
 **Finding**:
-What one watchdog run concluded about one subject: its verdict, the reason, and when the subject was last seen working.
+What one watchdog run, or `status` by the same rules, concluded about one subject: its verdict, the reason, and when the subject was last seen working.
 _Avoid_: Result, alert, status
 
 **Verdict**:

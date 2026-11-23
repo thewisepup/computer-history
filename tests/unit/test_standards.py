@@ -130,6 +130,7 @@ FORBIDDEN_IMPORTS = {
         "computer_history.synthetic",
         "computer_history.stable",
         "computer_history.watchdog",
+        "computer_history.status",
         "computer_history.cli",
     ),
     "store": (
@@ -137,22 +138,36 @@ FORBIDDEN_IMPORTS = {
         "computer_history.synthetic",
         "computer_history.stable",
         "computer_history.watchdog",
+        "computer_history.status",
         "computer_history.cli",
     ),
     "sources": (
         "computer_history.synthetic",
         "computer_history.stable",
         "computer_history.watchdog",
+        "computer_history.status",
         "computer_history.cli",
     ),
-    "synthetic": ("computer_history.stable", "computer_history.watchdog", "computer_history.cli"),
+    "synthetic": (
+        "computer_history.stable",
+        "computer_history.watchdog",
+        "computer_history.status",
+        "computer_history.cli",
+    ),
     "stable": (
         "computer_history.sources",
         "computer_history.synthetic",
         "computer_history.watchdog",
+        "computer_history.status",
         "computer_history.cli",
     ),
-    "watchdog": ("computer_history.synthetic", "computer_history.stable", "computer_history.cli"),
+    "watchdog": (
+        "computer_history.synthetic",
+        "computer_history.stable",
+        "computer_history.status",
+        "computer_history.cli",
+    ),
+    "status": ("computer_history.synthetic", "computer_history.cli"),
 }
 OPENERS = (
     "AWClient",

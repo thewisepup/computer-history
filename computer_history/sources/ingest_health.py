@@ -16,7 +16,6 @@ from computer_history.store import replace_atomically
 
 __all__ = [
     "ALERT_AFTER_FAILURES",
-    "HEALTH_STALE_AFTER",
     "FailureStreak",
     "IngestHealth",
     "Recovery",
@@ -28,7 +27,6 @@ __all__ = [
 
 HEALTH_FILE_NAME = "ingest-health.json"
 ALERT_AFTER_FAILURES = 5
-HEALTH_STALE_AFTER = timedelta(minutes=5)
 
 log = logging.getLogger(__name__)
 
@@ -52,10 +50,6 @@ class IngestHealth:
     @property
     def ok(self) -> bool:
         return self.consecutive_failures == 0
-
-    def stale(self, now: datetime) -> bool:
-        """No cycle has been recorded for longer than a watching loop ever waits."""
-        return now - self.cycle_at > HEALTH_STALE_AFTER
 
 
 def health_path(db_path: Path) -> Path:
