@@ -25,7 +25,7 @@ class NewestScreenshot(NamedTuple):
 
 
 def screenshot_totals(
-    conn: sqlite3.Connection, *, since: datetime | str | None = None
+    conn: sqlite3.Connection, *, since: datetime | None = None
 ) -> dict[str, StatusTotal]:
     """The stored screenshot records, from a time on if given, counted by status.
 
@@ -56,7 +56,7 @@ def newest_screenshot(conn: sqlite3.Connection, status: str) -> NewestScreenshot
 
 
 def first_screenshot_at(
-    conn: sqlite3.Connection, status: str, *, after: datetime | str | None = None
+    conn: sqlite3.Connection, status: str, *, after: datetime | None = None
 ) -> datetime | None:
     """The time of the oldest stored screenshot record of a status, later than a time if given."""
     later, params = ("", ()) if after is None else (" AND started_at > ?", (utc_iso(after),))

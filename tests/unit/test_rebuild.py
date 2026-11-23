@@ -16,13 +16,12 @@ from projectors import AW
 
 from computer_history import cli
 from computer_history.logs import PROGRESS_RECORDS
-from computer_history.sources import (
+from computer_history.sources import poll, projection
+from computer_history.sources.activitywatch import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
     ActivityWatch,
-    poll,
-    projection,
 )
 from computer_history.store import (
     RebuildAborted,

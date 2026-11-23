@@ -20,18 +20,20 @@ from computer_history.cli import app as cli_app
 from computer_history.cli import backfill as cli_backfill
 from computer_history.logs import PROGRESS_RECORDS
 from computer_history.sources import (
-    AFK_SOURCE,
     BACKFILL_CHUNK,
-    RESUME_OVERLAP_SECONDS,
-    WINDOW_SOURCE,
-    ActivityWatch,
-    AWError,
     BackfillProgress,
     BackfillResult,
     FailureKind,
     plan_backfill,
     poll,
     run_backfill,
+)
+from computer_history.sources.activitywatch import (
+    AFK_SOURCE,
+    RESUME_OVERLAP_SECONDS,
+    WINDOW_SOURCE,
+    ActivityWatch,
+    AWError,
 )
 from computer_history.store import (
     ProgressUpdate,

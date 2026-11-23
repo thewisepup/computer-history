@@ -9,12 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from computer_history.sources import (
-    STABILITY_MARGIN_SECONDS,
-    plan_all_backfills,
-    poll,
-    run_backfill,
-)
+from computer_history.sources import plan_all_backfills, poll, run_backfill
+from computer_history.sources.activitywatch import STABILITY_MARGIN_SECONDS
 from computer_history.store import DATABASE_NAME, connect, content_digest, sidecars
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer
 from computer_history.synthetic.generate import DatasetInputs, generate_timeline

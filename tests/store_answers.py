@@ -8,21 +8,23 @@ from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import (
+from computer_history.sources.activitywatch import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,
-    WINDOW_TEXT_SOURCE,
-    capture_coverage,
-    extract_domain,
     stored_afk_spans,
     stored_app_spans,
+)
+from computer_history.sources.capture_spool import (
+    WINDOW_TEXT_SOURCE,
+    capture_coverage,
     stored_records,
 )
 from computer_history.store import Gap, connect, find_gaps, payload_values
 from computer_history.synthetic import DATABASE_NAME, MANIFEST_NAME, Dataset, Manifest, Totals
 from computer_history.synthetic.activitywatch import HOST
 from computer_history.synthetic.spool import RENDERED_SPOOL_FOLDER
+from computer_history.text import extract_domain
 
 DATASET_FILES = sorted([DATABASE_NAME, MANIFEST_NAME, RENDERED_SPOOL_FOLDER])
 

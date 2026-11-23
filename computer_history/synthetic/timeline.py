@@ -10,7 +10,8 @@ from enum import Enum
 from itertools import groupby
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE, WINDOW_TEXT_SOURCE
+from computer_history.sources.activitywatch import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources.capture_spool import WINDOW_TEXT_SOURCE
 
 PRECISION = timedelta(milliseconds=1)
 

@@ -13,10 +13,10 @@ from computer_history.sources import (
     AWClient,
     DatabaseRead,
     StoredAndSpooled,
-    default_spool_path,
     health_path,
     read_health,
 )
+from computer_history.sources.capture_spool import default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
     RELEASE_GATE,

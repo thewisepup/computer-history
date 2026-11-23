@@ -9,13 +9,8 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from computer_history.sources import (
-    SCREENSHOT_SOURCE,
-    WINDOW_TEXT_SOURCE,
-    CaptureSpool,
-    commit_pull,
-    projector_for,
-)
+from computer_history.sources import CaptureSpool, commit_pull, projector_for
+from computer_history.sources.capture_spool import SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE
 from computer_history.store import connect
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"

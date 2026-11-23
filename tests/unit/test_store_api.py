@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from projectors import payload_fields
@@ -346,8 +346,11 @@ def test_gaps_min_length_filter(conn: sqlite3.Connection) -> None:
     assert gaps(conn, 0, 60, min_gap_seconds=120) == [(50, 60)]
 
 
-def test_gaps_accept_string_bounds_and_reject_empty_range(conn: sqlite3.Connection) -> None:
-    result = find_gaps(conn, "aw-window", "2026-11-17T11:00:00+01:00", "2026-11-17T10:30:00Z")
+def test_gaps_accept_bounds_in_any_time_zone_and_reject_empty_range(
+    conn: sqlite3.Connection,
+) -> None:
+    paris = timezone(timedelta(hours=1))
+    result = find_gaps(conn, "aw-window", datetime(2026, 11, 17, 11, 0, tzinfo=paris), at(30))
     assert result == [Gap(at(0), at(30))]
     assert result[0].seconds == 1800
     with pytest.raises(ValueError, match="empty"):

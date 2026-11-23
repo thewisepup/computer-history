@@ -10,7 +10,7 @@ from itertools import groupby
 from pathlib import Path
 from typing import Any
 
-from computer_history.sources import (
+from computer_history.sources.activitywatch import (
     AFK_SOURCE,
     WEB_SOURCE,
     WINDOW_SOURCE,

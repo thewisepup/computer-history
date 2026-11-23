@@ -9,12 +9,8 @@ from socket import gethostname
 from computer_history.cli import formatting
 from computer_history.cli.formatting import duration, finding_lines
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.sources import (
-    AWClient,
-    agent_config_path,
-    health_path,
-    resolve_spool_path,
-)
+from computer_history.sources import AWClient, health_path, resolve_spool_path
+from computer_history.sources.capture_spool import agent_config_path
 from computer_history.store import Purpose, StoreState, open_store
 from computer_history.watchdog import (
     REOPEN_LIMIT,
