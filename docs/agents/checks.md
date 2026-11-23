@@ -25,15 +25,29 @@ certificate, so it stays a step you run by hand.
 merge. On every push, its `find` job lists the open pull requests based on the
 pushed branch that now conflict. It takes only Brandon's own pull requests,
 skips forks and the `no-autofix` label, and starts one dispatched run per
-pull request. That run's `fix` job has
-Claude Code merge the base in: Sonnet at medium effort, then Opus at high
-effort if the first try fails. It pushes a merge commit only after ruff and
-`tests/unit` pass, and never force-pushes. Then it comments on the pull
-request. A real disagreement gets a "needs you" comment, no push, and the
-`no-autofix` label, so later pushes skip it.
+pull request. That run has two jobs:
+
+- `fix` has Claude Code resolve the conflicts: Sonnet at medium effort, then
+  Opus at high effort if the first try fails. Claude gets file tools,
+  read-only git commands and `ruff`, and nothing that runs the repository's
+  code, pushes or reaches the network. Its job token is read-only and the
+  action strips secrets from its commands' environment. A plain step then
+  runs ruff and `tests/unit`, commits the merge and bundles it.
+- `land` runs no AI. On a fresh runner it checks the bundle again: a merge
+  of the branch's current tip and the base, no conflict markers, no secrets,
+  and no new content under `.github/`, `.githooks/` or `.claude/`. Then it
+  turns off auto-merge, pushes with the Claude GitHub App's token (a plain
+  push, never forced, so CI starts) and comments that the merge needs your
+  review before you merge.
+
+A real disagreement, or any failed check, gets a "needs you" comment, no
+push, and the `no-autofix` label, so later pushes skip it. Claude's notes in
+that comment are redacted, cut to 40 lines and put in a code block.
 
 - It runs on Brandon's subscription (the `CLAUDE_CODE_OAUTH_TOKEN` secret)
   through the Claude GitHub App.
+- Every action in the three workflows is pinned to a commit SHA, with its
+  tag in a trailing comment.
 - The Claude action only runs the copy of the workflow on `main`, so a change
   to this file can only be tested after it merges.
 - `gh workflow run fix-conflicts.yml -f pr=<number>` runs it by hand, label or
