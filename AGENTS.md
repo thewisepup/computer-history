@@ -72,13 +72,14 @@ first use (about a minute), since the main checkout's venv imports the main
 checkout's source. `docs/agents/checks.md` lists what the pre-commit hook and
 each CI job run, which checks `main` requires, and where a new check belongs.
 
-Tests sit in three folders, and the folder decides where a test runs:
+Tests sit in three folders, and the folder decides which stage runs a test
+(`docs/agents/checks.md` has the stages):
 
-| Folder | Holds | Runs in |
+| Folder | Holds | Run locally |
 |---|---|---|
-| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | the pre-commit hook and CI's `unit` job |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db` and `dev perf` commands | CI's `data` job; locally `-n 4 --dist worksteal` |
-| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` and CI's `macos-capture-agent-e2e` job |
+| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | `pytest -n 4 tests/unit` |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db` and `dev perf` commands | `pytest -n 4 --dist worksteal tests/data` |
+| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` |
 
 Bare `pytest` runs every folder; shared fakes and helpers sit in `tests/`.
 Hypothesis tests run derandomized; to hunt for new failures, run them with
@@ -96,6 +97,11 @@ at once freezes the machine), and run `tests/data/`, `dev perf`
 and `scripts/mutate.sh` only when the task needs them, leaving the rest to CI.
 Never run TLC (`formal/check.sh`) unless Brandon asks for that run. CI keeps
 `-n auto` on its own runners.
+`setproctitle` stays out of every venv (`tests/unit/test_no_setproctitle.py`
+fails while it is installed): pytest-xdist uses it to rename each worker
+before every test, and on macOS each rename goes through LaunchServices,
+which stalls every open app. mutmut, which pulls it in, is the `mutation`
+extra that `scripts/mutate.sh` installs and then strips it from.
 
 After changing the capture agent, the spool contract or the end-to-end tests,
 run (see the agent's README; CI runs both on macOS for pull requests that can
@@ -138,7 +144,7 @@ performance gate on them. Its `__init__.py` maps the modules;
 
 ```bash
 computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
-computer-history dev perf                      # the gate against the baseline, counted on CI's SQLite
+computer-history dev perf                      # the gate against the committed baseline
 computer-history dev perf --update-baselines   # a deliberate change of cost
 ```
 
@@ -158,9 +164,8 @@ What to test and what the gate does, by change:
 | Schema change | Facts for new tables, or a reasoned exemption | Operations for new reads | Every cached dataset rebuilds; plans, pages and costs rechecked |
 | Refactor | Nothing new | Nothing new | Must pass unchanged |
 
-The baseline is counted on CI's SQLite, not the Mac's: there `--update-baselines`
-keeps the baseline's VM steps, so when CI's `perf` job then fails on VM steps
-alone, copy in its counters (the CLI README's `dev perf` section has the commands).
+Why a Mac's update differs from CI's, and what to do when CI fails on VM steps
+alone: the CLI README's `dev perf` section.
 
 ## Agent skills
 

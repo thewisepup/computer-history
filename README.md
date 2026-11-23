@@ -258,16 +258,5 @@ authentication and explicit trusted-host configuration.
 
 ## Tests and checks
 
-```sh
-.venv/bin/python -m pytest -n 4 tests/unit              # unit tests, as the pre-commit hook runs them
-.venv/bin/python -m pytest -n 4 --dist worksteal tests/data     # synthetic datasets and the dev commands
-.venv/bin/computer-history dev perf                    # the performance gate
-.venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
-.venv/bin/python -m ruff format --check computer_history tests  # formatting; the POC files are excluded
-.venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)
-.venv/bin/python -m pyright --pythonpath .venv/bin/python  # type-check: computer_history strict, tests standard
-```
-
-`docs/agents/checks.md` lists every check and where it runs: the pre-commit
-and commit-msg hooks, each CI job on pull requests and pushes to `main`, and each nightly job.
-`main` only merges pull requests whose required checks pass.
+`AGENTS.md` ("Setup and checks") says what must pass before a commit, and
+`docs/agents/checks.md` lists every check and where it runs.

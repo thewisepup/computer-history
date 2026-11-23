@@ -66,121 +66,12 @@ automation suggestions.
 - One FastAPI process: API + MCP + UI + scheduler. Capture agent is a
   separate login-launched process; ActivityWatch is a separate app.
 - URL layout: REST under `/api/*`, MCP at `/mcp`, React UI at `/`.
-- **[proposed]** Package layout:
-
-```
-computer_history/
-  store/        # SQLite, one module per concern: db (connections + migrations),
-                # opening (open for a purpose, report the database's state),
-                # observations (ingest writes, projecting each new row),
-                # signals (the signal row shape and writes, rebuild),
-                # progress (per-source ingest progress), status (read
-                # queries), screenshots (the screenshot records' status
-                # queries, read through their own index), contents (a digest
-                # of what the database holds), backup (a checked copy taken
-                # with SQLite's online backup while others write, and a copy
-                # put back with the database it replaces set aside),
-                # introspection (query plans, pages and the SQLite build, for
-                # the cost meter), timefmt, paths, spool_hold (the file that
-                # keeps ingest from deleting spool files during an update)
-  sources/      # contract (the adapter Protocols), runner (poll + watch),
-                # ingest_health (the watch loop's last cycle and failure
-                # streak, rewritten beside the database after each cycle, and
-                # the streak's alerts), cycle_report (each ingest cycle's one
-                # log record),
-                # backfill (plan + run in chunks), projection (routes each
-                # observation to its adapter's projector, for ingest and
-                # rebuild-signals), commit (the one write step, a pull, its
-                # signals and its progress, and failure classification, shared
-                # by poll and backfill), agent_health (the capture agent's
-                # health for status, its liveness for the watchdog and
-                # status, and the records update's agent check reads, judged
-                # against aw-afk and aw-window),
-                # then one adapter per source: activitywatch/, capture_spool/
-                # activitywatch/: client, discovery, pull, normalize (its
-                # projectors), adapter (ActivityWatch, the only way to pull,
-                # owning its position encoding), history (where a stream's
-                # history begins, for backfill), afk (stored and newest AFK
-                # spans, for status), frontmost (stored and newest aw-window
-                # app spans, for status), watchers (where this host's AFK and
-                # window buckets last advanced, for the watchdog)
-                # capture_spool/: paths (where the spool and the agent's
-                # config file are), spool (finished files:
-                # list, read, remove, set aside), record (one line checked
-                # against format v1, and the kinds each stream takes),
-                # normalize (its projectors), adapter (CaptureSpool:
-                # two streams, one file per pull, removed once both stored
-                # it); for status, backlog (what
-                # waits in the spool), window_text (the stored window text
-                # records' kinds and apps, the day's counts), coverage (unobserved stretches,
-                # liveness), agreement (each capture's app against aw-window)
-                # and screenshots (the stored screenshot records' statuses,
-                # kept image bytes and missing permission)
-  synthetic/    # synthetic datasets built through the real ingest path:
-                # timeline (+ spans), seeds, persona (+ developer,
-                # content_creator; heavier), days (a persona's ordinary
-                # days), scenarios, generate (inputs, tiers and heavy ->
-                # timeline),
-                # renderer (the contract), activitywatch (+ afk, aw_api: the
-                # buckets served in process), spool (+ captures: when the
-                # agent captures; screenshots: kept or a duplicate), build, manifest (+ gaps: unobserved
-                # stretches and explained gaps), cache (built datasets per
-                # user, keyed by inputs and code), devdb (a cached dataset
-                # copied out, never into a live folder), operations (what
-                # the product does, on a cached dataset), meter (the cost
-                # meter), gate (costs against the committed baseline,
-                # + baseline: counted on CI's SQLite)
-  host/         # the host adapter, the one seam to macOS and the network:
-                # contract (Host, its answers, HostError), live (LiveHost:
-                # launchctl, GitHub's check runs and source trees, building with
-                # uv, the capture agent's toolchain check, build and install,
-                # pgrep and open for ActivityWatch, osascript for every notification,
-                # under one title and off when COMPUTER_HISTORY_NOTIFY=0);
-                # tests use a fake that records calls and plays back answers
-  stable/       # the stable install: gate (the release gate and the walk to
-                # the newest main commit passing it), versions (build a
-                # commit into a marked version folder, noting what its backend
-                # reads; current and previous pointers), capture_agent (the
-                # installed agent's record, and the agent app a version folder
-                # carries, built or copied), launch_agents (plists, loading, launchd's state
-                # for status: the backend, the daily backup, the watchdog and
-                # ActivityWatch at login), stopped_agents (the agents update and
-                # restore stop for a step, started again after it), layout
-                # (where it all lives), install
-                # (install and uninstall), install_lock (the one lock on the
-                # live folder), backups (the daily and pre-update
-                # backups beside the database, and restore), updates/ (update
-                # by stage: updating, preparing, waiting, falling_back,
-                # swapping, agent_waiting; and rolling_back), update_log (one
-                # line per update, fallback, rollback and agent move)
-  watchdog/     # run every minute from stable: thresholds (from the agent's
-                # config file), checks (the capture agent, ActivityWatch, the
-                # backend), assessment (what the checks judge from, gathered
-                # and judged, for a run and for status), alerts (which findings
-                # notify, how often, and which errors are due a log line),
-                # reopening (ActivityWatch, at most three times an hour), state
-                # (the file and lock beside the database), run (one run, under
-                # the lock)
-  status/       # report (everything `status` shows, as one value: the
-                # watchdog's assessment, the database's details, the backups
-                # and the stable install, read and never written)
-  text.py       # text/URL normalization shared by every source
-  logs/         # config (one setup per run: run id, stderr text, JSON lines),
-                # rotation (the JSON file, shared across processes), formatters,
-                # query (read back for `logs`), units (outcomes, progress cadence)
-  classify/     # windowing, prompts, OpenRouter client, scheduler jobs
-  review/       # bottleneck ranking, weekly review, suggestions
-  api/          # FastAPI routes under /api
-  mcp/          # MCP tools (read + write)
-  cli/          # one module per command, dispatched by app.py
-                # (serve, classify-now, review-now arrive with later milestones)
-ui/             # React app, built into static files FastAPI serves
-capture-agent/  # Swift CLI (separate build)
-fixtures/       # files both programs read: spool/records.jsonl is the spool contract
-scripts/        # venv-python (interpreter for hooks and e2e.sh), prune-worktrees,
-                # mutate.sh and mutation/ (mutmut run, kill matrix, keep/prune report)
-docs/
-```
+- **Package layout:** each package under `computer_history/` opens its
+  `__init__.py` with a flow diagram, the one map of its modules.
+  **[proposed]** for later milestones: `classify/` (windowing, prompts, the
+  OpenRouter client, scheduler jobs), `review/` (bottleneck ranking, weekly
+  review, suggestions), `api/` (FastAPI routes under `/api`), `mcp/` (MCP
+  tools) and `ui/` (the React app FastAPI serves).
 
 ## 3. Data model (SQLite)
 
@@ -756,12 +647,9 @@ in the live folder and starts the backend at login from it:
   run; a second one exits 1 at once, saying another is running.
 
 - **Release gate:** `stable/gate.py`'s `RELEASE_GATE` names the checks a
-  commit must pass on its push run to `main`: `lint`, `unit`, `data`, `poc`,
-  `secrets`, `macos-capture-agent-tests`, `macos-capture-agent-e2e` (the
-  checks `main` requires on pull requests except `typecheck`,
-  `docs/agents/checks.md`). Failed,
-  missing, still-running and cancelled all disqualify; `typecheck` and `perf`
-  are not in the gate. The lookup walks the newest 20 `main` commits through
+  commit must pass on its push run to `main` (`docs/agents/checks.md` says
+  where each runs). Failed, missing, still-running and cancelled all
+  disqualify. The lookup walks the newest 20 `main` commits through
   GitHub's public API, stopping at the first that passes; no token is needed,
   and `$GITHUB_TOKEN` is sent when set.
 - **Agent install guard:** the capture agent's `scripts/install.sh` first runs
@@ -1000,6 +888,63 @@ beside the database, which `status` shows under "Stable watchdog".
   denied permission hide them while `osascript` still exits 0, so a post
   that "succeeds" can go unseen; `status` shows the same findings either way.
 
+### 8.7 Status
+
+`computer-history status` reads and never writes: it creates, migrates and
+notifies nothing, and leaves the spool and the watchdog's state alone.
+Everything down to "Backups" is the given database's own, read beside it;
+the three "Stable" sections describe the stable install whichever profile
+runs.
+
+- **Ingest:** read from `ingest-health.json` beside the database, before the
+  database itself; while cycles fail, a banner opens the report. The line
+  takes the watchdog's backend verdict by its threshold: a last cycle older
+  than it while aw-afk shows you active adds `NOT REPORTING for <time>`,
+  while you were away `cannot tell: silent, but aw-afk does not show you
+  active`. While a watchdog runs beside the database, silence counts from
+  when it began watching, so just after it resumes the line can read `cannot
+  tell: ... watched only since the watchdog resumed`; with none run in the
+  last 3 minutes (as in dev) the whole recent past counts as watched. No file
+  reads `no ingest --watch has reported yet`.
+- **ActivityWatch:** the watchdog's verdict too: `no` and the banner while
+  it is unreachable, and `PROBLEM: not advancing (<sources>)` when this
+  host's AFK or window source has not advanced past its threshold.
+- **Coverage gaps** are unobserved time, never idle, checked up to each
+  source's settled-until time. `ax-text` captures are instants, so its gaps
+  have their own rule: a record of any kind explains the minute on either
+  side of it (twice the agent's 30s heartbeat); a pause explains the time
+  until the next record; a sleep explains the time until its `woke`, or, if
+  that was lost, until the next record or the first aw-afk active stretch,
+  whichever comes first; a pause or sleep from before the range counts too.
+  A stretch of 5 minutes or more that nothing explains is unobserved where
+  aw-afk shows you active, and *cannot be judged* where aw-afk has no data.
+  The range ends at the last stored record while the spool still holds
+  records, otherwise now. `screenshot` coverage is not checked: it is judged
+  from `ax-text`.
+- **Capture agent:** `last capture` is the newest capture, stored or in the
+  spool (excluded, pause and sleep records are not captures). `alive` is the
+  watchdog's capture-agent verdict by its threshold: `yes` when the newest
+  record, stored or in the spool, is within it; `NO` when aw-afk shows you
+  active for over a minute since it; `paused` while capture is paused;
+  otherwise `cannot tell`, with why. `paused` is the newest record being a
+  `paused` one. `app agreement` checks each stored capture in the coverage
+  range against an `aw-window` span of this machine's buckets within 2s of
+  it (the window watcher polls once a second): the same app, ignoring case,
+  matches; otherwise it differs from the nearest span; with no span within
+  2s it is counted apart. The three most common differing pairs follow, as
+  app names only.
+- **Screenshots** come from stored `screenshot` records only, through an
+  index on status, capture time and image size, never the folder. A warning
+  shows when a `no-permission` record is newer than every `kept` and
+  `duplicate` record and at most 5 minutes old; once older, a `permission`
+  line says when the grant was last recorded missing, as information.
+- **Backups** are read from the files beside the database alone, with a
+  warning when the newest daily one is older than yesterday. **Stable
+  install** shows `current`, `previous`, the installed agent's build and the
+  update log's last line it knows; **LaunchAgents** shows what launchd says
+  of each, or one `cannot ask launchd` line; **Stable watchdog** shows
+  `watchdog.json`, with a warning when it last ran more than 3 minutes ago.
+
 ## 9. Milestones
 
 Moved to [milestones.md](milestones.md).
@@ -1026,7 +971,7 @@ Moved to [milestones.md](milestones.md).
 9. **Keep `reviews.trigger`** (the one defensible cut from the final audit;
    recommendation: keep).
 
-Structural-but-unblessed (silence = consent): package layout (§2).
+Structural-but-unblessed (silence = consent): the proposed packages (§2).
 
 ## 11. Decision log
 

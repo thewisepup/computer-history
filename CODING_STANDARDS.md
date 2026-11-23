@@ -87,8 +87,7 @@ Review findings ratchet into rules:
   uses, not a whole settings struct it reads part of.
 - **A9** In-memory state keeps typed values; text from the spool or the wire
   is parsed once, where it comes in.
-- **A10** A factory parameter that every production caller fills with a
-  placeholder is removed, and the value is set once, where it becomes known.
+- **A10** Folded into A14.
 - **A11** A Bool flag that picks between two counters becomes two methods.
 - **A12** A command's failures reach the CLI as one domain exception the layer
   below raises (`InstallFailed`, `BackupFailed`, `RestoreFailed`), carrying
@@ -97,6 +96,12 @@ Review findings ratchet into rules:
 - **A13** A file or link rewritten in place (a state file, a pointer, the PATH
   link) goes through the one atomic-write helper, `replace_atomically` in
   `store/paths.py`, never its own staged write and `os.replace`.
+- **A14** No parameter, Protocol or option without a second real caller: a
+  value only one caller ever passes is fixed where it is used, and a factory
+  parameter every production caller fills with a placeholder is removed and
+  set once, where it becomes known. A test alone is not a second caller. The
+  exceptions are the I/O edges A4 injects and a deliberate seam that makes a
+  test deterministic (a clock, a chunk or batch size).
 
 ## Logging
 
@@ -157,15 +162,13 @@ Review findings ratchet into rules:
   rename detection keeps the file's history.
 - **H2** Re-exports keep callers and tests untouched; tests monkeypatch the
   submodule that owns the name.
-- **H3** **[checked]** `docs/DESIGN.md`'s package layout and any package README change in the
-  same commit as the layout. The check covers the module names in the `store/`,
-  `sources/` and `synthetic/` entries.
+- **H3** A package's `__init__.py` diagram is its module map (H16).
 - **H4** Tests derive versions and counts from the code (`len(load_migrations())`),
   never hard-code them. They look things up by the constant that names them
   (`rendered[ActivityWatchRenderer.name]`, `ActivityWatchRenderer.streams`, the
   port in `DEFAULT_AW_URL`), never a restated literal; expected answers stay literals.
-- **H5** A change to the pre-commit hook or CI updates every doc that describes
-  the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H5** A change to the pre-commit hook or CI updates `docs/agents/checks.md`
+  in the same commit (H16).
 - **H6** **[checked]** Invisible and combining characters in source (Unicode
   categories Cf, Mn, Zl, Zp: bidi controls, zero-width marks, combining accents,
   line separators) are written as `\u` escapes, never raw.
@@ -177,8 +180,12 @@ Review findings ratchet into rules:
   synthetic coverage in the same change (a renderer, generated rows, a
   rendered or manifest effect, a gate operation that runs it), or with an
   exemption in that test giving the reason.
-- **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
-  in the same commit.
+- **H9** Each CLI command has one section in `computer_history/cli/README.md`:
+  its invocation, one happy-path example and one non-obvious case (an error,
+  an empty result, or a flag that changes behaviour). A change to a command
+  updates that section in the same commit only when its invocation or examples
+  stop being true. Every other branch and exit code lives in the code and its
+  tests, and for the commands `docs/DESIGN.md` specifies, there too.
 - **H10** **[checked]** in part: no two modules define a constant with the same
   name and value. When a function already does something, call it rather than writing
   it again, and name a test after the code path it actually runs.
@@ -192,3 +199,11 @@ Review findings ratchet into rules:
   beside the test fixtures (`stored_progress` in `tests/db_states.py`).
 - **H15** A constant a lower layer defines is imported, never restated under
   another name or value (`synthetic/` takes `DATABASE_NAME` from `store/`).
+- **H16** A doc never restates another doc or the code; it links to the one
+  home instead (`docs/agents/checks.md` for which check runs where, a
+  package's `__init__.py` diagram for its modules, `docs/DESIGN.md` §8.5 to
+  §8.7 for the full rules of the stable install's commands, the watchdog and
+  `status`).
+- **H17** A new test never repeats a scenario another layer's test already
+  covers: test it once, at the lowest layer that shows it, and test the layer
+  above only for what that layer adds.
