@@ -145,7 +145,9 @@ computer_history/
                 # installed agent's record, and the agent app a version folder
                 # carries, built or copied), launch_agents (plists, loading, launchd's state
                 # for status: the backend, the daily backup, the watchdog and
-                # ActivityWatch at login), layout (where it all lives), install
+                # ActivityWatch at login), stopped_agents (the agents update and
+                # restore stop for a step, started again after it), layout
+                # (where it all lives), install
                 # (install and uninstall), install_lock (the one lock on the
                 # live folder), backups (the daily and pre-update
                 # backups beside the database, and restore), updates/ (update

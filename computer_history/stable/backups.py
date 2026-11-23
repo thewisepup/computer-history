@@ -11,16 +11,10 @@ from datetime import UTC, date, datetime
 from enum import Enum
 from pathlib import Path
 
-from computer_history.host import Host, HostError
-from computer_history.stable.launch_agents import (
-    BACKEND,
-    DAILY_BACKUP,
-    WATCHDOG,
-    LaunchAgent,
-    start_agent,
-    stop_agent,
-)
+from computer_history.host import Host
+from computer_history.stable.launch_agents import BACKEND, DAILY_BACKUP, WATCHDOG, LaunchAgent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
+from computer_history.stable.stopped_agents import AgentNotStopped, Restart, StoppedAgents
 from computer_history.store import (
     DatabaseCopy,
     DatabaseExists,
@@ -260,18 +254,24 @@ def restore_backup(
     stamp = now.astimezone().strftime(TAKEN_AT_STAMP)
     aside = backups_folder(database) / SET_ASIDE_FOLDER_NAME / f"history-{stamp}.db"
     managed = _is_live(database, layout)
-    stopped = _stop(host, layout, sleep) if managed else ()
+    stopped = StoppedAgents(host, layout, sleep=sleep)
+    if managed:
+        try:
+            stopped.stop(STOPPED_FOR_RESTORE)
+        except AgentNotStopped as exc:
+            unchanged = _unchanged(stopped.start_again())
+            raise RestoreFailed(f"could not stop {exc.agent.label}: {exc} ({unchanged})") from exc
     try:
         restored = restore_database(source, database, aside)
     except COPY_FAILURES as exc:
-        raise RestoreFailed(f"{exc} ({_unchanged(host, layout, stopped, sleep)})") from exc
-    failed = _start_again(host, layout, stopped, sleep)
-    if failed:
+        raise RestoreFailed(f"{exc} ({_unchanged(stopped.start_again())})") from exc
+    restart = stopped.start_again()
+    if restart.failed:
         raise RestoreFailed(
-            f"restored {source}{_aside_note(restored.aside)}, but {failed}; run install to start"
-            " them"
+            f"restored {source}{_aside_note(restored.aside)}, but {_failures(restart)}; run"
+            " install to start them"
         )
-    return Restored(source, restored.aside, restored.copy, managed, stopped)
+    return Restored(source, restored.aside, restored.copy, managed, restart.agents)
 
 
 def _is_live(database: Path, layout: Layout) -> bool:
@@ -281,51 +281,21 @@ def _is_live(database: Path, layout: Layout) -> bool:
     return database.exists() and live.exists() and os.path.samefile(database, live)
 
 
-def _stop(host: Host, layout: Layout, sleep: Callable[[float], None]) -> tuple[LaunchAgent, ...]:
-    stopped: list[LaunchAgent] = []
-    for agent in STOPPED_FOR_RESTORE:
-        try:
-            if not host.job(agent.label).loaded:
-                continue
-            stopped.append(agent)
-            stop_agent(host, agent.label, sleep=sleep)
-        except HostError as exc:
-            unchanged = _unchanged(host, layout, tuple(reversed(stopped)), sleep)
-            raise RestoreFailed(f"could not stop {agent.label}: {exc} ({unchanged})") from exc
-    return tuple(reversed(stopped))
-
-
-def _unchanged(
-    host: Host, layout: Layout, stopped: tuple[LaunchAgent, ...], sleep: Callable[[float], None]
-) -> str:
-    failed = _start_again(host, layout, stopped, sleep)
-    if failed:
+def _unchanged(restart: Restart) -> str:
+    if restart.failed:
+        failed = _failures(restart)
         return f"{NOTHING_CHANGED} to the database, but {failed}; run install to start them"
-    if not stopped:
+    if not restart.agents:
         return NOTHING_CHANGED
-    names = [agent.name for agent in stopped]
+    names = [agent.name for agent in restart.agents]
     started = " and ".join(filter(None, (", ".join(names[:-1]), names[-1])))
     return f"{NOTHING_CHANGED}; {started} started again"
 
 
-def _start_again(
-    host: Host, layout: Layout, stopped: tuple[LaunchAgent, ...], sleep: Callable[[float], None]
-) -> str | None:
-    failed: list[str] = []
-    for agent in stopped:
-        try:
-            start_agent(host, agent.plist(layout), sleep=sleep)
-        except HostError as exc:
-            if not _loaded(host, agent.label):
-                failed.append(f"{agent.label} could not be started again ({exc})")
-    return "; ".join(failed) or None
-
-
-def _loaded(host: Host, label: str) -> bool:
-    try:
-        return host.job(label).loaded
-    except HostError:
-        return False
+def _failures(restart: Restart) -> str:
+    return "; ".join(
+        f"{agent.label} could not be started again ({exc})" for agent, exc in restart.failed
+    )
 
 
 def _aside_note(aside: Path | None) -> str:

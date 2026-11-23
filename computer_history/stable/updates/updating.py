@@ -12,7 +12,7 @@ from types import FrameType
 
 from computer_history.host import Host, HostError
 from computer_history.stable.gate import GateVerdict, newest_passing, none_passed
-from computer_history.stable.launch_agents import BACKEND, load_agent
+from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.update_log import (
     AgentOutcome,
@@ -218,7 +218,7 @@ def _switch(run: UpdateRun, last_cycle: LastCycle, wait_seconds: float) -> First
             point(layout.previous, prepared.old.name)
             point(layout.current, prepared.new)
             started_at = run.now()
-            load_agent(run.host, layout, BACKEND, sleep=run.sleep)
+            prepared.stopped.load(BACKEND)
         except (HostError, OSError) as exc:
             return FirstCycle(f"the backend could not be started on the new version: {exc}")
         problem = wait_for_first_cycle(
