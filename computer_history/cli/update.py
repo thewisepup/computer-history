@@ -27,6 +27,7 @@ from computer_history.stable import (
     AgentCheck,
     AgentOutcome,
     Layout,
+    NewestSeen,
     RollbackFailed,
     UpdateAction,
     UpdateFailed,
@@ -52,10 +53,12 @@ def _reading(database: Path) -> Generator[tuple[sqlite3.Connection | None, str |
             yield None, f"the database is {store.state.value}"
 
 
-def _newest_record(database: Path, spool: Path) -> tuple[datetime | None, bool, str | None]:
+def _newest_record(database: Path, spool: Path) -> NewestSeen:
     with _reading(database) as (conn, unread):
         found = newest_record(conn, spool, now=formatting.utc_now())
-    return (None, False, unread) if found is None else (found.at, found.paused, unread)
+    if found is None:
+        return NewestSeen(None, database_unread=unread)
+    return NewestSeen(found.at, found.paused, unread)
 
 
 def _active_between(
