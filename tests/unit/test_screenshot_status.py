@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import RunCli, status_out
 from fake_aw import FakeAW
 from projectors import AW
 
-from computer_history import cli
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import status as cli_status
 from computer_history.sources import (
@@ -245,11 +245,6 @@ def status_at(
     return at
 
 
-def run_status(capsys: pytest.CaptureFixture[str], db_path: Path) -> str:
-    assert cli.main(["status", "--db-path", str(db_path)]) == 0
-    return capsys.readouterr().out
-
-
 def store_captures(conn: sqlite3.Connection, times: list[datetime]) -> None:
     capture = next(json.loads(line) for line in FIXTURE_LINES if '"kind":"capture"' in line)
     observations = []
@@ -261,14 +256,14 @@ def store_captures(conn: sqlite3.Connection, times: list[datetime]) -> None:
 
 
 def test_status_with_no_screenshot_records_says_none_are_stored(
-    capsys, status_at, db_path: Path
+    run: RunCli, status_at, db_path: Path
 ) -> None:
     connect(db_path).close()
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
     assert "Screenshots: none stored yet (no screenshot records)\n" in out
 
 
-def test_status_reports_every_screenshot_line(capsys, status_at, db_path: Path) -> None:
+def test_status_reports_every_screenshot_line(run: RunCli, status_at, db_path: Path) -> None:
     times = [CLI_NOW - timedelta(minutes=10 - i) for i in range(5)]
     conn = connect(db_path)
     store_shots(
@@ -292,7 +287,7 @@ def test_status_reports_every_screenshot_line(capsys, status_at, db_path: Path) 
     )
     conn.close()
 
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
 
     section = out[out.index("Screenshots:") :]
     assert section.startswith(
@@ -307,7 +302,7 @@ def test_status_reports_every_screenshot_line(capsys, status_at, db_path: Path) 
 
 
 def test_status_warns_when_the_newest_screenshot_records_say_no_permission(
-    capsys, status_at, db_path: Path
+    run: RunCli, status_at, db_path: Path
 ) -> None:
     conn = connect(db_path)
     store_shots(
@@ -319,7 +314,7 @@ def test_status_warns_when_the_newest_screenshot_records_say_no_permission(
         ],
     )
     conn.close()
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
     assert (
         "  warning: Screen Recording permission is missing since 2026-11-18 11:40 (20m ago)"
         " (records say no-permission, and no screenshot was taken since). Grant it in"
@@ -328,7 +323,7 @@ def test_status_warns_when_the_newest_screenshot_records_say_no_permission(
 
 
 def test_status_only_mentions_a_missing_permission_once_no_screenshot_record_is_recent(
-    capsys, status_at, db_path: Path
+    run: RunCli, status_at, db_path: Path
 ) -> None:
     conn = connect(db_path)
     store_shots(
@@ -340,7 +335,7 @@ def test_status_only_mentions_a_missing_permission_once_no_screenshot_record_is_
         ],
     )
     conn.close()
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
     section = out[out.index("Screenshots:") :]
     assert "warning" not in section
     assert (
@@ -366,7 +361,7 @@ def test_status_only_mentions_a_missing_permission_once_no_screenshot_record_is_
     ids=["clocks-go-forward", "clocks-go-back"],
 )
 def test_today_starts_at_local_midnight_on_a_daylight_saving_changeover_day(
-    capsys,
+    run: RunCli,
     status_at,
     db_path: Path,
     now: datetime,
@@ -381,31 +376,31 @@ def test_today_starts_at_local_midnight_on_a_daylight_saving_changeover_day(
     store_captures(conn, [last_hour_of_yesterday, first_hour_of_today])
     conn.close()
 
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
 
     assert "  today         1 kept, 0 duplicate," in out
     assert "  today         1 captures stored," in out
 
 
 def test_status_judges_no_coverage_from_screenshot_records(
-    capsys, status_at, db_path: Path
+    run: RunCli, status_at, db_path: Path
 ) -> None:
     conn = connect(db_path)
     store_shots(conn, [shot(1, CLI_NOW - timedelta(hours=3), "kept")])
     store_captures(conn, [CLI_NOW - timedelta(hours=3), CLI_NOW - timedelta(hours=2)])
     conn.close()
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
     coverage = out[out.index("Coverage gaps") : out.index("Capture agent")]
     assert "  screenshot: not checked (coverage is judged from ax-text records)\n" in coverage
     assert "no screenshot coverage" not in coverage and "screenshot: no gaps" not in coverage
 
 
 def test_without_an_ax_text_coverage_check_the_screenshot_source_is_not_mentioned_in_coverage(
-    capsys, status_at, db_path: Path
+    run: RunCli, status_at, db_path: Path
 ) -> None:
     conn = connect(db_path)
     store_shots(conn, [shot(1, CLI_NOW - timedelta(hours=3), "kept")])
     conn.close()
-    out = run_status(capsys, db_path)
+    out = status_out(run, "--db-path", str(db_path))
     coverage = out[out.index("Coverage gaps") : out.index("Capture agent")]
     assert "screenshot" not in coverage

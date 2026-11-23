@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from computer_history.cli import app as cli_app
 from computer_history.host import Host
 
 
@@ -21,6 +22,25 @@ def after_profile_line(out: str) -> str:
     first, _, rest = out.partition("\n")
     assert first.startswith("Profile "), out
     return rest
+
+
+def run_here(run: RunCli, *argv: str) -> tuple[int, str, str]:
+    """The CLI run from this checkout's own code, with its out lines joined back into one text."""
+    code, out, err = run(cli_app.CODE_LOCATION, *argv)
+    return code, "".join(f"{line}\n" for line in out), err
+
+
+def status_out(run: RunCli, *argv: str) -> str:
+    """Status run from this checkout, which must exit 0: its output past the profile line."""
+    code, out, err = run_here(run, "status", *argv)
+    assert code == 0, err
+    return after_profile_line(out)
+
+
+def ingest_line(out: list[str]) -> str:
+    """Status's one Ingest line."""
+    [line] = [line for line in out if line.startswith("Ingest:")]
+    return line
 
 
 UNREACHABLE_AW = ("--aw-url", "http://127.0.0.1:1/api/0")

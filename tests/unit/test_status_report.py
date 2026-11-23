@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 from aw_http import served_over_http
+from cli_output import RunCli, ingest_line, status_out
 from fake_aw import FakeAW, UnreachableAW
-from fake_host import FakeHost
+from fake_host import FakeHost, write_record
 from projectors import AW
+from spool_records import spool_line
 
-from computer_history import cli
 from computer_history.sources import (
     CAPTURE_KIND,
     SPOOL_ENV_VAR,
-    SPOOL_VERSION,
     WINDOW_TEXT_SOURCE,
     AWError,
     IngestHealth,
@@ -69,30 +69,6 @@ def watching(
 ) -> None:
     state = WatchdogState(ran_at=ran_at, watching_since=since, unreachable_since=unreachable_since)
     write_watchdog_state(watchdog_state_path(db_path), state)
-
-
-def record_line(n: int, when: datetime) -> str:
-    line = {
-        "version": SPOOL_VERSION,
-        "id": f"00000000-0000-4000-8000-{n:012x}",
-        "captured_at": when.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-        "kind": CAPTURE_KIND,
-        "trigger": "heartbeat",
-        "app_name": "Editor",
-        "bundle_id": None,
-        "window_title": "w",
-        "text": "t",
-        "text_sha256": "0" * 64,
-        "full_text_bytes": 1,
-        "text_cut_off": False,
-        "timed_out": False,
-    }
-    return json.dumps(line)
-
-
-def spool_record(spool: Path, when: datetime) -> None:
-    spool.mkdir(parents=True, exist_ok=True)
-    (spool / "open.part").write_text(record_line(1, when) + "\n", encoding="utf-8")
 
 
 def report(
@@ -148,7 +124,7 @@ def test_just_after_the_laptop_opens_from_twenty_minutes_closed_you_were_away(db
     woke.add(window, 59.9, 6, {"app": "Editor", "title": "w"})
     woke.add(afk, 0, 40 * 60, {"status": "not-afk"})
     woke.add(afk, 59.9, 6, {"status": "not-afk"})
-    spool_record(db.parent / "spool", at(40))
+    write_record(db.parent / "spool", CAPTURE_KIND, at(40))
     last_cycle(db, at(40))
     watching(db, since=at(-60), ran_at=at(40))
 
@@ -173,7 +149,7 @@ def test_without_a_running_watchdog_the_recent_past_counts_as_watched(db: Path, 
     if saved == "stopped":
         watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
     last_cycle(db, at(40))
-    spool_record(db.parent / "spool", at(30))
+    write_record(db.parent / "spool", CAPTURE_KIND, at(30))
     aw = watchers()
     aw.events[f"aw-watcher-window_{HOST}"][0]["duration"] = 40 * 60
 
@@ -216,7 +192,7 @@ def test_the_configured_threshold_decides_when_the_backend_is_silent(db: Path) -
 
 
 def test_a_capture_agent_silent_while_you_were_active_is_a_problem(db: Path) -> None:
-    spool_record(db.parent / "spool", at(30))
+    write_record(db.parent / "spool", CAPTURE_KIND, at(30))
     watching(db, since=at(-60), ran_at=at(59))
 
     capture = report(db, watchers()).assessment.capture_agent
@@ -271,7 +247,7 @@ def test_status_writes_no_state_notifies_nothing_and_never_reopens_activitywatch
 
 def test_window_text_gaps_come_from_the_capture_agents_records(db: Path) -> None:
     conn = connect(db)
-    lines = [record_line(n, at(n)) for n in range(1, 30)]
+    lines = [spool_line(n, at(n)) for n in range(1, 30)]
     observations = [
         Observation(WINDOW_TEXT_SOURCE, str(n), at(n), at(n), line)
         for n, line in enumerate(lines, start=1)
@@ -287,21 +263,8 @@ def test_window_text_gaps_come_from_the_capture_agents_records(db: Path) -> None
     assert isinstance(gaps, CaptureGaps) and gaps.coverage is not None
 
 
-def status_out(capsys: pytest.CaptureFixture[str], db_path: Path, aw_url: str) -> list[str]:
-    argv = ["status", "--db-path", str(db_path), "--aw-url", aw_url]
-    assert cli.main(argv) == 0
-    profile, *lines = capsys.readouterr().out.splitlines()
-    assert profile.startswith("Profile ")
-    return lines
-
-
-def ingest_line(lines: list[str]) -> str:
-    [line] = [line for line in lines if line.startswith("Ingest:")]
-    return line
-
-
 def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, db: Path
+    run: RunCli, monkeypatch: pytest.MonkeyPatch, db: Path
 ) -> None:
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
     now = datetime.now(UTC)
@@ -311,7 +274,7 @@ def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
     aw = watchers(socket.gethostname(), t0=start, away_from=40)
 
     with served_over_http(aw) as url:
-        lines = status_out(capsys, db, url)
+        lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
     line = ingest_line(lines)
     assert line.startswith("Ingest:        ok, last cycle ")
@@ -320,7 +283,7 @@ def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
 
 
 def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_active(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, db: Path
+    run: RunCli, monkeypatch: pytest.MonkeyPatch, db: Path
 ) -> None:
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
     now = datetime.now(UTC)
@@ -330,7 +293,7 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     aw = watchers(socket.gethostname(), t0=start)
 
     with served_over_http(aw) as url:
-        lines = status_out(capsys, db, url)
+        lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
     assert ingest_line(lines).endswith("; NOT REPORTING for 20m (is `ingest --watch` running?)")
     assert not any(line.startswith("!! ") for line in lines)
@@ -346,7 +309,7 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     ids=["active", "away"],
 )
 def test_status_without_a_running_watchdog_judges_the_recent_past(
-    capsys: pytest.CaptureFixture[str],
+    run: RunCli,
     monkeypatch: pytest.MonkeyPatch,
     db: Path,
     saved: str,
@@ -362,6 +325,6 @@ def test_status_without_a_running_watchdog_judges_the_recent_past(
     aw = watchers(socket.gethostname(), t0=start, away_from=away_from)
 
     with served_over_http(aw) as url:
-        lines = status_out(capsys, db, url)
+        lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
     assert ingest_line(lines).endswith(suffix)
