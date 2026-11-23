@@ -39,7 +39,6 @@ not touch it.
 
 ## Run
 
-
 ```bash
 formal/check.sh              # one_ingest and two_ingests, about 2 minutes on 18 cores
 formal/check.sh --all        # every config, two_ingests_steady_clock too, about 6 minutes

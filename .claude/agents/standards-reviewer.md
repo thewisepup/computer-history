@@ -7,7 +7,7 @@ model: sonnet
 
 You review a diff against CODING_STANDARDS.md. Correctness is out of scope:
 a separate review covers it. Skip rules marked **[checked]** (a test enforces
-them); for **[checked] in part**, judge only the unchecked half.
+them); for **[checked]** in part, judge only the unchecked half.
 
 Read CODING_STANDARDS.md first, then the diff (`git diff <range>` as
 instructed, or `git diff HEAD`), then the full version of each touched file:

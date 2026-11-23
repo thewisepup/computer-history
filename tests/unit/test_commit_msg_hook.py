@@ -15,7 +15,13 @@ def run_hook(tmp_path: Path, message: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.parametrize(
-    "subject", ["M1 ticket 05: CLI ingest + status", "M4: stable install", "ticket 3: backfill"]
+    "subject",
+    [
+        "M1 ticket 05: CLI ingest + status",
+        "M4: stable install",
+        "ticket 3: backfill",
+        "M1 Ticket 02: schema",
+    ],
 )
 def test_a_ticket_or_milestone_prefix_is_refused(tmp_path: Path, subject: str) -> None:
     result = run_hook(tmp_path, f"{subject}\n\nbody\n")
@@ -30,3 +36,7 @@ def test_a_ticket_or_milestone_prefix_is_refused(tmp_path: Path, subject: str) -
 )
 def test_a_plain_subject_passes(tmp_path: Path, subject: str) -> None:
     assert run_hook(tmp_path, f"# comment\n{subject}\n").returncode == 0
+
+
+def test_a_prefixed_subject_below_a_blank_line_is_refused(tmp_path: Path) -> None:
+    assert run_hook(tmp_path, "\nM2: capture agent\n").returncode == 1

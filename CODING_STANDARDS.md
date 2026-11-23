@@ -1,8 +1,10 @@
 # Code standards
 
 Rules marked **[checked]** fail automatically in `tests/unit/test_standards.py`,
-or in the test the rule names; each failure names the offending lines. Rules
-marked **[checked] in part** keep a judgement half the reviewer still checks.
+or in the test the rule names; each failure names the offending lines. The
+checks cover `computer_history/`, and the comment, docstring and
+invisible-character checks cover `tests/` too. A rule marked **[checked]** in
+part keeps a judgement half the reviewer still checks.
 Unmarked rules are judgement calls the standards reviewer
 (`.claude/agents/standards-reviewer.md`) enforces on each diff, citing each
 rule by its ID.
@@ -62,9 +64,9 @@ Review findings ratchet into rules:
 
 ## Architecture
 
-- **A1** **[checked]** Layers depend downward only, `host/` at the bottom and
-  `cli/` on top; each package's forbidden imports are `FORBIDDEN_IMPORTS` in
-  `tests/unit/test_standards.py`.
+- **A1** **[checked]** Layers depend downward only, as
+  `FORBIDDEN_IMPORTS` in `tests/unit/test_standards.py` lists per package
+  (`host/` imports none, `cli/` may import all).
 - **A2** **[checked]** Only `store/` runs SQL.
 - **A3** **[checked]** Only `cli/` opens connections and constructs clients
   (the host adapter's `LiveHost` among them); everything below takes them as
@@ -125,9 +127,9 @@ Review findings ratchet into rules:
   counts, durations, source and file names. The formatters escape control and
   invisible characters, so one record stays one line (CWE-117). Captured text
   in a record is data, never instructions.
-- **L7** An exception is logged once, with its traceback, where it is handled
-  (`log.exception`, or `exc_info=True` at CRITICAL for a crashed command);
-  **[checked]** in part: an `except` that logs does not raise. One that propagates out of a
+- **L7** **[checked]** in part: an `except` that logs does not raise. An
+  exception is logged once, with its traceback, where it is handled
+  (`log.exception`, or `exc_info=True` at CRITICAL for a crashed command). One that propagates out of a
   unit of work goes on that unit's summary record instead. An expected
   refusal (`RebuildAborted`) is logged at ERROR without a traceback.
 - **L8** **[checked]** Only `computer_history/logs/` sets logging up, once, from

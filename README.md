@@ -269,5 +269,5 @@ authentication and explicit trusted-host configuration.
 ```
 
 `docs/agents/checks.md` lists every check and where it runs: the pre-commit
-hook, each CI job on pull requests and pushes to `main`, and each nightly job.
+and commit-msg hooks, each CI job on pull requests and pushes to `main`, and each nightly job.
 `main` only merges pull requests whose required checks pass.
