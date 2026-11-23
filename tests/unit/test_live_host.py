@@ -377,8 +377,13 @@ def test_the_build_creates_installs_asks_what_it_reads_and_freezes_with_uv(
 
 @pytest.mark.parametrize(
     "answer",
-    ["usage: computer-history [-h]\n", '{"spool_version": "1", "kinds": []}\n', '{"kinds": []}\n'],
-    ids=["not json", "version not a number", "no version"],
+    [
+        "usage: computer-history [-h]\n",
+        "[" * 100_000,
+        '{"spool_version": "1", "kinds": []}\n',
+        '{"kinds": []}\n',
+    ],
+    ids=["not json", "nested past the parser limit", "version not a number", "no version"],
 )
 def test_a_built_command_that_cannot_say_what_it_reads_fails_the_build(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str

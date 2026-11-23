@@ -72,7 +72,10 @@ class SpoolReads:
     @classmethod
     def from_json(cls, text: str) -> SpoolReads:
         """Read what as_json wrote, raising ValueError for anything else."""
-        found = json.loads(text)
+        try:
+            found = json.loads(text)
+        except RecursionError as exc:
+            raise ValueError("nested too deeply to read") from exc
         if not isinstance(found, dict):
             raise ValueError("not a JSON object")
         fields = cast(dict[str, object], found)

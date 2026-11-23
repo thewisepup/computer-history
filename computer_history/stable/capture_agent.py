@@ -60,7 +60,7 @@ def installed_agent(layout: Layout) -> InstalledAgent | None:
         return InstalledAgent(
             str(data["built_from"]), datetime.fromisoformat(str(data["installed_at"]))
         )
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
         return None
 
 
