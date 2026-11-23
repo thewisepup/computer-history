@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from socket import gethostname
@@ -10,12 +11,13 @@ from computer_history.cli.db import outdated_note, store_unavailable
 from computer_history.cli.formatting import (
     ago,
     app_name,
+    before_now,
     db_size,
     duration,
     finding_lines,
     human_size,
-    lag,
     local_midnight,
+    plural,
     printable,
     when,
 )
@@ -43,6 +45,7 @@ from computer_history.stable import (
     AgentStatus,
     BackupInventory,
     UpdateAction,
+    UpdateLogEntry,
     stable_layout,
     version_name,
 )
@@ -58,6 +61,7 @@ from computer_history.status import (
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
+    Gap,
     OpenedStore,
     Profile,
     Purpose,
@@ -176,10 +180,8 @@ def _print_install(install: InstallDetails, profile: Profile, now: datetime) -> 
     else:
         built = version_name(agent.built_from)
         print(f"  agent         built from {built}, installed {ago(agent.installed_at, now)}")
-    fallback = install.agent_fallback
-    if fallback is not None:
-        moved = f"{fallback.from_version} -> {fallback.to_version}"
-        print(f"                fell back {moved}, {ago(fallback.at, now)}: {fallback.reason}")
+    if install.agent_fallback is not None:
+        print(f"                {_update_entry(install.agent_fallback, now, fell_back=True)}")
     print(f"  last update   {_last_update(install, now)}")
 
 
@@ -189,10 +191,13 @@ def _last_update(install: InstallDetails, now: datetime) -> str:
     entry = install.last_update
     if entry is None:
         return "none yet"
-    moved = f"{entry.from_version} -> {entry.to_version}"
-    if entry.action is UpdateAction.FELL_BACK:
-        return f"fell back {moved}, {ago(entry.at, now)}: {entry.reason}"
-    return f"{entry.action.value} {moved}, {ago(entry.at, now)}"
+    return _update_entry(entry, now, fell_back=entry.action is UpdateAction.FELL_BACK)
+
+
+def _update_entry(entry: UpdateLogEntry, now: datetime, *, fell_back: bool) -> str:
+    shown = "fell back" if fell_back else entry.action.value
+    line = f"{shown} {entry.from_version} -> {entry.to_version}, {ago(entry.at, now)}"
+    return f"{line}: {entry.reason}" if fell_back else line
 
 
 def _print_launch_agents(statuses: list[AgentStatus] | None, error: str | None) -> None:
@@ -265,7 +270,7 @@ def _print_watchdog(saved: SavedWatchdog, now: datetime) -> None:
     reopens = saved.reopens
     if reopens:
         print(
-            f"  reopened       ActivityWatch {len(reopens)} time{'' if len(reopens) == 1 else 's'}"
+            f"  reopened       ActivityWatch {len(reopens)} {plural('time', len(reopens))}"
             f" in the last hour (at most {REOPEN_LIMIT})"
         )
     for error in state.errors:
@@ -333,7 +338,7 @@ def _freshness(summary: SourceSummary, now: datetime) -> str:
         return "never ingested"
     if summary.settled_until is None:
         return f"progress moved {duration((now - summary.advanced_at).total_seconds())} ago"
-    return lag(now - summary.settled_until)
+    return before_now(now - summary.settled_until, " behind now")
 
 
 def _print_gaps(details: StoreDetails) -> None:
@@ -358,16 +363,7 @@ def _print_gaps(details: StoreDetails) -> None:
         if not checked.checkable:
             print(f"  {source}: no settled span to check yet")
             continue
-        start, gaps = checked.span[0], checked.gaps
-        if not gaps:
-            print(f"  {source}: no gaps since {when(start)}")
-        for gap in gaps[:MAX_GAPS_SHOWN]:
-            print(
-                f"  warning: no {source} coverage from {when(gap.start)} to"
-                f" {when(gap.end)} ({duration(gap.seconds)})"
-            )
-        if len(gaps) > MAX_GAPS_SHOWN:
-            print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {source} gaps")
+        _print_gap_list(source, checked.span[0], [(gap, "") for gap in checked.gaps])
 
 
 def _print_capture_gaps(checked: CaptureGaps) -> None:
@@ -380,16 +376,21 @@ def _print_capture_gaps(checked: CaptureGaps) -> None:
         f" aw-afk shows you active, no record within {duration(CAPTURE_TOLERANCE.total_seconds())},"
         " not paused or asleep):"
     )
-    gaps = checked.gaps
+    gaps = [(gap, f", {cause.value}") for gap, cause in checked.gaps]
+    _print_gap_list(WINDOW_TEXT_SOURCE, coverage.start, gaps)
+
+
+def _print_gap_list(source: str, start: datetime, gaps: Sequence[tuple[Gap, str]]) -> None:
+    """Each gap up to the first few, with what follows it on its line, then how many more."""
     if not gaps:
-        print(f"  {WINDOW_TEXT_SOURCE}: no gaps since {when(coverage.start)}")
+        print(f"  {source}: no gaps since {when(start)}")
     for gap, cause in gaps[:MAX_GAPS_SHOWN]:
         print(
-            f"  warning: no {WINDOW_TEXT_SOURCE} coverage from {when(gap.start)} to {when(gap.end)}"
-            f" ({duration(gap.seconds)}), {cause.value}"
+            f"  warning: no {source} coverage from {when(gap.start)} to {when(gap.end)}"
+            f" ({duration(gap.seconds)}){cause}"
         )
     if len(gaps) > MAX_GAPS_SHOWN:
-        print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {WINDOW_TEXT_SOURCE} gaps")
+        print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {source} gaps")
 
 
 def _print_agent(health: CaptureHealth, found: Finding, spool_path: Path, now: datetime) -> None:
@@ -457,11 +458,9 @@ def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:
     spool = health.spool
     if spool is None:
         return f"cannot be inspected: {health.spool_error}"
-    waiting = f"{spool.waiting:,} finished file{'' if spool.waiting == 1 else 's'} waiting"
+    waiting = f"{spool.waiting:,} finished {plural('file', spool.waiting)} waiting"
     if spool.oldest_finished_at is not None:
-        age = (now - spool.oldest_finished_at).total_seconds()
-        oldest = duration(age) if age >= 0 else f"{duration(-age)} ahead of now"
-        waiting += f" (oldest {oldest})"
+        waiting += f" (oldest {before_now(now - spool.oldest_finished_at)})"
     return f"{waiting}, {spool.unreadable:,} in {UNREADABLE_FOLDER}/  ({spool_path})"
 
 

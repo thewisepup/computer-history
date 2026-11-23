@@ -97,10 +97,6 @@ def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--db-path" in out
 
 
-def test_every_command_has_a_handler() -> None:
-    assert set(cli.HANDLERS) == set(cli.COMMANDS)
-
-
 def test_ingest_writes_rows_and_prints_counts(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
     code, out, _ = run_here(run, "--db-path", str(db_path), "ingest")
@@ -637,9 +633,9 @@ def test_duration(seconds: float, text: str) -> None:
     assert formatting.duration(seconds) == text
 
 
-def test_lag() -> None:
-    assert formatting.lag(timedelta(seconds=42)) == "42s behind now"
-    assert formatting.lag(timedelta(seconds=-90)) == "1m 30s ahead of now"
+def test_before_now() -> None:
+    assert formatting.before_now(timedelta(seconds=42), " behind now") == "42s behind now"
+    assert formatting.before_now(timedelta(seconds=-90), " behind now") == "1m 30s ahead of now"
 
 
 @pytest.mark.parametrize(

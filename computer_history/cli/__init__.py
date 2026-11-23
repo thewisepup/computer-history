@@ -36,11 +36,10 @@ formatting.py (durations, times, sizes, app names, watchdog findings as lines, a
 the clock every command reads)
 """
 
-from computer_history.cli.app import COMMANDS, HANDLERS, build_parser, main
+from computer_history.cli.app import COMMANDS, build_parser, main
 
 __all__ = [
     "COMMANDS",
-    "HANDLERS",
     "build_parser",
     "main",
 ]
