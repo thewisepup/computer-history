@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import plistlib
 import shutil
-import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+
+from spool_records import spool_line
 
 import computer_history.store
 from computer_history.cli import formatting as cli_formatting
@@ -122,25 +122,9 @@ AgentStart = Callable[["FakeHost"], None]
 
 def write_record(spool: Path, kind: str, at: datetime) -> None:
     """Append one record of the kind, captured at the time, to the spool's open file."""
-    content = kind == CAPTURE_KIND
-    line = {
-        "version": SPOOL_VERSION,
-        "id": str(uuid.uuid4()),
-        "captured_at": at.strftime("%Y-%m-%dT%H:%M:%S.") + f"{at.microsecond // 1000:03d}Z",
-        "kind": kind,
-        "trigger": "heartbeat" if content else None,
-        "app_name": "Editor" if content else None,
-        "bundle_id": None,
-        "window_title": "w" if content else None,
-        "text": "t" if content else None,
-        "text_sha256": "0" * 64 if content else None,
-        "full_text_bytes": 1 if content else None,
-        "text_cut_off": False if content else None,
-        "timed_out": False if content else None,
-    }
     spool.mkdir(parents=True, exist_ok=True)
     with (spool / "open.part").open("a", encoding="utf-8") as file:
-        file.write(json.dumps(line) + "\n")
+        file.write(spool_line(None, at, kind) + "\n")
 
 
 def records(spool: Path, at: Callable[[], datetime], kind: str = CAPTURE_KIND) -> AgentStart:
