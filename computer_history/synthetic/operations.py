@@ -94,8 +94,7 @@ def started(
 def measure_operation(operation: Operation, dataset: GateDataset, folder: Path) -> Costs:
     """Run the operation under the cost meter in a scratch folder, removed afterwards.
 
-    A fresh operation is counted on its only run; any other runs once uncounted first, so the
-    counted run finds its connection warm.
+    A fresh operation is counted on its only run; any other runs once uncounted first.
     """
     try:
         with started(operation, dataset, folder / "run") as session:

@@ -19,10 +19,7 @@ LOOPBACK = "127.0.0.1"
 
 
 class LoopbackHTTPServer(ThreadingHTTPServer):
-    """A threading HTTP server that binds without a reverse DNS lookup of its address.
-
-    HTTPServer names itself with socket.getfqdn, which takes 35s on the macOS CI runner.
-    """
+    """A threading HTTP server that binds without a reverse DNS lookup of its address."""
 
     def server_bind(self) -> None:
         socketserver.TCPServer.server_bind(self)
