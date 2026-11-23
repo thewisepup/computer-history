@@ -48,6 +48,7 @@ LAUNCHCTL_BUSY_CODES = frozenset({5, 37})  # EIO, EALREADY: a boot-out still in 
 LAUNCHCTL_NO_SUCH_SERVICE = 113
 COMMAND_TIMEOUT_SECONDS = 600
 QUICK_COMMAND_TIMEOUT_SECONDS = 10
+COMMIT_HASH = re.compile(r"[0-9a-f]{40}")
 RUNNING_STATE = re.compile(r"^\s*state = running\s*$", re.MULTILINE)
 PID_LINE = re.compile(r"^\s*pid = (\d+)\s*$", re.MULTILINE)
 PGREP = "/usr/bin/pgrep"
@@ -90,8 +91,9 @@ class LiveHost:
         self._now = now
 
     def main_commits(self, limit: int) -> list[str]:
-        commits = _github(f"/commits?sha=main&per_page={limit}", "list main's newest commits")
-        return [str(commit["sha"]) for commit in cast(list[dict[str, Any]], commits)]
+        doing = "list main's newest commits"
+        commits = _github(f"/commits?sha=main&per_page={limit}", doing)
+        return [_hash(commit.get("sha"), doing) for commit in cast(list[dict[str, Any]], commits)]
 
     def check_runs(self, commit: str) -> list[CheckRun]:
         found = _github(
@@ -169,7 +171,7 @@ class LiveHost:
         if isinstance(listing, list):
             for entry in cast(list[dict[str, Any]], listing):
                 if entry.get("name") == AGENT_SOURCE_FOLDER and entry.get("type") == "dir":
-                    return str(entry["sha"])
+                    return _hash(entry.get("sha"), doing)
         raise HostError(f"could not {doing}: GitHub lists no {AGENT_SOURCE_FOLDER} folder there")
 
     def check_agent_toolchain(self) -> None:
@@ -286,6 +288,13 @@ class LiveHost:
             "post a notification",
             timeout=QUICK_COMMAND_TIMEOUT_SECONDS,
         )
+
+
+def _hash(answer: object, doing: str) -> str:
+    """A full commit or tree hash GitHub answered, refused when it is anything else."""
+    if isinstance(answer, str) and COMMIT_HASH.fullmatch(answer):
+        return answer
+    raise HostError(f"could not {doing} from GitHub: it answered {answer!r:.60} for a hash")
 
 
 def _spool_reads(answer: str) -> SpoolReads:

@@ -260,7 +260,7 @@ authentication and explicit trusted-host configuration.
 
 ```sh
 .venv/bin/python -m pytest -n auto tests/unit           # unit tests, as the pre-commit hook runs them
-.venv/bin/python -m pytest -n auto tests/data           # synthetic datasets and the dev commands
+.venv/bin/python -m pytest -n auto --dist worksteal tests/data  # synthetic datasets and the dev commands
 .venv/bin/python -m pytest -m perf                      # the performance gate (tests/perf)
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m ruff format --check computer_history tests  # formatting; the POC files are excluded
@@ -269,5 +269,5 @@ authentication and explicit trusted-host configuration.
 ```
 
 `docs/agents/checks.md` lists every check and where it runs: the pre-commit
-hook, each CI job on pull requests and pushes to `main`, and each nightly job.
+and commit-msg hooks, each CI job on pull requests and pushes to `main`, and each nightly job.
 `main` only merges pull requests whose required checks pass.

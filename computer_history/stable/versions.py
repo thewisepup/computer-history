@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,6 +18,11 @@ from computer_history.store import (
 )
 
 PACKAGE_MIGRATIONS = "lib/python*/site-packages/computer_history/store/migrations"
+SHORT_COMMIT_HASH = re.compile(f"[0-9a-f]{{{SHORT_COMMIT_LENGTH}}}")
+
+
+class UnsafeVersionFolder(ValueError):
+    """A version name that is not a short commit hash, or whose folder lies outside versions."""
 
 
 @dataclass(frozen=True)
@@ -29,6 +35,16 @@ class InstalledVersion:
 
 def version_name(commit: str) -> str:
     return commit[:SHORT_COMMIT_LENGTH]
+
+
+def version_folder(layout: Layout, name: str) -> Path:
+    """The folder a version of this name is built in, refused unless it sits right in versions."""
+    if not SHORT_COMMIT_HASH.fullmatch(name):
+        raise UnsafeVersionFolder(f"refused version {name!r:.60}: not a short commit hash")
+    folder = layout.versions / name
+    if folder.resolve().parent != layout.versions.resolve():
+        raise UnsafeVersionFolder(f"refused version {name}: not directly in {layout.versions}")
+    return folder
 
 
 def pointed(pointer: Path) -> InstalledVersion | None:
@@ -66,7 +82,7 @@ def point(pointer: Path, name: str) -> None:
 def build_version(host: Host, layout: Layout, commit: str) -> bool:
     """Build a commit into its marked version folder, noting what its backend reads, unless marked
     already; True if it built one."""
-    folder = layout.versions / version_name(commit)
+    folder = version_folder(layout, version_name(commit))
     if (folder / INSTALL_MARKER_NAME).is_file():
         return False
     try:

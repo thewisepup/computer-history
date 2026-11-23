@@ -1,4 +1,4 @@
-<!-- The shape is explained in docs/agents/pull-requests.md. Bullets only. A section that does not apply says "None". -->
+<!-- The shape is explained in docs/agents/pull-requests.md. -->
 
 ## What this does
 
