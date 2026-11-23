@@ -143,6 +143,14 @@ def installs(host: FakeHost) -> list[str]:
     return [label for call, label in host.calls if call == "install_agent"]
 
 
+def test_an_installed_agent_record_nested_past_the_parser_limit_reads_as_unknown(
+    layout: Layout,
+) -> None:
+    layout.installed_agent.write_text("[" * 100_000)
+
+    assert installed_agent(layout) is None
+
+
 def test_a_record_from_the_new_agent_verifies_it_and_the_update_line_says_so(
     run: RunCli, layout: Layout, clock: Clock, aw: FakeAW
 ) -> None:

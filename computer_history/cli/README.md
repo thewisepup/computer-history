@@ -771,7 +771,11 @@ A file that cannot be removed is reported as `error on the spool` and not read
 again until the next `ingest` run. A missing
 spool folder is nothing to ingest. ActivityWatch being down does not stop the
 spool, and the reverse: the other source's rows are stored, and the run exits
-1.
+1. The same holds for an error nothing expects, such as a bug in one source: that
+source's remaining streams are skipped this cycle, the others are read, and the
+run prints the error's type alone (`error: unexpected KeyError`, then
+``This is a bug: `computer-history logs --level error` shows its traceback.``)
+and exits 1.
 
 ## status — is everything healthy?
 

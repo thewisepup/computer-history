@@ -195,6 +195,7 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     "text",
     [
         "not json",
+        "[" * 100_000,
         "[1, 2]",
         '{"cycle_at": "2026-11-19"}',
         '{"cycle_at": "2026-11-19T20:07:00", "consecutive_failures": 0}',
@@ -205,6 +206,7 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     ],
     ids=[
         "not-json",
+        "nested-past-the-parser-limit",
         "not-an-object",
         "incomplete",
         "naive-cycle",

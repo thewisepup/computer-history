@@ -100,5 +100,5 @@ class AWClient:
             raise AWError(f"ActivityWatch HTTP {exc.code} for {url}") from exc
         except (URLError, OSError) as exc:
             raise AWError(f"ActivityWatch unreachable at {self.base_url}: {exc}") from exc
-        except ValueError as exc:
+        except (ValueError, RecursionError) as exc:
             raise AWError(f"ActivityWatch returned invalid JSON for {url}") from exc

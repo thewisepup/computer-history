@@ -34,6 +34,9 @@ from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_lay
 from computer_history.store import DATABASE_NAME
 from computer_history.watchdog import (
     REOPEN_LIMIT,
+    WatchdogState,
+    read_state_or_fresh,
+    read_thresholds,
     watchdog_lock_path,
     watchdog_state_path,
 )
@@ -348,6 +351,22 @@ def test_thresholds_come_from_the_config_file(mac: Mac) -> None:
     assert [problem in err for err in mac.errors] == [True] + [False] * 20
     assert f"  {problem}" in mac.outputs[-1]
     assert mac.outputs[-1][1].startswith("Watchdog (silent after: capture agent 10m,")
+
+
+def test_a_config_or_state_nested_past_the_parser_limit_is_unreadable_not_a_crash(
+    tmp_path: Path,
+) -> None:
+    config, state = tmp_path / "agent-config.json", tmp_path / "watchdog.json"
+    config.write_text("[" * 100_000)
+    state.write_text("[" * 100_000)
+
+    thresholds = read_thresholds(config)
+    fresh, problem = read_state_or_fresh(state)
+
+    assert thresholds.silent_after == read_thresholds(tmp_path / "missing.json").silent_after
+    [found] = thresholds.problems
+    assert found.startswith(f"cannot read {config}: ") and found.endswith("using the defaults")
+    assert fresh == WatchdogState() and problem is not None
 
 
 def test_a_notification_that_fails_to_post_is_tried_again_next_run(mac: Mac) -> None:

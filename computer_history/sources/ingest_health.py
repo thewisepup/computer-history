@@ -70,6 +70,8 @@ def read_health(path: Path) -> IngestHealth | None:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except RecursionError as exc:
+        raise ValueError(f"not an ingest health file: {exc!r}") from exc
     try:
         unavailable = doc.get("sources_unavailable", False)
         if not isinstance(unavailable, bool):

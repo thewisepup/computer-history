@@ -486,8 +486,12 @@ def test_update_with_no_stable_install_says_to_install(
 
 @pytest.mark.parametrize(
     "line",
-    ['{"at": "2026-11-20T17:22:03", "action": "updated", "from": "a", "to": "b"}', "not json"],
-    ids=["naive time", "not json"],
+    [
+        '{"at": "2026-11-20T17:22:03", "action": "updated", "from": "a", "to": "b"}',
+        "not json",
+        "[" * 100_000,
+    ],
+    ids=["naive time", "not json", "nested past the parser limit"],
 )
 def test_status_reports_an_unreadable_update_log(run: RunCli, layout: Layout, line: str) -> None:
     layout.update_log.write_text(line + "\n")

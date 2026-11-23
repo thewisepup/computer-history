@@ -15,7 +15,7 @@ from computer_history.sources.commit import (
     commit_pull,
     failure_of,
 )
-from computer_history.sources.contract import Source, SourceUnavailable
+from computer_history.sources.contract import Source
 from computer_history.sources.projection import projector_for
 from computer_history.store import Projector, SpoolHold, UnclaimedSource, get_progress
 
@@ -69,8 +69,8 @@ def poll(
 ) -> CycleSummary:
     """Poll every stream of every source once, pulling again while a pull has more, one commit each.
 
-    An unavailable source skips the rest of its streams, a busy database ends the cycle, and a
-    stream whose observations cannot be projected is skipped.
+    An unavailable or failing source skips the rest of its streams, a busy database ends the
+    cycle, and a stream whose observations cannot be projected is skipped.
     """
     began = monotonic()
     at = datetime.now(UTC) if now is None else now
@@ -88,7 +88,9 @@ def poll(
                     _poll_stream(conn, source, stream, project, outcomes, now=at)
                 except (UnclaimedSource, StrayObservation) as exc:
                     failures.append(failure_of(stream, exc))
-        except (SourceUnavailable, sqlite3.Error) as exc:
+        except _DuplicateStream:
+            raise
+        except Exception as exc:
             failure = failure_of(stream, exc)
             if failure.kind is FailureKind.DATABASE:
                 raise
@@ -98,10 +100,14 @@ def poll(
     return CycleSummary(at, outcomes, tuple(failures), monotonic() - began)
 
 
+class _DuplicateStream(ValueError):
+    pass
+
+
 def _claim(seen: set[str], streams: list[str]) -> None:
     for stream in streams:
         if stream in seen:
-            raise ValueError(f"stream {stream!r} is fed by more than one source")
+            raise _DuplicateStream(f"stream {stream!r} is fed by more than one source")
         seen.add(stream)
 
 

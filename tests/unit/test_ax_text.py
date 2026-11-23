@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
@@ -13,6 +14,8 @@ from typing import Any
 import pytest
 from db_states import stored_progress
 from fake_aw import FakeAW
+from hypothesis import example, given
+from hypothesis import strategies as st
 from log_records import logged
 
 from computer_history import cli
@@ -43,6 +46,7 @@ from computer_history.sources import (
     resolve_spool_path,
     watch,
 )
+from computer_history.sources.activitywatch import client as aw_client
 from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import Profile, Signal, connect, get_progress, table_counts, utc_iso
 
@@ -424,6 +428,7 @@ def test_malformed_lines_and_unknown_versions_are_skipped_and_counted(
     ("line", "problem"),
     [
         ("{", "not JSON"),
+        ("[" * 100_000, "not JSON"),
         ("1", "not a JSON object"),
         (record(1, T0, version=SPOOL_VERSION + 1), "unknown version"),
         (record(1, T0, version=float(SPOOL_VERSION)), "unknown version"),
@@ -451,6 +456,39 @@ def test_a_file_with_no_usable_record_is_moved_aside_not_deleted(
     assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(1, 0, 0, T0)
     aside = spool_dir / UNREADABLE_FOLDER / file_name(1)
     assert aside.read_bytes() == junk
+    assert finished_files(spool_dir) == []
+
+
+nested_lines = st.builds(
+    lambda opener, depth, rest: opener * depth + rest,
+    st.sampled_from(["[", '{"a":', '[{"kind":', " [ "]),
+    st.integers(0, 30_000),
+    st.text(max_size=20),
+)
+
+
+@given(st.one_of(st.text(), nested_lines))
+@example("[" * 100_000)
+@example('{"kind":' * 20_000)
+def test_any_line_is_a_record_or_an_invalid_record(line: str) -> None:
+    try:
+        parse_record(line)
+    except InvalidRecord:
+        pass
+
+
+def test_a_line_nested_past_the_parser_limit_sets_its_file_aside_and_later_files_ingest(
+    conn: sqlite3.Connection, spool_dir: Path
+) -> None:
+    nested = write_file(spool_dir, file_name(1), [record(1, T0), "[" * 100_000])
+    kept = nested.read_bytes()
+    write_file(spool_dir, file_name(2), [record(2, T0 + timedelta(seconds=1))])
+
+    summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
+
+    assert summary.ok
+    assert summary.outcomes[WINDOW_TEXT_SOURCE] == IngestOutcome(2, 0, 0, T0 + timedelta(seconds=1))
+    assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
     assert finished_files(spool_dir) == []
 
 
@@ -639,6 +677,44 @@ def test_cli_ingest_with_activitywatch_down_still_stores_the_spool(
     assert code == 1
     assert re.search(rf"ax-text\s+inserted\s+{len(FIXTURE_LINES)}", out)
     assert "Is ActivityWatch running?" in err and "Traceback" not in err
+
+
+def test_cli_ingest_with_activitywatch_answering_nested_json_still_stores_the_spool(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
+    monkeypatch.setattr(aw_client, "urlopen", lambda request, timeout: io.BytesIO(b"[" * 100_000))
+    (tmp_path / "spool").mkdir()
+    write_file(tmp_path / "spool", file_name(1), FIXTURE_LINES)
+
+    code = cli.main(["--db-path", str(tmp_path / "h.db"), "ingest"])
+    out, err = capsys.readouterr()
+
+    assert code == 1
+    assert re.search(rf"ax-text\s+inserted\s+{len(FIXTURE_LINES)}", out)
+    assert "ActivityWatch returned invalid JSON" in err and "Traceback" not in err
+
+
+def test_cli_ingest_with_a_bug_in_activitywatch_still_stores_the_spool(
+    capsys: pytest.CaptureFixture[str], cli_aw, tmp_path: Path
+) -> None:
+    class Buggy(FakeAW):
+        def get_buckets(self) -> dict[str, dict[str, Any]]:
+            raise KeyError("Q3 salaries.xlsx")
+
+    cli_aw(Buggy({}))
+    (tmp_path / "spool").mkdir()
+    write_file(tmp_path / "spool", file_name(1), FIXTURE_LINES)
+
+    code = cli.main(["--db-path", str(tmp_path / "h.db"), "ingest"])
+    out, err = capsys.readouterr()
+
+    assert code == 1
+    assert re.search(rf"ax-text\s+inserted\s+{len(FIXTURE_LINES)}", out)
+    assert "error: unexpected KeyError" in err
+    assert "computer-history logs --level error" in err
+    assert "Q3 salaries" not in err and "Traceback" not in err
+    assert "another process" not in err and "Is ActivityWatch running?" not in err
 
 
 def test_cli_ingest_with_an_unlistable_spool_gives_the_spool_hint(
