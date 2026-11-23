@@ -72,14 +72,15 @@ first use (about a minute), since the main checkout's venv imports the main
 checkout's source. `docs/agents/checks.md` lists what the pre-commit hook and
 each CI job run, which checks `main` requires, and where a new check belongs.
 
-Tests sit in four folders, and the folder decides where a test runs:
+Tests sit in four folders, and the folder decides which stage runs a test
+(`docs/agents/checks.md` has the stages):
 
-| Folder | Holds | Runs in |
+| Folder | Holds | Run locally |
 |---|---|---|
-| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | the pre-commit hook and CI's `unit` job |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | CI's `data` job; locally `-n auto --dist worksteal` |
-| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf`; CI's `perf` job |
-| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` and CI's `macos-capture-agent-e2e` job |
+| `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | `pytest -n 4 tests/unit` |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | `pytest -n 4 --dist worksteal tests/data` |
+| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf` |
+| `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` |
 
 Bare `pytest` runs every folder but `perf/`; shared fakes and helpers sit in
 `tests/`. Hypothesis tests run derandomized; to hunt for new failures, run
@@ -91,8 +92,21 @@ checkout. `scripts/prune-worktrees` removes clean worktrees whose work has
 landed on `origin/main` (`--dry-run` to preview); the post-merge hook runs it
 after every pull in the main checkout.
 
+Several agents in several worktrees share one laptop, so local test runs stay
+small: `pytest -n 4`, never `-n auto` (one worker per core in each worktree
+at once freezes the machine), and run `tests/data/`, `dev perf`, `dev bench`
+and `scripts/mutate.sh` only when the task needs them, leaving the rest to CI.
+Never run TLC (`formal/check.sh`) unless Brandon asks for that run. CI keeps
+`-n auto` on its own runners.
+`setproctitle` stays out of every venv (`tests/unit/test_no_setproctitle.py`
+fails while it is installed): pytest-xdist uses it to rename each worker
+before every test, and on macOS each rename goes through LaunchServices,
+which stalls every open app. mutmut, which pulls it in, is the `mutation`
+extra that `scripts/mutate.sh` installs and then strips it from.
+
 After changing the capture agent, the spool contract or the end-to-end tests,
-run (see the agent's README; CI runs both on macOS too):
+run (see the agent's README; CI runs both on macOS for pull requests that can
+reach them, `docs/agents/checks.md` lists the paths):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests

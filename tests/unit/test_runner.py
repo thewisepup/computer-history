@@ -11,8 +11,6 @@ from fake_source import FakeSource, at
 
 from computer_history.sources import (
     POLL_INTERVAL_SECONDS,
-    WINDOW_SOURCE,
-    ActivityWatch,
     BackfillProgress,
     ChunkDone,
     CycleSummary,
@@ -24,6 +22,7 @@ from computer_history.sources import (
     run_backfill,
     watch,
 )
+from computer_history.sources.activitywatch import WINDOW_SOURCE, ActivityWatch
 from computer_history.store import get_progress, table_counts
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"

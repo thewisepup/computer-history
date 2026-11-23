@@ -21,11 +21,8 @@ from computer_history.host import (
     JobBusy,
     JobState,
 )
-from computer_history.sources import (
-    CAPTURE_KIND,
-    IngestHealth,
-    write_health,
-)
+from computer_history.sources import IngestHealth, write_health
+from computer_history.sources.capture_spool import CAPTURE_KIND
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,

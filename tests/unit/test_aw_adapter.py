@@ -37,7 +37,6 @@ from computer_history.sources.activitywatch import (
     AWError,
     AWSource,
     discover_sources,
-    extract_domain,
     project_signal,
 )
 from computer_history.sources.activitywatch import client as aw_client
@@ -50,6 +49,7 @@ from computer_history.store import (
     to_utc,
     utc_iso,
 )
+from computer_history.text import MAX_TEXT_LENGTH, MAX_URL_LENGTH, extract_domain
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
@@ -263,7 +263,7 @@ def test_text_hygiene_collapse_cap_and_empty() -> None:
     signal = project_signal(WINDOW_SOURCE, payload)
     assert signal is not None and signal.title is not None
     assert signal.app == "Code"
-    assert len(signal.title) == aw.MAX_TEXT_LENGTH
+    assert len(signal.title) == MAX_TEXT_LENGTH
     assert "  " not in signal.title
     assert project_signal(WINDOW_SOURCE, {"data": {"app": "loginwindow", "title": " \n "}}) == (
         Signal(app="loginwindow", title=None)
@@ -711,11 +711,11 @@ def test_url_is_capped() -> None:
     url = "https://example.com/" + "a" * 10_000
     signal = project_signal(WEB_SOURCE, {"data": {"url": url}})
     assert signal is not None and signal.url is not None
-    assert len(signal.url) == aw.MAX_URL_LENGTH
+    assert len(signal.url) == MAX_URL_LENGTH
     assert signal.domain == "example.com"
 
 
-def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
+def test_sources_package_reexports_its_modules_and_only_the_adapters_ingest_opens() -> None:
     import computer_history.sources as sources
     from computer_history.sources import (
         agent_health,
@@ -737,16 +737,19 @@ def test_sources_package_reexports_exactly_the_runner_and_adapter_api() -> None:
         ingest_health,
         cycle_report,
         backfill,
-        aw,
-        capture_spool,
         agent_health,
     )
-    names = [name for module in modules for name in module.__all__]
-    assert sorted(sources.__all__) == sorted(names)
+    owners = {name: module for module in modules for name in module.__all__}
+    owners |= {
+        "ActivityWatch": aw,
+        "AWClient": aw,
+        "CaptureSpool": capture_spool,
+        "resolve_spool_path": capture_spool,
+    }
     assert len(set(sources.__all__)) == len(sources.__all__)
-    for module in modules:
-        for name in module.__all__:
-            assert getattr(sources, name) is getattr(module, name)
+    assert set(sources.__all__) <= owners.keys()
+    for name in sources.__all__:
+        assert getattr(sources, name) is getattr(owners[name], name)
 
 
 @pytest.mark.parametrize(

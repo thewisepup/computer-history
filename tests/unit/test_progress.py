@@ -12,15 +12,17 @@ from projectors import no_signal
 
 from computer_history import store
 from computer_history.sources import (
-    RESUME_OVERLAP_SECONDS,
-    WINDOW_SOURCE,
-    ActivityWatch,
     BackfillProgress,
     IngestOutcome,
     Pull,
     plan_all_backfills,
     poll,
     run_backfill,
+)
+from computer_history.sources.activitywatch import (
+    RESUME_OVERLAP_SECONDS,
+    WINDOW_SOURCE,
+    ActivityWatch,
 )
 from computer_history.sources.activitywatch.pull import CLIP_GUARD
 from computer_history.store import (

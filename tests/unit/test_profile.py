@@ -12,7 +12,7 @@ from fake_aw import FakeAW
 
 from computer_history.cli import dev as cli_dev
 from computer_history.cli.profile import INSTALLED_COPY, NOT_A_CHECKOUT
-from computer_history.sources import SPOOL_ENV_VAR
+from computer_history.sources.capture_spool import SPOOL_ENV_VAR
 from computer_history.sources.capture_spool.paths import SPOOL_FOLDER_NAME
 from computer_history.store import (
     DATABASE_NAME,

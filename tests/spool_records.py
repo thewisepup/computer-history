@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from computer_history.sources import (
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     PAUSED_KIND,
     RESUMED_KIND,

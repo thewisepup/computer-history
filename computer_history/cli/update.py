@@ -10,14 +10,13 @@ from pathlib import Path
 from computer_history.cli import formatting
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
-    UNREADABLE_FOLDER,
     AWClient,
     DatabaseRead,
     StoredAndSpooled,
-    default_spool_path,
     health_path,
     read_health,
 )
+from computer_history.sources.capture_spool import UNREADABLE_FOLDER, default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
     RELEASE_GATE,
@@ -146,7 +145,8 @@ def cmd_rollback(args: argparse.Namespace) -> int:
     except RollbackFailed as exc:
         print(f"rollback failed: {exc}", file=sys.stderr)
         return 1
-    agent = "its build unknown" if report.agent is None else f"{version_name(report.agent)}'s build"
+    built_from = report.agent_built_from
+    agent = "its build unknown" if built_from is None else f"{version_name(built_from)}'s build"
     unreadable = default_spool_path(layout.database) / UNREADABLE_FOLDER
     print(f"Rolled back to version {report.current} from {report.previous}")
     print(f"  previous      {report.previous} (rollback again returns to it)")

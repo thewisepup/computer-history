@@ -8,16 +8,11 @@ MAX_URL_LENGTH = 4096
 _URL_CONTROL_CHARS = dict.fromkeys([*range(0x20), 0x7F])
 
 
-def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str | None:
-    """Strip and collapse whitespace and cap the length. Empty becomes None."""
-    if value is None:
+def clean_text(value: object, limit: int = MAX_TEXT_LENGTH) -> str | None:
+    """Strip and collapse whitespace and cap the length. Empty text and non-strings become None."""
+    if not isinstance(value, str):
         return None
     return " ".join(_scrub(value).split())[:limit] or None
-
-
-def clean_text_or_none(value: object, limit: int = MAX_TEXT_LENGTH) -> str | None:
-    """Clean the value as text when it is a string; anything else becomes None."""
-    return clean_text(value, limit) if isinstance(value, str) else None
 
 
 def clean_url(value: str | None) -> str | None:

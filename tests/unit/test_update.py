@@ -35,6 +35,7 @@ from stable_updates import (
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import CheckOutcome
 from computer_history.sources import read_health, runner
+from computer_history.sources.capture_spool import UNREADABLE_FOLDER, default_spool_path
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,
@@ -359,7 +360,7 @@ def test_rollback_swaps_current_and_previous_without_the_network(
     host = FakeHost(offline=True, loaded=[BACKEND.label])
     new, old = version_name(NEWER), version_name(OLDER)
     agent = layout.installed_agent.read_bytes()
-    unreadable = layout.live / "spool" / "unreadable"
+    unreadable = default_spool_path(layout.database) / UNREADABLE_FOLDER
 
     code, out, err = run(stable_code(layout), "rollback", host=host)
 
@@ -415,6 +416,32 @@ def test_status_skips_update_log_lines_whose_action_it_does_not_know(
 
     _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
 
+    assert section(out, INSTALL)[-1].startswith(f"  last update   rolled back {new} -> {old}, ")
+
+
+@pytest.mark.parametrize("agent_moved_back", [True, False])
+def test_an_older_versions_agent_rollback_line_still_clears_an_agent_fallback(
+    run: RunCli, layout: Layout, agent_moved_back: bool
+) -> None:
+    new, old = version_name(NEWER), version_name(OLDER)
+
+    def line(action: str, at: str, frm: str, to: str, **more: str) -> dict[str, str]:
+        return {"at": f"2026-11-20T{at}+00:00", "action": action, "from": frm, "to": to, **more}
+
+    lines = [
+        line("agent fell back", "10:00:00", new, old, reason="silent"),
+        line("updated", "10:00:01", old, new, agent="fell back"),
+        line("agent rolled back", "11:00:00", new, old, reason="older"),
+        line("rolled back", "11:00:01", new, old),
+    ]
+    if not agent_moved_back:
+        del lines[2]
+    layout.update_log.write_text("".join(f"{json.dumps(entry)}\n" for entry in lines))
+
+    _, out, _ = run(stable_code(layout), *STATUS, host=FakeHost())
+
+    fallbacks = [entry for entry in section(out, INSTALL) if "fell back" in entry]
+    assert len(fallbacks) == (0 if agent_moved_back else 1)
     assert section(out, INSTALL)[-1].startswith(f"  last update   rolled back {new} -> {old}, ")
 
 

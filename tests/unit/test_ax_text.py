@@ -21,8 +21,18 @@ from log_records import logged
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
+    FailureKind,
+    IngestOutcome,
+    commit_pull,
+    poll,
+    projector_for,
+    reproject_signals,
+    watch,
+)
+from computer_history.sources.activitywatch import ActivityWatch, AWError
+from computer_history.sources.activitywatch import client as aw_client
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
-    MAX_TEXT_LENGTH,
     MAX_WINDOW_TEXT_LENGTH,
     MOMENT_KINDS,
     SCREENSHOT_KIND,
@@ -31,24 +41,15 @@ from computer_history.sources import (
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
     WINDOW_TEXT_SOURCE,
-    ActivityWatch,
-    AWError,
     CaptureSpool,
-    FailureKind,
-    IngestOutcome,
     InvalidRecord,
-    commit_pull,
     finished_files,
     parse_record,
-    poll,
-    projector_for,
-    reproject_signals,
     resolve_spool_path,
-    watch,
 )
-from computer_history.sources.activitywatch import client as aw_client
 from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import Profile, Signal, connect, get_progress, table_counts, utc_iso
+from computer_history.text import MAX_TEXT_LENGTH
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = [
@@ -444,22 +445,29 @@ def test_a_record_failing_validation_says_why(line: str, problem: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "newer",
-    [{"kind": "heartbeat"}, {"version": SPOOL_VERSION + 1}],
-    ids=["newer kind", "newer spool version"],
+    ("newer", "with_known"),
+    [
+        ({"kind": "heartbeat"}, True),
+        ({"version": SPOOL_VERSION + 1}, True),
+        ({"kind": "heartbeat"}, False),
+    ],
+    ids=["newer kind", "newer spool version", "only newer kinds"],
 )
 def test_records_from_a_newer_agent_are_moved_aside_not_deleted(
-    conn: sqlite3.Connection, spool_dir: Path, newer: dict[str, Any]
+    conn: sqlite3.Connection, spool_dir: Path, newer: dict[str, Any], with_known: bool
 ) -> None:
-    known = record(1, T0)
-    path = write_file(spool_dir, file_name(1), [known, record(2, T0, **newer)])
+    known = [record(1, T0)] if with_known else []
+    newer_lines = [record(2, T0, **newer), record(3, T0, **newer)]
+    path = write_file(spool_dir, file_name(1), [*known, *newer_lines])
     kept = path.read_bytes()
-    write_file(spool_dir, file_name(2), [record(3, T0 + timedelta(seconds=1))])
+    later = record(4, T0 + timedelta(seconds=1))
+    write_file(spool_dir, file_name(2), [later])
 
     summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
 
     assert summary.ok
-    assert [row[3] for row in observations(conn)][0] == known
+    stored = [row[0] for row in conn.execute("SELECT payload FROM observations ORDER BY id")]
+    assert stored == [*known, later]
     assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
     assert finished_files(spool_dir) == []
 

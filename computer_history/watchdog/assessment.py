@@ -7,16 +7,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from computer_history.sources import (
-    AWApi,
     IngestHealth,
     SourceUnavailable,
-    Span,
     active_spans,
     capture_liveness,
-    discover_sources,
     read_health,
-    watcher_ends,
 )
+from computer_history.sources.activitywatch import AWApi, discover_sources, watcher_ends
+from computer_history.sources.capture_spool import Span
 from computer_history.watchdog.checks import (
     Check,
     Finding,

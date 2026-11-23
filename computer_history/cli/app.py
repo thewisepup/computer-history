@@ -24,13 +24,9 @@ from computer_history.cli.update import cmd_rollback, cmd_update
 from computer_history.cli.watchdog import cmd_watchdog
 from computer_history.host import Host, LiveHost
 from computer_history.logs import LEVEL_NAMES, configure, resolve_level, resolve_log_dir
-from computer_history.sources import (
-    DEFAULT_AW_URL,
-    POLL_INTERVAL_SECONDS,
-    RECORD_KINDS,
-    SPOOL_ENV_VAR,
-    SPOOL_VERSION,
-)
+from computer_history.sources import POLL_INTERVAL_SECONDS
+from computer_history.sources.activitywatch import DEFAULT_AW_URL
+from computer_history.sources.capture_spool import RECORD_KINDS, SPOOL_ENV_VAR, SPOOL_VERSION
 from computer_history.stable import (
     FIRST_CYCLE_WAIT_SECONDS,
     InstallBusy,
@@ -240,9 +236,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def spool_reads_answer() -> str:
+    """The --spool-reads JSON line, whose keys older stable versions parse."""
+    return json.dumps({"spool_version": SPOOL_VERSION, "kinds": list(RECORD_KINDS)})
+
+
 class PrintSpoolReads(argparse.Action):
-    """Answer the question stable versions built before rollback stopped moving the capture agent
-    ask of every version they build, so they can still update to this one."""
+    """Print the spool version and record kinds this code reads, and exit."""
 
     def __call__(
         self,
@@ -251,7 +251,7 @@ class PrintSpoolReads(argparse.Action):
         values: object,
         option_string: str | None = None,
     ) -> None:
-        print(json.dumps({"spool_version": SPOOL_VERSION, "kinds": list(RECORD_KINDS)}))
+        print(spool_reads_answer())
         parser.exit()
 
 

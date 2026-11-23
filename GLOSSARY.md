@@ -87,7 +87,7 @@ Update installing a changed capture agent's app from the new version folder over
 _Avoid_: Agent deploy, agent rollback (rollback is the command)
 
 **Update log**:
-`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback and rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent.
+`update-log.jsonl` in the live folder, one line per update, fallback, agent fallback and rollback; an `updated` line carries the capture agent's outcome, and `status` shows the last one that moved `current` and whose action it knows, and the last agent fallback until a later update installs or keeps an agent (or an older version's `agent rolled back` line, which this version still reads but never writes).
 _Avoid_: Changelog, audit log
 
 **Spool hold**:

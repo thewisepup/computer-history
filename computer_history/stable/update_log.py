@@ -13,6 +13,7 @@ class UpdateAction(Enum):
     FELL_BACK = "fell back"
     ROLLED_BACK = "rolled back"
     AGENT_FELL_BACK = "agent fell back"
+    AGENT_ROLLED_BACK = "agent rolled back"  # only read: older versions wrote it
 
     @property
     def moves_current(self) -> bool:
@@ -65,12 +66,12 @@ def last_update_log_entry(path: Path) -> UpdateLogEntry | None:
 
 
 def last_agent_fallback(path: Path) -> UpdateLogEntry | None:
-    """The update log's last agent fallback, unless a later update installed or kept an agent;
-    ValueError when a line it reaches is unreadable."""
+    """The update log's last agent fallback, unless a later update installed or kept an agent or
+    an older version's rollback moved it; ValueError when a line it reaches is unreadable."""
     for entry in _newest_first(path):
         if entry.action is UpdateAction.AGENT_FELL_BACK:
             return entry
-        if entry.agent in _CLEARS_A_FALLBACK:
+        if entry.action is UpdateAction.AGENT_ROLLED_BACK or entry.agent in _CLEARS_A_FALLBACK:
             return None
     return None
 

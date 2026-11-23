@@ -22,12 +22,12 @@ class RollbackFailed(Exception):
 
 @dataclass(frozen=True)
 class RollbackReport:
-    """The version rollback made current, the one it kept as previous, the commit the capture agent
-    it left in place was built from (None when unknown), and what went wrong."""
+    """What rollback made current and kept as previous, the installed agent's commit, and what
+    went wrong."""
 
     current: str
     previous: str
-    agent: str | None
+    agent_built_from: str | None
     problems: tuple[str, ...] = ()
 
 

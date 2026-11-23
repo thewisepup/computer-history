@@ -6,6 +6,12 @@ unset GIT_DIR GIT_WORK_TREE
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 python="$(scripts/venv-python)"
+# mutmut lives in its own extra; setproctitle, which it pulls in, comes straight
+# back out (see pyproject.toml's mutation extra and use_setproctitle).
+if ! "$python" -c 'import mutmut' >/dev/null 2>&1; then
+  "$python" -m pip install -q -e "$root[mutation]"
+fi
+"$python" -m pip uninstall -q -y setproctitle >/dev/null 2>&1 || true
 module="${1:-}"
 # HOME and the path variables point into a throwaway folder.
 sandbox="$(mktemp -d "${TMPDIR:-/tmp}/computer-history-mutate.XXXXXX")"

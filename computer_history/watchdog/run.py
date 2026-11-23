@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from computer_history.host import Host, HostError
-from computer_history.sources import AWApi
+from computer_history.sources.activitywatch import AWApi
 from computer_history.watchdog.alerts import Notice, due_to_log, notices
 from computer_history.watchdog.assessment import assess
 from computer_history.watchdog.reopening import Reopening, recent_reopens, reopen_if_closed

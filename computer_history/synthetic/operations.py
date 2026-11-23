@@ -14,11 +14,10 @@ from types import MappingProxyType
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import (
+from computer_history.sources import capture_health, reproject_signals
+from computer_history.sources.capture_spool import (
     SCREENSHOT_SOURCE,
     WINDOW_TEXT_SOURCE,
-    capture_health,
-    reproject_signals,
     screenshot_health,
 )
 from computer_history.store import (

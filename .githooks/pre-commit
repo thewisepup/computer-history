@@ -22,7 +22,7 @@ if ! "$PY" -c 'import xdist' >/dev/null 2>&1; then
   echo "pre-commit: pytest-xdist not found in $PY; run \"$PY\" -m pip install -e '.[test,dev]'" >&2
   exit 1
 fi
-"$PY" -m pytest -q -n auto tests/unit
+"$PY" -m pytest -q -n 4 tests/unit
 if ! "$PY" -m pyright --version >/dev/null 2>&1; then
   echo "pre-commit: pyright not found in $PY; run \"$PY\" -m pip install -e '.[test,dev]'" >&2
   exit 1

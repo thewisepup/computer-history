@@ -39,7 +39,12 @@ from stable_updates import (
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import update as cli_update
-from computer_history.sources import CAPTURE_KIND, PAUSED_KIND, SPOOL_ENV_VAR, default_spool_path
+from computer_history.sources.capture_spool import (
+    CAPTURE_KIND,
+    PAUSED_KIND,
+    SPOOL_ENV_VAR,
+    default_spool_path,
+)
 from computer_history.stable import (
     AGENT_ACTIVE_SECONDS,
     AGENT_WAIT_SECONDS,

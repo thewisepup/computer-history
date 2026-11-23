@@ -9,14 +9,14 @@
         +-- gate.py           the release gate: the checks a main commit must pass
         |                     (the capture agent's among them), and the walk to the
         |                     newest one that does
-        +-- versions.py       build a commit into its marked version folder, noting what
-        |                     its backend reads, and point current at it, undoing it all
-        |                     on failure; the pointers; a name that is not a short commit
-        |                     hash is refused before any folder is touched
+        +-- versions.py       build a commit into its marked version folder and point
+        |                     current at it, undoing it all on failure; the pointers; a
+        |                     name that is not a short commit hash is refused before any
+        |                     folder is touched
         +-- capture_agent.py  the installed agent's record, the agent app a version
         |                     folder carries (built when its source changed, else
-        |                     copied), the installed app kept in the old version before
-        |                     a swap, and whether rollback must move the agent back
+        |                     copied), and the installed app kept in the old version
+        |                     before a swap
         +-- launch_agents.py  the plists (kept running, run every minute, run daily or
         |                     once at login: the backend, the backup, the watchdog and
         |                     ActivityWatch), loading, stopping, starting and removing
