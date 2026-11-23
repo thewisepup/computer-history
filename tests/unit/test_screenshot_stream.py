@@ -16,17 +16,19 @@ from log_records import logged
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
+    IngestOutcome,
+    commit_pull,
+    poll,
+    projector_for,
+    reproject_signals,
+)
+from computer_history.sources.capture_spool import (
     MAX_RECOGNIZED_TEXT_LENGTH,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
     WINDOW_TEXT_SOURCE,
     CaptureSpool,
-    IngestOutcome,
-    commit_pull,
-    poll,
-    projector_for,
-    reproject_signals,
     spool_backlog,
 )
 from computer_history.sources.capture_spool import adapter as spool_adapter

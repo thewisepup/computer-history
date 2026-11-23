@@ -18,17 +18,13 @@ from fake_host import FakeHost, gate_runs, installed_package
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import watchdog as cli_watchdog
 from computer_history.host import OPEN_ACTIVITYWATCH
-from computer_history.sources import (
+from computer_history.sources import IngestHealth, agent_health, health_path, write_health
+from computer_history.sources.activitywatch import WINDOW_SOURCE, AWError
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     PAUSED_KIND,
     SPOOL_VERSION,
-    WINDOW_SOURCE,
-    AWError,
-    IngestHealth,
     agent_config_path,
-    agent_health,
-    health_path,
-    write_health,
 )
 from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_layout
 from computer_history.store import DATABASE_NAME

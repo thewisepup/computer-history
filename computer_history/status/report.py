@@ -8,16 +8,14 @@ from pathlib import Path
 from typing import TypeAlias
 
 from computer_history.host import Host, HostError
-from computer_history.sources import (
+from computer_history.sources import CaptureHealth, capture_health, health_path
+from computer_history.sources.activitywatch import AWApi
+from computer_history.sources.capture_spool import (
     SCREENSHOT_SOURCE,
     WINDOW_TEXT_SOURCE,
-    AWApi,
-    CaptureHealth,
     Coverage,
     ScreenshotHealth,
     agent_config_path,
-    capture_health,
-    health_path,
     screenshot_health,
 )
 from computer_history.stable import (

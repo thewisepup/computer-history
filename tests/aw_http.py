@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from computer_history.sources import AWApi
+from computer_history.sources.activitywatch import AWApi
 from computer_history.store import to_utc
 
 LOOPBACK = "127.0.0.1"

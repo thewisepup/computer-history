@@ -21,13 +21,7 @@ from computer_history.cli import formatting
 from computer_history.cli import ingest as cli_ingest
 from computer_history.cli import status as cli_status
 from computer_history.sources import (
-    AFK_SOURCE,
     POLL_INTERVAL_SECONDS,
-    RECORD_KINDS,
-    SPOOL_VERSION,
-    WINDOW_SOURCE,
-    ActivityWatch,
-    AWError,
     CycleReporter,
     FailureKind,
     StreamFailure,
@@ -35,6 +29,8 @@ from computer_history.sources import (
     poll,
     watch,
 )
+from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch, AWError
+from computer_history.sources.capture_spool import RECORD_KINDS, SPOOL_VERSION
 from computer_history.store import (
     DB_ENV_VAR,
     Observation,

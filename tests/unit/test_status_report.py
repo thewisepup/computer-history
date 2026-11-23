@@ -14,16 +14,14 @@ from fake_host import FakeHost
 from projectors import AW
 
 from computer_history import cli
-from computer_history.sources import (
+from computer_history.sources import IngestHealth, health_path, write_health
+from computer_history.sources.activitywatch import AWError
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     SPOOL_ENV_VAR,
     SPOOL_VERSION,
     WINDOW_TEXT_SOURCE,
-    AWError,
-    IngestHealth,
     agent_config_path,
-    health_path,
-    write_health,
 )
 from computer_history.stable import stable_layout
 from computer_history.status import CaptureGaps, StatusReport, status_report

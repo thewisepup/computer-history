@@ -22,7 +22,8 @@ from aw_watchers import (
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from computer_history.sources import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch, poll
+from computer_history.sources import poll
+from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch
 from computer_history.store import connect
 
 seconds = st.one_of(st.integers(1, 30), st.integers(100, 240), st.integers(1, 900))

@@ -23,13 +23,8 @@ from computer_history.host import (
     JobState,
     SpoolReads,
 )
-from computer_history.sources import (
-    CAPTURE_KIND,
-    RECORD_KINDS,
-    SPOOL_VERSION,
-    IngestHealth,
-    write_health,
-)
+from computer_history.sources import IngestHealth, write_health
+from computer_history.sources.capture_spool import CAPTURE_KIND, RECORD_KINDS, SPOOL_VERSION
 from computer_history.stable import (
     BACKEND,
     PACKAGES_FILE_NAME,

@@ -20,18 +20,15 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.sources import (
+from computer_history.sources import CaptureHealth, IngestHealth, health_path
+from computer_history.sources.activitywatch import ActivityWatch, AWClient
+from computer_history.sources.capture_spool import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
     UNREADABLE_FOLDER,
     WINDOW_TEXT_SOURCE,
-    ActivityWatch,
-    AWClient,
-    CaptureHealth,
-    IngestHealth,
     ScreenshotHealth,
     ScreenshotTally,
-    health_path,
     resolve_spool_path,
 )
 from computer_history.stable import (

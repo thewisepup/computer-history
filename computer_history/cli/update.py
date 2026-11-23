@@ -9,14 +9,9 @@ from pathlib import Path
 
 from computer_history.cli import formatting
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.sources import (
-    AWClient,
-    DatabaseRead,
-    StoredAndSpooled,
-    default_spool_path,
-    health_path,
-    read_health,
-)
+from computer_history.sources import DatabaseRead, StoredAndSpooled, health_path, read_health
+from computer_history.sources.activitywatch import AWClient
+from computer_history.sources.capture_spool import default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
     RELEASE_GATE,
