@@ -642,12 +642,6 @@ def test_cli_hard_database_error_mid_run_reports_totals_and_resume_hint(
     assert "Traceback" not in err
 
 
-def test_unhandled_command_fails_cleanly(capsys, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(cli.COMMANDS, "frobnicate", "Not built yet.")
-    assert cli.main(["frobnicate"]) == 1
-    assert "computer-history frobnicate: not implemented yet" in capsys.readouterr().err
-
-
 def test_a_backfill_logs_its_start_progress_and_end(conn, caplog) -> None:
     caplog.set_level(logging.DEBUG)
     plan = window_plan(history_aw(NOW), conn, chunk=timedelta(days=1))

@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
+from computer_history.cli.formatting import plural
 from computer_history.stable import (
     GuardFailed,
     Unmet,
@@ -38,7 +39,7 @@ def cmd_check_agent_install(args: argparse.Namespace) -> int:
     if not verdict.unmet:
         print(f"Agent install allowed: every condition holds for HEAD {head}")
         return 0
-    count = f"{len(verdict.unmet)} unmet condition{'s' if len(verdict.unmet) > 1 else ''}"
+    count = f"{len(verdict.unmet)} unmet {plural('condition', len(verdict.unmet))}"
     if args.force:
         print(f"Agent install allowed by --force, skipping {count} for HEAD {head}:")
         for unmet in verdict.unmet:

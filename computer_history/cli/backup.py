@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from computer_history.cli import formatting
-from computer_history.cli.formatting import human_size
+from computer_history.cli.formatting import copy_lines
 from computer_history.stable import (
     BACKEND,
     BackupFailed,
@@ -33,8 +33,8 @@ def cmd_backup(args: argparse.Namespace) -> int:
         print(f"Today's backup is already taken: {taken.path}")
     elif taken.copy is not None:
         print(f"Backed up {args.database}")
-        print(f"  copied to {taken.copy.target}")
-        print(f"  schema v{taken.copy.schema}, {human_size(taken.copy.size)}, integrity ok")
+        for line in copy_lines(taken.copy):
+            print(line)
     for path in taken.removed:
         print(f"  removed   {path}")
     return 0

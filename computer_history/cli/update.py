@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from computer_history.cli import formatting
+from computer_history.cli.formatting import release_gate_lines
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
     AWClient,
@@ -19,7 +20,6 @@ from computer_history.sources import (
 from computer_history.sources.capture_spool import default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
-    RELEASE_GATE,
     AgentCheck,
     AgentOutcome,
     Layout,
@@ -30,7 +30,6 @@ from computer_history.stable import (
     rollback,
     stable_layout,
     update,
-    version_name,
 )
 from computer_history.store import Purpose, StoreState, open_store
 
@@ -94,8 +93,7 @@ def format_update(report: UpdateReport, layout: Layout) -> list[str]:
         if report.behind:
             line += f" (the newest passing commit, {report.version}, is older than current)"
         return [line]
-    lines = [f"Release gate: {', '.join(RELEASE_GATE)}"]
-    lines += [f"  skipped {version_name(v.commit)}: {v.summary}" for v in report.skipped]
+    lines = release_gate_lines(report.skipped)
     if report.action is UpdateAction.UPDATED:
         lines.append(
             f"Updated to version {report.version} (commit {report.commit}) from {report.kept}"
