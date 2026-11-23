@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from itertools import groupby
 from typing import NamedTuple
 
-from computer_history.sources import AFK_SOURCE
+from computer_history.sources.activitywatch import AFK_SOURCE
 from computer_history.synthetic.timeline import Stretch, Timeline, observed_periods
 
 AFK_TIMEOUT = timedelta(seconds=180)

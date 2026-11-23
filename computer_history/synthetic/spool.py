@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import (
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     KEPT_STATUS,
     SCREENSHOT_KIND,

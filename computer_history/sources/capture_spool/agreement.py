@@ -35,7 +35,6 @@ def app_agreement(
     *,
     start: datetime,
     end: datetime,
-    tolerance: timedelta = APP_TOLERANCE,
 ) -> AppAgreement:
     """Compare each capture in the range with the aw-window spans within the tolerance of it.
 
@@ -46,7 +45,7 @@ def app_agreement(
         key=lambda r: r.at,
     )
     pending = deque(
-        sorted(s for s in spans if s[0] <= end + tolerance and s[1] >= start - tolerance)
+        sorted(s for s in spans if s[0] <= end + APP_TOLERANCE and s[1] >= start - APP_TOLERANCE)
     )
     in_range = len(pending)
     near: list[WindowSpan] = []
@@ -54,9 +53,9 @@ def app_agreement(
     pairs: Counter[tuple[str | None, str]] = Counter()
     for capture in captures:
         at = capture.at
-        while pending and pending[0][0] <= at + tolerance:
+        while pending and pending[0][0] <= at + APP_TOLERANCE:
             near.append(pending.popleft())
-        near = [span for span in near if span[1] >= at - tolerance]
+        near = [span for span in near if span[1] >= at - APP_TOLERANCE]
         if not near:
             unjudged += 1
         elif any(_same(capture.app, span[2]) for span in near):

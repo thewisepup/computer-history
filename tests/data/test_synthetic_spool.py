@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from store_answers import DATASET_FILES
 
-from computer_history.sources import (
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     EXCLUDED_KIND,
     MOMENT_KINDS,

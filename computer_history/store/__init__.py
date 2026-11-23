@@ -16,13 +16,11 @@ from computer_history.store.backup import (
     DatabaseExists,
     DatabaseInUse,
     IntegrityCheckFailed,
-    RestoredCopy,
     backup_database,
     restore_database,
 )
 from computer_history.store.contents import content_digest
 from computer_history.store.db import (
-    BUSY_TIMEOUT_SECONDS,
     Migration,
     connect,
     connect_immutable,
@@ -34,7 +32,6 @@ from computer_history.store.db import (
     transaction,
 )
 from computer_history.store.introspection import (
-    DbstatUnavailable,
     SqliteBuild,
     page_counts,
     scanned_tables,
@@ -69,8 +66,6 @@ from computer_history.store.paths import (
 from computer_history.store.progress import Progress, ProgressUpdate, get_progress
 from computer_history.store.screenshots import (
     SCREENSHOT_STATUS_INDEX,
-    NewestScreenshot,
-    StatusTotal,
     first_screenshot_at,
     newest_screenshot,
     screenshot_totals,
@@ -87,12 +82,9 @@ from computer_history.store.spool_hold import SpoolHold, spool_hold_path
 from computer_history.store.status import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
-    Coverage,
     Gap,
-    PayloadValues,
     SourceCoverage,
     SourceSummary,
-    StatusReads,
     find_gaps,
     latest_payload_value,
     payload_values,
@@ -103,7 +95,6 @@ from computer_history.store.status import (
 from computer_history.store.timefmt import to_utc, utc_iso
 
 __all__ = [
-    "BUSY_TIMEOUT_SECONDS",
     "DATABASE_NAME",
     "DB_ENV_VAR",
     "DEV_FOLDER_NAME",
@@ -114,20 +105,16 @@ __all__ = [
     "SHORT_COMMIT_LENGTH",
     "STATUS_WINDOW",
     "VERSIONS_FOLDER_NAME",
-    "Coverage",
     "DatabaseCopy",
     "DatabaseExists",
     "DatabaseInUse",
-    "DbstatUnavailable",
     "Gap",
     "InsertResult",
     "IntegrityCheckFailed",
     "LiveDatabaseRefused",
     "Migration",
-    "NewestScreenshot",
     "Observation",
     "OpenedStore",
-    "PayloadValues",
     "Profile",
     "Progress",
     "ProgressUpdate",
@@ -135,15 +122,12 @@ __all__ = [
     "Purpose",
     "RebuildAborted",
     "RebuildResult",
-    "RestoredCopy",
     "RunningCode",
     "Signal",
     "SourceCoverage",
     "SourceSummary",
     "SpoolHold",
     "SqliteBuild",
-    "StatusReads",
-    "StatusTotal",
     "StoreState",
     "UnclaimedSource",
     "backup_database",

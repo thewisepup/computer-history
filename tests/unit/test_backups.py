@@ -13,7 +13,7 @@ from fake_host import FakeHost, gate_runs, installed_package
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli.formatting import human_size, when
-from computer_history.sources import WINDOW_SOURCE
+from computer_history.sources.activitywatch import WINDOW_SOURCE
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,

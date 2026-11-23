@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.sources import SCREENSHOT_KIND, InvalidRecord, parse_record
+from computer_history.sources.capture_spool import SCREENSHOT_KIND, InvalidRecord, parse_record
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = FIXTURE.read_text(encoding="utf-8").splitlines()

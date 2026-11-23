@@ -10,7 +10,7 @@ import copy
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from computer_history.sources import AWError
+from computer_history.sources.activitywatch import AWError
 from computer_history.store import to_utc
 
 T0 = datetime(2026, 11, 17, 10, 0, 0, 250000, tzinfo=UTC)

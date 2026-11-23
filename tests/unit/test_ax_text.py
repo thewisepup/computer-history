@@ -21,8 +21,18 @@ from log_records import logged
 from computer_history import cli
 from computer_history.cli import ingest as cli_ingest
 from computer_history.sources import (
+    FailureKind,
+    IngestOutcome,
+    commit_pull,
+    poll,
+    projector_for,
+    reproject_signals,
+    watch,
+)
+from computer_history.sources.activitywatch import ActivityWatch, AWError
+from computer_history.sources.activitywatch import client as aw_client
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
-    MAX_TEXT_LENGTH,
     MAX_WINDOW_TEXT_LENGTH,
     MOMENT_KINDS,
     SCREENSHOT_KIND,
@@ -31,24 +41,15 @@ from computer_history.sources import (
     SPOOL_VERSION,
     UNREADABLE_FOLDER,
     WINDOW_TEXT_SOURCE,
-    ActivityWatch,
-    AWError,
     CaptureSpool,
-    FailureKind,
-    IngestOutcome,
     InvalidRecord,
-    commit_pull,
     finished_files,
     parse_record,
-    poll,
-    projector_for,
-    reproject_signals,
     resolve_spool_path,
-    watch,
 )
-from computer_history.sources.activitywatch import client as aw_client
 from computer_history.sources.capture_spool import adapter as spool_adapter
 from computer_history.store import Profile, Signal, connect, get_progress, table_counts, utc_iso
+from computer_history.text import MAX_TEXT_LENGTH
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "spool" / "records.jsonl"
 FIXTURE_LINES = [

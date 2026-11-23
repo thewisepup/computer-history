@@ -16,8 +16,9 @@ from projectors import AW
 from spool_records import spool_line
 
 from computer_history.cli import status as cli_status
-from computer_history.sources import (
-    AFK_SOURCE,
+from computer_history.sources import capture_health
+from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE
+from computer_history.sources.capture_spool import (
     AGENT_ALIVE_WITHIN,
     APP_TOLERANCE,
     CAPTURE_KIND,
@@ -29,14 +30,12 @@ from computer_history.sources import (
     SLEPT_KIND,
     SPOOL_ENV_VAR,
     UNREADABLE_FOLDER,
-    WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
     WOKE_KIND,
     Liveness,
     StoredRecord,
     app_agreement,
     capture_coverage,
-    capture_health,
     liveness,
     spool_backlog,
 )

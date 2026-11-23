@@ -16,7 +16,7 @@ from projectors import AW
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import status as cli_status
-from computer_history.sources import (
+from computer_history.sources.capture_spool import (
     AGENT_ALIVE_WITHIN,
     SCREENSHOT_KIND,
     SCREENSHOT_SOURCE,

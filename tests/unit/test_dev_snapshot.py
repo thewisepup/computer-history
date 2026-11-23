@@ -9,7 +9,7 @@ from cli_output import RunCli
 from db_states import damaged, integrity, left_with_a_wal, store_windows, stored_ids, writer
 
 from computer_history.cli.profile import NOT_A_CHECKOUT
-from computer_history.sources import WINDOW_SOURCE
+from computer_history.sources.activitywatch import WINDOW_SOURCE
 from computer_history.sources.capture_spool.paths import SPOOL_FOLDER_NAME
 from computer_history.store import (
     DATABASE_NAME,

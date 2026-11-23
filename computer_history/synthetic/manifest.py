@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from computer_history.sources import WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources.activitywatch import WEB_SOURCE, WINDOW_SOURCE
 from computer_history.store import Gap
 from computer_history.synthetic.afk import reported_afk
 from computer_history.synthetic.captures import Capture, agent_captures

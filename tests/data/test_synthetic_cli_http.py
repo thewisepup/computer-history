@@ -15,12 +15,8 @@ import pytest
 from aw_http import aw_server, served_over_http
 from db_states import stored_progress
 
-from computer_history.sources import (
-    DEFAULT_AW_URL,
-    WINDOW_TEXT_SOURCE,
-    AWClient,
-    AWError,
-)
+from computer_history.sources.activitywatch import DEFAULT_AW_URL, AWClient, AWError
+from computer_history.sources.capture_spool import WINDOW_TEXT_SOURCE
 from computer_history.store import connect, content_digest, utc_iso
 from computer_history.synthetic import SCENARIOS, Dataset, DatasetInputs, build_dataset
 from computer_history.synthetic.activitywatch import ActivityWatchRenderer, RenderedActivityWatch

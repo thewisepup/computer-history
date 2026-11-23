@@ -8,7 +8,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from computer_history.sources import configured_spool_path
+from computer_history.sources.capture_spool import configured_spool_path
 from computer_history.store import (
     Profile,
     configured_db_path,

@@ -10,14 +10,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from store_answers import local_days, stored_days, stored_gaps, stored_totals
 
-from computer_history.sources import (
-    AFK_SOURCE,
-    SCREENSHOT_SOURCE,
-    SLEPT_KIND,
-    WEB_SOURCE,
-    WINDOW_SOURCE,
-    WINDOW_TEXT_SOURCE,
-)
+from computer_history.sources.activitywatch import AFK_SOURCE, WEB_SOURCE, WINDOW_SOURCE
+from computer_history.sources.capture_spool import SCREENSHOT_SOURCE, SLEPT_KIND, WINDOW_TEXT_SOURCE
 from computer_history.store import connect, source_summary
 from computer_history.synthetic import (
     HEAVY,

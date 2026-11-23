@@ -7,13 +7,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from computer_history.sources import (
-    AFK_SOURCE,
+from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE
+from computer_history.sources.capture_spool import (
     CAPTURE_TOLERANCE,
     EXCLUDED_KIND,
     PAUSED_KIND,
     SLEPT_KIND,
-    WINDOW_SOURCE,
     WINDOW_TEXT_SOURCE,
 )
 from computer_history.store import Gap

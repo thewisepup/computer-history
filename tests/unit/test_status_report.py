@@ -15,15 +15,13 @@ from fake_host import FakeHost, write_record
 from projectors import AW
 from spool_records import spool_line
 
-from computer_history.sources import (
+from computer_history.sources import IngestHealth, health_path, write_health
+from computer_history.sources.activitywatch import AWError
+from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
     SPOOL_ENV_VAR,
     WINDOW_TEXT_SOURCE,
-    AWError,
-    IngestHealth,
     agent_config_path,
-    health_path,
-    write_health,
 )
 from computer_history.stable import stable_layout
 from computer_history.status import CaptureGaps, StatusReport, status_report

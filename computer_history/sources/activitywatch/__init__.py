@@ -52,23 +52,13 @@ from computer_history.sources.activitywatch.frontmost import (
     newest_app_spans,
     stored_app_spans,
 )
-from computer_history.sources.activitywatch.normalize import PROJECTORS, project_signal
+from computer_history.sources.activitywatch.normalize import project_signal
 from computer_history.sources.activitywatch.pull import STABILITY_MARGIN_SECONDS
 from computer_history.sources.activitywatch.watchers import watcher_ends
-from computer_history.text import (
-    MAX_TEXT_LENGTH,
-    MAX_URL_LENGTH,
-    clean_text,
-    clean_url,
-    extract_domain,
-)
 
 __all__ = [
     "AFK_SOURCE",
     "DEFAULT_AW_URL",
-    "MAX_TEXT_LENGTH",
-    "MAX_URL_LENGTH",
-    "PROJECTORS",
     "RESUME_OVERLAP_SECONDS",
     "STABILITY_MARGIN_SECONDS",
     "WEB_SOURCE",
@@ -80,10 +70,7 @@ __all__ = [
     "ActivityWatch",
     "AfkSpan",
     "AppSpan",
-    "clean_text",
-    "clean_url",
     "discover_sources",
-    "extract_domain",
     "newest_afk_spans",
     "newest_app_spans",
     "project_signal",
