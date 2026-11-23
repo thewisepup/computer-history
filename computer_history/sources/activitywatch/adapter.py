@@ -48,7 +48,7 @@ class ActivityWatch:
 
     def _discover(self) -> dict[str, AWSource]:
         self._buckets = self.client.get_buckets()
-        found = discover_sources(self.client, buckets=self._buckets)
+        found = discover_sources(self._buckets)
         self._sources = {source.name: source for source in found}
         return self._sources
 

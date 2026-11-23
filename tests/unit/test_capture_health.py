@@ -456,6 +456,7 @@ def health(conn: sqlite3.Connection, spool: Path, client: FakeAW | None = None):
         source_summary(conn),
         spool,
         client,
+        None if client is None else client.get_buckets(),
         now=NOW,
         window=timedelta(hours=24),
         hostname=HOST,

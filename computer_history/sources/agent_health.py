@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -49,11 +48,11 @@ from computer_history.store import SourceSummary, to_utc
 __all__ = [
     "CaptureHealth",
     "CaptureLiveness",
-    "DatabaseRead",
-    "StoredAndSpooled",
     "active_spans",
+    "active_time",
     "capture_health",
     "capture_liveness",
+    "newest_record",
 ]
 
 
@@ -77,6 +76,7 @@ def capture_health(
     summaries: Iterable[SourceSummary],
     spool_folder: Path,
     client: AWApi | None,
+    buckets: Mapping[str, Any] | None,
     *,
     now: datetime,
     window: timedelta,
@@ -86,20 +86,18 @@ def capture_health(
 ) -> CaptureHealth:
     """Report on the agent from its stored records, its spool, aw-afk and aw-window, as of now.
 
-    Only this host's window buckets count, and with a client their newest events and AFK's do too.
+    Only this host's window buckets count, and with a client and its bucket listing their newest
+    events and AFK's do too.
     """
     now = to_utc(now)
-    try:
-        spool, spool_error = spool_backlog(spool_folder), None
-    except SpoolError as exc:
-        spool, spool_error = None, str(exc)
+    spool, spool_error = _backlog(spool_folder)
     summary = next((s for s in summaries if s.source == WINDOW_TEXT_SOURCE), None)
     stored = newest_stored(conn, until=now)
-    if summary is None or summary.earliest_started_at is None or stored is None:
+    unstored = None if spool is None else spool.newest
+    newest = _newest(stored, unstored)
+    if summary is None or summary.earliest_started_at is None or stored is None or newest is None:
         return CaptureHealth(False, spool, spool_error)
 
-    unstored = None if spool is None else spool.newest
-    newest = unstored if unstored is not None and unstored[0] > stored[0] else stored
     end = stored[0] if spool is None or spool.unstored else now
     start = max(end - window, summary.earliest_started_at)
     day_start = to_utc(day_start)
@@ -108,9 +106,7 @@ def capture_health(
     records = stored_records(conn, read_from, now)
     before = newest_stored(conn, until=read_from)
     earlier = None if before is None else StoredRecord(*before)
-    paused = newest[1] == PAUSED_KIND
-    buckets = _buckets(client)
-    afk_from = min(read_from, newest[0])
+    afk_from = min(read_from, newest.at)
     if earlier is not None and earlier.kind == SLEPT_KIND:
         afk_from = min(afk_from, earlier.at)
     afk = _afk_spans(conn, client, buckets, afk_from, now)
@@ -137,8 +133,8 @@ def capture_health(
         spool=spool,
         spool_error=spool_error,
         last_capture=_last_capture(conn, now, unstored),
-        last_record=newest[0],
-        paused_since=newest[0] if paused else None,
+        last_record=newest.at,
+        paused_since=newest.at if newest.paused else None,
         today=day_counts(records, day_start),
         coverage=coverage,
         agreement=agreement,
@@ -155,23 +151,14 @@ def _last_capture(
     return max(times, default=None)
 
 
-def _buckets(client: AWApi | None) -> Mapping[str, Any] | None:
-    if client is None:
-        return None
-    try:
-        return client.get_buckets()
-    except SourceUnavailable:
-        return None
-
-
 def _afk_spans(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection | None,
     client: AWApi | None,
     buckets: Mapping[str, Any] | None,
     start: datetime,
     end: datetime,
 ) -> list[AfkSpan]:
-    spans = stored_afk_spans(conn, start, end)
+    spans = [] if conn is None else stored_afk_spans(conn, start, end)
     if client is not None and buckets is not None:
         try:
             spans.extend(newest_afk_spans(client, buckets))
@@ -207,16 +194,15 @@ class CaptureLiveness:
 
 
 def active_spans(
-    conn: sqlite3.Connection | None, client: AWApi | None, start: datetime, end: datetime
+    conn: sqlite3.Connection | None,
+    client: AWApi | None,
+    buckets: Mapping[str, Any] | None,
+    start: datetime,
+    end: datetime,
 ) -> list[Span]:
     """Collect the stretches aw-afk shows the user active, stored and in ActivityWatch's newest."""
-    stored = [] if conn is None else stored_afk_spans(conn, start, end)
-    if client is not None and (buckets := _buckets(client)) is not None:
-        try:
-            stored.extend(newest_afk_spans(client, buckets))
-        except SourceUnavailable:
-            pass
-    return [(span.start, span.end) for span in stored if not span.afk]
+    afk = _afk_spans(conn, client, buckets, start, end)
+    return [(span.start, span.end) for span in afk if not span.afk]
 
 
 @dataclass(frozen=True)
@@ -236,7 +222,7 @@ def newest_record(
 ) -> NewestRecord | None:
     """The agent's newest record up to now, stored or still in the spool; an unreadable spool
     counts as holding none."""
-    return _newest(conn, spool_folder, to_utc(now))[0]
+    return _stored_or_spooled(conn, spool_folder, to_utc(now))[0]
 
 
 def active_time(
@@ -248,49 +234,9 @@ def active_time(
         buckets = client.get_buckets()
     except SourceUnavailable:
         return None
-    if not any(source.name == AFK_SOURCE for source in discover_sources(client, buckets=buckets)):
+    if not any(source.name == AFK_SOURCE for source in discover_sources(buckets)):
         return None
-    return attended_time(active_spans(conn, client, start, end), start, end)
-
-
-@dataclass(frozen=True)
-class NewestRead:
-    """The agent's newest record found, and why the database could not be searched, if it
-    could not."""
-
-    record: NewestRecord | None
-    database_unread: str | None = None
-
-
-@dataclass(frozen=True)
-class DatabaseRead:
-    """A connection to the database opened for reading, or why there is none."""
-
-    conn: sqlite3.Connection | None
-    unread: str | None = None
-
-
-class StoredAndSpooled:
-    """The capture agent's records in the database and spool, and aw-afk, read afresh each time."""
-
-    def __init__(
-        self,
-        open_database: Callable[[], AbstractContextManager[DatabaseRead]],
-        spool: Path,
-        client: AWApi,
-        *,
-        now: Callable[[], datetime],
-    ) -> None:
-        self.open_database, self.spool, self.client, self.now = open_database, spool, client, now
-
-    def newest_record(self) -> NewestRead:
-        with self.open_database() as database:
-            found = newest_record(database.conn, self.spool, now=self.now())
-            return NewestRead(found, database.unread)
-
-    def active_between(self, start: datetime, end: datetime) -> timedelta | None:
-        with self.open_database() as database:
-            return active_time(database.conn, self.client, start, end)
+    return attended_time(active_spans(conn, client, buckets, start, end), start, end)
 
 
 def capture_liveness(
@@ -304,7 +250,7 @@ def capture_liveness(
 ) -> CaptureLiveness:
     """Judge the agent alive from its newest record, counting silence from watched_since on."""
     now = to_utc(now)
-    newest, spool_error = _newest(conn, spool_folder, now)
+    newest, spool_error = _stored_or_spooled(conn, spool_folder, now)
     if newest is None:
         return CaptureLiveness(None, Liveness.UNKNOWN, spool_error)
     alive = liveness(
@@ -317,16 +263,26 @@ def capture_liveness(
     return CaptureLiveness(newest.at, alive, spool_error)
 
 
-def _newest(
+def _stored_or_spooled(
     conn: sqlite3.Connection | None, spool_folder: Path, now: datetime
 ) -> tuple[NewestRecord | None, str | None]:
-    try:
-        unstored, spool_error = spool_backlog(spool_folder).newest, None
-    except SpoolError as exc:
-        unstored, spool_error = None, str(exc)
+    spool, spool_error = _backlog(spool_folder)
     stored = None if conn is None else newest_stored(conn, until=now)
+    return _newest(stored, None if spool is None else spool.newest), spool_error
+
+
+def _backlog(spool_folder: Path) -> tuple[SpoolBacklog | None, str | None]:
+    try:
+        return spool_backlog(spool_folder), None
+    except SpoolError as exc:
+        return None, str(exc)
+
+
+def _newest(
+    stored: tuple[datetime, str | None] | None, unstored: tuple[datetime, str] | None
+) -> NewestRecord | None:
     found = [record for record in (stored, unstored) if record is not None]
     if not found:
-        return None, spool_error
+        return None
     at, kind = max(found, key=lambda record: record[0])
-    return NewestRecord(at, kind), spool_error
+    return NewestRecord(at, kind)

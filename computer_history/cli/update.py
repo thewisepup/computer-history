@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 from computer_history.cli import formatting
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
     AWClient,
-    DatabaseRead,
-    StoredAndSpooled,
+    active_time,
     health_path,
+    newest_record,
     read_health,
 )
+from computer_history.sources.activitywatch import AWApi
 from computer_history.sources.capture_spool import default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
@@ -39,31 +43,42 @@ AGENT_FELL_BACK_EXIT_CODE = 3
 
 
 @contextmanager
-def _reading(database: Path) -> Generator[DatabaseRead]:
+def _reading(database: Path) -> Generator[tuple[sqlite3.Connection | None, str | None]]:
     with open_store(database, Purpose.READ) as store:
         if store.state is StoreState.READY:
-            yield DatabaseRead(store.conn)
+            yield store.conn, None
         elif store.state is StoreState.NEWER:
-            yield DatabaseRead(None, "the database's schema is newer than this update reads")
+            yield None, "the database's schema is newer than this update reads"
         else:
-            yield DatabaseRead(None, f"the database is {store.state.value}")
+            yield None, f"the database is {store.state.value}"
+
+
+def _newest_record(database: Path, spool: Path) -> tuple[datetime | None, bool, str | None]:
+    with _reading(database) as (conn, unread):
+        found = newest_record(conn, spool, now=formatting.utc_now())
+    return (None, False, unread) if found is None else (found.at, found.paused, unread)
+
+
+def _active_between(
+    database: Path, client: AWApi, start: datetime, end: datetime
+) -> timedelta | None:
+    with _reading(database) as (conn, _):
+        return active_time(conn, client, start, end)
 
 
 def cmd_update(args: argparse.Namespace) -> int:
     layout = stable_layout()
     health = health_path(layout.database)
-    records = StoredAndSpooled(
-        lambda: _reading(layout.database),
-        default_spool_path(layout.database),
-        AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS),
-        now=formatting.utc_now,
-    )
+    client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     try:
         report = update(
             args.host,
             layout,
             last_cycle=lambda: read_health(health),
-            agent_records=records,
+            newest_record=partial(
+                _newest_record, layout.database, default_spool_path(layout.database)
+            ),
+            active_between=partial(_active_between, layout.database, client),
             now=formatting.utc_now,
             wait_seconds=args.wait,
             sleep=time.sleep,

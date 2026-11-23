@@ -22,7 +22,7 @@ def watcher_ends(
 ) -> dict[str, datetime | None]:
     """Where each of this host's AFK and window sources last advanced, by its newest bucket."""
     ends: dict[str, datetime | None] = {}
-    for source in discover_sources(client, buckets=buckets):
+    for source in discover_sources(buckets):
         on_this_host = [bucket for bucket in source.bucket_ids if on_host(bucket, hostname)]
         if source.name not in WATCHED_SOURCES or not on_this_host:
             continue

@@ -133,7 +133,7 @@ def test_discovery_maps_bucket_types_to_sources() -> None:
             "aw-watcher-input_test-host.local": "os.hid.input",
         }
     )
-    assert discover_sources(fake) == [
+    assert discover_sources(fake.get_buckets()) == [
         AWSource(AFK_SOURCE, (AFK_BUCKET,)),
         AWSource(WEB_SOURCE, (OLD_WEB_BUCKET, WEB_BUCKET)),
         AWSource(WINDOW_SOURCE, (WINDOW_BUCKET,)),
@@ -141,7 +141,7 @@ def test_discovery_maps_bucket_types_to_sources() -> None:
 
 
 def test_discovery_with_no_known_buckets_is_empty() -> None:
-    assert discover_sources(FakeAW({"other": "something.else"})) == []
+    assert discover_sources(FakeAW({"other": "something.else"}).get_buckets()) == []
 
 
 def test_latest_event_is_held_back_older_events_ingested() -> None:
@@ -377,7 +377,7 @@ def test_malformed_events_are_skipped_and_negative_duration_clamped(
 
 def test_reingesting_the_same_range_adds_nothing(conn: sqlite3.Connection) -> None:
     fake = full_aw()
-    sources = discover_sources(fake)
+    sources = discover_sources(fake.get_buckets())
 
     def ingest_every_stream() -> dict[str, IngestOutcome]:
         return {
