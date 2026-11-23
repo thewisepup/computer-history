@@ -149,6 +149,10 @@ What to test and what the gate does, by change:
 | Schema change | Facts for new tables, or a reasoned exemption | Operations for new reads | Every cached dataset rebuilds; plans, pages and costs rechecked |
 | Refactor | Nothing new | Nothing new | Must pass unchanged |
 
+The baseline is counted on CI's SQLite, not the Mac's: there `--update-baselines`
+keeps the baseline's VM steps, so when CI's `perf` job then fails on VM steps
+alone, copy in its counters (the CLI README's `dev perf` section has the commands).
+
 ## Agent skills
 
 ### Issue tracker

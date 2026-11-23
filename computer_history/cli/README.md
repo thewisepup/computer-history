@@ -1216,6 +1216,7 @@ computer-history dev perf                      # day and month, against the comm
 computer-history dev perf --update-baselines   # record a deliberate change of cost
 computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
 computer-history dev perf --counters costs.json          # also write what an update would write
+computer-history dev perf --baseline /tmp/sqlite-3.45.1.json   # another file; its name gives its SQLite
 ```
 
 Real output, on a Mac whose SQLite is not CI's:
@@ -1264,8 +1265,9 @@ ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
 VM steps differ between SQLite versions (by up to 11% between 3.45.1 and
 3.54.1), while statements, scans and pages match exactly. So on another SQLite
 the gate leaves VM steps out and says so in one line, and `--update-baselines`
-rewrites everything but them. If CI's `perf` job then fails on VM steps alone,
-take its counters, the file an update on CI would write:
+rewrites everything but them, taking this machine's VM steps only for an entry
+or statement the baseline lacks. If CI's `perf` job then fails on VM steps
+alone, take its counters, the file an update on CI would write:
 
 ```bash
 gh run download <run-id> -n perf-counters -D /tmp/perf

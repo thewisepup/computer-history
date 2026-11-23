@@ -28,7 +28,7 @@ generate.py         the inputs (persona, scenario, tier, heavy, seed) -> one tim
   operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
   meter.py          the statements, VM steps, full scans and pages one operation costs
   gate.py           those costs per operation and dataset against the committed baseline
-                    baseline.py: the committed costs, counted on CI's SQLite
+      |             baseline.py: the committed costs, counted on CI's SQLite
 """
 
 from computer_history.synthetic.baseline import (
