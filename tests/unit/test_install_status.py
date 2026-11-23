@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
+from cli_output import STATUS, UNREACHABLE_AW, RunCli, ingest_line, section
 from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
@@ -40,11 +40,6 @@ def stable_code(run: RunCli, live: Path, checkout: Path) -> tuple[Path, FakeHost
     host = FakeHost(checks={COMMIT: gate_runs()})
     assert run(checkout, "install", host=host)[0] == 0
     return installed_package(stable_layout().link.resolve().parents[1]), host
-
-
-def ingest_line(out: list[str]) -> str:
-    (line,) = [line for line in out if line.startswith("Ingest:")]
-    return line
 
 
 def test_status_reads_the_backends_last_cycle_beside_the_database_it_was_given(

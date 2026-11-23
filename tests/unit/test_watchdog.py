@@ -14,18 +14,14 @@ import pytest
 from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
 from fake_aw import T0, FakeAW, UnreachableAW
 from fake_host import FakeHost, gate_runs, installed_package
+from spool_records import spool_line
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import watchdog as cli_watchdog
 from computer_history.host import OPEN_ACTIVITYWATCH
 from computer_history.sources import IngestHealth, agent_health, health_path, write_health
 from computer_history.sources.activitywatch import WINDOW_SOURCE, AWError
-from computer_history.sources.capture_spool import (
-    CAPTURE_KIND,
-    PAUSED_KIND,
-    SPOOL_VERSION,
-    agent_config_path,
-)
+from computer_history.sources.capture_spool import CAPTURE_KIND, PAUSED_KIND, agent_config_path
 from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_layout
 from computer_history.store import DATABASE_NAME
 from computer_history.watchdog import (
@@ -129,25 +125,8 @@ class Mac:
 
     def record(self, kind: str) -> None:
         self.records += 1
-        content = kind == CAPTURE_KIND
-        line = {
-            "version": SPOOL_VERSION,
-            "id": f"00000000-0000-4000-8000-{self.records:012x}",
-            "captured_at": self.now.strftime("%Y-%m-%dT%H:%M:%S.")
-            + f"{self.now.microsecond // 1000:03d}Z",
-            "kind": kind,
-            "trigger": "heartbeat" if content else None,
-            "app_name": "Editor" if content else None,
-            "bundle_id": None,
-            "window_title": "w" if content else None,
-            "text": "t" if content else None,
-            "text_sha256": "0" * 64 if content else None,
-            "full_text_bytes": 1 if content else None,
-            "text_cut_off": False if content else None,
-            "timed_out": False if content else None,
-        }
         with (self.spool / "open.part").open("a", encoding="utf-8") as spool:
-            spool.write(json.dumps(line) + "\n")
+            spool.write(spool_line(self.records, self.now, kind) + "\n")
 
     def watch(self) -> list[str]:
         code, out, err = self.run_cli(

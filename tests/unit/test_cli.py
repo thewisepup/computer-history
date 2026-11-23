@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from cli_output import after_profile_line
+from cli_output import RunCli, after_profile_line, run_here
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
 from projectors import no_signal
@@ -83,12 +83,6 @@ def counts_in(db_path: Path) -> dict[str, int]:
         conn.close()
 
 
-def run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str]:
-    code = cli.main(list(argv))
-    captured = capsys.readouterr()
-    return code, captured.out, captured.err
-
-
 def test_package_imports() -> None:
     assert computer_history.__name__ == "computer_history"
 
@@ -107,9 +101,9 @@ def test_every_command_has_a_handler() -> None:
     assert set(cli.HANDLERS) == set(cli.COMMANDS)
 
 
-def test_ingest_writes_rows_and_prints_counts(capsys, use_aw, db_path: Path) -> None:
+def test_ingest_writes_rows_and_prints_counts(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "ingest")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "ingest")
     assert code == 0
     assert str(db_path) in out
     assert re.search(r"aw-window\s+inserted\s+1\s+skipped\s+0\s+held back\s+1", out)
@@ -121,27 +115,27 @@ def test_ingest_writes_rows_and_prints_counts(capsys, use_aw, db_path: Path) -> 
 
 
 def test_ingest_honors_db_env_var_and_flag_after_subcommand(
-    capsys, use_aw, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    run: RunCli, use_aw, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
     env_db, flag_db = tmp_path / "env.db", tmp_path / "flag.db"
     monkeypatch.setenv(DB_ENV_VAR, str(env_db))
-    assert run(capsys, "ingest")[0] == 0
+    assert run_here(run, "ingest")[0] == 0
     assert env_db.exists()
-    assert run(capsys, "ingest", "--db-path", str(flag_db))[0] == 0
+    assert run_here(run, "ingest", "--db-path", str(flag_db))[0] == 0
     assert flag_db.exists()
 
 
-def test_ingest_with_no_sources(capsys, use_aw, db_path: Path) -> None:
+def test_ingest_with_no_sources(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(FakeAW({"aw-watcher-input_x": "os.hid.input"}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "ingest")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "ingest")
     assert code == 0
     assert "no ActivityWatch sources found" in out
 
 
-def test_ingest_with_aw_down_fails_cleanly(capsys, use_aw, db_path: Path) -> None:
+def test_ingest_with_aw_down_fails_cleanly(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(DownAW())
-    code, out, err = run(capsys, "--db-path", str(db_path), "ingest")
+    code, out, err = run_here(run, "--db-path", str(db_path), "ingest")
     assert code != 0
     assert UNREACHABLE in err
     assert "Is ActivityWatch running?" in err
@@ -250,9 +244,9 @@ def test_poll_keeps_outcomes_committed_before_a_failure(conn: sqlite3.Connection
     assert table_counts(conn)["observations"] == 1
 
 
-def test_ingest_prints_partial_progress_then_fails(capsys, use_aw, db_path: Path) -> None:
+def test_ingest_prints_partial_progress_then_fails(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(half_broken_aw(datetime.now(UTC)))
-    code, out, err = run(capsys, "--db-path", str(db_path), "ingest")
+    code, out, err = run_here(run, "--db-path", str(db_path), "ingest")
     assert code == 1
     assert re.search(r"aw-afk\s+inserted\s+1", out)
     assert "aw-window" not in out
@@ -326,7 +320,7 @@ def test_watch_survives_a_locked_database_and_logs_the_real_delay(
 
 
 def test_ingest_watch_exits_zero_on_ctrl_c(
-    capsys, use_aw, db_path: Path, caplog: pytest.LogCaptureFixture
+    run: RunCli, use_aw, db_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
     seeded = seeded_aw(datetime.now(UTC))
@@ -340,7 +334,7 @@ def test_ingest_watch_exits_zero_on_ctrl_c(
     fake = InterruptedAW({})
     fake.buckets, fake.events = seeded.buckets, seeded.events
     use_aw(fake)
-    code, _, err = run(capsys, "--db-path", str(db_path), "ingest", "--watch")
+    code, _, err = run_here(run, "--db-path", str(db_path), "ingest", "--watch")
     assert code == 0
     assert "Traceback" not in err
     messages = [r.getMessage() for r in caplog.records if r.name == cli_ingest.__name__]
@@ -349,11 +343,11 @@ def test_ingest_watch_exits_zero_on_ctrl_c(
     assert counts_in(db_path)["observations"] == 1
 
 
-def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Path) -> None:
+def test_status_reports_sources_lag_gaps_and_counts(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
-    assert run(capsys, "--db-path", str(db_path), "ingest")[0] == 0
+    assert run_here(run, "--db-path", str(db_path), "ingest")[0] == 0
 
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-window)" in out
     assert re.search(rf"Database:\s+{re.escape(str(db_path))} \(\d+(\.\d)? [KM]?B", out)
@@ -370,36 +364,36 @@ def test_status_reports_sources_lag_gaps_and_counts(capsys, use_aw, db_path: Pat
     assert re.search(r"signals\s+1\n", out)
 
 
-def test_status_gap_window_ends_at_settled_time_not_now(capsys, use_aw, db_path: Path) -> None:
+def test_status_gap_window_ends_at_settled_time_not_now(run: RunCli, use_aw, db_path: Path) -> None:
     now = datetime.now(UTC)
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(minutes=60))
     fake.add(WINDOW_BUCKET, 50, 590, {"app": "Code"})
     fake.add(WINDOW_BUCKET, 59.9, 1, {"app": "Code"})
     use_aw(fake)
-    run(capsys, "--db-path", str(db_path), "ingest")
-    _, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    run_here(run, "--db-path", str(db_path), "ingest")
+    _, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert "warning" not in out
     assert "aw-window: no gaps since" in out
 
 
-def test_status_lists_many_gaps_compactly(capsys, use_aw, db_path: Path) -> None:
+def test_status_lists_many_gaps_compactly(run: RunCli, use_aw, db_path: Path) -> None:
     now = datetime.now(UTC)
     fake = FakeAW({WINDOW_BUCKET: "currentwindow"}, t0=now - timedelta(hours=20))
     for hour in range(15):
         fake.add(WINDOW_BUCKET, hour * 60, 60, {"app": "Code"})
     fake.add(WINDOW_BUCKET, 15 * 60, 5 * 3600 - 30, {"app": "Code"})
     use_aw(fake)
-    run(capsys, "--db-path", str(db_path), "ingest")
-    _, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    run_here(run, "--db-path", str(db_path), "ingest")
+    _, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert len(re.findall(r"warning: no aw-window coverage from .* \(59m\)", out)) == 10
     assert "warning: ... and 5 more aw-window gaps" in out
 
 
-def test_status_with_aw_down_still_reports_store(capsys, use_aw, db_path: Path) -> None:
+def test_status_with_aw_down_still_reports_store(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
-    run(capsys, "--db-path", str(db_path), "ingest")
+    run_here(run, "--db-path", str(db_path), "ingest")
     use_aw(DownAW())
-    code, out, err = run(capsys, "--db-path", str(db_path), "status")
+    code, out, err = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     first_line = after_profile_line(out).splitlines()[0]
     assert "ActivityWatch is UNREACHABLE at http://127.0.0.1:5600/api/0" in first_line
@@ -409,19 +403,19 @@ def test_status_with_aw_down_still_reports_store(capsys, use_aw, db_path: Path) 
     assert "Traceback" not in err
 
 
-def test_status_on_missing_db_does_not_create_it(capsys, use_aw, tmp_path: Path) -> None:
+def test_status_on_missing_db_does_not_create_it(run: RunCli, use_aw, tmp_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
     missing = tmp_path / "nowhere" / "history.db"
-    code, out, _ = run(capsys, "status", "--db-path", str(missing))
+    code, out, _ = run_here(run, "status", "--db-path", str(missing))
     assert code == 0
     assert f"Database:      {missing} (not created yet" in out
     assert not missing.parent.exists()
 
 
-def test_status_on_fresh_db(capsys, use_aw, db_path: Path) -> None:
+def test_status_on_fresh_db(run: RunCli, use_aw, db_path: Path) -> None:
     connect(db_path).close()
     use_aw(FakeAW({}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: none of" in out
     assert "Sources:\n  none yet" in out
@@ -429,23 +423,23 @@ def test_status_on_fresh_db(capsys, use_aw, db_path: Path) -> None:
     assert re.search(r"observations\s+0\n", out)
 
 
-def test_status_writes_nothing(capsys, use_aw, db_path: Path) -> None:
+def test_status_writes_nothing(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(seeded_aw(datetime.now(UTC)))
-    run(capsys, "--db-path", str(db_path), "ingest")
+    run_here(run, "--db-path", str(db_path), "ingest")
     before = db_path.read_bytes()
-    assert run(capsys, "--db-path", str(db_path), "status")[0] == 0
+    assert run_here(run, "--db-path", str(db_path), "status")[0] == 0
     assert db_path.read_bytes() == before
     # A read-only WAL reader can leave an empty -wal file that the next writer removes.
     wal = Path(f"{db_path}-wal")
     assert not wal.exists() or wal.stat().st_size == 0
-    assert run(capsys, "--db-path", str(db_path), "ingest")[0] == 0
+    assert run_here(run, "--db-path", str(db_path), "ingest")[0] == 0
     assert not wal.exists()
 
 
-def test_status_does_not_migrate_an_old_schema(capsys, use_aw, db_path: Path) -> None:
+def test_status_does_not_migrate_an_old_schema(run: RunCli, use_aw, db_path: Path) -> None:
     sqlite3.connect(db_path).close()
     use_aw(FakeAW({}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     assert "schema v0" in out
     assert "`computer-history ingest` will migrate the database" in out
@@ -457,10 +451,10 @@ def test_status_does_not_migrate_an_old_schema(capsys, use_aw, db_path: Path) ->
         raw.close()
 
 
-def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
+def test_status_reports_a_newer_schema(run: RunCli, use_aw, db_path: Path) -> None:
     newer_db(db_path)
     use_aw(FakeAW({}))
-    code, out, err = run(capsys, "--db-path", str(db_path), "status")
+    code, out, err = run_here(run, "--db-path", str(db_path), "status")
     assert code == 1
     assert f"schema v{SUPPORTED + 1})" in out
     assert "ActivityWatch: yes" in out
@@ -469,7 +463,7 @@ def test_status_reports_a_newer_schema(capsys, use_aw, db_path: Path) -> None:
 
 
 def test_status_checks_sources_without_progress_up_to_latest_observation(
-    capsys, use_aw, db_path: Path
+    run: RunCli, use_aw, db_path: Path
 ) -> None:
     now = datetime.now(UTC)
     obs = [
@@ -482,13 +476,15 @@ def test_status_checks_sources_without_progress_up_to_latest_observation(
     insert_observations(conn, obs, project=no_signal)
     conn.close()
     use_aw(FakeAW({}))
-    _, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    _, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert "24h up to each source's settled-until time (or its latest observation" in out
     assert "(never ingested)" in out
     assert re.findall(r"warning: no aw-window coverage from .+ to .+ \((.+)\)", out) == ["30m"]
 
 
-def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_path: Path) -> None:
+def test_status_uses_settled_until_for_an_opaque_position(
+    run: RunCli, use_aw, db_path: Path
+) -> None:
     now = datetime.now(UTC)
     obs = [
         Observation(
@@ -504,7 +500,7 @@ def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_pat
     insert_observations(conn, [], progress=ProgressUpdate("ocr", "ocr/0042"), project=no_signal)
     conn.close()
     use_aw(FakeAW({}))
-    code, out, _ = run(capsys, "--db-path", str(db_path), "status")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     assert re.search(r"transcript\s+2 observations .* until .* \(8m( \d+s)? behind now\)", out)
     assert re.search(r"ocr\s+0 observations .* until - \(progress moved \d+s ago\)", out)
@@ -512,7 +508,7 @@ def test_status_uses_settled_until_for_an_opaque_position(capsys, use_aw, db_pat
     assert "ocr: no observations yet" in out
 
 
-def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:
+def test_status_honors_aw_url(run: RunCli, monkeypatch: pytest.MonkeyPatch, db_path: Path) -> None:
     connect(db_path).close()
     seen: list[str] = []
 
@@ -521,8 +517,8 @@ def test_status_honors_aw_url(capsys, monkeypatch: pytest.MonkeyPatch, db_path: 
         return FakeAW({})
 
     monkeypatch.setattr(cli_status, "AWClient", fake_client)
-    _, out, _ = run(
-        capsys, "--db-path", str(db_path), "status", "--aw-url", "http://127.0.0.1:5666/api/0"
+    _, out, _ = run_here(
+        run, "--db-path", str(db_path), "status", "--aw-url", "http://127.0.0.1:5666/api/0"
     )
     assert seen == ["http://127.0.0.1:5666/api/0"]
     assert "(http://127.0.0.1:5666/api/0;" in out
@@ -547,10 +543,10 @@ def aw_everywhere(monkeypatch: pytest.MonkeyPatch) -> FakeAW:
 
 @pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
 def test_every_command_refuses_a_newer_schema(
-    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+    run: RunCli, aw_everywhere: FakeAW, db_path: Path, command: list[str]
 ) -> None:
     newer_db(db_path)
-    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    code, _, err = run_here(run, "--db-path", str(db_path), *command)
     assert code == 1
     assert (
         f"cannot use {db_path}: schema v{SUPPORTED + 1} is newer than this CLI understands"
@@ -562,11 +558,11 @@ def test_every_command_refuses_a_newer_schema(
 
 @pytest.mark.parametrize("command", [["ingest"], ["rebuild-signals"], ["backfill"]], ids=" ".join)
 def test_writing_commands_report_a_locked_db_at_open(
-    capsys, aw_everywhere: FakeAW, db_path: Path, quick_busy_timeout: None, command: list[str]
+    run: RunCli, aw_everywhere: FakeAW, db_path: Path, quick_busy_timeout: None, command: list[str]
 ) -> None:
     outdated_db(db_path)
     with write_locked(db_path):
-        code, out, err = run(capsys, "--db-path", str(db_path), *command)
+        code, out, err = run_here(run, "--db-path", str(db_path), *command)
     assert code == 1
     assert after_profile_line(out) == ""
     assert f"cannot open {db_path}: database is locked" in err
@@ -577,27 +573,27 @@ def test_writing_commands_report_a_locked_db_at_open(
 
 @pytest.mark.parametrize("command", [["ingest"], ["backfill"]], ids=" ".join)
 def test_writing_commands_migrate_an_outdated_db(
-    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+    run: RunCli, aw_everywhere: FakeAW, db_path: Path, command: list[str]
 ) -> None:
     outdated_db(db_path)
-    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    code, _, err = run_here(run, "--db-path", str(db_path), *command)
     assert code == 0, err
     assert user_version(db_path) == SUPPORTED
 
 
-def test_rebuild_signals_migrates_an_outdated_db(capsys, db_path: Path) -> None:
+def test_rebuild_signals_migrates_an_outdated_db(run: RunCli, db_path: Path) -> None:
     outdated_db(db_path)
-    code, out, _ = run(capsys, "--db-path", str(db_path), "rebuild-signals")
+    code, out, _ = run_here(run, "--db-path", str(db_path), "rebuild-signals")
     assert code == 0
     assert re.search(r"signals after\s+0\n", out)
     assert user_version(db_path) == SUPPORTED
 
 
 def test_backfill_dry_run_refuses_an_outdated_db(
-    capsys, aw_everywhere: FakeAW, db_path: Path
+    run: RunCli, aw_everywhere: FakeAW, db_path: Path
 ) -> None:
     outdated_db(db_path)
-    code, out, err = run(capsys, "--db-path", str(db_path), "backfill", "--dry-run")
+    code, out, err = run_here(run, "--db-path", str(db_path), "backfill", "--dry-run")
     assert code == 1
     assert after_profile_line(out) == ""
     assert f"cannot read {db_path}: this CLI uses schema v{SUPPORTED}" in err
@@ -607,10 +603,10 @@ def test_backfill_dry_run_refuses_an_outdated_db(
 
 @pytest.mark.parametrize("command", EVERY_COMMAND, ids=" ".join)
 def test_every_command_reports_a_file_that_is_not_a_database(
-    capsys, aw_everywhere: FakeAW, db_path: Path, command: list[str]
+    run: RunCli, aw_everywhere: FakeAW, db_path: Path, command: list[str]
 ) -> None:
     db_path.write_bytes(b"not a database" * 100)
-    code, _, err = run(capsys, "--db-path", str(db_path), *command)
+    code, _, err = run_here(run, "--db-path", str(db_path), *command)
     assert code == 1
     assert f"cannot open {db_path}: file is not a database" in err
     assert "Is another process writing" not in err

@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cli_output import RunCli, status_out
 from fake_aw import FakeAW
 from projectors import AW
+from spool_records import spool_line
 
-from computer_history import cli
 from computer_history.cli import status as cli_status
 from computer_history.sources import capture_health
 from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE
@@ -28,7 +29,6 @@ from computer_history.sources.capture_spool import (
     RESUMED_KIND,
     SLEPT_KIND,
     SPOOL_ENV_VAR,
-    SPOOL_VERSION,
     UNREADABLE_FOLDER,
     WINDOW_TEXT_SOURCE,
     WOKE_KIND,
@@ -390,30 +390,6 @@ def test_a_missing_spool_holds_nothing(tmp_path: Path) -> None:
     assert backlog.newest is None
 
 
-SILENT_EDGES = (PAUSED_KIND, RESUMED_KIND, SLEPT_KIND, WOKE_KIND)
-
-
-def spool_line(n: int, when: datetime, kind: str = CAPTURE_KIND, **fields: Any) -> str:
-    content = kind == CAPTURE_KIND
-    data = {
-        "version": SPOOL_VERSION,
-        "id": f"00000000-0000-4000-8000-{n:012x}",
-        "captured_at": when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z",
-        "kind": kind,
-        "trigger": None if kind in SILENT_EDGES else "heartbeat",
-        "app_name": None if kind in SILENT_EDGES else "Editor",
-        "bundle_id": None,
-        "window_title": "w" if content else None,
-        "text": "t" if content else None,
-        "text_sha256": "0" * 64 if content else None,
-        "full_text_bytes": 1 if content else None,
-        "text_cut_off": False if content else None,
-        "timed_out": False if content else None,
-    }
-    data.update(fields)
-    return json.dumps(data, sort_keys=True)
-
-
 def store_records(conn: sqlite3.Connection, lines: list[str]) -> None:
     observations = []
     for line in lines:
@@ -693,21 +669,16 @@ def status_aw(monkeypatch: pytest.MonkeyPatch):
     return install
 
 
-def run_status(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
-    assert cli.main(["status", *argv]) == 0
-    return capsys.readouterr().out
-
-
-def test_status_before_the_agent_reports(capsys, status_aw, db_path: Path) -> None:
+def test_status_before_the_agent_reports(run: RunCli, status_aw, db_path: Path) -> None:
     connect(db_path).close()
     status_aw(FakeAW({}))
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
     assert "Capture agent: has not reported yet (no ax-text records stored)" in out
     assert re.search(r"spool\s+0 finished files waiting, 0 in unreadable/", out)
     assert "Traceback" not in out
 
 
-def test_status_reports_every_capture_agent_line(capsys, status_aw, db_path: Path) -> None:
+def test_status_reports_every_capture_agent_line(run: RunCli, status_aw, db_path: Path) -> None:
     now = datetime.now(UTC)
     local_midnight = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     times = [max(now - timedelta(seconds=90 - i * 10), local_midnight) for i in range(4)]
@@ -730,7 +701,7 @@ def test_status_reports_every_capture_agent_line(capsys, status_aw, db_path: Pat
     touch(spool / UNREADABLE_FOLDER / "bad.jsonl", now)
     status_aw(FakeAW({}))
 
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
 
     assert re.search(r"last capture\s+\S+ \S+ \(1m( \d+s)? ago\)", out)
     assert re.search(r"alive\s+yes \(last record \S+ \S+ \(\d+s ago\)\)", out)
@@ -746,7 +717,9 @@ def test_status_reports_every_capture_agent_line(capsys, status_aw, db_path: Pat
     assert "still-growing" not in out
 
 
-def test_status_shows_a_file_named_after_now_as_ahead(capsys, status_aw, db_path: Path) -> None:
+def test_status_shows_a_file_named_after_now_as_ahead(
+    run: RunCli, status_aw, db_path: Path
+) -> None:
     conn = connect(db_path)
     store_records(conn, [spool_line(1, datetime.now(UTC) - timedelta(minutes=1))])
     conn.close()
@@ -755,22 +728,22 @@ def test_status_shows_a_file_named_after_now_as_ahead(capsys, status_aw, db_path
     later = datetime.now(UTC) + timedelta(hours=2)
     touch(spool / finished_name(later), datetime.now(UTC))
     status_aw(FakeAW({}))
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
     assert re.search(r"1 finished file waiting \(oldest (1h 59m|2h) ahead of now\)", out)
 
 
-def test_status_reads_the_spool_flag(capsys, status_aw, db_path: Path, tmp_path: Path) -> None:
+def test_status_reads_the_spool_flag(run: RunCli, status_aw, db_path: Path, tmp_path: Path) -> None:
     connect(db_path).close()
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     touch(elsewhere / finished_name(datetime.now(UTC)), datetime.now(UTC))
     status_aw(FakeAW({}))
-    out = run_status(capsys, "--db-path", str(db_path), "--spool-path", str(elsewhere))
+    out = status_out(run, "--db-path", str(db_path), "--spool-path", str(elsewhere))
     assert re.search(rf"1 finished file waiting .*\({re.escape(str(elsewhere))}\)", out)
 
 
 def test_status_reports_paused_and_unobserved_capture_gaps(
-    capsys, status_aw, db_path: Path
+    run: RunCli, status_aw, db_path: Path
 ) -> None:
     now = datetime.now(UTC)
     conn = connect(db_path)
@@ -780,7 +753,7 @@ def test_status_reports_paused_and_unobserved_capture_gaps(
     conn.close()
     status_aw(FakeAW({}))
 
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
 
     assert "ax-text from " in out and "unobserved: aw-afk shows you active" in out
     assert re.search(
@@ -792,7 +765,9 @@ def test_status_reports_paused_and_unobserved_capture_gaps(
     assert "idle" not in out.lower()
 
 
-def test_status_counts_a_sleep_and_reports_no_gap_for_it(capsys, status_aw, db_path: Path) -> None:
+def test_status_counts_a_sleep_and_reports_no_gap_for_it(
+    run: RunCli, status_aw, db_path: Path
+) -> None:
     now = datetime.now(UTC)
 
     def ago(minutes: float) -> datetime:
@@ -807,7 +782,7 @@ def test_status_counts_a_sleep_and_reports_no_gap_for_it(capsys, status_aw, db_p
     conn.close()
     status_aw(FakeAW({}))
 
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
 
     assert "not paused or asleep):\n  ax-text: no gaps since " in out
     midnight = now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -817,7 +792,9 @@ def test_status_counts_a_sleep_and_reports_no_gap_for_it(capsys, status_aw, db_p
     assert re.search(r"paused\s+no\n", out)
 
 
-def test_status_reports_app_agreement_with_names_only(capsys, status_aw, db_path: Path) -> None:
+def test_status_reports_app_agreement_with_names_only(
+    run: RunCli, status_aw, db_path: Path
+) -> None:
     now = datetime.now(UTC)
     minutes = [now - timedelta(minutes=50 - i) for i in range(10)]
     apps = ["Cursor"] * 5 + ["Notes"] * 3 + ["Mail", "Slack"]
@@ -833,7 +810,7 @@ def test_status_reports_app_agreement_with_names_only(capsys, status_aw, db_path
     conn.close()
     status_aw(FakeAW({}))
 
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
 
     assert re.search(
         r"app agreement 5 of 8 captures match aw-window \(3 differ, 2 without aw-window data\)\n"
@@ -845,19 +822,19 @@ def test_status_reports_app_agreement_with_names_only(capsys, status_aw, db_path
 
 
 def test_status_without_window_data_cannot_judge_app_agreement(
-    capsys, status_aw, db_path: Path
+    run: RunCli, status_aw, db_path: Path
 ) -> None:
     conn = connect(db_path)
     store_records(conn, [spool_line(1, datetime.now(UTC) - timedelta(minutes=5))])
     store_records(conn, [spool_line(2, datetime.now(UTC) - timedelta(minutes=4))])
     conn.close()
     status_aw(FakeAW({}))
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
     assert "app agreement cannot be judged: no aw-window data from this machine\n" in out
 
 
 def test_status_tells_window_data_far_from_every_capture_apart(
-    capsys, status_aw, db_path: Path
+    run: RunCli, status_aw, db_path: Path
 ) -> None:
     now = datetime.now(UTC)
     conn = connect(db_path)
@@ -866,5 +843,5 @@ def test_status_tells_window_data_far_from_every_capture_apart(
     store_window(conn, [(now - timedelta(minutes=40), now - timedelta(minutes=30), "Cursor")])
     conn.close()
     status_aw(FakeAW({}))
-    out = run_status(capsys, "--db-path", str(db_path))
+    out = status_out(run, "--db-path", str(db_path))
     assert "app agreement cannot be judged: no aw-window data near any capture\n" in out
