@@ -55,6 +55,11 @@ enum WindowExclusion {
             || browser.passwordPageTitles.contains { title == $0 || title.hasPrefix($0 + " - ") || title.hasPrefix($0 + " — ") }
     }
 
+    /// Whether a window of the app is excluded when neither it nor a page in it gave an address, which holds for the Chromium browsers.
+    static func needsAnAddress(_ application: FocusedApplication) -> Bool {
+        application.bundleIdentifier.map(chromiumBrowsers.contains) ?? false
+    }
+
     /// Whether a web page's address is a browser's password manager or a password-manager extension.
     static func excludesPage(_ address: String) -> Bool {
         let address = address.lowercased()

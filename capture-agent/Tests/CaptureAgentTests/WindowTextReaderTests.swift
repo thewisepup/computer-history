@@ -209,7 +209,7 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
 
 @Test func retriesTheFlagAfterItTimesOut() {
     let mac = ScriptedMac()
-    let app = mac.app(window: mac.window("Tab", children: [mac.text("page")]))
+    let app = mac.app(window: mac.window("Tab", children: [mac.text("page")], document: "https://example.com/"))
     app.hangs = ["AXManualAccessibility"]
     let reader = mac.reader([chrome.processIdentifier: app])
     let slow = reader.read(chrome)
@@ -347,4 +347,25 @@ func readOnce(_ mac: ScriptedMac, _ window: ScriptedElement?, settings: WindowTe
         at: bundle.appending(path: "Contents/Frameworks/Electron Framework.framework"), withIntermediateDirectories: true
     )
     #expect(bundleHasElectronFramework(bundle))
+}
+
+@Test func aChromiumWindowThatGaveNoAddressIsExcluded() {
+    let mac = ScriptedMac()
+    let popup = mac.window("", children: [mac.node("frame", role: "AXGroup", children: [mac.text("revealed password")])])
+    let unread = mac.node("unread", role: "AXWebArea", children: [mac.text("not built yet")])
+    let fresh = mac.window("New Tab - Google Chrome", children: [unread])
+    fresh.attributes["AXDocument"] = ""
+    #expect(mac.reader([chrome.processIdentifier: mac.app(window: popup)]).read(chrome).excluded)
+    #expect(mac.reader([chrome.processIdentifier: mac.app(window: fresh)]).read(chrome).excluded)
+    let notes = mac.window("Notes", children: [mac.text("plain")])
+    #expect(!mac.reader([plainApp.processIdentifier: mac.app(window: notes)]).read(plainApp).excluded)
+}
+
+@Test func aChromiumWindowWhosePageGaveAnAddressIsRead() {
+    let mac = ScriptedMac()
+    let page = mac.node("page", role: "AXWebArea", ["AXURL": "https://example.com/"], children: [mac.text("article")])
+    let window = mac.window("Example - Google Chrome", children: [page])
+    let result = mac.reader([chrome.processIdentifier: mac.app(window: window)]).read(chrome)
+    #expect(!result.excluded)
+    #expect(result.text == "article")
 }

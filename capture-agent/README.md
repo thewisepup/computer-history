@@ -184,6 +184,14 @@ vault pages and their inline menus, which are frames inside the page). Where
 the address is not given, a Chrome window titled `Google Password Manager`
 and a Firefox window titled `Passwords` count too.
 
+A window of a Chromium browser (Chrome and its channels, Chromium, Brave, Edge, Arc,
+Vivaldi and Opera)
+whose read found no address at all, neither a non-empty `AXDocument` nor an
+`AXURL` on a web area, is excluded as well: an extension popup gives no
+`AXDocument`, and its page may not be in the tree yet (or ever, with the app
+on `accessibility_flag_off_list`). Such a browser on the off list therefore
+captures nothing.
+
 Not covered yet, so captured as ordinary windows: Arc
 (`company.thebrowser.Browser`), Edge (`com.microsoft.edgemac`), Vivaldi and
 Opera private windows; Brave's private windows with Tor; Chrome guest
@@ -495,7 +503,8 @@ in time order, each `at` seconds after the start with exactly one action:
 
 A window is an element: `role`, and optionally `id` (unique in its window,
 for `focus_element`), `title`, `subrole`, `description`, `value` (repeated
-`repeat` times), `hangs` (attributes whose calls time out) and `children`. A
+`repeat` times), `document` (`AXDocument`), `url` (`AXURL`), `hangs`
+(attributes whose calls time out) and `children`. A
 window may also set `recognized_text`: the text the scripted recognition reads
 from each picture kept of it (otherwise empty).
 

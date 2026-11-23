@@ -20,7 +20,7 @@ public struct WindowTextSettings: Equatable, Sendable {
     }
 }
 
-/// What one read of the focused window found: the title, the kept text, the full length in UTF-8 bytes, whether the read timed out, and whether the window is one never to capture.
+/// What one read of the focused window found: the title, the kept text, the full length in UTF-8 bytes and whether the read timed out, or an excluded window with no text.
 public struct WindowText: Equatable, Sendable {
     public let title: String?
     public let text: String
@@ -54,7 +54,8 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         self.now = now
     }
 
-    /// Reads the application's focused window, stopping early with the text so far if a call or the window budget times out, and reading nothing of a private window or password-manager page.
+    /// Reads the application's focused window, stopping early with the text so far if a call or the window budget times out.
+    /// Reads nothing of a private window or password-manager page.
     public func read(_ application: FocusedApplication) -> WindowText {
         var walk = WindowWalk<Element>(
             capBytes: settings.textCapBytes,
@@ -74,9 +75,11 @@ public final class WindowTextReader<Element: AccessibilityElement> {
         var title: String?
         if let window = walk.call({ app.element("AXFocusedWindow") }) {
             title = walk.call { window.string("AXTitle") }
-            let document = walk.call { window.string("AXDocument") }
+            let document = walk.call { window.string("AXDocument") }.flatMap { $0.isEmpty ? nil : $0 }
             if WindowExclusion.excludesWindow(of: application, title: title, document: document) { return .excluded }
             walk.visit(window)
+            let addressUnknown = document == nil && !walk.readPageAddress
+            if addressUnknown && WindowExclusion.needsAnAddress(application) { return .excluded }
         }
         if walk.excludedPage { return .excluded }
         return WindowText(

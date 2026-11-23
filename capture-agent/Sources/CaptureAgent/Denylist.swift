@@ -28,7 +28,7 @@ public struct Denylist: Equatable, Sendable {
     }
 }
 
-/// Whether a bundle id is the given one or sits under it, as com.apple.Passwords.MenuBarExtra sits under com.apple.Passwords, ignoring case.
+/// Whether a bundle id is the given one or sits under it, ignoring case.
 func bundleID(_ id: String, isWithin prefix: String) -> Bool {
     let id = id.lowercased()
     let prefix = prefix.lowercased()

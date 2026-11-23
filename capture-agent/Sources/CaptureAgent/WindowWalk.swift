@@ -11,6 +11,7 @@ struct WindowWalk<Element: AccessibilityElement> {
     private(set) var text: CappedText
     private(set) var timedOut = false
     private(set) var excludedPage = false
+    private(set) var readPageAddress = false
     private var visited: Set<Element> = []
     let deadline: TimeInterval
     let now: () -> TimeInterval
@@ -42,9 +43,10 @@ struct WindowWalk<Element: AccessibilityElement> {
         guard !timedOut, role != secureRole, role != applicationRole else { return }
         let subrole = call { element.string("AXSubrole") }
         guard !timedOut, subrole != secureRole, !controlRoles.contains(role ?? "") else { return }
-        if role == webAreaRole, let address = call({ element.string("AXURL") }), WindowExclusion.excludesPage(address) {
-            excludedPage = true
-            return
+        if role == webAreaRole, let address = call({ element.string("AXURL") }) {
+            readPageAddress = true
+            excludedPage = WindowExclusion.excludesPage(address)
+            if excludedPage { return }
         }
         if valueRoles.contains(role ?? "") {
             if let value = call({ element.string("AXValue") }), !value.isEmpty {
