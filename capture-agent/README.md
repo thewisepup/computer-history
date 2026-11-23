@@ -12,8 +12,9 @@ at the Mac, with a screenshot of that window saved beside the database.
 | Started by | `SMAppService`, from `Contents/Library/LaunchAgents/` inside the bundle (KeepAlive) |
 | Signed with | `Computer History Code Signing` from the login keychain, hardened runtime |
 | Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent`, five categories (see [Logs](#logs)) |
-| Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db` |
+| Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db`, under the home folder in the user database |
 | Spool | `spool/` in the folder |
+| Instance lock | `agent-instance.lock` in the folder: one capturing agent per account |
 | Screenshots | `screenshots/` in the folder |
 | Config | `agent-config.json` in the folder, optional |
 | Reminder | `screen-recording-reminded` in the folder: when the missing-grant reminder was last posted |
@@ -71,13 +72,24 @@ so judge the grant only from the logs of the launchd-started agent.
 
 ## Folder and config
 
-The agent finds its folder the way the backend does: `$COMPUTER_HISTORY_DB`
-names the database and the folder is its parent; otherwise the folder is
-`~/Library/Application Support/ComputerHistory/`. `$COMPUTER_HISTORY_SPOOL`
-overrides the spool, which otherwise is `spool/` in the folder. Empty values
-count as unset and a leading `~` is the home folder. The launchd-started agent
-has neither variable set, and `pause`, `resume` and `check-config` run from a
-shell that sets them act on that other folder.
+The capturing agent (`run`, or no arguments) and `status`, `pause` and
+`resume` always use `~/Library/Application Support/ComputerHistory/`, with
+`spool/` inside it, where `~` is the home folder the user database
+(`getpwuid`) gives for the account. They ignore `$HOME`, `$CFFIXED_USER_HOME`,
+`$COMPUTER_HISTORY_DB` and `$COMPUTER_HISTORY_SPOOL`, so a process that
+starts the app with its own environment (`open -n --env ...`) gets an agent
+that captures into the user's own folder, under the user's config and pause,
+or, while the login item runs, one that exits at once (see the instance lock
+under [Spool](#spool)).
+
+`check-config` and `scripted-session` find the folder the way the backend
+does: `$COMPUTER_HISTORY_DB` names the database and the folder is its parent;
+otherwise the folder is the one above. `$COMPUTER_HISTORY_SPOOL` overrides the
+spool, which otherwise is `spool/` in the folder. Empty values count as unset,
+and `$HOME` and a leading `~` are honoured. Neither command reads the Mac, so
+the end-to-end check points them at scratch folders. `check-config` also
+prints `capturing agent folder, whatever the environment says: <folder>`, so a
+shell with the variables set can see that `run` would not use them.
 
 `agent-config.json` in the folder holds the settings. Every key is optional:
 
@@ -126,11 +138,78 @@ window leaves focus with the previous app). While one is in front it writes an
 the `app` trigger when it comes to the front and on every heartbeat while it
 stays there. Window and title changes inside it go unnoticed.
 
-The built-in denylist is `com.1password.1password`,
-`com.agilebits.onepassword7`, `com.apple.keychainaccess` and
-`com.apple.Passwords`. The config's `denylist` adds to it and cannot remove
-from it, so no config, however wrong, captures one of these. Bundle ids match
-ignoring case.
+An entry covers its own bundle id and every id under it, ignoring case:
+`com.apple.Passwords` covers `com.apple.Passwords.MenuBarExtra`, the
+Passwords menu-bar extra, but not `com.apple.PasswordsHelper`. The built-in
+denylist:
+
+| Entry | Covers |
+|---|---|
+| `com.1password` | 1Password 8 (`com.1password.1password`) and its helpers |
+| `com.agilebits` | 1Password 7 and older (`com.agilebits.onepassword7`, ...) |
+| `com.apple.keychainaccess` | Keychain Access |
+| `com.apple.Passwords` | Passwords and its menu-bar extra |
+| `com.bitwarden.desktop` | Bitwarden and `com.bitwarden.desktop.helper` |
+| `com.dashlane` | any Dashlane app (Dashlane has no current Mac app) |
+| `com.lastpass` | LastPass (`com.lastpass.LastPass`, `com.lastpass.lastpassmacdesktop`) |
+| `in.sinew.Enpass-Desktop` | Enpass |
+| `me.proton.pass` | Proton Pass (`me.proton.pass.electron`) |
+| `org.keepassxc.keepassxc` | KeePassXC |
+
+The config's `denylist` adds to it and cannot remove from it, so no config,
+however wrong, captures one of these. A denylisted app never gets the
+accessibility flags (see Window text), even when it is an Electron app.
+
+## Private windows and password pages
+
+Some windows of allowed apps are never read either: private browser windows
+and password-manager pages. Before walking the focused window, the reader
+takes its title and `AXDocument` (in Chromium browsers, the active tab's
+address); while walking, it reads `AXURL` of every `AXWebArea` before its
+contents. A match ends the read with nothing kept, and the agent writes an
+`excluded` record, with the app name and bundle id and no title or text,
+instead of the capture, and takes no screenshot. Title changes in the window
+still trigger, so a private window yields `excluded` records on the same
+triggers a capture would have.
+
+| Browser | Bundle ids (and ids under them) | Private window title ends with |
+|---|---|---|
+| Chrome, Chromium | `com.google.Chrome`, `org.chromium.Chromium` | ` (Incognito)` |
+| Brave | `com.brave.Browser` | ` (Private)` |
+| Firefox | `org.mozilla.firefox`, `org.mozilla.firefoxdeveloperedition`, `org.mozilla.nightly` | `Private Browsing` or `(Private Browsing)` |
+| Safari | `com.apple.Safari`, `com.apple.SafariTechnologyPreview` | `Private Browsing` |
+
+Chromium on macOS gives the window the accessible title from
+`BrowserView::GetAccessibleWindowTitle`, which ends with Chrome's
+`IDS_ACCESSIBLE_INCOGNITO_WINDOW_TITLE_FORMAT` (`$1 (Incognito)`, Brave's
+override `$1 (Private)`). Firefox on macOS titles a private window
+`<page> — Private Browsing`. Safari ships the strings `Private Browsing`
+(window title) and `%@, Private Browsing`. All of these are English: a Mac in
+another language is not covered.
+
+A page is a password-manager page when its address starts with
+`chrome://password-manager`, `chrome://settings/passwords`,
+`brave://password-manager`, `about:logins`, or `chrome-extension://<id>/`
+for the Chrome Web Store ids of 1Password, 1Password Beta, Bitwarden,
+LastPass, Dashlane, Proton Pass, Enpass and KeePassXC-Browser (popups,
+vault pages and their inline menus, which are frames inside the page). Where
+the address is not given, a Chrome window titled `Google Password Manager`
+and a Firefox window titled `Passwords` count too.
+
+A window of a Chromium browser (Chrome and its channels, Chromium, Brave, Edge, Arc,
+Vivaldi and Opera)
+whose read found no address at all, neither a non-empty `AXDocument` nor an
+`AXURL` on a web area, is excluded as well: an extension popup gives no
+`AXDocument`, and its page may not be in the tree yet (or ever, with the app
+on `accessibility_flag_off_list`). Such a browser on the off list therefore
+captures nothing.
+
+Not covered yet, so captured as ordinary windows: Arc
+(`company.thebrowser.Browser`), Edge (`com.microsoft.edgemac`), Vivaldi and
+Opera private windows; Brave's private windows with Tor; Chrome guest
+windows; extension popups in Safari and Firefox, whose addresses carry a
+per-install id; and Edge's password pages. None of the title formats has been
+checked against a running browser on a Mac yet.
 
 ## Pause and resume
 
@@ -153,7 +232,8 @@ writes `resumed` and captures once it is unlocked.
 
 `WindowTextReader` reads the focused window of a `FocusedApplication` and
 returns a `WindowText`: the window title, the content text, the full text
-length in UTF-8 bytes and whether the read timed out. The `SpoolRecord` made
+length in UTF-8 bytes, whether the read timed out, and whether the window is
+excluded (see Private windows and password pages). The `SpoolRecord` made
 from it derives the text's SHA-256 and whether it was cut off, for the spool
 line and the minute log line alike. `focusedApplication()` asks the
 system-wide accessibility element for the focused app and falls back to
@@ -178,8 +258,9 @@ the cap. Each accessibility call times out after 0.25s and the whole read
 after 2s; either ends the read with the text collected so far. Electron apps
 and Chromium browsers get `AXManualAccessibility` and
 `AXEnhancedUserInterface` set once per launch (process id, app bundle and
-launch time, so a reused process id gets them again), unless their bundle id is on
-the config's `accessibility_flag_off_list` (ignoring case). A flag call that
+launch time, so a reused process id gets them again), unless they are
+denylisted or their bundle id is on the config's `accessibility_flag_off_list`
+(ignoring case). A flag call that
 times out does not end the read; the flags are tried again on the next read.
 
 ## Capturing
@@ -387,7 +468,8 @@ notifications off, `status` is the only warning.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
-that finds the spool held by another agent exits without capturing.
+that finds the instance lock or the spool held by another agent exits without
+capturing.
 
 ## Scripted sessions and the end-to-end check
 
@@ -434,7 +516,8 @@ in time order, each `at` seconds after the start with exactly one action:
 
 A window is an element: `role`, and optionally `id` (unique in its window,
 for `focus_element`), `title`, `subrole`, `description`, `value` (repeated
-`repeat` times), `hangs` (attributes whose calls time out) and `children`. A
+`repeat` times), `document` (`AXDocument`), `url` (`AXURL`), `hangs`
+(attributes whose calls time out) and `children`. A
 window may also set `recognized_text`: the text the scripted recognition reads
 from each picture kept of it (otherwise empty).
 
@@ -453,7 +536,9 @@ the reminder's saved time, and every line of the screenshots section in
 `status`. The backend runs with the screenshots folder closed to it (mode
 `000`), and the images must come out byte for byte the same. It also checks
 that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder. It also runs the agent test in
+and spool for a scratch home folder, and that with `$HOME`,
+`$CFFIXED_USER_HOME` and both overrides pointing at a scratch folder it still
+names the account's real folder as the capturing agent's. It also runs the agent test in
 `tests/data/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
 synthetic spool renderer writes the same captures (time, trigger, app, bundle
 id and title) as the agent.
@@ -466,7 +551,7 @@ The agent writes to the unified log under the subsystem
 
 | Category | Carries |
 |---|---|
-| `lifecycle` | start, the config report, the paused state at start, the minute heartbeat, stop |
+| `lifecycle` | start, a start refused for the instance lock, the config report, the paused state at start, the minute heartbeat, stop |
 | `capture` | silence starting, changing and ending; one debug record per capture written |
 | `spool` | spool ready, a leftover file finished, failures to start or finish the spool |
 | `screenshots` | each try of the missing Screen Recording grant reminder |
@@ -503,7 +588,7 @@ launchctl print "gui/$(id -u)/io.github.thewisepup.computer-history.agent"
 ```
 
 Expected lines: `started, accessibility granted` (or `missing, asked macOS to
-prompt for it`), `config read from <path>, 4 apps denylisted` (or `config not
+prompt for it`), `config read from <path>, 10 apps denylisted` (or `config not
 found at <path>, using defaults, ...`) followed by any `config problem: ...`,
 `capture is paused, ...` when it is, `spool ready at <folder>`, then every
 minute `heartbeat, accessibility granted, last minute: 12 captures written, 3
@@ -545,11 +630,16 @@ the finished files and `agent.lock` are `0600`. On start the agent tightens a
 folder, lock file or leftover `open.part` that is more open than that, and
 carries on as before when it is not allowed to.
 
-The agent holds `agent.lock` in the spool folder while it runs. A second
-agent cannot take the lock: it logs only `spool failed to start at <folder>:
-another agent is writing to <folder>, exiting`, asks for no Accessibility
-prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
-or so, until the lock is free.
+A capturing agent first takes `agent-instance.lock` in the folder (`0600`,
+in a folder it creates `0700`), then `agent.lock` in the spool folder, and
+holds both while it runs. A second agent cannot take the instance lock: it
+logs only `instance lock not taken at <file>: another agent holds <file>,
+exiting`, asks for no Accessibility prompt, and exits with status 1 without
+opening the spool. One that gets past it but finds the spool held logs only
+`spool failed to start at <folder>: another agent is writing to <folder>,
+exiting` and exits the same way. launchd starts its own agent again, every 10
+seconds or so, until the locks are free. A scripted session takes only the
+spool's lock, so it can run while the login item does.
 
 A capture, exclusion, pause, resume, slept or woke record has every key below, sorted,
 with `null` where a key does not apply:

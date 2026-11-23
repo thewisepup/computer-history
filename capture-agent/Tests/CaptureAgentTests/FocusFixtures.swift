@@ -34,7 +34,7 @@ let onePassword = FocusedApplication(
 final class FocusFixture {
     let mac = ScriptedMac(start: utc("2026-11-18T09:00:00.000Z"))
     lazy var notes = mac.window("Notes", children: [mac.text("hello")])
-    lazy var tab = mac.window("Inbox", children: [mac.text("mail")])
+    lazy var tab = mac.window("Inbox", children: [mac.text("mail")], document: "https://mail.example.com/")
     lazy var vault = mac.node("vault", role: "AXWindow", ["AXTitle": "Vault"], children: [mac.text("secret")])
 
     init() {
@@ -68,8 +68,8 @@ extension ScriptedMac {
         node(value, role: "AXStaticText", ["AXValue": value])
     }
 
-    func window(_ title: String, children: [ScriptedElement]) -> ScriptedElement {
-        node("window", role: "AXWindow", ["AXTitle": title], children: children)
+    func window(_ title: String, children: [ScriptedElement], document: String? = nil) -> ScriptedElement {
+        node("window", role: "AXWindow", ["AXTitle": title, "AXDocument": document].compactMapValues { $0 }, children: children)
     }
 
     func app(window: ScriptedElement?) -> ScriptedElement {
@@ -81,10 +81,12 @@ extension ScriptedMac {
     func reader(
         _ apps: [pid_t: ScriptedElement],
         settings: WindowTextSettings = WindowTextSettings(),
-        electronBundles: Set<String> = []
+        electronBundles: Set<String> = [],
+        denylist: Denylist = Denylist()
     ) -> WindowTextReader<ScriptedElement> {
         WindowTextReader(
             settings: settings,
+            denylist: denylist,
             applicationElement: { apps[$0]! },
             hasElectronFramework: { electronBundles.contains($0.path) },
             now: { self.clock }

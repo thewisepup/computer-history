@@ -19,7 +19,10 @@ func bundleHasElectronFramework(_ bundle: URL) -> Bool {
     FileManager.default.fileExists(atPath: bundle.appending(path: "Contents/Frameworks/Electron Framework.framework").path)
 }
 
-func needsAccessibilityFlag(_ application: FocusedApplication, offList: Set<String>, hasElectronFramework: (URL) -> Bool) -> Bool {
+func needsAccessibilityFlag(
+    _ application: FocusedApplication, offList: Set<String>, denylist: Denylist, hasElectronFramework: (URL) -> Bool
+) -> Bool {
+    guard !denylist.contains(application) else { return false }
     if let id = application.bundleIdentifier {
         if offList.contains(where: { $0.caseInsensitiveCompare(id) == .orderedSame }) { return false }
         if chromiumBrowsers.contains(id) { return true }

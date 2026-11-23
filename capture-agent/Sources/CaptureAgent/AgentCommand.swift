@@ -32,6 +32,11 @@ public struct CommandOutcome: Equatable, Sendable {
     public let exitCode: Int32
     public let message: String
 
+    public init(exitCode: Int32, message: String) {
+        self.exitCode = exitCode
+        self.message = message
+    }
+
     public static let usage = CommandOutcome(
         exitCode: 64,
         message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status | pause | resume | check-config | request-screen-recording | scripted-session <script.json>]"

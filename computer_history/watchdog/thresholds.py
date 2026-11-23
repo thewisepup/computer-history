@@ -38,7 +38,7 @@ def read_thresholds(config: Path) -> Thresholds:
         whole = json.loads(config.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return Thresholds(silent_after)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         return Thresholds(silent_after, (f"cannot read {config}: {exc}, using the defaults",))
     settings = cast(dict[str, object], whole) if isinstance(whole, dict) else {}
     section = settings.get(WATCHDOG_KEY, {})

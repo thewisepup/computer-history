@@ -99,7 +99,7 @@ def _entry(path: Path, number: int, line: str) -> UpdateLogEntry | None:
         from_version, to_version, reason = written["from"], written["to"], written.get("reason")
         outcomes = {outcome.value: outcome for outcome in AgentOutcome}
         agent = outcomes.get(written.get("agent"))
-    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+    except (KeyError, TypeError, AttributeError, ValueError, RecursionError) as exc:
         raise ValueError(problem) from exc
     names = (from_version, to_version)
     if at.tzinfo is None or not all(isinstance(name, str) for name in names):

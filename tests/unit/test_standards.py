@@ -67,7 +67,7 @@ def test_docstrings_have_no_doc_references_or_markup(path: Path) -> None:
         doc = ast.get_docstring(node, clean=False)
         if doc and (match := DOCSTRING_MARKUP.search(doc)):
             found.append(f"line {getattr(node, 'lineno', 1)}: {match.group().strip()!r}")
-    assert not found, f"{_rel(path)}: docstring references or markup: {found}"
+    assert not found, f"{_rel(path)}: remove docstring references and markup (C4): {found}"
 
 
 @pytest.mark.parametrize("path", COMMENTED, ids=_ids(COMMENTED))
@@ -108,7 +108,9 @@ def test_comments_are_single_plain_lines(path: Path) -> None:
         if line not in code_lines and previous_comment_line == line - 1:
             problems.append(f"line {line}: multi-line comment block")
         previous_comment_line = line if line not in code_lines else None
-    assert not problems, f"{_rel(path)}: {problems}"
+    assert not problems, (
+        f"{_rel(path)}: make each comment one plain line or delete it (C1): {problems}"
+    )
 
 
 @pytest.mark.parametrize("path", SOURCES, ids=_ids(SOURCES))
@@ -336,7 +338,33 @@ def test_the_checks_doc_names_every_ci_job(workflow: Path) -> None:
     doc = CHECKS_DOC.read_text(encoding="utf-8")
 
     assert _jobs(workflow)
-    assert [job for job in _jobs(workflow) if f"`{job}`" not in doc] == []
+    missing = [job for job in _jobs(workflow) if f"`{job}`" not in doc]
+    assert missing == [], f"name these {workflow.name} jobs in docs/agents/checks.md: {missing}"
+
+
+TEMPLATE_EVIDENCE = {
+    "Check output",
+    "CLI transcript",
+    "Screenshots",
+    "Fails without the change",
+    "Review findings",
+}
+PR_DOC = REPO / "docs" / "agents" / "pull-requests.md"
+PR_TEMPLATE = REPO / ".github" / "pull_request_template.md"
+
+
+def test_the_pull_request_template_has_every_section_of_the_shape() -> None:
+    doc = PR_DOC.read_text(encoding="utf-8")
+    shape = re.findall(r"^\d+\. \*\*(.+?)\*\*", doc[doc.index("## The shape") :], re.MULTILINE)
+    template = PR_TEMPLATE.read_text(encoding="utf-8")
+    sections = re.findall(r"^## (.+)$|^<summary>(.+)</summary>$", template, re.MULTILINE)
+    named = [heading or summary for heading, summary in sections]
+
+    assert shape
+    assert [s for s in shape if s not in named] == [], "add these sections to the PR template"
+    assert [n for n in named if n not in shape and n not in TEMPLATE_EVIDENCE] == [], (
+        "add these template sections to docs/agents/pull-requests.md"
+    )
 
 
 TEST_FOLDERS = ("unit", "data", "perf", "e2e")

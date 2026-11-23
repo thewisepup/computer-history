@@ -149,6 +149,19 @@ def test_main_commits_are_read_newest_first(monkeypatch: pytest.MonkeyPatch) -> 
     assert asked[0].get_header("Authorization") is None
 
 
+HOSTILE_HASHES = ["..", "../../.", "c" * 39, "C" * 40, "c" * 40 + "/..", None]
+
+
+@pytest.mark.parametrize("sha", HOSTILE_HASHES)
+def test_main_commits_github_answers_that_are_not_commit_hashes_are_refused(
+    monkeypatch: pytest.MonkeyPatch, sha: object
+) -> None:
+    github_answers(monkeypatch, [{"sha": "c" * 40}, {"sha": sha}])
+
+    with pytest.raises(HostError, match="could not list main's newest commits from GitHub: it"):
+        LiveHost().main_commits(2)
+
+
 def test_a_token_in_the_environment_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(live.GITHUB_TOKEN_ENV_VAR, "ghp_example")
     asked = github_answers(monkeypatch, [])
@@ -377,8 +390,13 @@ def test_the_build_creates_installs_asks_what_it_reads_and_freezes_with_uv(
 
 @pytest.mark.parametrize(
     "answer",
-    ["usage: computer-history [-h]\n", '{"spool_version": "1", "kinds": []}\n', '{"kinds": []}\n'],
-    ids=["not json", "version not a number", "no version"],
+    [
+        "usage: computer-history [-h]\n",
+        "[" * 100_000,
+        '{"spool_version": "1", "kinds": []}\n',
+        '{"kinds": []}\n',
+    ],
+    ids=["not json", "nested past the parser limit", "version not a number", "no version"],
 )
 def test_a_built_command_that_cannot_say_what_it_reads_fails_the_build(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str
@@ -530,6 +548,16 @@ def test_an_agent_tree_github_does_not_list_is_a_host_error(
     github_answers(monkeypatch, answer)
 
     with pytest.raises(HostError, match="could not read the capture agent's source tree at abc"):
+        LiveHost().agent_tree("abc123")
+
+
+@pytest.mark.parametrize("sha", HOSTILE_HASHES)
+def test_an_agent_tree_that_is_not_a_hash_is_a_host_error(
+    monkeypatch: pytest.MonkeyPatch, sha: object
+) -> None:
+    github_answers(monkeypatch, [{"name": live.AGENT_SOURCE_FOLDER, "type": "dir", "sha": sha}])
+
+    with pytest.raises(HostError, match="source tree at abc123 from GitHub: it answered"):
         LiveHost().agent_tree("abc123")
 
 

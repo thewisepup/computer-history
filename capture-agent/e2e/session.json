@@ -18,12 +18,12 @@
       "bundle_id": "com.google.Chrome",
       "focused_window": "inbox",
       "windows": {
-        "inbox": {"role": "AXWindow", "title": "Inbox", "recognized_text": "Inbox\n3 pull requests", "children": [
+        "inbox": {"role": "AXWindow", "title": "Inbox", "document": "https://github.com/notifications", "recognized_text": "Inbox\n3 pull requests", "children": [
           {"role": "AXHeading", "title": "Inbox"},
           {"role": "AXLink", "children": [{"role": "AXStaticText", "value": "https://github.com/thewisepup/computer-history/pulls"}]},
           {"role": "AXSecureTextField", "id": "password", "value": "hunter2"}
         ]},
-        "docs": {"role": "AXWindow", "title": "Docs", "recognized_text": "The design doc\nImages never leave the Mac", "children": [
+        "docs": {"role": "AXWindow", "title": "Docs", "document": "https://docs.example.com/design", "recognized_text": "The design doc\nImages never leave the Mac", "children": [
           {"role": "AXTextArea", "value": "the design doc"}
         ]}
       }

@@ -9,6 +9,7 @@ public enum AccessibilityResult<Value> {
 
 /// One element of an application's accessibility tree, read one attribute at a time.
 public protocol AccessibilityElement: Hashable {
+    /// A text attribute, or a URL attribute as its address.
     func string(_ attribute: String) -> AccessibilityResult<String>
     func element(_ attribute: String) -> AccessibilityResult<Self>
     func elements(_ attribute: String) -> AccessibilityResult<[Self]>
@@ -50,7 +51,7 @@ public struct LiveAccessibilityElement: AccessibilityElement {
 
     public func string(_ attribute: String) -> AccessibilityResult<String> {
         switch copy(attribute) {
-        case .value(let value): (value as? String).map { .value($0) } ?? .missing
+        case .value(let value): ((value as? String) ?? (value as? URL)?.absoluteString).map { .value($0) } ?? .missing
         case .missing: .missing
         case .timedOut: .timedOut
         }

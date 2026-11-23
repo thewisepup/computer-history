@@ -9,7 +9,12 @@ from __future__ import annotations
 import re
 import sys
 
-READ_BY_TESTS = ("docs/DESIGN.md", "docs/agents/checks.md")
+READ_BY_TESTS = (
+    "docs/DESIGN.md",
+    "docs/agents/checks.md",
+    "docs/agents/pull-requests.md",
+    ".github/pull_request_template.md",
+)
 DOCS = re.compile(r"(\.md|\.png|\.jpe?g|\.gif|\.svg)$|^\.scratch/")
 OFF_THE_E2E_PATH = re.compile(
     r"^(computer_history/synthetic/perf_baselines/"

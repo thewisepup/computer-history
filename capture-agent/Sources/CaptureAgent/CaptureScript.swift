@@ -33,13 +33,15 @@ struct CaptureScript: Decodable, Equatable {
         let subrole: String?
         let description: String?
         let value: String?
+        let document: String?
+        let url: String?
         let `repeat`: Int
         let hangs: [String]
         let recognizedText: String?
         let children: [Node]
 
         enum CodingKeys: String, CodingKey, CaseIterable {
-            case role, id, title, subrole, description, value, `repeat`, hangs, children
+            case role, id, title, subrole, description, value, document, url, `repeat`, hangs, children
             case recognizedText = "recognized_text"
         }
 
@@ -51,6 +53,8 @@ struct CaptureScript: Decodable, Equatable {
             subrole = try node.decodeIfPresent(String.self, forKey: .subrole)
             description = try node.decodeIfPresent(String.self, forKey: .description)
             value = try node.decodeIfPresent(String.self, forKey: .value)
+            document = try node.decodeIfPresent(String.self, forKey: .document)
+            url = try node.decodeIfPresent(String.self, forKey: .url)
             `repeat` = try node.decodeIfPresent(Int.self, forKey: .repeat) ?? 1
             hangs = try node.decodeIfPresent([String].self, forKey: .hangs) ?? []
             recognizedText = try node.decodeIfPresent(String.self, forKey: .recognizedText)
@@ -61,6 +65,7 @@ struct CaptureScript: Decodable, Equatable {
             let value = value.map { String(repeating: $0, count: max(0, self.repeat)) }
             let pairs: [(String, String?)] = [
                 ("AXRole", role), ("AXTitle", title), ("AXSubrole", subrole), ("AXDescription", description), ("AXValue", value),
+                ("AXDocument", document), ("AXURL", url),
             ]
             return Dictionary(uniqueKeysWithValues: pairs.compactMap { key, value in value.map { (key, $0) } })
         }

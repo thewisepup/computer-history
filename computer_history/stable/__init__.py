@@ -11,7 +11,8 @@
         |                     newest one that does
         +-- versions.py       build a commit into its marked version folder, noting what
         |                     its backend reads, and point current at it, undoing it all
-        |                     on failure; the pointers
+        |                     on failure; the pointers; a name that is not a short commit
+        |                     hash is refused before any folder is touched
         +-- capture_agent.py  the installed agent's record, the agent app a version
         |                     folder carries (built when its source changed, else
         |                     copied), the installed app kept in the old version before
@@ -115,7 +116,13 @@ from computer_history.stable.updates import (
     rollback,
     update,
 )
-from computer_history.stable.versions import InstalledVersion, pointed, version_name
+from computer_history.stable.versions import (
+    InstalledVersion,
+    UnsafeVersionFolder,
+    pointed,
+    version_folder,
+    version_name,
+)
 
 __all__ = [
     "ACTIVITYWATCH_AT_LOGIN",
@@ -157,6 +164,7 @@ __all__ = [
     "RollbackFailed",
     "Schedule",
     "Unmet",
+    "UnsafeVersionFolder",
     "UpdateAction",
     "UpdateFailed",
     "UpdateLogEntry",
@@ -179,5 +187,6 @@ __all__ = [
     "take_pre_update_backup",
     "uninstall",
     "update",
+    "version_folder",
     "version_name",
 ]

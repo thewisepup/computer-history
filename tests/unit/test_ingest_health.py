@@ -8,11 +8,10 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from cli_output import UNREACHABLE_AW, RunCli
+from cli_output import UNREACHABLE_AW, RunCli, ingest_line, status_out
 from fake_host import FakeHost
 from log_records import logged
 
-from computer_history import cli
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import ALERT_REPEAT
@@ -195,6 +194,7 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     "text",
     [
         "not json",
+        "[" * 100_000,
         "[1, 2]",
         '{"cycle_at": "2026-11-19"}',
         '{"cycle_at": "2026-11-19T20:07:00", "consecutive_failures": 0}',
@@ -205,6 +205,7 @@ def test_the_health_file_round_trips_and_is_replaced_whole(tmp_path: Path) -> No
     ],
     ids=[
         "not-json",
+        "nested-past-the-parser-limit",
         "not-an-object",
         "incomplete",
         "naive-cycle",
@@ -301,39 +302,28 @@ def test_a_one_shot_cycle_record_stays_off_stderr_but_reaches_the_log_file(
     assert written["level"] == "error" and "shown" not in written
 
 
-def status_lines(
-    db_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    now: datetime,
-) -> list[str]:
-    monkeypatch.setattr(cli_formatting, "utc_now", lambda: now)
-    assert cli.main(["status", "--db-path", str(db_path), "--aw-url", UNREACHABLE]) == 0
-    profile, *lines = capsys.readouterr().out.splitlines()
-    assert profile.startswith("Profile ")
-    return lines
-
-
 def test_status_reports_a_failing_ingest_first(
-    db_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    db_path: Path, run: RunCli, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     write_health(
         health_path(db_path),
         IngestHealth(T0 + 1070 * MINUTE, 1071, T0, T0 - MINUTE, f"aw-afk: {NO_TABLE}"),
     )
 
-    lines = status_lines(db_path, capsys, monkeypatch, T0 + 1071 * MINUTE)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: T0 + 1071 * MINUTE)
+    lines = status_out(run, "--db-path", str(db_path), "--aw-url", UNREACHABLE).splitlines()
 
     assert lines[0].startswith("!! ingest is FAILING since ")
     assert lines[0].endswith(f"(1,071 cycles): aw-afk: {NO_TABLE}")
-    [ingest] = [line for line in lines if line.startswith("Ingest:")]
+    ingest = ingest_line(lines)
     assert "FAILING since" in ingest and "last cycle" in ingest and "NOT REPORTING" not in ingest
     assert any(line.startswith("  last success  ") for line in lines)
 
 
 def test_status_without_a_watcher_says_so(
-    db_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    db_path: Path, run: RunCli, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    lines = status_lines(db_path, capsys, monkeypatch, T0)
+    monkeypatch.setattr(cli_formatting, "utc_now", lambda: T0)
+    lines = status_out(run, "--db-path", str(db_path), "--aw-url", UNREACHABLE).splitlines()
 
     assert "Ingest:        no `ingest --watch` has reported yet" in lines

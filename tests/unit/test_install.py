@@ -17,7 +17,9 @@ from computer_history.stable import (
     STOPGAP_LABEL,
     Layout,
     Schedule,
+    UnsafeVersionFolder,
     stable_layout,
+    version_folder,
     version_name,
 )
 from computer_history.store import DATABASE_NAME, INSTALL_MARKER_NAME
@@ -150,8 +152,16 @@ def test_install_with_no_passing_commit_changes_nothing(
         FakeHost(offline=True),
         FakeHost(checks={OLDER: gate_runs()}, build_error="uv is not installed"),
         FakeHost(checks={OLDER: gate_runs()}, build_blocks_packages=True),
+        FakeHost(checks={"..": gate_runs()}),
+        FakeHost(checks={"../../.": gate_runs()}),
     ],
-    ids=["offline", "uv missing", "package list not written"],
+    ids=[
+        "offline",
+        "uv missing",
+        "package list not written",
+        "commit naming the live folder",
+        "commit naming the folder above it",
+    ],
 )
 def test_install_fails_cleanly_changing_nothing(
     run: RunCli, home: Path, layout: Layout, checkout: Path, host: FakeHost
@@ -165,6 +175,25 @@ def test_install_fails_cleanly_changing_nothing(
     assert "nothing was changed" in err
     assert sorted(home.rglob("*")) == before
     assert not any(call[0] in ("load", "unload") for call in host.calls)
+
+
+@pytest.mark.parametrize("name", ["..", ".", "", "../../.", "abc123", "abc12345", "ABC1234"])
+def test_a_version_folder_is_refused_unless_named_by_a_short_commit_hash(
+    layout: Layout, name: str
+) -> None:
+    with pytest.raises(UnsafeVersionFolder, match="not a short commit hash"):
+        version_folder(layout, name)
+
+
+def test_a_version_folder_linked_outside_the_versions_folder_is_refused(
+    layout: Layout, tmp_path: Path
+) -> None:
+    layout.versions.mkdir()
+    (layout.versions / "abc1234").symlink_to(tmp_path)
+
+    with pytest.raises(UnsafeVersionFolder, match="not directly in"):
+        version_folder(layout, "abc1234")
+    assert version_folder(layout, "abc1235") == layout.versions / "abc1235"
 
 
 def test_install_twice_repairs_without_rebuilding_or_reaching_github(

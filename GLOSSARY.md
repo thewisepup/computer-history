@@ -43,7 +43,7 @@ One entry the capture agent leaves in the spool: a capture, a screenshot record,
 _Avoid_: Event, entry, line
 
 **Exclusion**:
-A spool record saying a denylisted app was in front, carrying no text.
+A spool record saying a denylisted app, a private browser window or a password-manager page was in front, carrying no text.
 _Avoid_: Skip, redaction
 
 **Pause**:

@@ -45,7 +45,7 @@ public struct SpoolRecord: Equatable, Sendable {
         )
     }
 
-    /// A moment a denylisted app was focused, naming the app and nothing else.
+    /// A moment a denylisted app, a private browser window or a password-manager page was focused, naming the app and nothing else.
     public static func excluded(
         id: UUID = UUID(), at capturedAt: Date, trigger: Trigger, appName: String, bundleID: String?
     ) -> SpoolRecord {

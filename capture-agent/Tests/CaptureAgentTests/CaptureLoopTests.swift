@@ -190,6 +190,28 @@ final class LoopFixture {
     #expect(summary.excluded == 3)
 }
 
+@Test func anIncognitoWindowYieldsExcludedRecordsWithNoTextOrScreenshot() throws {
+    let fixture = LoopFixture()
+    fixture.focus.tab.attributes["AXTitle"] = "Inbox - Google Chrome (Incognito)"
+    fixture.mac.focused = chrome
+    fixture.run(for: 2)
+    #expect(fixture.mac.reads(of: "mail").isEmpty)
+    fixture.focus.tab.attributes["AXTitle"] = "Inbox - Google Chrome"
+    fixture.run(for: 2)
+    let records = try fixture.withoutScreenshots()
+    #expect(try fixture.kinds() == ["excluded", "capture"])
+    #expect(try fixture.triggers() == ["heartbeat", "title"])
+    #expect(records[0]["app_name"] as? String == "Google Chrome")
+    #expect(records[0]["bundle_id"] as? String == "com.google.Chrome")
+    #expect(records[0]["window_title"] is NSNull)
+    #expect(records[0]["text"] is NSNull)
+    #expect(records[1]["text"] as? String == "mail")
+    #expect(try fixture.screenshotRecords().map { $0["capture_id"] as? String } == [records[1]["id"] as? String])
+    let summary = fixture.counts.take()
+    #expect(summary.written == 1)
+    #expect(summary.excluded == 1)
+}
+
 @Test func switchingAwayFromADenylistedAppCapturesTheNextApp() throws {
     let fixture = LoopFixture()
     fixture.mac.focused = onePassword

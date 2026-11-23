@@ -99,5 +99,5 @@ Illustrative, the top of a refactor:
   else in it.
 - A pull request with more than about 600 changed lines of hand-written code
   is split before review.
-- `.github/pull_request_template.md` holds the same headings; keep the two in
-  step.
+- `.github/pull_request_template.md` holds the same headings, and
+  `tests/unit/test_standards.py` fails when the two drift.

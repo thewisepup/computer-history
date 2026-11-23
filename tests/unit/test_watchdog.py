@@ -14,6 +14,7 @@ import pytest
 from cli_output import STATUS, UNREACHABLE_AW, RunCli, section
 from fake_aw import T0, FakeAW, UnreachableAW
 from fake_host import FakeHost, gate_runs, installed_package
+from spool_records import spool_line
 
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import watchdog as cli_watchdog
@@ -21,7 +22,6 @@ from computer_history.host import OPEN_ACTIVITYWATCH
 from computer_history.sources import (
     CAPTURE_KIND,
     PAUSED_KIND,
-    SPOOL_VERSION,
     WINDOW_SOURCE,
     AWError,
     IngestHealth,
@@ -34,6 +34,9 @@ from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_lay
 from computer_history.store import DATABASE_NAME
 from computer_history.watchdog import (
     REOPEN_LIMIT,
+    WatchdogState,
+    read_state_or_fresh,
+    read_thresholds,
     watchdog_lock_path,
     watchdog_state_path,
 )
@@ -130,25 +133,8 @@ class Mac:
 
     def record(self, kind: str) -> None:
         self.records += 1
-        content = kind == CAPTURE_KIND
-        line = {
-            "version": SPOOL_VERSION,
-            "id": f"00000000-0000-4000-8000-{self.records:012x}",
-            "captured_at": self.now.strftime("%Y-%m-%dT%H:%M:%S.")
-            + f"{self.now.microsecond // 1000:03d}Z",
-            "kind": kind,
-            "trigger": "heartbeat" if content else None,
-            "app_name": "Editor" if content else None,
-            "bundle_id": None,
-            "window_title": "w" if content else None,
-            "text": "t" if content else None,
-            "text_sha256": "0" * 64 if content else None,
-            "full_text_bytes": 1 if content else None,
-            "text_cut_off": False if content else None,
-            "timed_out": False if content else None,
-        }
         with (self.spool / "open.part").open("a", encoding="utf-8") as spool:
-            spool.write(json.dumps(line) + "\n")
+            spool.write(spool_line(self.records, self.now, kind) + "\n")
 
     def watch(self) -> list[str]:
         code, out, err = self.run_cli(
@@ -348,6 +334,22 @@ def test_thresholds_come_from_the_config_file(mac: Mac) -> None:
     assert [problem in err for err in mac.errors] == [True] + [False] * 20
     assert f"  {problem}" in mac.outputs[-1]
     assert mac.outputs[-1][1].startswith("Watchdog (silent after: capture agent 10m,")
+
+
+def test_a_config_or_state_nested_past_the_parser_limit_is_unreadable_not_a_crash(
+    tmp_path: Path,
+) -> None:
+    config, state = tmp_path / "agent-config.json", tmp_path / "watchdog.json"
+    config.write_text("[" * 100_000)
+    state.write_text("[" * 100_000)
+
+    thresholds = read_thresholds(config)
+    fresh, problem = read_state_or_fresh(state)
+
+    assert thresholds.silent_after == read_thresholds(tmp_path / "missing.json").silent_after
+    [found] = thresholds.problems
+    assert found.startswith(f"cannot read {config}: ") and found.endswith("using the defaults")
+    assert fresh == WatchdogState() and problem is not None
 
 
 def test_a_notification_that_fails_to_post_is_tried_again_next_run(mac: Mac) -> None:
