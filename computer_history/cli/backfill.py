@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from computer_history.cli.db import db_busy_hint, store_unavailable
-from computer_history.cli.formatting import duration, when
+from computer_history.cli.formatting import duration, plural, when
 from computer_history.cli.sources import source_failed
 from computer_history.sources import (
     BACKFILL_CHUNK,
@@ -153,7 +153,7 @@ def _progress_note(result: BackfillResult) -> str:
 def _print_plan(plan: BackfillPlan, *, list_chunks: bool) -> None:
     name = plan.stream
     buckets = len(plan.parts)
-    head = f"  {name} ({buckets} bucket{'s' if buckets != 1 else ''}):"
+    head = f"  {name} ({buckets} {plural('bucket', buckets)}):"
     if plan.settled_until is not None:
         bound = f"up to its settled-until time {when(plan.settled_until)}"
     elif plan.has_progress:
@@ -171,8 +171,7 @@ def _print_plan(plan: BackfillPlan, *, list_chunks: bool) -> None:
         return
     count = len(plan.chunks)
     print(
-        f"{head} {_span(Chunk(plan.start, plan.end))} {bound},"
-        f" {count} chunk{'s' if count != 1 else ''}",
+        f"{head} {_span(Chunk(plan.start, plan.end))} {bound}, {count} {plural('chunk', count)}",
         flush=True,
     )
     for part, began in plan.earlier:

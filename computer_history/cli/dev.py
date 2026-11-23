@@ -5,13 +5,11 @@ import dataclasses
 import sqlite3
 import sys
 import tempfile
-import typing
 from collections.abc import Callable, Mapping
 from datetime import date
 from pathlib import Path
-from typing import Any
 
-from computer_history.cli.formatting import human_size
+from computer_history.cli.formatting import copy_lines
 from computer_history.store import (
     DB_ENV_VAR,
     DatabaseExists,
@@ -46,19 +44,7 @@ from computer_history.synthetic import (
     run_gate,
 )
 
-REGISTRIES: Mapping[str, Mapping[str, object]] = {
-    "persona": PERSONAS,
-    "scenario": SCENARIOS,
-    "tier": TIERS,
-}
-PARSERS: Mapping[type, Callable[[str], Any]] = {
-    str: str,
-    int: int,
-    float: float,
-    date: date.fromisoformat,
-}
 LABELS = {DATABASE_NAME: "database", MANIFEST_NAME: "manifest"}
-BARE_FLAG_VALUES: Mapping[str, object] = {"heavy": HEAVY}
 REFUSALS = (LiveDatabaseRefused, OutputExists, OutputNotAFolder)
 FAILURES = (OSError, ValueError, LookupError, sqlite3.Error, RuntimeError)
 
@@ -70,9 +56,7 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
         " manifest and rendered sources into a folder. Never touches the live database."
     )
     build = commands.add_parser("build-db", help=help_text, description=help_text)
-    hints = typing.get_type_hints(DatasetInputs)
-    for field in dataclasses.fields(DatasetInputs):
-        _add_input_option(build, field, hints[field.name])
+    _add_dataset_inputs(build)
     build.add_argument("--out", type=Path, required=True, help="folder to copy the dataset into")
     build.add_argument(
         "--force", action="store_true", help="replace dataset files already in the folder"
@@ -122,37 +106,37 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_input_option(
-    parser: argparse.ArgumentParser, field: dataclasses.Field[Any], kind: object
-) -> None:
-    flag = "--" + field.name.replace("_", "-")
-    required = field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
-    default = argparse.SUPPRESS if not required else None
-    shown = "" if required else f" (default: {field.default})"
-    if kind is bool:
-        parser.add_argument(flag, dest=field.name, action="store_true", default=default)
-        return
-    if not isinstance(kind, type) or kind not in PARSERS:
-        raise TypeError(f"dev build-db cannot parse DatasetInputs.{field.name} ({kind})")
-    choices = REGISTRIES.get(field.name)
-    bare: dict[str, Any] = {}
-    if field.name in BARE_FLAG_VALUES:
-        bare = {"nargs": "?", "const": BARE_FLAG_VALUES[field.name]}
-        shown += f"; {flag} alone means {BARE_FLAG_VALUES[field.name]}"
-    parser.add_argument(
-        flag,
-        dest=field.name,
-        type=PARSERS[kind],
-        choices=None if choices is None else list(choices),
-        required=required,
-        default=default,
-        help=f"dataset {field.name.replace('_', ' ')}{shown}",
-        **bare,
+def _add_dataset_inputs(build: argparse.ArgumentParser) -> None:
+    for name, known in (("persona", PERSONAS), ("scenario", SCENARIOS), ("tier", TIERS)):
+        build.add_argument(f"--{name}", choices=list(known), required=True, help=f"dataset {name}")
+    build.add_argument("--seed", type=int, required=True, help="dataset seed")
+    build.add_argument(
+        "--start",
+        type=date.fromisoformat,
+        default=argparse.SUPPRESS,
+        help=f"dataset start (default: {DatasetInputs.start})",
+    )
+    build.add_argument(
+        "--timezone",
+        default=argparse.SUPPRESS,
+        help=f"dataset timezone (default: {DatasetInputs.timezone})",
+    )
+    build.add_argument(
+        "--heavy",
+        type=float,
+        nargs="?",
+        const=HEAVY,
+        default=argparse.SUPPRESS,
+        help=f"dataset heavy (default: {DatasetInputs.heavy}); --heavy alone means {HEAVY}",
     )
 
 
 def cmd_dev(args: argparse.Namespace) -> int:
-    return DEV_HANDLERS[args.dev_command](args)
+    try:
+        return DEV_HANDLERS[args.dev_command](args)
+    except FAILURES as exc:
+        print(f"dev {args.dev_command} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
 
 
 def cmd_build_db(args: argparse.Namespace) -> int:
@@ -172,9 +156,6 @@ def cmd_build_db(args: argparse.Namespace) -> int:
         )
     except REFUSALS as exc:
         print(f"dev build-db refused: {exc}", file=sys.stderr)
-        return 1
-    except FAILURES as exc:
-        print(f"dev build-db failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     described = ", ".join(f"{name}={value}" for name, value in dataclasses.asdict(inputs).items())
     how = "built" if made.dataset.built else "reused from the cache"
@@ -199,30 +180,23 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     except (FileNotFoundError, IntegrityCheckFailed) as exc:
         print(f"dev snapshot failed: {exc}", file=sys.stderr)
         return 1
-    except FAILURES as exc:
-        print(f"dev snapshot failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 1
     print(f"Snapshot of the live database {live}")
-    print(f"  copied to {copy.target}")
-    print(f"  schema v{copy.schema}, {human_size(copy.size)}, integrity ok")
+    for line in copy_lines(copy):
+        print(line)
     return 0
 
 
 def cmd_perf(args: argparse.Namespace) -> int:
     datasets = perf_datasets(args.dataset)
     with tempfile.TemporaryDirectory(prefix="computer-history-perf-") as scratch:
-        try:
-            report = run_gate(
-                datasets,
-                cache=cache_root(),
-                scratch=Path(scratch),
-                baseline=args.baseline,
-                update=args.update_baselines,
-                counters=args.counters,
-            )
-        except FAILURES as exc:
-            print(f"dev perf failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-            return 1
+        report = run_gate(
+            datasets,
+            cache=cache_root(),
+            scratch=Path(scratch),
+            baseline=args.baseline,
+            update=args.update_baselines,
+            counters=args.counters,
+        )
     _print_report(report, args)
     return 0 if report.ok else 1
 

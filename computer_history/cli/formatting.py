@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
+from computer_history.stable import RELEASE_GATE, GateVerdict, version_name
+from computer_history.store import DatabaseCopy
 from computer_history.watchdog import Check, Finding, Reason, Verdict
 
 
@@ -26,21 +28,23 @@ def duration(seconds: float) -> str:
     return " ".join(parts)
 
 
-def lag(delta: timedelta) -> str:
+def before_now(delta: timedelta, suffix: str = "") -> str:
+    """How long before now, with the suffix, or how far ahead of now a negative delta is."""
     seconds = delta.total_seconds()
     if seconds < 0:
         return f"{duration(-seconds)} ahead of now"
-    return f"{duration(seconds)} behind now"
+    return f"{duration(seconds)}{suffix}"
 
 
 def ago(value: datetime | None, now: datetime) -> str:
     """Local wall-clock time and how long before now it was, or never when missing."""
     if value is None:
         return "never"
-    seconds = (now - value).total_seconds()
-    if seconds < 0:
-        return f"{when(value)} ({duration(-seconds)} ahead of now)"
-    return f"{when(value)} ({duration(seconds)} ago)"
+    return f"{when(value)} ({before_now(now - value, ' ago')})"
+
+
+def plural(noun: str, count: int) -> str:
+    return noun if count == 1 else f"{noun}s"
 
 
 def local_midnight(now: datetime) -> datetime:
@@ -80,6 +84,20 @@ def human_size(n: int) -> str:
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GB"
+
+
+def release_gate_lines(skipped: Iterable[GateVerdict]) -> list[str]:
+    """The release gate's checks, then each newer commit skipped and why."""
+    lines = [f"Release gate: {', '.join(RELEASE_GATE)}"]
+    return lines + [f"  skipped {version_name(v.commit)}: {v.summary}" for v in skipped]
+
+
+def copy_lines(copy: DatabaseCopy) -> list[str]:
+    """Where a database was copied, and its schema, size and passed integrity check."""
+    return [
+        f"  copied to {copy.target}",
+        f"  schema v{copy.schema}, {human_size(copy.size)}, integrity ok",
+    ]
 
 
 def finding_lines(

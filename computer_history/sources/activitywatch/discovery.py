@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.contract import JsonValue
 
 WINDOW_SOURCE = "aw-window"
@@ -24,16 +23,10 @@ class AWSource:
     bucket_ids: tuple[str, ...]
 
 
-def discover_sources(
-    client: AWApi, *, buckets: Mapping[str, JsonValue] | None = None
-) -> list[AWSource]:
-    """Map ActivityWatch buckets to sources by bucket type, ignoring other types.
-
-    Pass a bucket listing you already have, otherwise one is fetched.
-    """
+def discover_sources(buckets: Mapping[str, JsonValue]) -> list[AWSource]:
+    """Map a bucket listing to sources by bucket type, ignoring other types."""
     grouped: dict[str, list[str]] = {}
-    listing = client.get_buckets() if buckets is None else buckets
-    for bucket_id, meta in listing.items():
+    for bucket_id, meta in buckets.items():
         bucket_type = meta.get("type") if isinstance(meta, Mapping) else None
         source = BUCKET_TYPE_SOURCES.get(bucket_type) if isinstance(bucket_type, str) else None
         if source is not None:

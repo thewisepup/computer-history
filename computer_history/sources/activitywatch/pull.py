@@ -189,7 +189,7 @@ def newest_events(
     """
     return [
         (bucket_id, raw)
-        for source in discover_sources(client, buckets=buckets)
+        for source in discover_sources(buckets)
         if source.name == source_name
         for bucket_id in source.bucket_ids
         for raw in client.get_events(bucket_id, limit=1)

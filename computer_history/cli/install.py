@@ -4,10 +4,10 @@ import argparse
 import os
 import sys
 
+from computer_history.cli.formatting import release_gate_lines
 from computer_history.host import COMMAND_NAME
 from computer_history.stable import (
     EVERY_MINUTE_SECONDS,
-    RELEASE_GATE,
     RESTART_THROTTLE_SECONDS,
     STOPGAP_LABEL,
     InstallFailed,
@@ -16,7 +16,6 @@ from computer_history.stable import (
     install,
     stable_layout,
     uninstall,
-    version_name,
 )
 
 
@@ -30,9 +29,8 @@ def cmd_install(args: argparse.Namespace) -> int:
     if report.built is None:
         print(f"Version {report.version} is already installed and current")
     else:
-        print(f"Release gate: {', '.join(RELEASE_GATE)}")
-        for verdict in report.skipped:
-            print(f"  skipped {version_name(verdict.commit)}: {verdict.summary}")
+        for line in release_gate_lines(report.skipped):
+            print(line)
         print(f"Installed version {report.version} (commit {report.built})")
     print(f"  current       {layout.current} -> {layout.versions / report.version}")
     print(f"  PATH link     {layout.link} -> {layout.command(layout.current)}")

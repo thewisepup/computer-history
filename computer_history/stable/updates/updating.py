@@ -21,8 +21,9 @@ from computer_history.stable.update_log import (
     append_or_note,
 )
 from computer_history.stable.updates.agent_waiting import (
+    ActiveBetween,
     AgentCheck,
-    AgentRecords,
+    NewestAgentRecord,
     wait_for_agent_record,
 )
 from computer_history.stable.updates.falling_back import fall_back
@@ -94,7 +95,8 @@ def update(
     layout: Layout,
     *,
     last_cycle: LastCycle,
-    agent_records: AgentRecords,
+    newest_record: NewestAgentRecord,
+    active_between: ActiveBetween,
     now: Callable[[], datetime],
     wait_seconds: float = FIRST_CYCLE_WAIT_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
@@ -140,7 +142,7 @@ def update(
     elif swap.at is None or interrupted:
         check = AgentCheck(AgentOutcome.FELL_BACK, swap.failure or AGENT_INTERRUPTED)
     else:
-        check, interrupted = _check_agent(run, swap.at, agent_records)
+        check, interrupted = _check_agent(run, swap.at, newest_record, active_between)
     with _signals_deferred() as deferred:
         report = _finish(run, check, swap)
     problems.extend(report.problems)
@@ -172,12 +174,20 @@ def _release_hold(prepared: Prepared) -> list[str]:
 
 
 def _check_agent(
-    run: UpdateRun, swapped_at: datetime, records: AgentRecords
+    run: UpdateRun,
+    swapped_at: datetime,
+    newest_record: NewestAgentRecord,
+    active_between: ActiveBetween,
 ) -> tuple[AgentCheck, bool]:
     try:
         with _signals_interrupt():
             check = wait_for_agent_record(
-                records, swapped_at, now=run.now, sleep=run.sleep, monotonic=run.monotonic
+                newest_record,
+                active_between,
+                swapped_at,
+                now=run.now,
+                sleep=run.sleep,
+                monotonic=run.monotonic,
             )
     except KeyboardInterrupt:
         return AgentCheck(AgentOutcome.FELL_BACK, AGENT_INTERRUPTED), True

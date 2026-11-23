@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -194,7 +195,7 @@ def test_a_crashing_command_logs_its_traceback_and_exits_one(
     def crash(args: object) -> int:
         raise RuntimeError("no such table: ingest_progress")
 
-    monkeypatch.setitem(cli_app.HANDLERS, "status", crash)
+    monkeypatch.setitem(cli_app.COMMANDS, "status", replace(cli_app.COMMANDS["status"], run=crash))
 
     assert main(["status"]) == 1
 
