@@ -367,7 +367,7 @@ def test_the_pull_request_template_has_every_section_of_the_shape() -> None:
     )
 
 
-TEST_FOLDERS = ("unit", "data", "perf", "e2e")
+TEST_FOLDERS = ("unit", "data", "e2e")
 
 
 def test_every_test_file_sits_in_a_test_folder() -> None:

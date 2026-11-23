@@ -94,8 +94,7 @@ COMMANDS = {
     ),
     "dev": (
         "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
-        " live database into the dev folder, perf runs the performance gate, bench times each"
-        " operation."
+        " live database into the dev folder, perf runs the performance gate."
     ),
     "logs": "Show the JSON log's records, filtered by time, level, run or logger.",
 }

@@ -11,13 +11,14 @@ from types import MappingProxyType
 
 from computer_history.store import SqliteBuild, sqlite_build
 from computer_history.synthetic.baseline import (
-    BASELINE_DIR,
+    BASELINE,
     Key,
-    baseline_file,
-    compared_baseline,
+    baseline_sqlite,
     load_baseline,
     recorded,
     save_baseline,
+    with_vm_steps_of,
+    without_vm_steps,
 )
 from computer_history.synthetic.cache import cached_dataset, open_cached
 from computer_history.synthetic.generate import HEAVY, DatasetInputs
@@ -270,8 +271,7 @@ class GateReport:
 
     build: SqliteBuild
     baseline: Path
-    own_baseline: Path
-    recorded_on: Mapping[Key, str]
+    baseline_sqlite: str
     measured: Mapping[Key, Costs]
     findings: tuple[Finding, ...]
     scaling: tuple[Finding, ...]
@@ -293,10 +293,9 @@ class GateReport:
         return not self.failures and not self.unexpected_passes
 
     @property
-    def other_versions(self) -> tuple[str, ...]:
-        """The other SQLite versions the measured entries' baselines were recorded on."""
-        versions = {self.recorded_on[key] for key in self.measured if key in self.recorded_on}
-        return tuple(sorted(versions - {self.build.version}))
+    def compares_vm_steps(self) -> bool:
+        """Whether the run's SQLite is the baseline's, so VM steps can be compared too."""
+        return self.build.version == self.baseline_sqlite
 
 
 def run_gate(
@@ -304,13 +303,13 @@ def run_gate(
     *,
     cache: Path,
     scratch: Path,
-    baselines: Path = BASELINE_DIR,
+    baseline: Path = BASELINE,
     update: bool = False,
     counters: Path | None = None,
 ) -> GateReport:
-    """Measure every operation on every dataset against the running SQLite's baseline.
+    """Measure every operation on every dataset against the baseline, rewritten first on update.
 
-    Updating rewrites that baseline first; counters get the file an update would write.
+    On another SQLite than the baseline's, VM steps are neither compared nor updated.
     """
     gated = {
         label: gate_dataset(inputs, cached_dataset(inputs, cache))
@@ -322,22 +321,28 @@ def run_gate(
         for label, dataset in gated.items()
         for name, operation in OPERATIONS.items()
     }
-    own = baseline_file(build.version, baselines)
-    kept = load_baseline(compared_baseline(build.version, baselines))
+    version = baseline_sqlite(baseline)
+    same = build.version == version
+    kept = load_baseline(baseline)
+    written = (
+        measured
+        if same
+        else {key: with_vm_steps_of(costs, kept.get(key)) for key, costs in measured.items()}
+    )
     if counters is not None:
-        save_baseline(counters, build.version, measured, keep=kept)
+        save_baseline(counters, written, keep=kept)
     if update:
-        save_baseline(own, build.version, measured, keep=kept)
-    compared = compared_baseline(build.version, baselines)
-    baseline = load_baseline(compared)
-    findings = [
-        finding
-        for (name, label), costs in measured.items()
-        for finding in compare(OPERATIONS[name], label, costs, baseline.costs.get((name, label)))
-    ]
+        save_baseline(baseline, written, keep=kept)
+    compared = load_baseline(baseline)
+    findings: list[Finding] = []
+    for (name, label), costs in measured.items():
+        before = compared.get((name, label))
+        if not same and before is not None:
+            costs, before = without_vm_steps(costs), without_vm_steps(before)
+        findings += compare(OPERATIONS[name], label, costs, before)
     findings += [
         Finding(FindingKind.STALE_BASELINE, name, label)
-        for name, label in baseline.costs
+        for name, label in compared
         if name not in OPERATIONS
     ]
     scaled: list[Finding] = []
@@ -357,9 +362,8 @@ def run_gate(
                 scaled.append(finding)
     return GateReport(
         build,
-        compared,
-        own,
-        baseline.versions,
+        baseline,
+        version,
         measured,
         tuple(findings),
         tuple(scaled),

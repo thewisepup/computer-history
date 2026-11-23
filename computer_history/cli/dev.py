@@ -23,8 +23,7 @@ from computer_history.store import (
     default_db_path,
 )
 from computer_history.synthetic import (
-    BASELINE_DIR,
-    BENCH_BASELINE_NAME,
+    BASELINE,
     DATABASE_NAME,
     GATE_DATASETS,
     HEAVY,
@@ -32,23 +31,18 @@ from computer_history.synthetic import (
     OPERATIONS,
     PERF_DATASETS,
     PERSONAS,
-    RUNS,
     SCENARIOS,
-    SLOWDOWN_TOLERANCE,
     SMALLEST_DATASET,
     TIERS,
     UNEXPECTED_PASS_HINT,
-    BenchReport,
     DatasetInputs,
     GateReport,
     OutputExists,
     OutputNotAFolder,
-    Timing,
     cache_root,
     live_folders,
     make_dev_database,
     perf_datasets,
-    run_bench,
     run_gate,
 )
 
@@ -109,43 +103,22 @@ def add_dev_commands(dev: argparse.ArgumentParser) -> None:
         help=f"dataset to measure, repeatable (default: {', '.join(GATE_DATASETS)})",
     )
     perf.add_argument(
-        "--baselines",
+        "--baseline",
         type=Path,
-        default=BASELINE_DIR,
-        help=f"folder of baseline files, one per SQLite version (default: {BASELINE_DIR})",
+        default=BASELINE,
+        help="baseline file, named sqlite-<version>.json for the SQLite it was counted on"
+        f" (default: {BASELINE})",
     )
     perf.add_argument(
         "--update-baselines",
         action="store_true",
-        help="record the measured costs as this SQLite's baseline, then check against it",
+        help="record the measured costs in the baseline, then check against it; on another"
+        " SQLite than the baseline's, its VM steps are kept",
     )
     perf.add_argument(
         "--counters",
         type=Path,
         help="also write the baseline file --update-baselines would write, to this path",
-    )
-    help_text = (
-        f"Time each operation {RUNS} times on synthetic datasets and compare the median with this"
-        f" machine's last baseline, flagging any over {SLOWDOWN_TOLERANCE:.0%} slower. Never fails."
-    )
-    bench = commands.add_parser("bench", help=help_text, description=help_text)
-    bench.add_argument(
-        "--dataset",
-        action="append",
-        choices=list(PERF_DATASETS),
-        help=f"dataset to time, repeatable (default: {', '.join(GATE_DATASETS)})",
-    )
-    bench.add_argument(
-        "--baseline",
-        type=Path,
-        help=f"this machine's timings (default: {BENCH_BASELINE_NAME} in the dataset cache)",
-    )
-    bench.add_argument(
-        "--update-baseline",
-        "--update-baselines",
-        dest="update_baseline",
-        action="store_true",
-        help="record these timings as the machine's new baseline",
     )
 
 
@@ -243,7 +216,7 @@ def cmd_perf(args: argparse.Namespace) -> int:
                 datasets,
                 cache=cache_root(),
                 scratch=Path(scratch),
-                baselines=args.baselines,
+                baseline=args.baseline,
                 update=args.update_baselines,
                 counters=args.counters,
             )
@@ -259,19 +232,16 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     print(f"SQLite {build.version}, {len(build.compile_options)} compile options:")
     print(f"  {' '.join(build.compile_options)}")
     print(f"Baseline: {report.baseline}")
-    if report.other_versions:
+    if not report.compares_vm_steps:
         print(
-            f"  note: entries recorded on SQLite {', '.join(report.other_versions)},"
-            " whose VM steps can differ;"
-            f" --update-baselines records SQLite {build.version}'s own"
+            f"  SQLite {build.version} is not the baseline's {report.baseline_sqlite}: compared"
+            " statements, full scans and pages but not VM steps, which CI's perf job checks"
         )
     if args.update_baselines:
-        print("Baseline rewritten from this run.")
+        kept = "" if report.compares_vm_steps else ", keeping its VM steps"
+        print(f"Baseline rewritten from this run{kept}.")
     if args.counters is not None:
-        print(
-            f"Counters written: {args.counters},"
-            f" the {report.own_baseline.name} --update-baselines would write"
-        )
+        print(f"Counters written: {args.counters}, the file --update-baselines would write")
     print()
     print(f"{'operation':<16} {'dataset':<11} {'statements':>11} {'VM steps':>13} {'pages':>8}")
     for (name, label), costs in report.measured.items():
@@ -294,67 +264,8 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
     print(f"Performance gate failed: {count} findings.")
 
 
-def cmd_bench(args: argparse.Namespace) -> int:
-    with tempfile.TemporaryDirectory(prefix="computer-history-bench-") as scratch:
-        try:
-            report = run_bench(
-                perf_datasets(args.dataset),
-                cache=cache_root(),
-                scratch=Path(scratch),
-                baseline_path=args.baseline,
-                update=args.update_baseline,
-            )
-        except FAILURES as exc:
-            print(f"dev bench failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-            return 1
-    print(f"Median of {RUNS} runs, against this machine's baseline {report.baseline}")
-    print()
-    print(f"{'operation':<16} {'dataset':<11} {'median':>10} {'baseline':>10} {'change':>9}")
-    for timing in report.timings:
-        print(_timing_row(timing))
-    print()
-    print(_bench_verdict(report))
-    return 0
-
-
-def _bench_verdict(report: BenchReport) -> str:
-    if report.updated:
-        return "Baseline rewritten from these medians, nothing compared."
-    if not report.compared:
-        return "No baseline on this machine yet: these medians become it, nothing compared."
-    tolerance = f"{SLOWDOWN_TOLERANCE:.0%}"
-    if report.slower:
-        noun = "timing" if report.slower == 1 else "timings"
-        verdict = (
-            f"{report.slower} {noun} more than {tolerance} slower than this machine's baseline."
-            " A report, not a failure: rerun with --update-baseline once the cost is intended."
-        )
-    else:
-        verdict = (
-            f"Nothing more than {tolerance} slower than this machine's baseline,"
-            f" of {report.compared}."
-        )
-    if report.recorded == 1:
-        verdict += "\n1 timing had no baseline and was recorded."
-    elif report.recorded:
-        verdict += f"\n{report.recorded} timings had no baseline and were recorded."
-    return verdict
-
-
-def _timing_row(timing: Timing) -> str:
-    known = timing.baseline
-    baseline = "-" if known is None else f"{known:.3f} s"
-    change = "recorded" if timing.change is None else f"{timing.change:+.1%}"
-    row = (
-        f"{timing.operation:<16} {timing.dataset:<11} {timing.median:>8.3f} s"
-        f" {baseline:>10} {change:>9}"
-    )
-    return f"{row}  SLOWER" if timing.slower else row
-
-
 DEV_HANDLERS: Mapping[str, Callable[[argparse.Namespace], int]] = {
     "build-db": cmd_build_db,
     "snapshot": cmd_snapshot,
     "perf": cmd_perf,
-    "bench": cmd_bench,
 }

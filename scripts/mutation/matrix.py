@@ -31,7 +31,7 @@ def killing_tests(mutant: str, tests: list[str]) -> list[str] | None:
     }
     command = [
         sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-        "-p", "failures_plugin", "--no-header", "-o", "addopts=", *tests,
+        "-p", "failures_plugin", "--no-header", *tests,
     ]
     try:
         run = subprocess.run(

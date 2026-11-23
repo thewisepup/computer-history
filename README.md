@@ -261,7 +261,7 @@ authentication and explicit trusted-host configuration.
 ```sh
 .venv/bin/python -m pytest -n auto tests/unit           # unit tests, as the pre-commit hook runs them
 .venv/bin/python -m pytest -n auto --dist worksteal tests/data  # synthetic datasets and the dev commands
-.venv/bin/python -m pytest -m perf                      # the performance gate (tests/perf)
+.venv/bin/computer-history dev perf                    # the performance gate
 .venv/bin/python -m ruff check computer_history tests   # lint; the POC files are excluded
 .venv/bin/python -m ruff format --check computer_history tests  # formatting; the POC files are excluded
 .venv/bin/python -m unittest -q                         # the POC suite (test_history.py, test_mcp.py)

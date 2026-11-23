@@ -129,8 +129,7 @@ computer_history/
                 # copied out, never into a live folder), operations (what
                 # the product does, on a cached dataset), meter (the cost
                 # meter), gate (costs against the committed baseline,
-                # + baseline: one file per SQLite version), bench (median
-                # wall-clock times against this machine's last baseline)
+                # + baseline: counted on CI's SQLite)
   host/         # the host adapter, the one seam to macOS and the network:
                 # contract (Host, its answers, HostError), live (LiveHost:
                 # launchctl, GitHub's check runs and source trees, building with

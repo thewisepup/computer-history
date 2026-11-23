@@ -33,15 +33,6 @@ settings.register_profile(
 )
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "deterministic"))
 
-PERF_TESTS = Path(__file__).resolve().parent / "perf"
-
-
-@pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    for item in items:
-        if item.path.resolve().is_relative_to(PERF_TESTS):
-            item.add_marker("perf")
-
 
 @pytest.fixture(autouse=True)
 def no_db_env(monkeypatch: pytest.MonkeyPatch) -> None:

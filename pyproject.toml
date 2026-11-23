@@ -30,9 +30,7 @@ include = ["computer_history*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-m 'not perf'"
 markers = [
-    "perf: set on tests/perf (the performance gate), which addopts leaves out; run with -m perf or computer-history dev perf",
     "schema_rule: guards a rule the SQL migrations enforce, which mutation testing cannot see",
 ]
 

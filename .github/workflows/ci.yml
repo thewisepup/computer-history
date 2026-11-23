@@ -112,12 +112,11 @@ jobs:
           TMPDIR: /dev/shm
       - if: failure()
         run: >-
-          echo "::notice title=Performance gate::If the change of cost is intended, take this
-          run's counters as the CI SQLite's baseline: gh run download ${{ github.run_id }}
-          -n perf-counters -D /tmp/perf, then copy /tmp/perf/perf-counters.json to
-          computer_history/synthetic/perf_baselines/ under the name the log's
-          "Counters written" line gives, and run computer-history dev perf
-          --update-baselines locally for your own SQLite."
+          echo "::notice title=Performance gate::If the change of cost is intended and only
+          VM steps fail (a local update keeps them, since they differ between SQLite versions),
+          take this run's counters as the baseline: gh run download ${{ github.run_id }}
+          -n perf-counters -D /tmp/perf, then copy /tmp/perf/perf-counters.json over the
+          file the log's "Baseline" line names."
       - if: "!cancelled() && steps.datasets.outputs.cache-hit != 'true' && hashFiles('perf-counters.json') != ''"
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:

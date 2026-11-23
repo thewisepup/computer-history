@@ -72,17 +72,15 @@ first use (about a minute), since the main checkout's venv imports the main
 checkout's source. `docs/agents/checks.md` lists what the pre-commit hook and
 each CI job run, which checks `main` requires, and where a new check belongs.
 
-Tests sit in four folders, and the folder decides where a test runs:
+Tests sit in three folders, and the folder decides where a test runs:
 
 | Folder | Holds | Runs in |
 |---|---|---|
 | `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | the pre-commit hook and CI's `unit` job |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | CI's `data` job; locally `-n auto --dist worksteal` |
-| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf`; CI's `perf` job |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db` and `dev perf` commands | CI's `data` job; locally `-n auto --dist worksteal` |
 | `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` and CI's `macos-capture-agent-e2e` job |
 
-Bare `pytest` runs every folder but `perf/`; shared fakes and helpers sit in
-`tests/`. Hypothesis tests run derandomized; to hunt for new failures, run
+Bare `pytest` runs every folder; shared fakes and helpers sit in `tests/`. Hypothesis tests run derandomized; to hunt for new failures, run
 them with random seeds and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/unit/test_aw_ingest_properties.py`.
 
@@ -131,9 +129,8 @@ performance gate on them. Its `__init__.py` maps the modules;
 
 ```bash
 computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
-computer-history dev perf                      # the gate against perf_baselines/sqlite-<version>.json
+computer-history dev perf                      # the gate against the baseline, counted on CI's SQLite
 computer-history dev perf --update-baselines   # a deliberate change of cost
-computer-history dev bench                     # wall-clock medians against this machine's last run
 ```
 
 A new stream, table, timeline field or public store function lands with its
