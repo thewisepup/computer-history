@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from computer_history.sources import (
     IngestHealth,
@@ -38,6 +39,7 @@ class Assessment:
     health: IngestHealth | None = None
     health_error: str | None = None
     aw_sources: tuple[str, ...] | None = None
+    buckets: Mapping[str, Any] | None = None
 
     @property
     def findings(self) -> tuple[Finding, ...]:
@@ -61,20 +63,29 @@ def assess(
     try:
         buckets = client.get_buckets()
         ends, aw_error = watcher_ends(client, buckets, hostname=hostname), None
-        aw_sources = tuple(source.name for source in discover_sources(client, buckets=buckets))
+        aw_sources = tuple(source.name for source in discover_sources(buckets))
     except SourceUnavailable as exc:
-        ends, aw_error, aw_sources = None, str(exc), None
-    outage = None if ends is not None else unreachable_since or now
+        buckets, ends, aw_error, aw_sources = None, None, str(exc), None
+    since = unreachable_since or now
 
     reach = max(silent_after.values())
-    store_error = None
+    capture_after = silent_after[Check.CAPTURE_AGENT]
     try:
-        active = active_spans(conn, client if ends is not None else None, now - reach, now)
+        active, store_error = active_spans(conn, client, buckets, now - reach, now), None
+        found = capture_liveness(
+            conn,
+            spool,
+            now=now,
+            active=_since(active, now - capture_after),
+            watched_since=watched_since,
+            alive_within=capture_after,
+        )
+        capture = judge_capture_agent(found, now=now, silent_after=capture_after)
     except sqlite3.Error as exc:
         active, store_error = [], f"database read failed: {exc}"
-    capture = _capture_agent(
-        conn, spool, active, store_error, now, watched_since, silent_after[Check.CAPTURE_AGENT]
-    )
+        capture = Finding(
+            Check.CAPTURE_AGENT, Verdict.UNKNOWN, Reason.UNREADABLE, detail=store_error
+        )
     try:
         health, health_error = read_health(health_file), None
     except (OSError, ValueError) as exc:
@@ -95,7 +106,7 @@ def assess(
             )
     activitywatch = judge_activitywatch(
         ends,
-        unreachable_since=outage,
+        unreachable_since=since,
         error=aw_error,
         now=now,
         watched_since=watched_since,
@@ -106,36 +117,12 @@ def assess(
         activitywatch,
         backend,
         watched_since,
-        outage,
+        None if ends is not None else since,
         health,
         health_error,
         aw_sources,
+        buckets,
     )
-
-
-def _capture_agent(
-    conn: sqlite3.Connection | None,
-    spool: Path,
-    active: list[Span],
-    store_error: str | None,
-    now: datetime,
-    watched_since: datetime,
-    silent_after: timedelta,
-) -> Finding:
-    if store_error is None:
-        try:
-            found = capture_liveness(
-                conn,
-                spool,
-                now=now,
-                active=_since(active, now - silent_after),
-                watched_since=watched_since,
-                alive_within=silent_after,
-            )
-            return judge_capture_agent(found, now=now, silent_after=silent_after)
-        except sqlite3.Error as exc:
-            store_error = f"database read failed: {exc}"
-    return Finding(Check.CAPTURE_AGENT, Verdict.UNKNOWN, Reason.UNREADABLE, detail=store_error)
 
 
 def _since(active: list[Span], start: datetime) -> list[Span]:

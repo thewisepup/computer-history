@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 from computer_history.host import Host, HostError
 from computer_history.sources import CaptureHealth, capture_health, health_path
@@ -163,10 +164,7 @@ def status_report(
     )
     details = None
     if conn is not None:
-        reachable = assessment.unreachable_since is None
-        details = _store_details(
-            conn, client if reachable else None, spool, now, hostname, day_start
-        )
+        details = _store_details(conn, client, assessment.buckets, spool, now, hostname, day_start)
     backups = backup_inventory(db_path)
     agents, agents_error = _agents(host, layout)
     return StatusReport(
@@ -183,7 +181,8 @@ def status_report(
 
 def _store_details(
     conn: sqlite3.Connection,
-    client: AWApi | None,
+    client: AWApi,
+    buckets: Mapping[str, Any] | None,
     spool: Path,
     now: datetime,
     hostname: str,
@@ -195,6 +194,7 @@ def _store_details(
         summaries,
         spool,
         client,
+        buckets,
         now=now,
         window=STATUS_WINDOW,
         hostname=hostname,

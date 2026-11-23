@@ -79,7 +79,13 @@ def judge_backend(
     """Judge the backend from its last cycle: a problem only when it has finished none for longer
     than the threshold, since a backend whose cycles fail alerts on its own failure streak."""
     last = None if health is None else health.cycle_at
-    alive = _liveness(last, now, list(active), watched_since, silent_after)
+    alive = liveness(
+        watched_since if last is None else max(last, watched_since),
+        now=now,
+        paused=False,
+        active=active,
+        alive_within=silent_after,
+    )
     if alive is Liveness.SILENT:
         return Finding(Check.BACKEND, Verdict.PROBLEM, Reason.SILENT, last)
     if health is not None and now - health.cycle_at <= silent_after:
@@ -97,18 +103,18 @@ def judge_backend(
 def judge_activitywatch(
     ends: Mapping[str, datetime | None] | None,
     *,
-    unreachable_since: datetime | None,
+    unreachable_since: datetime,
     error: str | None,
     now: datetime,
     watched_since: datetime,
     silent_after: timedelta,
 ) -> Finding:
-    """Judge ActivityWatch unreachable, or one of its sources not advancing, past the threshold."""
+    """Judge ActivityWatch unreachable since a time, or one of its sources not advancing, past the
+    threshold."""
     if ends is None:
-        since = now if unreachable_since is None else unreachable_since
-        silent = now - max(since, watched_since) >= silent_after
+        silent = now - max(unreachable_since, watched_since) >= silent_after
         verdict = Verdict.PROBLEM if silent else Verdict.UNKNOWN
-        return Finding(Check.ACTIVITYWATCH, verdict, Reason.UNREACHABLE, since, error)
+        return Finding(Check.ACTIVITYWATCH, verdict, Reason.UNREACHABLE, unreachable_since, error)
     if not ends:
         return Finding(Check.ACTIVITYWATCH, Verdict.UNKNOWN, Reason.NO_BUCKETS)
     seen = [end for end in ends.values() if end is not None]
@@ -125,14 +131,3 @@ def judge_activitywatch(
     if len(seen) == len(ends) and oldest is not None and now - oldest <= silent_after:
         return Finding(Check.ACTIVITYWATCH, Verdict.OK, Reason.RECORDING, oldest)
     return Finding(Check.ACTIVITYWATCH, Verdict.UNKNOWN, Reason.RESUMED, oldest)
-
-
-def _liveness(
-    since: datetime | None,
-    now: datetime,
-    active: list[Span],
-    watched_since: datetime,
-    silent_after: timedelta,
-) -> Liveness:
-    last_seen = watched_since if since is None else max(since, watched_since)
-    return liveness(last_seen, now=now, paused=False, active=active, alive_within=silent_after)

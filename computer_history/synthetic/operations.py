@@ -144,6 +144,7 @@ def _capture_health(dataset: GateDataset, folder: Path) -> Session:
             summaries,
             spool,
             None,
+            None,
             now=dataset.now,
             window=STATUS_WINDOW,
             hostname=HOST,

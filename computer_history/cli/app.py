@@ -5,6 +5,7 @@ import json
 import logging
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TextIO
@@ -47,78 +48,8 @@ from computer_history.store import (
 )
 
 CODE_LOCATION = Path(computer_history.__file__).resolve().parent
-DATABASE_COMMANDS = frozenset(
-    {"ingest", "status", "rebuild-signals", "backfill", "backup", "restore", "watchdog"}
-)
-INSTALL_COMMANDS = frozenset({"install", "uninstall", "update", "rollback"})
-READS_THE_INSTALL = INSTALL_COMMANDS | {"check-agent-install"}
-
-COMMANDS = {
-    "ingest": "Ingest settled ActivityWatch events and the capture spool into the store.",
-    "status": "Show store and source status.",
-    "rebuild-signals": (
-        "Rebuild derived signals from stored observations (blocks ingest while running)."
-    ),
-    "backfill": (
-        "One-time ingest of existing ActivityWatch history, in bounded chunks"
-        " (idempotent: re-running adds nothing)."
-    ),
-    "backup": (
-        "Take today's backup of the database into the backups folder beside it, checked for"
-        " integrity, keeping the newest seven days (run daily by the stable install)."
-    ),
-    "restore": (
-        "Put a backup in the database's place: the stable install stops its backend first and"
-        " starts it again after. The current database is set aside, never deleted."
-    ),
-    "update": (
-        "Move the stable install to the newest main commit that passed the release gate: back"
-        " up the database, restart the backend on it, and fall back on its own if its first"
-        " ingest cycle does not complete; then swap in a changed capture agent and put the old"
-        " one back if it records nothing while you are active."
-    ),
-    "rollback": "Switch the stable install back to its previous version (no network needed).",
-    "install": (
-        "Set up the stable install from the newest main commit that passed the release gate,"
-        " and start the backend at login from it (safe to re-run)."
-    ),
-    "uninstall": "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
-    "check-agent-install": (
-        "Refuse to install the capture agent from this checkout by hand unless it is on main,"
-        " clean, at origin/main, its capture-agent checks passed in CI, and the stable backend"
-        " is at that commit or newer (run by the agent's install script; changes nothing)."
-    ),
-    "watchdog": (
-        "Check once that the capture agent, ActivityWatch and the backend are recording, post a"
-        " notification for a problem or a cleared one, and reopen ActivityWatch if it is down"
-        " (run every minute by its LaunchAgent)."
-    ),
-    "dev": (
-        "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
-        " live database into the dev folder, perf runs the performance gate, bench times each"
-        " operation."
-    ),
-    "logs": "Show the JSON log's records, filtered by time, level, run or logger.",
-}
 
 log = logging.getLogger(__name__)
-
-HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
-    "ingest": cmd_ingest,
-    "status": cmd_status,
-    "rebuild-signals": cmd_rebuild_signals,
-    "backfill": cmd_backfill,
-    "backup": cmd_backup,
-    "restore": cmd_restore,
-    "update": cmd_update,
-    "rollback": cmd_rollback,
-    "install": cmd_install,
-    "uninstall": cmd_uninstall,
-    "check-agent-install": cmd_check_agent_install,
-    "watchdog": cmd_watchdog,
-    "dev": cmd_dev,
-    "logs": cmd_logs,
-}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -157,82 +88,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"ActivityWatch API base URL (default: {DEFAULT_AW_URL})",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name, help_text in COMMANDS.items():
-        if name == "dev":
-            add_dev_commands(subparsers.add_parser(name, help=help_text, description=help_text))
-            continue
-        if name == "logs":
-            add_logs_arguments(subparsers.add_parser(name, help=help_text, description=help_text))
-            continue
-        if name in ("ingest", "status", "backfill", "watchdog"):
-            parents = [db_after_command, aw]
-        elif name == "update":
-            parents = [aw]
-        elif name in READS_THE_INSTALL:
-            parents = []
-        else:
-            parents = [db_after_command]
-        sub = subparsers.add_parser(name, help=help_text, description=help_text, parents=parents)
-        if name == "rebuild-signals":
-            sub.add_argument(
-                "--allow-shrink",
-                action="store_true",
-                help="allow a rebuild that drops more than half of the existing signals"
-                " (refused by default as a likely mapping bug)",
-            )
-        if name == "update":
-            sub.add_argument(
-                "--wait",
-                type=float,
-                default=FIRST_CYCLE_WAIT_SECONDS,
-                metavar="SECONDS",
-                help="how long to wait for the backend's first ingest cycle on the new version"
-                f" before falling back (default: {FIRST_CYCLE_WAIT_SECONDS:g}; a long migration"
-                " needs more)",
-            )
-        if name == "check-agent-install":
-            sub.add_argument(
-                "--force",
-                action="store_true",
-                help="allow the install even when conditions are unmet, listing each one skipped",
-            )
-        if name == "restore":
-            sub.add_argument(
-                "backup",
-                type=backup_arg,
-                help="the day of a daily backup (YYYY-MM-DD), or the path of a backup or a"
-                " set-aside database",
-            )
-        if name == "backfill":
-            sub.add_argument(
-                "--start",
-                type=when_arg,
-                help="backfill from this ISO date/datetime (local time unless it has an"
-                " offset) instead of where the ActivityWatch buckets begin",
-            )
-            sub.add_argument(
-                "--end",
-                type=when_arg,
-                help="stop at this ISO date/datetime (default: the time the source's ingest"
-                " is settled until, or now; never later than those)",
-            )
-            sub.add_argument(
-                "--dry-run",
-                action="store_true",
-                help="discover sources and print the planned chunks; write nothing",
-            )
-        if name in ("ingest", "status", "watchdog"):
-            sub.add_argument(
-                "--spool-path",
-                help=f"capture spool folder (default: ${SPOOL_ENV_VAR}, else spool/ beside"
-                " the database)",
-            )
-        if name == "ingest":
-            sub.add_argument(
-                "--watch",
-                action="store_true",
-                help=f"poll every {POLL_INTERVAL_SECONDS}s until interrupted (Ctrl-C)",
-            )
+    for command in COMMANDS.values():
+        parents = [db_after_command] if command.needs_db else []
+        parents += [aw] if command.reads_aw else []
+        sub = subparsers.add_parser(
+            command.name, help=command.help, description=command.help, parents=parents
+        )
+        command.add_arguments(sub)
     return parser
 
 
@@ -276,6 +138,84 @@ def add_logs_arguments(sub: argparse.ArgumentParser) -> None:
     sub.add_argument("--json", action="store_true", help="print the raw JSON lines")
 
 
+def _no_arguments(sub: argparse.ArgumentParser) -> None:
+    pass
+
+
+def _spool_path_argument(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--spool-path",
+        help=f"capture spool folder (default: ${SPOOL_ENV_VAR}, else spool/ beside the database)",
+    )
+
+
+def _ingest_arguments(sub: argparse.ArgumentParser) -> None:
+    _spool_path_argument(sub)
+    sub.add_argument(
+        "--watch",
+        action="store_true",
+        help=f"poll every {POLL_INTERVAL_SECONDS}s until interrupted (Ctrl-C)",
+    )
+
+
+def _rebuild_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="allow a rebuild that drops more than half of the existing signals"
+        " (refused by default as a likely mapping bug)",
+    )
+
+
+def _backfill_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--start",
+        type=when_arg,
+        help="backfill from this ISO date/datetime (local time unless it has an"
+        " offset) instead of where the ActivityWatch buckets begin",
+    )
+    sub.add_argument(
+        "--end",
+        type=when_arg,
+        help="stop at this ISO date/datetime (default: the time the source's ingest"
+        " is settled until, or now; never later than those)",
+    )
+    sub.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="discover sources and print the planned chunks; write nothing",
+    )
+
+
+def _restore_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "backup",
+        type=backup_arg,
+        help="the day of a daily backup (YYYY-MM-DD), or the path of a backup or a"
+        " set-aside database",
+    )
+
+
+def _update_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--wait",
+        type=float,
+        default=FIRST_CYCLE_WAIT_SECONDS,
+        metavar="SECONDS",
+        help="how long to wait for the backend's first ingest cycle on the new version"
+        f" before falling back (default: {FIRST_CYCLE_WAIT_SECONDS:g}; a long migration"
+        " needs more)",
+    )
+
+
+def _check_agent_install_arguments(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--force",
+        action="store_true",
+        help="allow the install even when conditions are unmet, listing each one skipped",
+    )
+
+
 SINCE_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 
@@ -300,6 +240,143 @@ def when_arg(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+@dataclass(frozen=True)
+class Command:
+    """One command: its help, its handler and own arguments, whether it takes --db-path and
+    --aw-url, and whether it reads or changes the stable install."""
+
+    name: str
+    help: str
+    run: Callable[[argparse.Namespace], int]
+    add_arguments: Callable[[argparse.ArgumentParser], None] = _no_arguments
+    needs_db: bool = False
+    reads_aw: bool = False
+    reads_install: bool = False
+    locks_install: bool = False
+
+
+COMMANDS: dict[str, Command] = {
+    command.name: command
+    for command in (
+        Command(
+            "ingest",
+            "Ingest settled ActivityWatch events and the capture spool into the store.",
+            cmd_ingest,
+            _ingest_arguments,
+            needs_db=True,
+            reads_aw=True,
+        ),
+        Command(
+            "status",
+            "Show store and source status.",
+            cmd_status,
+            _spool_path_argument,
+            needs_db=True,
+            reads_aw=True,
+        ),
+        Command(
+            "rebuild-signals",
+            "Rebuild derived signals from stored observations (blocks ingest while running).",
+            cmd_rebuild_signals,
+            _rebuild_arguments,
+            needs_db=True,
+        ),
+        Command(
+            "backfill",
+            "One-time ingest of existing ActivityWatch history, in bounded chunks"
+            " (idempotent: re-running adds nothing).",
+            cmd_backfill,
+            _backfill_arguments,
+            needs_db=True,
+            reads_aw=True,
+        ),
+        Command(
+            "backup",
+            "Take today's backup of the database into the backups folder beside it, checked for"
+            " integrity, keeping the newest seven days (run daily by the stable install).",
+            cmd_backup,
+            needs_db=True,
+        ),
+        Command(
+            "restore",
+            "Put a backup in the database's place: the stable install stops its backend first"
+            " and starts it again after. The current database is set aside, never deleted.",
+            cmd_restore,
+            _restore_arguments,
+            needs_db=True,
+        ),
+        Command(
+            "update",
+            "Move the stable install to the newest main commit that passed the release gate:"
+            " back up the database, restart the backend on it, and fall back on its own if its"
+            " first ingest cycle does not complete; then swap in a changed capture agent and put"
+            " the old one back if it records nothing while you are active.",
+            cmd_update,
+            _update_arguments,
+            reads_aw=True,
+            reads_install=True,
+            locks_install=True,
+        ),
+        Command(
+            "rollback",
+            "Switch the stable install back to its previous version (no network needed).",
+            cmd_rollback,
+            reads_install=True,
+            locks_install=True,
+        ),
+        Command(
+            "install",
+            "Set up the stable install from the newest main commit that passed the release"
+            " gate, and start the backend at login from it (safe to re-run).",
+            cmd_install,
+            reads_install=True,
+            locks_install=True,
+        ),
+        Command(
+            "uninstall",
+            "Remove the stable install, its LaunchAgents and PATH link; keep the data.",
+            cmd_uninstall,
+            reads_install=True,
+            locks_install=True,
+        ),
+        Command(
+            "check-agent-install",
+            "Refuse to install the capture agent from this checkout by hand unless it is on"
+            " main, clean, at origin/main, its capture-agent checks passed in CI, and the stable"
+            " backend is at that commit or newer (run by the agent's install script; changes"
+            " nothing).",
+            cmd_check_agent_install,
+            _check_agent_install_arguments,
+            reads_install=True,
+        ),
+        Command(
+            "watchdog",
+            "Check once that the capture agent, ActivityWatch and the backend are recording, post"
+            " a notification for a problem or a cleared one, and reopen ActivityWatch if it is"
+            " down (run every minute by its LaunchAgent).",
+            cmd_watchdog,
+            _spool_path_argument,
+            needs_db=True,
+            reads_aw=True,
+        ),
+        Command(
+            "dev",
+            "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
+            " live database into the dev folder, perf runs the performance gate, bench times"
+            " each operation.",
+            cmd_dev,
+            add_dev_commands,
+        ),
+        Command(
+            "logs",
+            "Show the JSON log's records, filtered by time, level, run or logger.",
+            cmd_logs,
+            add_logs_arguments,
+        ),
+    )
+}
+
+
 def main(
     argv: Sequence[str] | None = None, *, code: Path = CODE_LOCATION, host: Host | None = None
 ) -> int:
@@ -322,28 +399,25 @@ def main(
     )
     args.host = LiveHost() if host is None else host
     args.code = code
-    handler = HANDLERS.get(args.command)
-    if handler is None:
-        print(f"computer-history {args.command}: not implemented yet", file=sys.stderr)
-        return 1
+    command = COMMANDS[args.command]
     uses = None
     try:
-        args.database = _database(args)
+        args.database = _database(args, command)
     except LiveDatabaseRefused as exc:
         print(profile_line(running, code, "database refused"), flush=True)
         return _refused(exc)
     if args.database is not None:
         uses = f"database {args.database}"
-    elif args.command in READS_THE_INSTALL:
+    elif command.reads_install:
         uses = f"stable install {live_folder()}"
     elif args.command == "dev" and args.dev_command == "build-db":
         uses = f"output {args.out}"
     print(profile_line(running, code, uses), file=_profile_stream(args.command), flush=True)
     try:
-        if not _changes_the_install(args):
-            return handler(args)
+        if not _changes_the_install(args, command):
+            return command.run(args)
         with holding_install_lock(stable_layout()):
-            return handler(args)
+            return command.run(args)
     except InstallBusy as exc:
         print(f"{args.command} refused: {exc}", file=sys.stderr)
         return 1
@@ -354,16 +428,16 @@ def main(
         return 1
 
 
-def _changes_the_install(args: argparse.Namespace) -> bool:
+def _changes_the_install(args: argparse.Namespace, command: Command) -> bool:
     """Whether the command changes the stable install, or restores a database a stable run uses."""
     if args.command == "restore":
         return args.profile is Profile.STABLE
-    return args.command in INSTALL_COMMANDS
+    return command.locks_install
 
 
-def _database(args: argparse.Namespace) -> Path | None:
+def _database(args: argparse.Namespace, command: Command) -> Path | None:
     """The database the command opens or copies into, or None for one that uses none."""
-    if args.command in DATABASE_COMMANDS:
+    if command.needs_db:
         return resolve_db_path(args.db_path, args.profile)
     if args.command == "dev" and args.dev_command == "snapshot":
         return resolve_dev_db_path(args.db_path)

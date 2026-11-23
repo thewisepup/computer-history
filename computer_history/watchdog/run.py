@@ -135,7 +135,7 @@ def _watch(
     try:
         write_watchdog_state(paths.state, state)
     except OSError as exc:
-        failed = f"error: could not save {paths.state}: {exc}"
-        state = replace(state, errors=(*state.errors, failed.removeprefix("error: ")))
-        to_log = (*to_log, failed)
+        failed = f"could not save {paths.state}: {exc}"
+        state = replace(state, errors=(*state.errors, failed))
+        to_log = (*to_log, f"error: {failed}")
     return WatchdogRun(state, thresholds, tuple(posted), reopening, to_log)

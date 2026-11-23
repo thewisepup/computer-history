@@ -742,10 +742,10 @@ in the live folder and starts the backend at login from it:
   `installed-agent.json`. The swap time is when the host first registered the
   new app, after unregistering the old one. Then wait for a record captured
   at or after the swap, stored or in the spool beside the live database (never
-  `$COMPUTER_HISTORY_SPOOL`), read through an injected reader
-  (`sources/agent_health.py`'s `StoredAndSpooled`: the newest record's time
-  and kind, why the database could not be searched if so, and aw-afk's active
-  time between two times) built on the reads status and the watchdog use, not
+  `$COMPUTER_HISTORY_SPOOL`), read through two callables `cli/update.py`
+  builds (the newest record's time and whether it marks a pause, why the
+  database could not be searched if so, and aw-afk's active time between two
+  times) on `sources/agent_health.py`'s reads status and the watchdog use, not
   the watchdog's verdict. A record of any kind verifies it; a newest `paused`
   record from before the swap, ActivityWatch unreachable or without an aw-afk
   bucket, aw-afk's stored spans unreadable, 120 active seconds without a

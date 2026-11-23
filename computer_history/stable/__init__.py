@@ -73,7 +73,7 @@ from computer_history.stable.capture_agent import (
     installed_agent,
     record_installed_agent,
 )
-from computer_history.stable.gate import RELEASE_GATE
+from computer_history.stable.gate import RELEASE_GATE, GateVerdict
 from computer_history.stable.install import InstallFailed, install, uninstall
 from computer_history.stable.install_lock import InstallBusy, holding_install_lock
 from computer_history.stable.launch_agents import (
@@ -153,6 +153,7 @@ __all__ = [
     "BackupFailed",
     "BackupInventory",
     "DailyOutcome",
+    "GateVerdict",
     "GuardFailed",
     "InstallBusy",
     "InstallFailed",

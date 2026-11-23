@@ -28,19 +28,18 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
 
 agent_health.py  for status, the watchdog and update's agent check: the capture
                  agent's stored records and spool, judged against aw-afk and
-                 aw-window, drawing on both adapters; update reads them afresh
-                 through StoredAndSpooled
+                 aw-window, drawing on both adapters
 """
 
 from computer_history.sources.activitywatch import ActivityWatch, AWClient
 from computer_history.sources.agent_health import (
     CaptureHealth,
     CaptureLiveness,
-    DatabaseRead,
-    StoredAndSpooled,
     active_spans,
+    active_time,
     capture_health,
     capture_liveness,
+    newest_record,
 )
 from computer_history.sources.backfill import (
     BACKFILL_CHUNK,
@@ -99,7 +98,6 @@ __all__ = [
     "ChunkDone",
     "CycleReporter",
     "CycleSummary",
-    "DatabaseRead",
     "FailureKind",
     "FailureStreak",
     "HistorySource",
@@ -109,16 +107,17 @@ __all__ = [
     "Recovery",
     "Source",
     "SourceUnavailable",
-    "StoredAndSpooled",
     "StreakAlert",
     "StreamFailure",
     "StreamProjector",
     "active_spans",
+    "active_time",
     "capture_health",
     "capture_liveness",
     "commit_pull",
     "failure_of",
     "health_path",
+    "newest_record",
     "plan_all_backfills",
     "plan_backfill",
     "poll",
