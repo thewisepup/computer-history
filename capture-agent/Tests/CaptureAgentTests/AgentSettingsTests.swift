@@ -62,6 +62,52 @@ final class TempFolder {
         == "/Users/other/Library/Application Support/ComputerHistory")
 }
 
+@Test func runAndTheControlCommandsUseTheAccountFolderWhateverTheEnvironmentSays() throws {
+    let account = TempFolder()
+    let elsewhere = TempFolder()
+    let real = AgentSettings.defaultFolder(home: account.url)
+    try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+    try Data(#"{"idle_threshold_seconds": 60}"#.utf8).write(to: real.appendingPathComponent(AgentSettings.configFileName))
+    try Data(#"{"text_cap_bytes": 10000000}"#.utf8).write(to: elsewhere.url.appendingPathComponent(AgentSettings.configFileName))
+    let environment = [
+        "HOME": elsewhere.url.path,
+        "COMPUTER_HISTORY_DB": elsewhere.url.appendingPathComponent("history.db").path,
+        "COMPUTER_HISTORY_SPOOL": elsewhere.url.appendingPathComponent("spool").path,
+    ]
+    let fixed: [AgentCommand] = [.run, .install, .uninstall, .status, .pause, .resume, .requestScreenRecording, .usage]
+    for command in fixed {
+        let settings = AgentSettings.load(for: command, environment: environment, accountHome: account.url)
+        #expect(settings.folder == real)
+        #expect(settings.spoolDirectory == real.appendingPathComponent("spool", isDirectory: true))
+        #expect(settings.pause.file == real.appendingPathComponent(AgentSettings.pauseFileName))
+        #expect(settings.instanceLockFile == real.appendingPathComponent("agent-instance.lock"))
+        #expect(settings.capture.idleThreshold == 60)
+        #expect(settings.windowText.textCapBytes == WindowTextSettings().textCapBytes)
+    }
+    for command in [AgentCommand.checkConfig, .scriptedSession(script: "day.json")] {
+        let settings = AgentSettings.load(for: command, environment: environment, accountHome: account.url)
+        #expect(settings.folder.path == elsewhere.url.path)
+        #expect(settings.spoolDirectory.path == elsewhere.url.appendingPathComponent("spool").path)
+        #expect(settings.instanceLockFile == nil)
+        #expect(settings.windowText.textCapBytes == 10_000_000)
+    }
+}
+
+@Test func checkConfigNamesTheCapturingAgentsFolderBesideTheOneTheEnvironmentPicked() throws {
+    let elsewhere = TempFolder()
+    let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+    let report = checkConfig(try elsewhere.settings(), accountHome: home).message.split(separator: "\n").map(String.init)
+    #expect(report.contains("folder: \(elsewhere.url.path)"))
+    #expect(report.contains(
+        "capturing agent folder, whatever the environment says: \(AgentSettings.defaultFolder(home: home).path)"
+    ))
+}
+
+@Test func theAccountHomeComesFromTheUserDatabase() throws {
+    let entry = try #require(getpwuid(getuid()))
+    #expect(accountHome()?.path == String(cString: entry.pointee.pw_dir))
+}
+
 @Test func aMissingFileMeansDefaults() throws {
     let settings = try TempFolder().settings()
     #expect(settings.configFile == .missing)
@@ -199,7 +245,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
 }
 
 @Test func checkConfigPrintsTheSettingsAndFailsOnProblems() throws {
-    let good = checkConfig(try TempFolder().settings())
+    let good = checkConfig(try TempFolder().settings(), accountHome: FileManager.default.temporaryDirectory)
     #expect(good.exitCode == 0)
     #expect(good.message.contains("denylist, built-in plus config: com.1password.1password, com.agilebits.onepassword7, com.apple.keychainaccess, com.apple.passwords"))
     #expect(good.message.contains("idle threshold: 180s"))
@@ -207,7 +253,7 @@ func anOutOfRangeOrWrongTypeValueFallsBackToItsDefault(config: String, problem: 
         "screenshots: on, long edge 1440 px, JPEG quality 60, duplicate when under 6 thumbnail pixels (9x9 points each) changed, "
             + "a new kept image after 10 min"
     ))
-    let bad = checkConfig(try TempFolder().settings(config: #"{"oops": 1}"#))
+    let bad = checkConfig(try TempFolder().settings(config: #"{"oops": 1}"#), accountHome: FileManager.default.temporaryDirectory)
     #expect(bad.exitCode == 1)
     #expect(bad.message.contains(#"config problem: unknown key "oops" ignored"#))
 }

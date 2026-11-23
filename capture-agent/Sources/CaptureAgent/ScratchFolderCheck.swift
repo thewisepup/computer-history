@@ -20,7 +20,7 @@ func scriptedSessionRefusal(_ settings: AgentSettings, homes: [URL]) -> String? 
 public func userHomes() -> [URL] {
     var homes = [FileManager.default.homeDirectoryForCurrentUser]
     if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty { homes.append(URL(fileURLWithPath: home)) }
-    if let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir { homes.append(URL(fileURLWithPath: String(cString: directory))) }
+    if let home = accountHome() { homes.append(home) }
     return homes
 }
 

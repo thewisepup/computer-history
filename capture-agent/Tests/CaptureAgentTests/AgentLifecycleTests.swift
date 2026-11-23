@@ -11,6 +11,7 @@ final class Recorder: @unchecked Sendable {
     let logs = LogRecorder()
     let spool = TempSpool()
     let counts = CaptureCounts()
+    var instanceLock: InstanceLock?
     lazy var settings = AgentSettings.load(environment: [
         "COMPUTER_HISTORY_DB": spool.directory.appendingPathComponent("folder/history.db").path,
     ])
@@ -23,6 +24,7 @@ final class Recorder: @unchecked Sendable {
     func agent(granted: Bool) -> AgentLifecycle {
         AgentLifecycle(
             report: settings.report,
+            instanceLock: instanceLock,
             isPaused: { self.settings.pause.isPaused },
             accessibilityTrusted: { prompt in
                 self.lock.withLock { self._prompts.append(prompt) }
@@ -118,6 +120,38 @@ final class Recorder: @unchecked Sendable {
     #expect(recorder.lines == ["spool failed to start at \(recorder.spool.directory.path): another agent is writing to \(recorder.spool.directory.path), exiting"])
     try other.append(fixtureRecords[0])
     #expect(try other.finish() != nil)
+}
+
+@Test(.timeLimit(.minutes(1))) func aSecondAgentExitsWithoutTouchingItsSpoolOrPromptingWhileTheFirstHoldsTheInstanceLock() throws {
+    let folder = TempFolder()
+    let file = folder.url.appendingPathComponent("account/\(InstanceLock.fileName)")
+    let first = Recorder()
+    first.instanceLock = InstanceLock(file: file)
+    #expect(first.agent(granted: true).start() == .started)
+    let second = Recorder()
+    second.instanceLock = InstanceLock(file: file)
+    #expect(second.agent(granted: true).run() == 1)
+    #expect(second.capturingStarted == 0)
+    #expect(second.prompts.isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: second.spool.directory.path))
+    #expect(second.lines == ["instance lock not taken at \(file.path): another agent holds \(file.path), exiting"])
+}
+
+@Test func theInstanceLockIsHeldUntilItsHolderLetsGoAndOnlyTheOwnerCanOpenIt() throws {
+    let folder = TempFolder()
+    let file = folder.url.appendingPathComponent("account/\(InstanceLock.fileName)")
+    var first: InstanceLock? = InstanceLock(file: file)
+    try first?.take()
+    try first?.take()
+    #expect(throws: InstanceLock.Held.self) { try InstanceLock(file: file).take() }
+    first = nil
+    try InstanceLock(file: file).take()
+    #expect(try mode(file) == 0o600)
+    #expect(try mode(file.deletingLastPathComponent()) == 0o700)
+}
+
+private func mode(_ url: URL) throws -> Int {
+    try (FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as! NSNumber).intValue & 0o777
 }
 
 @Test func startSaysWhetherCapturingMayStart() throws {

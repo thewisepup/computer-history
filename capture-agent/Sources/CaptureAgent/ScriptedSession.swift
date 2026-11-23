@@ -25,6 +25,7 @@ public func runScriptedSession(
     let pause = settings.pause
     let agent = AgentLifecycle(
         report: settings.report,
+        instanceLock: nil,
         isPaused: { pause.isPaused },
         accessibilityTrusted: { _ in mac.accessibilityTrusted() },
         spool: spool,

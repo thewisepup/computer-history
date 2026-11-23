@@ -89,12 +89,11 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         chmod(directory.path, Self.folderMode)
         let lockPath = directory.appendingPathComponent(Self.lockFileName).path
-        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, Self.fileMode)
-        guard descriptor >= 0 else { throw posixError() }
-        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-            let error: any Error = errno == EWOULDBLOCK ? InUse(directory: directory) : posixError()
-            close(descriptor)
-            throw error
+        let descriptor: Int32
+        do {
+            descriptor = try lockExclusively(lockPath, mode: Self.fileMode)
+        } catch is LockHeld {
+            throw InUse(directory: directory)
         }
         fchmod(descriptor, Self.fileMode)
         chmod(openFile.path, Self.fileMode)
@@ -147,8 +146,4 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         let keep = contents.lastIndex(of: UInt8(ascii: "\n")).map { UInt64($0) + 1 } ?? 0
         try file.truncate(atOffset: keep)
     }
-}
-
-private func posixError() -> POSIXError {
-    POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 }

@@ -12,8 +12,9 @@ at the Mac, with a screenshot of that window saved beside the database.
 | Started by | `SMAppService`, from `Contents/Library/LaunchAgents/` inside the bundle (KeepAlive) |
 | Signed with | `Computer History Code Signing` from the login keychain, hardened runtime |
 | Logs | unified log, subsystem `io.github.thewisepup.computer-history.agent`, five categories (see [Logs](#logs)) |
-| Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db` |
+| Folder | `~/Library/Application Support/ComputerHistory/`, beside `history.db`, under the home folder in the user database |
 | Spool | `spool/` in the folder |
+| Instance lock | `agent-instance.lock` in the folder: one capturing agent per account |
 | Screenshots | `screenshots/` in the folder |
 | Config | `agent-config.json` in the folder, optional |
 | Reminder | `screen-recording-reminded` in the folder: when the missing-grant reminder was last posted |
@@ -71,13 +72,24 @@ so judge the grant only from the logs of the launchd-started agent.
 
 ## Folder and config
 
-The agent finds its folder the way the backend does: `$COMPUTER_HISTORY_DB`
-names the database and the folder is its parent; otherwise the folder is
-`~/Library/Application Support/ComputerHistory/`. `$COMPUTER_HISTORY_SPOOL`
-overrides the spool, which otherwise is `spool/` in the folder. Empty values
-count as unset and a leading `~` is the home folder. The launchd-started agent
-has neither variable set, and `pause`, `resume` and `check-config` run from a
-shell that sets them act on that other folder.
+The capturing agent (`run`, or no arguments) and `status`, `pause` and
+`resume` always use `~/Library/Application Support/ComputerHistory/`, with
+`spool/` inside it, where `~` is the home folder the user database
+(`getpwuid`) gives for the account. They ignore `$HOME`, `$CFFIXED_USER_HOME`,
+`$COMPUTER_HISTORY_DB` and `$COMPUTER_HISTORY_SPOOL`, so a process that
+starts the app with its own environment (`open -n --env ...`) gets an agent
+that captures into the user's own folder, under the user's config and pause,
+or, while the login item runs, one that exits at once (see the instance lock
+under [Spool](#spool)).
+
+`check-config` and `scripted-session` find the folder the way the backend
+does: `$COMPUTER_HISTORY_DB` names the database and the folder is its parent;
+otherwise the folder is the one above. `$COMPUTER_HISTORY_SPOOL` overrides the
+spool, which otherwise is `spool/` in the folder. Empty values count as unset,
+and `$HOME` and a leading `~` are honoured. Neither command reads the Mac, so
+the end-to-end check points them at scratch folders. `check-config` also
+prints `capturing agent folder, whatever the environment says: <folder>`, so a
+shell with the variables set can see that `run` would not use them.
 
 `agent-config.json` in the folder holds the settings. Every key is optional:
 
@@ -387,7 +399,8 @@ notifications off, `status` is the only warning.
 
 `CaptureSettings` holds the idle threshold, heartbeat interval, settle delay,
 minimum gap and poll interval; the first two come from the config. An agent
-that finds the spool held by another agent exits without capturing.
+that finds the instance lock or the spool held by another agent exits without
+capturing.
 
 ## Scripted sessions and the end-to-end check
 
@@ -453,7 +466,9 @@ the reminder's saved time, and every line of the screenshots section in
 `status`. The backend runs with the screenshots folder closed to it (mode
 `000`), and the images must come out byte for byte the same. It also checks
 that the agent's `check-config` and the backend name the same default folder
-and spool for a scratch home folder. It also runs the agent test in
+and spool for a scratch home folder, and that with `$HOME`,
+`$CFFIXED_USER_HOME` and both overrides pointing at a scratch folder it still
+names the account's real folder as the capturing agent's. It also runs the agent test in
 `tests/data/test_synthetic_spool.py`, which plays a synthetic developer day through `scripted-session` and checks the
 synthetic spool renderer writes the same captures (time, trigger, app, bundle
 id and title) as the agent.
@@ -466,7 +481,7 @@ The agent writes to the unified log under the subsystem
 
 | Category | Carries |
 |---|---|
-| `lifecycle` | start, the config report, the paused state at start, the minute heartbeat, stop |
+| `lifecycle` | start, a start refused for the instance lock, the config report, the paused state at start, the minute heartbeat, stop |
 | `capture` | silence starting, changing and ending; one debug record per capture written |
 | `spool` | spool ready, a leftover file finished, failures to start or finish the spool |
 | `screenshots` | each try of the missing Screen Recording grant reminder |
@@ -545,11 +560,16 @@ the finished files and `agent.lock` are `0600`. On start the agent tightens a
 folder, lock file or leftover `open.part` that is more open than that, and
 carries on as before when it is not allowed to.
 
-The agent holds `agent.lock` in the spool folder while it runs. A second
-agent cannot take the lock: it logs only `spool failed to start at <folder>:
-another agent is writing to <folder>, exiting`, asks for no Accessibility
-prompt, and exits with status 1, having written nothing. launchd starts its own agent again, every 10 seconds
-or so, until the lock is free.
+A capturing agent first takes `agent-instance.lock` in the folder (`0600`,
+in a folder it creates `0700`), then `agent.lock` in the spool folder, and
+holds both while it runs. A second agent cannot take the instance lock: it
+logs only `instance lock not taken at <file>: another agent holds <file>,
+exiting`, asks for no Accessibility prompt, and exits with status 1 without
+opening the spool. One that gets past it but finds the spool held logs only
+`spool failed to start at <folder>: another agent is writing to <folder>,
+exiting` and exits the same way. launchd starts its own agent again, every 10
+seconds or so, until the locks are free. A scripted session takes only the
+spool's lock, so it can run while the login item does.
 
 A capture, exclusion, pause, resume, slept or woke record has every key below, sorted,
 with `null` where a key does not apply:

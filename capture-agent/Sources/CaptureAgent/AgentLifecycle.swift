@@ -7,6 +7,7 @@ public struct AgentLifecycle: Sendable {
     public static let stopDrainSeconds: TimeInterval = 5
 
     let report: [String]
+    let instanceLock: InstanceLock?
     let isPaused: @Sendable () -> Bool
     let accessibilityTrusted: @Sendable (_ prompt: Bool) -> Bool
     let spool: SpoolWriter
@@ -17,6 +18,7 @@ public struct AgentLifecycle: Sendable {
 
     public init(
         report: [String],
+        instanceLock: InstanceLock?,
         isPaused: @escaping @Sendable () -> Bool,
         accessibilityTrusted: @escaping @Sendable (_ prompt: Bool) -> Bool,
         spool: SpoolWriter,
@@ -26,6 +28,7 @@ public struct AgentLifecycle: Sendable {
         log: AgentLog
     ) {
         self.report = report
+        self.instanceLock = instanceLock
         self.isPaused = isPaused
         self.accessibilityTrusted = accessibilityTrusted
         self.spool = spool
@@ -35,7 +38,7 @@ public struct AgentLifecycle: Sendable {
         self.log = log
     }
 
-    /// Returns exit status 1 at once if another agent holds the spool; otherwise starts capturing and runs the minute log line and the spool finish on the main run loop until SIGTERM.
+    /// Exits with status 1 if another agent holds the instance lock or the spool, otherwise captures until SIGTERM.
     public func run() -> Int32 {
         guard start() == .started else { return 1 }
         signal(SIGTERM, SIG_IGN)
@@ -57,11 +60,19 @@ public struct AgentLifecycle: Sendable {
     }
 
     enum Start: Equatable {
-        case started, spoolHeldByAnotherAgent
+        case started, instanceLockNotTaken, spoolHeldByAnotherAgent
     }
 
     @discardableResult
     func start() -> Start {
+        if let instanceLock {
+            do {
+                try instanceLock.take()
+            } catch {
+                log.error(.lifecycle, "instance lock not taken at \(instanceLock.file.path): \(error), exiting")
+                return .instanceLockNotTaken
+            }
+        }
         let spoolStart = Result { try spool.start() }
         if case .failure(let error as SpoolWriter.InUse) = spoolStart {
             log.error(.spool, "spool failed to start at \(spool.directory.path): \(error), exiting")
