@@ -18,6 +18,7 @@ permissions:
   pull-requests: write
   issues: write
   id-token: write
+  actions: write
 
 jobs:
   find:
@@ -51,13 +52,19 @@ jobs:
             echo "#$n: $(jq -r .mergeable <<<"$info")"
             jq -e '.mergeable == "CONFLICTING" and (.isCrossRepository | not)
                    and ([.labels[].name] | index("no-autofix") | not)' <<<"$info" >/dev/null || continue
-            prs=$(jq -c --argjson p "$(jq -c '{number, head: .headRefName, base: .baseRefName}' <<<"$info")" '. + [$p]' <<<"$prs")
+            if [ -n "$PR" ]; then
+              prs=$(jq -c '[{number, head: .headRefName, base: .baseRefName}]' <<<"$info")
+            else
+              # The Claude action runs on workflow_dispatch but not on push,
+              # so a push starts one dispatched run per pull request.
+              gh workflow run fix-conflicts.yml --repo "$REPO" --ref "$BASE" -f pr="$n"
+            fi
           done
           echo "prs=$prs" >> "$GITHUB_OUTPUT"
 
   fix:
     needs: find
-    if: needs.find.outputs.prs != '[]' && needs.find.outputs.prs != ''
+    if: github.event_name == 'workflow_dispatch' && needs.find.outputs.prs != '[]' && needs.find.outputs.prs != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
