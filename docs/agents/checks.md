@@ -18,8 +18,9 @@ certificate, so it stays a step you run by hand.
 
 `.github/workflows/fix-conflicts.yml` is not a check and never blocks a
 merge. On every push, its `find` job lists the open pull requests based on the
-pushed branch that now conflict, skipping forks and the `no-autofix` label,
-and starts one dispatched run per pull request. That run's `fix` job has
+pushed branch that now conflict. It takes only Brandon's own pull requests,
+skips forks and the `no-autofix` label, and starts one dispatched run per
+pull request. That run's `fix` job has
 Claude Code merge the base in: Sonnet at medium effort, then Opus at high
 effort if the first try fails. It pushes a merge commit only after ruff and
 `tests/unit` pass, and never force-pushes. Then it comments on the pull
