@@ -92,7 +92,8 @@ landed on `origin/main` (`--dry-run` to preview); the post-merge hook runs it
 after every pull in the main checkout.
 
 After changing the capture agent, the spool contract or the end-to-end tests,
-run (see the agent's README; CI runs both on macOS too):
+run (see the agent's README; CI runs both on macOS for pull requests that can
+reach them, `docs/agents/checks.md` lists the paths):
 
 ```bash
 capture-agent/scripts/test.sh   # build the agent and run its Swift tests
