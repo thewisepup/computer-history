@@ -97,6 +97,9 @@ Review findings ratchet into rules:
 - **A13** A file or link rewritten in place (a state file, a pointer, the PATH
   link) goes through the one atomic-write helper, `replace_atomically` in
   `store/paths.py`, never its own staged write and `os.replace`.
+- **A14** No parameter, Protocol or option without a second real caller: a
+  value only one caller ever passes is fixed where it is used. The I/O edges
+  A4 injects for tests are the exception.
 
 ## Logging
 
@@ -157,15 +160,16 @@ Review findings ratchet into rules:
   rename detection keeps the file's history.
 - **H2** Re-exports keep callers and tests untouched; tests monkeypatch the
   submodule that owns the name.
-- **H3** **[checked]** `docs/DESIGN.md`'s package layout and any package README change in the
-  same commit as the layout. The check covers the module names in the `store/`,
-  `sources/` and `synthetic/` entries.
+- **H3** A package's `__init__.py` diagram is its one module map: no other
+  doc (`docs/DESIGN.md`, a README) lists a package's modules; it links to the
+  diagram.
 - **H4** Tests derive versions and counts from the code (`len(load_migrations())`),
   never hard-code them. They look things up by the constant that names them
   (`rendered[ActivityWatchRenderer.name]`, `ActivityWatchRenderer.streams`, the
   port in `DEFAULT_AW_URL`), never a restated literal; expected answers stay literals.
-- **H5** A change to the pre-commit hook or CI updates every doc that describes
-  the checks (`AGENTS.md`, `README.md`) in the same commit.
+- **H5** A change to the pre-commit hook or CI updates `docs/agents/checks.md`
+  in the same commit, the one doc that says which check runs where; other docs
+  link to it.
 - **H6** **[checked]** Invisible and combining characters in source (Unicode
   categories Cf, Mn, Zl, Zp: bidi controls, zero-width marks, combining accents,
   line separators) are written as `\u` escapes, never raw.
@@ -177,8 +181,12 @@ Review findings ratchet into rules:
   synthetic coverage in the same change (a renderer, generated rows, a
   rendered or manifest effect, a gate operation that runs it), or with an
   exemption in that test giving the reason.
-- **H9** A change to a CLI command or flag updates `computer_history/cli/README.md`
-  in the same commit.
+- **H9** Each CLI command has one section in `computer_history/cli/README.md`:
+  its invocation, one happy-path example and one non-obvious case (an error,
+  an empty result, or a flag that changes behaviour). A change to a command
+  updates that section in the same commit only when its invocation or examples
+  stop being true; every branch and exit code lives in the code, its tests and
+  `docs/DESIGN.md`.
 - **H10** **[checked]** in part: no two modules define a constant with the same
   name and value. When a function already does something, call it rather than writing
   it again, and name a test after the code path it actually runs.
@@ -192,3 +200,10 @@ Review findings ratchet into rules:
   beside the test fixtures (`stored_progress` in `tests/db_states.py`).
 - **H15** A constant a lower layer defines is imported, never restated under
   another name or value (`synthetic/` takes `DATABASE_NAME` from `store/`).
+- **H16** A doc never restates another doc or the code; it links to the one
+  home instead (`docs/agents/checks.md` for which check runs where, a
+  package's `__init__.py` diagram for its modules, `docs/DESIGN.md` for a
+  command's full behaviour).
+- **H17** A new test never repeats a scenario another layer's test already
+  covers: test it once, at the lowest layer that shows it, and test the layer
+  above only for what that layer adds.
