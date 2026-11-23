@@ -11,10 +11,11 @@ import sys
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 import pytest
+from aw_http import LoopbackHTTPServer
 
 from computer_history.cli.formatting import human_size, local_midnight, when
 from computer_history.sources.capture_spool import (
@@ -177,8 +178,8 @@ def session(tmp_path_factory: pytest.TempPathFactory):
     folder = tmp_path_factory.mktemp("capture-e2e")
     spool = folder / "spool"
     db = folder / "history.db"
-    server = ThreadingHTTPServer(("127.0.0.1", 0), EmptyActivityWatch)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    server = LoopbackHTTPServer(("127.0.0.1", 0), EmptyActivityWatch)
+    threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
     aw_url = f"http://127.0.0.1:{server.server_port}/api/0"
     try:
         crash_run = _agent("crash.json", folder)
@@ -591,8 +592,8 @@ def slept(tmp_path_factory: pytest.TempPathFactory):
         timeout=60,
     )
     assert run.returncode == 0, run.stdout + run.stderr
-    server = ThreadingHTTPServer(("127.0.0.1", 0), EmptyActivityWatch)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    server = LoopbackHTTPServer(("127.0.0.1", 0), EmptyActivityWatch)
+    threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True).start()
     aw_url = f"http://127.0.0.1:{server.server_port}/api/0"
     try:
         ingest = _cli("ingest", db=db, aw_url=aw_url)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socketserver
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,16 +18,28 @@ from computer_history.store import to_utc
 LOOPBACK = "127.0.0.1"
 
 
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """A threading HTTP server that binds without a reverse DNS lookup of its address.
+
+    HTTPServer names itself with socket.getfqdn, which takes 35s on the macOS CI runner.
+    """
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), int(port)
+
+
 def aw_server(api: AWApi) -> ThreadingHTTPServer:
     """An HTTP server for the API bound to an ephemeral loopback port, not yet serving."""
-    return ThreadingHTTPServer((LOOPBACK, 0), _handler(api))
+    return LoopbackHTTPServer((LOOPBACK, 0), _handler(api))
 
 
 @contextmanager
 def served_over_http(api: AWApi) -> Iterator[str]:
     """Serve the API on an ephemeral loopback port and yield its base URL until the block ends."""
     server = aw_server(api)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     try:
         host, port = server.socket.getsockname()[:2]
