@@ -242,6 +242,10 @@ _Avoid_: Label, keyword
 A fixed five-minute slice of time the classifier labels as one unit.
 _Avoid_: Window (that word means an app window), bucket, slot
 
+**Classification batch**:
+Up to six consecutive classification windows labelled together in one call to the model.
+_Avoid_: Chunk, group, page
+
 **Digest**:
 The summary of one classification window's signals that the classifier reads.
 _Avoid_: Context, prompt
