@@ -11,7 +11,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp==2.3.0"]
 
 [project.optional-dependencies]
 test = ["httpx>=0.27,<1"]
-dev = ["watchfiles>=0.21,<2", "pytest>=8,<10", "ruff==0.17.6", "hypothesis>=6.100,<7", "mutmut>=3.8,<4", "pyright==1.1.414"]
+dev = ["watchfiles>=0.21,<2", "pytest>=8,<10", "pytest-xdist>=3.6,<4", "ruff==0.17.6", "hypothesis>=6.100,<7", "mutmut>=3.8,<4", "pyright==1.1.414"]
 
 [project.scripts]
 history = "history:main"
