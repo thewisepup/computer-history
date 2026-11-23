@@ -85,6 +85,11 @@ class SourceCoverage(NamedTuple):
     span: tuple[datetime, datetime] | None
     gaps: list[Gap]
 
+    @property
+    def checkable(self) -> bool:
+        """Whether the span holds settled time to check for gaps."""
+        return self.span is not None and self.span[0] < self.span[1]
+
 
 def status_reads(
     conn: sqlite3.Connection, summaries: Sequence[SourceSummary], skip: Collection[str] = ()
@@ -95,11 +100,11 @@ def status_reads(
         if summary.source in skip:
             continue
         span = _recent_span(summary)
-        if span is None or span[0] >= span[1]:
-            checked.append(SourceCoverage(summary, span, []))
-        else:
+        coverage = SourceCoverage(summary, span, [])
+        if span is not None and coverage.checkable:
             gaps = find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
-            checked.append(SourceCoverage(summary, span, gaps))
+            coverage = coverage._replace(gaps=gaps)
+        checked.append(coverage)
     return checked, table_counts(conn)
 
 

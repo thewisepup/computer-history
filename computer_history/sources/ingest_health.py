@@ -119,8 +119,7 @@ class StreakAlert:
 class FailureStreak:
     """Counts failed cycles in a row, saving the health after each cycle.
 
-    It alerts at ALERT_AFTER_FAILURES, at most once per ALERT_REPEAT while failures last, and
-    when they end.
+    It alerts at the threshold, at most once per repeat while failures last, and when they end.
     """
 
     def __init__(

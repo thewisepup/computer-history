@@ -20,8 +20,14 @@ from computer_history.cli.formatting import (
     when,
 )
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.sources import CaptureHealth, IngestHealth, health_path
-from computer_history.sources.activitywatch import ActivityWatch, AWClient
+from computer_history.sources import (
+    ActivityWatch,
+    AWClient,
+    CaptureHealth,
+    IngestHealth,
+    health_path,
+    resolve_spool_path,
+)
 from computer_history.sources.capture_spool import (
     CAPTURE_TOLERANCE,
     SCREENSHOT_SOURCE,
@@ -29,7 +35,6 @@ from computer_history.sources.capture_spool import (
     WINDOW_TEXT_SOURCE,
     ScreenshotHealth,
     ScreenshotTally,
-    resolve_spool_path,
 )
 from computer_history.stable import (
     DAILY_BACKUP,
@@ -350,11 +355,10 @@ def _print_gaps(details: StoreDetails) -> None:
         if checked.span is None:
             print(f"  {source}: no observations yet")
             continue
-        start, end = checked.span
-        if start >= end:
+        if not checked.checkable:
             print(f"  {source}: no settled span to check yet")
             continue
-        gaps = checked.gaps
+        start, gaps = checked.span[0], checked.gaps
         if not gaps:
             print(f"  {source}: no gaps since {when(start)}")
         for gap in gaps[:MAX_GAPS_SHOWN]:

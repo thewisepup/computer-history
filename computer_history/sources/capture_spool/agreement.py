@@ -36,7 +36,7 @@ def app_agreement(
     start: datetime,
     end: datetime,
 ) -> AppAgreement:
-    """Compare each capture in the range with the aw-window spans within APP_TOLERANCE of it.
+    """Compare each capture in the range with the aw-window spans within the tolerance of it.
 
     Any span with the same app, ignoring case, is a match; otherwise the nearest span's app differs.
     """

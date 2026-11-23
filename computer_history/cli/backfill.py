@@ -11,6 +11,8 @@ from computer_history.cli.formatting import duration, when
 from computer_history.cli.sources import source_failed
 from computer_history.sources import (
     BACKFILL_CHUNK,
+    ActivityWatch,
+    AWClient,
     BackfillPlan,
     BackfillProgress,
     BackfillResult,
@@ -21,7 +23,6 @@ from computer_history.sources import (
     plan_all_backfills,
     run_backfill,
 )
-from computer_history.sources.activitywatch import ActivityWatch, AWClient
 from computer_history.store import (
     Purpose,
     StoreState,
