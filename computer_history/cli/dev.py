@@ -159,11 +159,12 @@ def _add_dataset_inputs(build: argparse.ArgumentParser) -> None:
 
 
 def cmd_dev(args: argparse.Namespace) -> int:
-    try:
-        return DEV_HANDLERS[args.dev_command](args)
-    except FAILURES as exc:
-        print(f"dev {args.dev_command} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 1
+    return DEV_HANDLERS[args.dev_command](args)
+
+
+def _failed(tool: str, exc: Exception) -> int:
+    print(f"dev {tool} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 1
 
 
 def cmd_build_db(args: argparse.Namespace) -> int:
@@ -184,6 +185,8 @@ def cmd_build_db(args: argparse.Namespace) -> int:
     except REFUSALS as exc:
         print(f"dev build-db refused: {exc}", file=sys.stderr)
         return 1
+    except FAILURES as exc:
+        return _failed("build-db", exc)
     described = ", ".join(f"{name}={value}" for name, value in dataclasses.asdict(inputs).items())
     how = "built" if made.dataset.built else "reused from the cache"
     print(f"Dataset {described}")
@@ -207,6 +210,8 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     except (FileNotFoundError, IntegrityCheckFailed) as exc:
         print(f"dev snapshot failed: {exc}", file=sys.stderr)
         return 1
+    except FAILURES as exc:
+        return _failed("snapshot", exc)
     print(f"Snapshot of the live database {live}")
     for line in copy_lines(copy):
         print(line)
@@ -216,14 +221,17 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 def cmd_perf(args: argparse.Namespace) -> int:
     datasets = perf_datasets(args.dataset)
     with tempfile.TemporaryDirectory(prefix="computer-history-perf-") as scratch:
-        report = run_gate(
-            datasets,
-            cache=cache_root(),
-            scratch=Path(scratch),
-            baselines=args.baselines,
-            update=args.update_baselines,
-            counters=args.counters,
-        )
+        try:
+            report = run_gate(
+                datasets,
+                cache=cache_root(),
+                scratch=Path(scratch),
+                baselines=args.baselines,
+                update=args.update_baselines,
+                counters=args.counters,
+            )
+        except FAILURES as exc:
+            return _failed("perf", exc)
     _print_report(report, args)
     return 0 if report.ok else 1
 
@@ -270,13 +278,16 @@ def _print_report(report: GateReport, args: argparse.Namespace) -> None:
 
 def cmd_bench(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="computer-history-bench-") as scratch:
-        report = run_bench(
-            perf_datasets(args.dataset),
-            cache=cache_root(),
-            scratch=Path(scratch),
-            baseline_path=args.baseline,
-            update=args.update_baseline,
-        )
+        try:
+            report = run_bench(
+                perf_datasets(args.dataset),
+                cache=cache_root(),
+                scratch=Path(scratch),
+                baseline_path=args.baseline,
+                update=args.update_baseline,
+            )
+        except FAILURES as exc:
+            return _failed("bench", exc)
     print(f"Median of {RUNS} runs, against this machine's baseline {report.baseline}")
     print()
     print(f"{'operation':<16} {'dataset':<11} {'median':>10} {'baseline':>10} {'change':>9}")
