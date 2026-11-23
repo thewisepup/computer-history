@@ -6,13 +6,13 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from computer_history.host import ALERT_REPEAT
 from computer_history.sources.commit import FailureKind
 from computer_history.sources.runner import CycleSummary
-from computer_history.store import replace_atomically
+from computer_history.store import replace_atomically, to_utc
 
 __all__ = [
     "ALERT_AFTER_FAILURES",
@@ -77,7 +77,7 @@ def read_health(path: Path) -> IngestHealth | None:
         if not isinstance(unavailable, bool):
             raise TypeError(f"sources_unavailable is {unavailable!r}, not true or false")
         return IngestHealth(
-            cycle_at=_aware(doc["cycle_at"]),
+            cycle_at=to_utc(doc["cycle_at"]),
             consecutive_failures=int(doc["consecutive_failures"]),
             failing_since=_time(doc.get("failing_since")),
             last_success_at=_time(doc.get("last_success_at")),
@@ -90,14 +90,7 @@ def read_health(path: Path) -> IngestHealth | None:
 
 
 def _time(value: str | None) -> datetime | None:
-    return None if value is None else _aware(value)
-
-
-def _aware(value: str) -> datetime:
-    when = datetime.fromisoformat(value)
-    if when.tzinfo is None:
-        raise ValueError(f"not an ingest health file: {value!r} has no time zone")
-    return when
+    return None if value is None else to_utc(value)
 
 
 @dataclass(frozen=True)
@@ -126,7 +119,8 @@ class StreakAlert:
 class FailureStreak:
     """Counts failed cycles in a row, saving the health after each cycle.
 
-    It alerts at the threshold, at most once per repeat while failures last, and when they end.
+    It alerts at ALERT_AFTER_FAILURES, at most once per ALERT_REPEAT while failures last, and
+    when they end.
     """
 
     def __init__(
@@ -135,14 +129,10 @@ class FailureStreak:
         save: Callable[[IngestHealth], None],
         notify: Callable[[StreakAlert], None] | None,
         health: IngestHealth | None = None,
-        threshold: int = ALERT_AFTER_FAILURES,
-        repeat: timedelta = ALERT_REPEAT,
     ) -> None:
         self.health = health
         self._save = save
         self._notify = notify
-        self._threshold = threshold
-        self._repeat = repeat
 
     @property
     def failures(self) -> int:
@@ -161,8 +151,8 @@ class FailureStreak:
                 self._send(StreakAlert(failures, ended=True))
         else:
             since = before.failing_since if before is not None and failures else None
-            due = failures + 1 >= self._threshold and (
-                alerted is None or summary.at - alerted >= self._repeat
+            due = failures + 1 >= ALERT_AFTER_FAILURES and (
+                alerted is None or summary.at - alerted >= ALERT_REPEAT
             )
             self.health = IngestHealth(
                 summary.at,

@@ -11,7 +11,7 @@ from computer_history.sources.activitywatch.client import AWApi
 from computer_history.sources.activitywatch.discovery import WINDOW_SOURCE
 from computer_history.sources.activitywatch.pull import MALFORMED_EVENT, event_times, newest_events
 from computer_history.store import payload_values
-from computer_history.text import clean_text_or_none
+from computer_history.text import clean_text
 
 WINDOW_APP_PATH = "$.data.app"
 
@@ -23,7 +23,7 @@ class AppSpan(NamedTuple):
 
 
 def stored_app_spans(
-    conn: sqlite3.Connection, start: datetime | str, end: datetime | str, *, hostname: str
+    conn: sqlite3.Connection, start: datetime, end: datetime, *, hostname: str
 ) -> list[AppSpan]:
     """The stored spans of the host's window buckets touching the range, oldest first.
 
@@ -33,7 +33,7 @@ def stored_app_spans(
         AppSpan(row.started_at, row.ended_at, app)
         for row in payload_values(conn, WINDOW_SOURCE, start, end, (WINDOW_APP_PATH,))
         if on_host(row.source_id.rpartition("/")[0], hostname)
-        and (app := clean_text_or_none(row.values[0])) is not None
+        and (app := clean_text(row.values[0])) is not None
     ]
 
 
@@ -54,7 +54,7 @@ def on_host(bucket_id: str, hostname: str) -> bool:
 
 def _span(raw: Any) -> AppSpan | None:
     try:
-        app = clean_text_or_none(raw["data"]["app"])
+        app = clean_text(raw["data"]["app"])
         start, end = event_times(raw)
     except MALFORMED_EVENT:
         return None

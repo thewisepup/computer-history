@@ -56,7 +56,6 @@ from computer_history.status import (
 from computer_history.store import (
     MIN_GAP_SECONDS,
     STATUS_WINDOW,
-    Coverage,
     OpenedStore,
     Profile,
     Purpose,
@@ -351,14 +350,14 @@ def _print_gaps(details: StoreDetails) -> None:
             print(f"  {checked.source}: not checked (coverage is judged from {checked.by} records)")
             continue
         source = checked.summary.source
-        if checked.coverage is Coverage.NO_OBSERVATIONS:
+        if checked.span is None:
             print(f"  {source}: no observations yet")
             continue
-        if checked.coverage is Coverage.UNSETTLED:
+        start, end = checked.span
+        if start >= end:
             print(f"  {source}: no settled span to check yet")
             continue
-        assert checked.span is not None
-        start, gaps = checked.span[0], checked.gaps
+        gaps = checked.gaps
         if not gaps:
             print(f"  {source}: no gaps since {when(start)}")
         for gap in gaps[:MAX_GAPS_SHOWN]:

@@ -5,7 +5,7 @@ import logging
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from computer_history.sources.activitywatch.client import AWApi, AWError
@@ -78,16 +78,15 @@ def _pull_bucket(
     source: str,
     bucket_id: str,
     *,
-    start: datetime | str | None = None,
-    end: datetime | str | None = None,
-    now: datetime | None = None,
+    start: datetime | None,
+    end: datetime | None,
+    now: datetime,
 ) -> _BucketPull:
     """The settled events of one bucket that start in the range; writes nothing.
 
     No start means the beginning of the bucket and no end means up to now, and a pull up to now
     also keeps, whole, any event reaching into the range from before its start.
     """
-    now = resolve_now(now)
     start_dt = None if start is None else to_utc(start)
     end_dt = None if end is None else to_utc(end)
     if start_dt is not None and end_dt is not None and end_dt <= start_dt:
@@ -161,15 +160,15 @@ def pull_source(
     client: AWApi,
     source: AWSource,
     *,
-    start: datetime | str | None = None,
-    end: datetime | str | None = None,
-    now: datetime | None = None,
+    start: datetime | None,
+    end: datetime | None = None,
+    now: datetime,
 ) -> SourcePull:
     """Pull the settled events of every bucket of one source for the range; writes nothing.
 
     Its frontier is the earliest of the buckets' frontiers.
     """
-    now = resolve_now(now)
+    now = to_utc(now)
     pulls = [
         _pull_bucket(client, source.name, bucket_id, start=start, end=end, now=now)
         for bucket_id in source.bucket_ids
@@ -235,7 +234,3 @@ def _observation(source: str, bucket_id: str, event: _Event) -> Observation:
         ended_at=event.end,
         payload=json.dumps(event.raw),
     )
-
-
-def resolve_now(now: datetime | None) -> datetime:
-    return datetime.now(UTC) if now is None else to_utc(now)

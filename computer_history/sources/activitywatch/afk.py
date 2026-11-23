@@ -20,9 +20,7 @@ class AfkSpan(NamedTuple):
     afk: bool
 
 
-def stored_afk_spans(
-    conn: sqlite3.Connection, start: datetime | str, end: datetime | str
-) -> list[AfkSpan]:
+def stored_afk_spans(conn: sqlite3.Connection, start: datetime, end: datetime) -> list[AfkSpan]:
     """The stored aw-afk spans touching the range, oldest first, skipping unknown statuses."""
     return [
         AfkSpan(row.started_at, row.ended_at, AFK_STATUSES[row.values[0]])

@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Collection, Sequence
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import Any, NamedTuple
 
 from computer_history.store.timefmt import to_utc, utc_iso
@@ -76,50 +75,39 @@ def _recent_span(summary: SourceSummary) -> tuple[datetime, datetime] | None:
     return max(end - STATUS_WINDOW, first), end
 
 
-class Coverage(Enum):
-    NO_OBSERVATIONS = "no observations"
-    UNSETTLED = "unsettled"
-    CHECKED = "checked"
-
-
 class SourceCoverage(NamedTuple):
-    """One source's recent span, whether it could be checked, and the coverage gaps in it."""
+    """One source's recent span and the coverage gaps in it.
+
+    The span is None with no observations, and empty when nothing has settled to check.
+    """
 
     summary: SourceSummary
-    coverage: Coverage
     span: tuple[datetime, datetime] | None
     gaps: list[Gap]
 
 
-class StatusReads(NamedTuple):
-    coverage: list[SourceCoverage]
-    counts: dict[str, int]
-
-
 def status_reads(
     conn: sqlite3.Connection, summaries: Sequence[SourceSummary], skip: Collection[str] = ()
-) -> StatusReads:
+) -> tuple[list[SourceCoverage], dict[str, int]]:
     """Each source's recent coverage gaps, leaving out the skipped sources, and row counts."""
     checked: list[SourceCoverage] = []
     for summary in summaries:
         if summary.source in skip:
             continue
         span = _recent_span(summary)
-        if span is None:
-            checked.append(SourceCoverage(summary, Coverage.NO_OBSERVATIONS, None, []))
-        elif span[0] >= span[1]:
-            checked.append(SourceCoverage(summary, Coverage.UNSETTLED, span, []))
+        if span is None or span[0] >= span[1]:
+            checked.append(SourceCoverage(summary, span, []))
         else:
             gaps = find_gaps(conn, summary.source, *span, min_gap_seconds=MIN_GAP_SECONDS)
-            checked.append(SourceCoverage(summary, Coverage.CHECKED, span, gaps))
-    return StatusReads(checked, table_counts(conn))
+            checked.append(SourceCoverage(summary, span, gaps))
+    return checked, table_counts(conn)
 
 
 def find_gaps(
     conn: sqlite3.Connection,
     source: str,
-    start: datetime | str,
-    end: datetime | str,
+    start: datetime,
+    end: datetime,
     min_gap_seconds: float = 0,
 ) -> list[Gap]:
     """The spans of the range that no observation from the source covers.
@@ -160,8 +148,8 @@ class PayloadValues(NamedTuple):
 def payload_values(
     conn: sqlite3.Connection,
     source: str,
-    start: datetime | str,
-    end: datetime | str,
+    start: datetime,
+    end: datetime,
     paths: Sequence[str],
 ) -> list[PayloadValues]:
     """The source's observations that touch the range, oldest first, with their source ids.
@@ -187,7 +175,7 @@ def latest_payload_value(
     source: str,
     path: str,
     *,
-    until: datetime | str,
+    until: datetime,
     matching: Any = None,
 ) -> tuple[datetime, Any] | None:
     """The start and payload value at the path of the source's newest observation up to a time.

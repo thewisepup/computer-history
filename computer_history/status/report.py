@@ -13,13 +13,13 @@ from computer_history.sources import (
     WINDOW_TEXT_SOURCE,
     AWApi,
     CaptureHealth,
+    Coverage,
     ScreenshotHealth,
     agent_config_path,
     capture_health,
     health_path,
     screenshot_health,
 )
-from computer_history.sources import Coverage as CaptureCoverage
 from computer_history.stable import (
     AgentStatus,
     BackupInventory,
@@ -67,7 +67,7 @@ class GapCause(Enum):
 class CaptureGaps:
     """Window text's coverage gaps, judged from the capture agent's records against aw-afk."""
 
-    coverage: CaptureCoverage | None
+    coverage: Coverage | None
     gaps: tuple[tuple[Gap, GapCause], ...] = ()
 
 
@@ -204,13 +204,13 @@ def _store_details(
         day_start=day_start,
     )
     skip = {SCREENSHOT_SOURCE, WINDOW_TEXT_SOURCE} if capture.reported else {SCREENSHOT_SOURCE}
-    reads = status_reads(conn, summaries, skip=skip)
+    coverage, counts = status_reads(conn, summaries, skip=skip)
     return StoreDetails(
         summaries,
-        _gaps(summaries, reads.coverage, capture),
+        _gaps(summaries, coverage, capture),
         capture,
         screenshot_health(conn, day_start=day_start, now=now),
-        reads.counts,
+        counts,
     )
 
 
@@ -229,7 +229,7 @@ def _gaps(
     return found
 
 
-def _capture_gaps(coverage: CaptureCoverage | None) -> CaptureGaps:
+def _capture_gaps(coverage: Coverage | None) -> CaptureGaps:
     if coverage is None:
         return CaptureGaps(None)
     gaps = [(gap, GapCause.ACTIVE) for gap in coverage.unobserved]
