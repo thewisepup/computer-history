@@ -1,0 +1,2447 @@
+{
+ "manifest": {
+  "git-log": {
+   "chars": 3181006,
+   "windows": 318,
+   "sha256": "25f5d7b4b3a3eef1"
+  },
+  "source-code": {
+   "chars": 1714562,
+   "windows": 171,
+   "sha256": "5938aee142471199"
+  },
+  "markdown-docs": {
+   "chars": 582432,
+   "windows": 58,
+   "sha256": "9c954aaba6b6a3bc"
+  },
+  "lockfiles": {
+   "chars": 389543,
+   "windows": 39,
+   "sha256": "b0bc9037e7de7120"
+  },
+  "uuids": {
+   "chars": 68499,
+   "windows": 7,
+   "sha256": "a8cb2f6e24986fff"
+  },
+  "hashes": {
+   "chars": 77779,
+   "windows": 8,
+   "sha256": "7744637c1039df18"
+  },
+  "base64-blobs": {
+   "chars": 50131,
+   "windows": 5,
+   "sha256": "8a3a8cbefe6ccfe2"
+  },
+  "minified-and-ids": {
+   "chars": 73699,
+   "windows": 7,
+   "sha256": "220640217e7a5cc5"
+  },
+  "urls-and-queries": {
+   "chars": 45279,
+   "windows": 5,
+   "sha256": "0027a534fee97a68"
+  },
+  "terminal": {
+   "chars": 31702,
+   "windows": 3,
+   "sha256": "444387ce7f5c212d"
+  },
+  "keyword-lookalikes": {
+   "chars": 29559,
+   "windows": 3,
+   "sha256": "fa4fe243d9f55560"
+  }
+ },
+ "cases": 350,
+ "candidates": {
+  "hand-written v1 (first draft)": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 332,
+     "of": 350,
+     "pct": 94.9
+    },
+    "recall_loose": {
+     "removed": 332,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "72/87",
+     "assign": "84/84",
+     "json": "84/84",
+     "shell": "81/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "6/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 5,
+      "replacements": 5,
+      "chars_replaced": 120
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 5,
+      "replacements": 5,
+      "chars_replaced": 120
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 250,
+      "chars_replaced": 6889
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 15,
+    "fp_windows": 624,
+    "fp_replacements": 260,
+    "fp_labels": [
+     [
+      "credential-assignment",
+      260
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "credential-assignment: 'CheckOutcome.CANCELLED}'",
+       2
+      ],
+      [
+       "credential-assignment: 'https://bank.example.com/accounts/4417'",
+       1
+      ],
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ],
+      [
+       "credential-assignment: '{token.STRING'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "credential-assignment: 'CheckOutcome.CANCELLED}'",
+       2
+      ],
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ],
+      [
+       "credential-assignment: '{token.STRING'",
+       1
+      ],
+      [
+       "credential-assignment: 'https://bank.example.com/accounts/4417'",
+       1
+      ]
+     ],
+     "urls-and-queries": [
+      [
+       "credential-assignment: '0&session=62c5bc5a0ccafb43'",
+       1
+      ],
+      [
+       "credential-assignment: '1&session=8f00fc5be4a19397'",
+       1
+      ],
+      [
+       "credential-assignment: '2&session=799c851ae4978c39'",
+       1
+      ],
+      [
+       "credential-assignment: '3&session=87f3f10c4d73fa73'",
+       1
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 4.58,
+     "median": 4.01,
+     "p95": 8.82,
+     "max": 10.35
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 332,
+     "of": 350,
+     "pct": 94.9
+    },
+    "recall_loose": {
+     "removed": 332,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "72/87",
+     "assign": "84/84",
+     "json": "84/84",
+     "shell": "81/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "6/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 5,
+      "replacements": 5,
+      "chars_replaced": 120
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 5,
+      "replacements": 5,
+      "chars_replaced": 120
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 250,
+      "chars_replaced": 6889
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 15,
+    "fp_windows": 578,
+    "fp_replacements": 260,
+    "fp_labels": [
+     [
+      "credential-assignment",
+      260
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "credential-assignment: 'CheckOutcome.CANCELLED}'",
+       2
+      ],
+      [
+       "credential-assignment: 'https://bank.example.com/accounts/4417'",
+       1
+      ],
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ],
+      [
+       "credential-assignment: '{token.STRING'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "credential-assignment: 'CheckOutcome.CANCELLED}'",
+       2
+      ],
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ],
+      [
+       "credential-assignment: '{token.STRING'",
+       1
+      ],
+      [
+       "credential-assignment: 'https://bank.example.com/accounts/4417'",
+       1
+      ]
+     ],
+     "urls-and-queries": [
+      [
+       "credential-assignment: '0&session=62c5bc5a0ccafb43'",
+       1
+      ],
+      [
+       "credential-assignment: '1&session=8f00fc5be4a19397'",
+       1
+      ],
+      [
+       "credential-assignment: '2&session=799c851ae4978c39'",
+       1
+      ],
+      [
+       "credential-assignment: '3&session=87f3f10c4d73fa73'",
+       1
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 4.81,
+     "median": 4.21,
+     "p95": 8.99,
+     "max": 10.28
+    }
+   }
+  },
+  "hand-written v2 (tuned on v1 false positives)": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 332,
+     "of": 350,
+     "pct": 94.9
+    },
+    "recall_loose": {
+     "removed": 332,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "72/87",
+     "assign": "84/84",
+     "json": "84/84",
+     "shell": "81/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "6/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 23
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 23
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 2,
+    "fp_windows": 624,
+    "fp_replacements": 2,
+    "fp_labels": [
+     [
+      "credential-assignment",
+      2
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 4.59,
+     "median": 3.99,
+     "p95": 8.9,
+     "max": 10.4
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 332,
+     "of": 350,
+     "pct": 94.9
+    },
+    "recall_loose": {
+     "removed": 332,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "72/87",
+     "assign": "84/84",
+     "json": "84/84",
+     "shell": "81/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "6/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 23
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 23
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 2,
+    "fp_windows": 578,
+    "fp_replacements": 2,
+    "fp_labels": [
+     [
+      "credential-assignment",
+      2
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "credential-assignment: 'com.1password.1password'",
+       1
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 4.8,
+     "median": 4.18,
+     "p95": 8.93,
+     "max": 10.91
+    }
+   }
+  },
+  "gitleaks-port": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 301,
+     "of": 350,
+     "pct": 86.0
+    },
+    "recall_loose": {
+     "removed": 301,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "57/87",
+     "assign": "82/84",
+     "json": "82/84",
+     "shell": "80/84",
+     "url": "0/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "openai-classic": "9/12",
+     "openai-project": "9/12",
+     "huggingface": "9/12",
+     "telegram": "6/12",
+     "mailchimp": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "4/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12",
+     "url-credential": "0/6",
+     "url-query": "0/5"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 0,
+    "fp_windows": 624,
+    "fp_replacements": 0,
+    "fp_labels": [],
+    "fp_examples": {},
+    "ms_per_10k_chars": {
+     "mean": 3.74,
+     "median": 3.61,
+     "p95": 5.83,
+     "max": 15.29
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 301,
+     "of": 350,
+     "pct": 86.0
+    },
+    "recall_loose": {
+     "removed": 301,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "57/87",
+     "assign": "82/84",
+     "json": "82/84",
+     "shell": "80/84",
+     "url": "0/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "9/12",
+     "openai-classic": "9/12",
+     "openai-project": "9/12",
+     "huggingface": "9/12",
+     "telegram": "6/12",
+     "mailchimp": "9/12",
+     "heroku-uuid-key": "9/12",
+     "generic-password": "4/12",
+     "generic-hex-secret": "9/12",
+     "opaque-bearer": "9/12",
+     "url-credential": "0/6",
+     "url-query": "0/5"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     }
+    },
+    "fp_windows_hit": 0,
+    "fp_windows": 578,
+    "fp_replacements": 0,
+    "fp_labels": [],
+    "fp_examples": {},
+    "ms_per_10k_chars": {
+     "mean": 3.95,
+     "median": 3.89,
+     "p95": 6.38,
+     "max": 14.26
+    }
+   }
+  },
+  "detect-secrets (file mode)": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 165,
+     "of": 350,
+     "pct": 47.1
+    },
+    "recall_loose": {
+     "removed": 206,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "30/87",
+     "assign": "30/84",
+     "json": "69/84",
+     "shell": "30/84",
+     "url": "6/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "3/12",
+     "github-pat-classic": "3/12",
+     "github-pat-fine": "3/12",
+     "github-oauth": "3/12",
+     "openai-classic": "3/12",
+     "anthropic": "3/12",
+     "google-api": "3/12",
+     "jwt": "0/12",
+     "npm": "3/12",
+     "gitlab": "1/12",
+     "huggingface": "2/12",
+     "digitalocean": "0/12",
+     "shopify": "0/12",
+     "linear": "3/12",
+     "heroku-uuid-key": "0/12",
+     "generic-password": "3/12",
+     "generic-hex-secret": "3/12",
+     "opaque-bearer": "3/12",
+     "url-query": "0/5",
+     "private-key": "0/3"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 7,
+      "replacements": 10,
+      "chars_replaced": 204
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 9,
+      "replacements": 13,
+      "chars_replaced": 353
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 2
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 7,
+      "replacements": 248,
+      "chars_replaced": 23560
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 3,
+      "replacements": 77,
+      "chars_replaced": 16096
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 160,
+      "chars_replaced": 1640
+     }
+    },
+    "fp_windows_hit": 30,
+    "fp_windows": 624,
+    "fp_replacements": 509,
+    "fp_labels": [
+     [
+      "base64-high-entropy-string",
+      325
+     ],
+     [
+      "secret-keyword",
+      168
+     ],
+     [
+      "hex-high-entropy-string",
+      12
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       2
+      ],
+      [
+       "basic-auth-credentials: 'pw'",
+       2
+      ],
+      [
+       "secret-keyword: 'https://bank.example.com/accounts/4417'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       2
+      ],
+      [
+       "secret-keyword: 'SECRET-TEXT'",
+       2
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "basic-auth-credentials: 'pw'",
+       1
+      ]
+     ],
+     "lockfiles": [
+      [
+       "base64-high-entropy-string: 'sha512-hp7LeXn+P6HtZyydU4gAyyUUqS+TeRgYxu1TcoG0q02'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-i5MrENO9Pg9liiAJC32xMI8rK+E4+u89JZKAmRR+swf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-sqXl/j/sgu7aXRjXqtJMFfwCM7WnzAVB/AG2UMKiC8J'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-CBZReEVbHmCpzfj6HWp6tcuavWUPc3drFKSyEg449ZA'",
+       1
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "base64-high-entropy-string: '084CsQ6dlxHUGkFfOx6tT8wGZ7S9NZCn85WLHXl1T59IzSI5QO'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'hNFngRg3WCR9VFW6l0c3MkBwkVOB/ZdqX2qpu7qSSSU12BndEf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'aO+Of+xzS/w6CBMMLnf+Z1Ie0U4MHj0251AU46kYbF1BP15k3R'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'AU6VHJpuCPJFjCrSL1a3Ts/0TT+ryCtv3+qgmoJTUEMp8hd67u'",
+       1
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       80
+      ],
+      [
+       "secret-keyword: 'changeme'",
+       40
+      ],
+      [
+       "secret-keyword: 'YOUR_API_KEY_HERE'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 10.67,
+     "median": 11.0,
+     "p95": 13.27,
+     "max": 16.02
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 165,
+     "of": 350,
+     "pct": 47.1
+    },
+    "recall_loose": {
+     "removed": 206,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "30/87",
+     "assign": "30/84",
+     "json": "69/84",
+     "shell": "30/84",
+     "url": "6/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "3/12",
+     "github-pat-classic": "3/12",
+     "github-pat-fine": "3/12",
+     "github-oauth": "3/12",
+     "openai-classic": "3/12",
+     "anthropic": "3/12",
+     "google-api": "3/12",
+     "jwt": "0/12",
+     "npm": "3/12",
+     "gitlab": "1/12",
+     "huggingface": "2/12",
+     "digitalocean": "0/12",
+     "shopify": "0/12",
+     "linear": "3/12",
+     "heroku-uuid-key": "0/12",
+     "generic-password": "3/12",
+     "generic-hex-secret": "3/12",
+     "opaque-bearer": "3/12",
+     "url-query": "0/5",
+     "private-key": "0/3"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 4,
+      "replacements": 6,
+      "chars_replaced": 138
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 5,
+      "replacements": 8,
+      "chars_replaced": 276
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 2
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 6,
+      "replacements": 247,
+      "chars_replaced": 23465
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 3,
+      "replacements": 77,
+      "chars_replaced": 16096
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 240,
+      "chars_replaced": 2280
+     }
+    },
+    "fp_windows_hit": 22,
+    "fp_windows": 578,
+    "fp_replacements": 579,
+    "fp_labels": [
+     [
+      "base64-high-entropy-string",
+      324
+     ],
+     [
+      "secret-keyword",
+      243
+     ],
+     [
+      "hex-high-entropy-string",
+      8
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "basic-auth-credentials: 'pw'",
+       2
+      ],
+      [
+       "secret-keyword: 'https://bank.example.com/accounts/4417'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: 'b2e67bb70831a96b11c69ab98469b043f19df1b3bed8b014ac'",
+       1
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "basic-auth-credentials: 'pw'",
+       1
+      ]
+     ],
+     "lockfiles": [
+      [
+       "base64-high-entropy-string: 'sha512-hp7LeXn+P6HtZyydU4gAyyUUqS+TeRgYxu1TcoG0q02'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-i5MrENO9Pg9liiAJC32xMI8rK+E4+u89JZKAmRR+swf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-sqXl/j/sgu7aXRjXqtJMFfwCM7WnzAVB/AG2UMKiC8J'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-CBZReEVbHmCpzfj6HWp6tcuavWUPc3drFKSyEg449ZA'",
+       1
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "base64-high-entropy-string: '084CsQ6dlxHUGkFfOx6tT8wGZ7S9NZCn85WLHXl1T59IzSI5QO'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'hNFngRg3WCR9VFW6l0c3MkBwkVOB/ZdqX2qpu7qSSSU12BndEf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'aO+Of+xzS/w6CBMMLnf+Z1Ie0U4MHj0251AU46kYbF1BP15k3R'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'AU6VHJpuCPJFjCrSL1a3Ts/0TT+ryCtv3+qgmoJTUEMp8hd67u'",
+       1
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       200
+      ],
+      [
+       "secret-keyword: 'YOUR_API_KEY_HERE'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 6.85,
+     "median": 5.95,
+     "p95": 15.09,
+     "max": 27.63
+    }
+   }
+  },
+  "detect-secrets (file mode, full-match spans)": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 194,
+     "of": 350,
+     "pct": 55.4
+    },
+    "recall_loose": {
+     "removed": 206,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "39/87",
+     "assign": "39/84",
+     "json": "71/84",
+     "shell": "39/84",
+     "url": "6/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "3/12",
+     "github-pat-fine": "3/12",
+     "openai-classic": "3/12",
+     "anthropic": "3/12",
+     "google-api": "3/12",
+     "jwt": "0/12",
+     "npm": "3/12",
+     "huggingface": "2/12",
+     "digitalocean": "0/12",
+     "shopify": "0/12",
+     "linear": "3/12",
+     "heroku-uuid-key": "0/12",
+     "generic-password": "3/12",
+     "generic-hex-secret": "3/12",
+     "opaque-bearer": "3/12",
+     "url-query": "0/5",
+     "private-key": "0/3"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 9,
+      "replacements": 16,
+      "chars_replaced": 276
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 10,
+      "replacements": 14,
+      "chars_replaced": 371
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 11
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 7,
+      "replacements": 248,
+      "chars_replaced": 23560
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 3,
+      "replacements": 77,
+      "chars_replaced": 16096
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 160,
+      "chars_replaced": 1640
+     }
+    },
+    "fp_windows_hit": 33,
+    "fp_windows": 624,
+    "fp_replacements": 516,
+    "fp_labels": [
+     [
+      "base64-high-entropy-string",
+      325
+     ],
+     [
+      "secret-keyword",
+      168
+     ],
+     [
+      "hex-high-entropy-string",
+      12
+     ],
+     [
+      "public-ip-ipv4",
+      7
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "public-ip-ipv4: '21.0.13.1'",
+       6
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       2
+      ],
+      [
+       "basic-auth-credentials: '://user:pw@'",
+       2
+      ]
+     ],
+     "source-code": [
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       2
+      ],
+      [
+       "secret-keyword: 'SECRET-TEXT'",
+       2
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "basic-auth-credentials: '://user:pw@'",
+       1
+      ]
+     ],
+     "lockfiles": [
+      [
+       "base64-high-entropy-string: 'sha512-hp7LeXn+P6HtZyydU4gAyyUUqS+TeRgYxu1TcoG0q02'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-i5MrENO9Pg9liiAJC32xMI8rK+E4+u89JZKAmRR+swf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-sqXl/j/sgu7aXRjXqtJMFfwCM7WnzAVB/AG2UMKiC8J'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-CBZReEVbHmCpzfj6HWp6tcuavWUPc3drFKSyEg449ZA'",
+       1
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "base64-high-entropy-string: '084CsQ6dlxHUGkFfOx6tT8wGZ7S9NZCn85WLHXl1T59IzSI5QO'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'hNFngRg3WCR9VFW6l0c3MkBwkVOB/ZdqX2qpu7qSSSU12BndEf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'aO+Of+xzS/w6CBMMLnf+Z1Ie0U4MHj0251AU46kYbF1BP15k3R'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'AU6VHJpuCPJFjCrSL1a3Ts/0TT+ryCtv3+qgmoJTUEMp8hd67u'",
+       1
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       80
+      ],
+      [
+       "secret-keyword: 'changeme'",
+       40
+      ],
+      [
+       "secret-keyword: 'YOUR_API_KEY_HERE'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 7.46,
+     "median": 7.57,
+     "p95": 8.7,
+     "max": 10.65
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 194,
+     "of": 350,
+     "pct": 55.4
+    },
+    "recall_loose": {
+     "removed": 206,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "39/87",
+     "assign": "39/84",
+     "json": "71/84",
+     "shell": "39/84",
+     "url": "6/11"
+    },
+    "missed_kinds": {
+     "aws-secret-key": "3/12",
+     "github-pat-fine": "3/12",
+     "openai-classic": "3/12",
+     "anthropic": "3/12",
+     "google-api": "3/12",
+     "jwt": "0/12",
+     "npm": "3/12",
+     "huggingface": "2/12",
+     "digitalocean": "0/12",
+     "shopify": "0/12",
+     "linear": "3/12",
+     "heroku-uuid-key": "0/12",
+     "generic-password": "3/12",
+     "generic-hex-secret": "3/12",
+     "opaque-bearer": "3/12",
+     "url-query": "0/5",
+     "private-key": "0/3"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 6,
+      "replacements": 12,
+      "chars_replaced": 210
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 6,
+      "replacements": 9,
+      "chars_replaced": 294
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 1,
+      "replacements": 1,
+      "chars_replaced": 11
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 6,
+      "replacements": 247,
+      "chars_replaced": 23465
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 3,
+      "replacements": 77,
+      "chars_replaced": 16096
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 0,
+      "replacements": 0,
+      "chars_replaced": 0
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 240,
+      "chars_replaced": 2280
+     }
+    },
+    "fp_windows_hit": 25,
+    "fp_windows": 578,
+    "fp_replacements": 586,
+    "fp_labels": [
+     [
+      "base64-high-entropy-string",
+      324
+     ],
+     [
+      "secret-keyword",
+      243
+     ],
+     [
+      "hex-high-entropy-string",
+      8
+     ],
+     [
+      "public-ip-ipv4",
+      7
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "public-ip-ipv4: '21.0.13.1'",
+       6
+      ],
+      [
+       "basic-auth-credentials: '://user:pw@'",
+       2
+      ],
+      [
+       "secret-keyword: 'https://bank.example.com/accounts/4417'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       1
+      ]
+     ],
+     "source-code": [
+      [
+       "hex-high-entropy-string: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb4'",
+       2
+      ],
+      [
+       "hex-high-entropy-string: 'c3a1f0e2d4b69785'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: '9f8e7d6c5b4a3921'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: 'b2e67bb70831a96b11c69ab98469b043f19df1b3bed8b014ac'",
+       1
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "basic-auth-credentials: '://user:pw@'",
+       1
+      ]
+     ],
+     "lockfiles": [
+      [
+       "base64-high-entropy-string: 'sha512-hp7LeXn+P6HtZyydU4gAyyUUqS+TeRgYxu1TcoG0q02'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-i5MrENO9Pg9liiAJC32xMI8rK+E4+u89JZKAmRR+swf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-sqXl/j/sgu7aXRjXqtJMFfwCM7WnzAVB/AG2UMKiC8J'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'sha512-CBZReEVbHmCpzfj6HWp6tcuavWUPc3drFKSyEg449ZA'",
+       1
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "base64-high-entropy-string: '084CsQ6dlxHUGkFfOx6tT8wGZ7S9NZCn85WLHXl1T59IzSI5QO'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'hNFngRg3WCR9VFW6l0c3MkBwkVOB/ZdqX2qpu7qSSSU12BndEf'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'aO+Of+xzS/w6CBMMLnf+Z1Ie0U4MHj0251AU46kYbF1BP15k3R'",
+       1
+      ],
+      [
+       "base64-high-entropy-string: 'AU6VHJpuCPJFjCrSL1a3Ts/0TT+ryCtv3+qgmoJTUEMp8hd67u'",
+       1
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       200
+      ],
+      [
+       "secret-keyword: 'YOUR_API_KEY_HERE'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 6.88,
+     "median": 5.99,
+     "p95": 15.08,
+     "max": 27.23
+    }
+   }
+  },
+  "detect-secrets (adhoc mode, full-match spans)": {
+   "unported_rules": [],
+   "newlines": {
+    "recall": {
+     "removed": 346,
+     "of": 350,
+     "pct": 98.9
+    },
+    "recall_loose": {
+     "removed": 350,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "87/87",
+     "assign": "84/84",
+     "json": "80/84",
+     "shell": "84/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "jwt": "9/12",
+     "huggingface": "11/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 318,
+      "windows_hit": 318,
+      "replacements": 279626,
+      "chars_replaced": 1958528
+     },
+     "source-code": {
+      "windows": 171,
+      "windows_hit": 171,
+      "replacements": 146057,
+      "chars_replaced": 950485
+     },
+     "markdown-docs": {
+      "windows": 58,
+      "windows_hit": 58,
+      "replacements": 62259,
+      "chars_replaced": 423054
+     },
+     "lockfiles": {
+      "windows": 39,
+      "windows_hit": 39,
+      "replacements": 15388,
+      "chars_replaced": 288922
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 4,
+      "replacements": 611,
+      "chars_replaced": 2162
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 8,
+      "replacements": 3505,
+      "chars_replaced": 72136
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 445,
+      "chars_replaced": 48176
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 7,
+      "replacements": 4044,
+      "chars_replaced": 60736
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 3001,
+      "chars_replaced": 42277
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 2775,
+      "chars_replaced": 23966
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 2444,
+      "chars_replaced": 19816
+     }
+    },
+    "fp_windows_hit": 621,
+    "fp_windows": 624,
+    "fp_replacements": 520155,
+    "fp_labels": [
+     [
+      "base64-high-entropy-string",
+      501296
+     ],
+     [
+      "hex-high-entropy-string",
+      18681
+     ],
+     [
+      "secret-keyword",
+      168
+     ],
+     [
+      "public-ip-ipv4",
+      6
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "base64-high-entropy-string: 'the'",
+       8513
+      ],
+      [
+       "base64-high-entropy-string: 'and'",
+       4849
+      ],
+      [
+       "base64-high-entropy-string: 'py'",
+       2998
+      ],
+      [
+       "base64-high-entropy-string: 'in'",
+       2933
+      ]
+     ],
+     "source-code": [
+      [
+       "base64-high-entropy-string: 'None'",
+       2684
+      ],
+      [
+       "base64-high-entropy-string: 'import'",
+       2167
+      ],
+      [
+       "base64-high-entropy-string: 'assert'",
+       1999
+      ],
+      [
+       "base64-high-entropy-string: 'in'",
+       1851
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "base64-high-entropy-string: 'the'",
+       2899
+      ],
+      [
+       "base64-high-entropy-string: 'and'",
+       1471
+      ],
+      [
+       "base64-high-entropy-string: 'is'",
+       897
+      ],
+      [
+       "base64-high-entropy-string: 'it'",
+       658
+      ]
+     ],
+     "lockfiles": [
+      [
+       "base64-high-entropy-string: 'https'",
+       1043
+      ],
+      [
+       "base64-high-entropy-string: 'url'",
+       984
+      ],
+      [
+       "base64-high-entropy-string: '//files'",
+       984
+      ],
+      [
+       "base64-high-entropy-string: 'hash'",
+       984
+      ]
+     ],
+     "uuids": [
+      [
+       "hex-high-entropy-string: 'ace'",
+       305
+      ],
+      [
+       "base64-high-entropy-string: 'INFO'",
+       300
+      ],
+      [
+       "hex-high-entropy-string: '545f1c151c63'",
+       1
+      ],
+      [
+       "hex-high-entropy-string: '40cc'",
+       1
+      ]
+     ],
+     "hashes": [
+      [
+       "base64-high-entropy-string: 'tar'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'gz'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'commit'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'md5'",
+       250
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "base64-high-entropy-string: 'value'",
+       79
+      ],
+      [
+       "hex-high-entropy-string: 'ad'",
+       77
+      ],
+      [
+       "base64-high-entropy-string: 'img'",
+       20
+      ],
+      [
+       "base64-high-entropy-string: 'src='",
+       20
+      ]
+     ],
+     "minified-and-ids": [
+      [
+       "base64-high-entropy-string: 'function'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'return'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'this'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'var'",
+       250
+      ]
+     ],
+     "urls-and-queries": [
+      [
+       "base64-high-entropy-string: 'https'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'utm_source=newsletter'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'sort=desc'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'key=title'",
+       250
+      ]
+     ],
+     "terminal": [
+      [
+       "base64-high-entropy-string: 'request'",
+       294
+      ],
+      [
+       "base64-high-entropy-string: 'INFO'",
+       279
+      ],
+      [
+       "base64-high-entropy-string: 'status=200'",
+       278
+      ],
+      [
+       "base64-high-entropy-string: 'the'",
+       52
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       80
+      ],
+      [
+       "base64-high-entropy-string: 'git'",
+       80
+      ],
+      [
+       "base64-high-entropy-string: 'https'",
+       80
+      ],
+      [
+       "base64-high-entropy-string: 'token_count'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 31.52,
+     "median": 31.19,
+     "p95": 40.15,
+     "max": 98.92
+    }
+   },
+   "collapsed": {
+    "recall": {
+     "removed": 346,
+     "of": 350,
+     "pct": 98.9
+    },
+    "recall_loose": {
+     "removed": 350,
+     "note": "secret string absent, even if all but a prefix survives"
+    },
+    "recall_by_context": {
+     "bare": "87/87",
+     "assign": "84/84",
+     "json": "80/84",
+     "shell": "84/84",
+     "url": "11/11"
+    },
+    "missed_kinds": {
+     "jwt": "9/12",
+     "huggingface": "11/12"
+    },
+    "false_positives": {
+     "git-log": {
+      "windows": 294,
+      "windows_hit": 220,
+      "replacements": 102519,
+      "chars_replaced": 1976362
+     },
+     "source-code": {
+      "windows": 151,
+      "windows_hit": 90,
+      "replacements": 29176,
+      "chars_replaced": 284323
+     },
+     "markdown-docs": {
+      "windows": 57,
+      "windows_hit": 51,
+      "replacements": 26584,
+      "chars_replaced": 940817
+     },
+     "lockfiles": {
+      "windows": 38,
+      "windows_hit": 37,
+      "replacements": 12034,
+      "chars_replaced": 229710
+     },
+     "uuids": {
+      "windows": 7,
+      "windows_hit": 4,
+      "replacements": 439,
+      "chars_replaced": 1490
+     },
+     "hashes": {
+      "windows": 8,
+      "windows_hit": 8,
+      "replacements": 3506,
+      "chars_replaced": 72139
+     },
+     "base64-blobs": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 922,
+      "chars_replaced": 37826
+     },
+     "minified-and-ids": {
+      "windows": 7,
+      "windows_hit": 7,
+      "replacements": 4044,
+      "chars_replaced": 60736
+     },
+     "urls-and-queries": {
+      "windows": 5,
+      "windows_hit": 5,
+      "replacements": 3001,
+      "chars_replaced": 42277
+     },
+     "terminal": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 2111,
+      "chars_replaced": 17666
+     },
+     "keyword-lookalikes": {
+      "windows": 3,
+      "windows_hit": 3,
+      "replacements": 720,
+      "chars_replaced": 3480
+     }
+    },
+    "fp_windows_hit": 433,
+    "fp_windows": 578,
+    "fp_replacements": 185056,
+    "fp_labels": [
+     [
+      "hex-high-entropy-string",
+      93091
+     ],
+     [
+      "base64-high-entropy-string",
+      91711
+     ],
+     [
+      "secret-keyword",
+      243
+     ],
+     [
+      "public-ip-ipv4",
+      7
+     ],
+     [
+      "basic-auth-credentials",
+      4
+     ]
+    ],
+    "fp_examples": {
+     "git-log": [
+      [
+       "hex-high-entropy-string: 'ed'",
+       8929
+      ],
+      [
+       "hex-high-entropy-string: 'ec'",
+       4779
+      ],
+      [
+       "hex-high-entropy-string: 'da'",
+       3817
+      ],
+      [
+       "hex-high-entropy-string: 'ca'",
+       3715
+      ]
+     ],
+     "source-code": [
+      [
+       "hex-high-entropy-string: 'ed'",
+       4251
+      ],
+      [
+       "hex-high-entropy-string: 'ec'",
+       3294
+      ],
+      [
+       "hex-high-entropy-string: 'ca'",
+       2232
+      ],
+      [
+       "hex-high-entropy-string: 'da'",
+       2219
+      ]
+     ],
+     "markdown-docs": [
+      [
+       "hex-high-entropy-string: 'ed'",
+       2542
+      ],
+      [
+       "hex-high-entropy-string: 'ec'",
+       1002
+      ],
+      [
+       "base64-high-entropy-string: 'the'",
+       833
+      ],
+      [
+       "hex-high-entropy-string: 'ce'",
+       790
+      ]
+     ],
+     "lockfiles": [
+      [
+       "hex-high-entropy-string: 'ed'",
+       661
+      ],
+      [
+       "base64-high-entropy-string: 'whl'",
+       561
+      ],
+      [
+       "base64-high-entropy-string: 'sha256'",
+       561
+      ],
+      [
+       "base64-high-entropy-string: 'size'",
+       561
+      ]
+     ],
+     "uuids": [
+      [
+       "base64-high-entropy-string: '=ok'",
+       145
+      ],
+      [
+       "hex-high-entropy-string: 'ace'",
+       145
+      ],
+      [
+       "base64-high-entropy-string: 'INFO'",
+       144
+      ],
+      [
+       "hex-high-entropy-string: '545f1c151c63'",
+       1
+      ]
+     ],
+     "hashes": [
+      [
+       "base64-high-entropy-string: 'tar'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'gz'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'commit'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'Digest'",
+       250
+      ]
+     ],
+     "base64-blobs": [
+      [
+       "hex-high-entropy-string: 'ad'",
+       82
+      ],
+      [
+       "base64-high-entropy-string: 'img'",
+       16
+      ],
+      [
+       "base64-high-entropy-string: 'src='",
+       16
+      ],
+      [
+       "base64-high-entropy-string: 'data'",
+       16
+      ]
+     ],
+     "minified-and-ids": [
+      [
+       "base64-high-entropy-string: 'function'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'return'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'this'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'var'",
+       250
+      ]
+     ],
+     "urls-and-queries": [
+      [
+       "base64-high-entropy-string: 'https'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'utm_source=newsletter'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'sort=desc'",
+       250
+      ],
+      [
+       "base64-high-entropy-string: 'key=title'",
+       250
+      ]
+     ],
+     "terminal": [
+      [
+       "base64-high-entropy-string: 'status=200'",
+       255
+      ],
+      [
+       "base64-high-entropy-string: 'INFO'",
+       254
+      ],
+      [
+       "base64-high-entropy-string: 'request'",
+       254
+      ],
+      [
+       "hex-high-entropy-string: 'ee'",
+       51
+      ]
+     ],
+     "keyword-lookalikes": [
+      [
+       "secret-keyword: 'password'",
+       200
+      ],
+      [
+       "hex-high-entropy-string: 'ec'",
+       200
+      ],
+      [
+       "hex-high-entropy-string: 'EC'",
+       40
+      ],
+      [
+       "hex-high-entropy-string: 'DB'",
+       40
+      ]
+     ]
+    },
+    "ms_per_10k_chars": {
+     "mean": 55.74,
+     "median": 25.79,
+     "p95": 277.07,
+     "max": 426.49
+    }
+   }
+  }
+ },
+ "gitleaks_binary": {
+  "positives": {
+   "binary_files_flagged": 301,
+   "port_cases_flagged": 301,
+   "agree": 301,
+   "binary_only": 0,
+   "port_only": 0,
+   "cases": 350
+  },
+  "benign": {
+   "binary_windows_flagged": 0,
+   "binary_findings": 0,
+   "port_windows_flagged": 0,
+   "agree": 0,
+   "binary_only": 0,
+   "port_only": 0,
+   "windows": 624,
+   "binary_top_rules": [],
+   "binary_wall_seconds_incl_startup": 0.19
+  }
+ }
+}

@@ -1,0 +1,56 @@
+{
+ "python": "3.12.16",
+ "startup_ms": {
+  "gitleaks-port (parse TOML + compile 221 rules, cold)": 23,
+  "gitleaks-port (second construction)": 6,
+  "hand-written (import-time compile, already done)": 0,
+  "detect-secrets (import + settings + plugins)": 71
+ },
+ "stress_ms": {
+  "10k of 'a'": {
+   "hand-written v2": 18.9,
+   "gitleaks-port": 1.0,
+   "detect-secrets (file mode)": 5.6
+  },
+  "10k of 'key=' repeated": {
+   "hand-written v2": 2.3,
+   "gitleaks-port": 6.8,
+   "detect-secrets (file mode)": 5.6
+  },
+  "10k of 'curl -H ' repeated": {
+   "hand-written v2": 2.3,
+   "gitleaks-port": 228.1,
+   "detect-secrets (file mode)": 6.0
+  },
+  "10k of 'token: ' repeated": {
+   "hand-written v2": 2.7,
+   "gitleaks-port": 2.9,
+   "detect-secrets (file mode)": 5.8
+  },
+  "10k base64 alphabet no spaces": {
+   "hand-written v2": 12.2,
+   "gitleaks-port": 1.2,
+   "detect-secrets (file mode)": 5.4
+  },
+  "10k of quoted words": {
+   "hand-written v2": 2.0,
+   "gitleaks-port": 1.2,
+   "detect-secrets (file mode)": 9.8
+  },
+  "10k hex digits": {
+   "hand-written v2": 17.3,
+   "gitleaks-port": 1.2,
+   "detect-secrets (file mode)": 5.5
+  },
+  "10k of '-----BEGIN PRIVATE KEY-----' with no end": {
+   "hand-written v2": 19.0,
+   "gitleaks-port": 25.3,
+   "detect-secrets (file mode)": 5.4
+  },
+  "10k of 'password' repeated": {
+   "hand-written v2": 3.2,
+   "gitleaks-port": 3.9,
+   "detect-secrets (file mode)": 5.7
+  }
+ }
+}
