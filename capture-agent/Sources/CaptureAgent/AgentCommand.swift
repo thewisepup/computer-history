@@ -1,3 +1,5 @@
+import Darwin
+
 /// The commands the agent binary accepts on its command line.
 public enum AgentCommand: Equatable, Sendable {
     case run
@@ -36,4 +38,6 @@ public struct CommandOutcome: Equatable, Sendable {
         exitCode: 64,
         message: "usage: \(AgentIdentity.executableName) [run | install | uninstall | status | pause | resume | check-config | request-screen-recording | scripted-session <script.json>]"
     )
+
+    public static let noAccountHome = CommandOutcome(exitCode: 1, message: "the user database has no home folder for user \(getuid())")
 }

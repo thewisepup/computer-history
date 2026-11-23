@@ -13,10 +13,14 @@ func finish(_ outcome: CommandOutcome) -> Never {
 }
 
 let loginItem = SMAppService.agent(plistName: AgentIdentity.launchAgentPlistName)
-let settings = AgentSettings.load()
+let command = AgentCommand(arguments: Array(CommandLine.arguments.dropFirst()))
+guard let home = accountHome() else {
+    finish(.noAccountHome)
+}
+let settings = AgentSettings.load(for: command, accountHome: home)
 let pause = settings.pause
 
-switch AgentCommand(arguments: Array(CommandLine.arguments.dropFirst())) {
+switch command {
 case .run:
     let log = AgentLog.unified()
     let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
@@ -24,6 +28,7 @@ case .run:
     let captureStop = CaptureStop()
     exit(AgentLifecycle(
         report: settings.report,
+        instanceLock: InstanceLock(accountHome: home),
         isPaused: { pause.isPaused },
         accessibilityTrusted: isAccessibilityTrusted(prompt:),
         spool: spool,

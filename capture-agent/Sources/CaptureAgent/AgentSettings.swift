@@ -40,6 +40,26 @@ public struct AgentSettings: Equatable, Sendable {
         return settings
     }
 
+    /// Reads the config file in the account's real folder, ignoring HOME and the folder and spool overrides.
+    public static func fixed(accountHome: URL) -> AgentSettings {
+        let folder = defaultFolder(home: accountHome)
+        var settings = AgentSettings(folder: folder, spoolDirectory: folder.appendingPathComponent("spool", isDirectory: true))
+        settings.readConfigFile()
+        return settings
+    }
+
+    /// The settings a command runs with: check-config and scripted-session follow the environment, every other command uses the account's real folder.
+    public static func load(
+        for command: AgentCommand,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        accountHome: URL
+    ) -> AgentSettings {
+        switch command {
+        case .checkConfig, .scriptedSession: load(environment: environment, home: accountHome)
+        case .run, .install, .uninstall, .status, .pause, .resume, .requestScreenRecording, .usage: fixed(accountHome: accountHome)
+        }
+    }
+
     static func defaultFolder(home: URL) -> URL {
         home.appendingPathComponent("Library/Application Support/ComputerHistory", isDirectory: true)
     }

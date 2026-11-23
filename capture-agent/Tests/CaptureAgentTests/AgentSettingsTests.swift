@@ -62,6 +62,44 @@ final class TempFolder {
         == "/Users/other/Library/Application Support/ComputerHistory")
 }
 
+@Test func runAndTheControlCommandsUseTheAccountFolderWhateverTheEnvironmentSays() throws {
+    let account = TempFolder()
+    let elsewhere = TempFolder()
+    let real = AgentSettings.defaultFolder(home: account.url)
+    try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+    try Data(#"{"idle_threshold_seconds": 60}"#.utf8).write(to: real.appendingPathComponent(AgentSettings.configFileName))
+    try Data(#"{"text_cap_bytes": 10000000}"#.utf8).write(to: elsewhere.url.appendingPathComponent(AgentSettings.configFileName))
+    let environment = [
+        "HOME": elsewhere.url.path,
+        "COMPUTER_HISTORY_DB": elsewhere.url.appendingPathComponent("history.db").path,
+        "COMPUTER_HISTORY_SPOOL": elsewhere.url.appendingPathComponent("spool").path,
+    ]
+    for command in [AgentCommand.run, .status, .pause, .resume] {
+        let settings = AgentSettings.load(for: command, environment: environment, accountHome: account.url)
+        #expect(settings.folder == real)
+        #expect(settings.spoolDirectory == real.appendingPathComponent("spool", isDirectory: true))
+        #expect(settings.pause.file == real.appendingPathComponent(AgentSettings.pauseFileName))
+        #expect(settings.capture.idleThreshold == 60)
+        #expect(settings.windowText.textCapBytes == WindowTextSettings().textCapBytes)
+    }
+    for command in [AgentCommand.checkConfig, .scriptedSession(script: "day.json")] {
+        let settings = AgentSettings.load(for: command, environment: environment, accountHome: account.url)
+        #expect(settings.folder.path == elsewhere.url.path)
+        #expect(settings.spoolDirectory.path == elsewhere.url.appendingPathComponent("spool").path)
+        #expect(settings.windowText.textCapBytes == 10_000_000)
+    }
+}
+
+@Test func theInstanceLockSitsInTheAccountFolder() {
+    let home = URL(fileURLWithPath: "/Users/someone", isDirectory: true)
+    #expect(InstanceLock(accountHome: home).file == AgentSettings.defaultFolder(home: home).appendingPathComponent("agent-instance.lock"))
+}
+
+@Test func theAccountHomeComesFromTheUserDatabase() throws {
+    let entry = try #require(getpwuid(getuid()))
+    #expect(accountHome()?.path == String(cString: entry.pointee.pw_dir))
+}
+
 @Test func aMissingFileMeansDefaults() throws {
     let settings = try TempFolder().settings()
     #expect(settings.configFile == .missing)
