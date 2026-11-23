@@ -135,7 +135,7 @@ def parse_record(line: str) -> ParsedRecord:
     """
     try:
         data: JsonValue = json.loads(line)
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         raise InvalidRecord(f"not JSON: {exc}", problem="not JSON") from exc
     if not isinstance(data, dict):
         raise InvalidRecord("not a JSON object")

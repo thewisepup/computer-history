@@ -146,6 +146,28 @@ def test_busy_database_mid_cycle_keeps_earlier_streams_and_ends_the_cycle(
     assert table_counts(conn)["observations"] == 3
 
 
+def test_an_unexpected_error_skips_its_source_and_the_other_sources_still_poll(
+    conn: sqlite3.Connection,
+) -> None:
+    now = datetime.now(UTC)
+    spool = FakeSource("a", "b")
+    spool.add("a", "a1", 0)
+    spool.add("b", "b1", 0)
+    bug = KeyError("Q3 salaries.xlsx")
+
+    def buggy(stream: str) -> None:
+        raise bug
+
+    spool.before_pull = buggy
+    summary = poll(conn, [spool, window_aw(now)], now=now)
+
+    assert summary.failures == (StreamFailure("a", "unexpected KeyError", FailureKind.UNEXPECTED),)
+    assert summary.failures[0].exc is bug
+    assert spool.pulled == ["a"]
+    assert list(summary.outcomes) == [WINDOW_SOURCE]
+    assert len(stored(conn, WINDOW_SOURCE)) == 1
+
+
 def test_hard_database_errors_propagate(conn: sqlite3.Connection) -> None:
     spool = FakeSource("a")
     spool.add("a", "a1", 0)

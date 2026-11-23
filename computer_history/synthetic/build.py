@@ -114,5 +114,6 @@ def poll_feeds(conn: sqlite3.Connection, feeds: Sequence[Feed], *, now: datetime
     """Poll every stream of the feeds until none has more; returns rows inserted."""
     summary = poll(conn, [feed.source for feed in feeds], now=now)
     if not summary.ok:
-        raise BuildFailed(f"polling failed: {summary.failures}")
+        cause = next((f.exc for f in summary.failures if f.exc is not None), None)
+        raise BuildFailed(f"polling failed: {summary.failures}") from cause
     return sum(outcome.inserted for outcome in summary.outcomes.values())

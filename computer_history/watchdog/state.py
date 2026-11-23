@@ -92,7 +92,7 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
             logged={str(message): _required(at) for message, at in saved["logged"].items()},
             errors=tuple(str(error) for error in saved["errors"]),
         )
-    except (KeyError, TypeError, AttributeError) as exc:
+    except (KeyError, TypeError, AttributeError, RecursionError) as exc:
         raise ValueError(f"{path} is not the watchdog's state: {exc!r}") from exc
 
 

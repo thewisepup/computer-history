@@ -9,7 +9,8 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
       |          after a position), HistorySource (adds history facts + range pulls)
       |
   runner.py      poll every stream of every source, once or in the watch loop,
-      |          pulling again while a pull says there is more
+      |          pulling again while a pull says there is more; a source that
+      |          fails, expectedly or not, skips only its own streams
   ingest_health.py  the watch loop's last cycle and failure streak, in one file
       |          beside the database rewritten after every cycle, with an alert
       |          through the host adapter when a streak lasts and when it ends

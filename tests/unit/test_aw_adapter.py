@@ -12,6 +12,8 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 from fake_aw import T0, FakeAW, at
+from hypothesis import example, given
+from hypothesis import strategies as st
 from log_records import logged
 from projectors import AW
 
@@ -576,6 +578,35 @@ def test_client_maps_404_to_none_and_failures_to_awerror(
     monkeypatch.setattr(aw_client, "urlopen", lambda request, timeout: _Response(b"not json"))
     with pytest.raises(AWError):
         AWClient().get_buckets()
+
+
+def test_client_maps_json_nested_past_the_parser_limit_to_awerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(aw_client, "urlopen", lambda request, timeout: _Response(b"[" * 100_000))
+
+    with pytest.raises(AWError, match="invalid JSON"):
+        AWClient().get_buckets()
+
+
+nested_bodies = st.builds(
+    lambda opener, depth, rest: opener * depth + rest,
+    st.sampled_from([b"[", b'{"a":', b'[{"data":']),
+    st.integers(0, 30_000),
+    st.binary(max_size=20),
+)
+
+
+@given(st.one_of(st.binary(), nested_bodies))
+@example(b"[" * 100_000)
+def test_any_body_is_events_or_an_awerror(body: bytes) -> None:
+    client = AWClient()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(aw_client, "urlopen", lambda request, timeout: _Response(body))
+        try:
+            client.get_events(WINDOW_BUCKET)
+        except AWError:
+            pass
 
 
 def test_awerror_fails_the_stream_without_writing(conn: sqlite3.Connection) -> None:

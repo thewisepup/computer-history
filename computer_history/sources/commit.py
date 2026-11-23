@@ -72,6 +72,7 @@ class FailureKind(Enum):
     DATABASE_BUSY = "database busy"  # an operational database error, such as a lock held elsewhere
     DATABASE = "database"  # any other database error
     ADAPTER = "adapter"  # the adapter returned observations the stream cannot take
+    UNEXPECTED = "unexpected"  # any other error, such as a bug in the source
 
 
 @dataclass(frozen=True)
@@ -84,19 +85,18 @@ class StreamFailure:
     exc: BaseException | None = field(default=None, compare=False, repr=False)
 
 
-AdapterError = UnclaimedSource | StrayObservation
-
-
-def failure_of(
-    stream: str | None, exc: SourceUnavailable | sqlite3.Error | AdapterError
-) -> StreamFailure:
-    """The failure an unavailable source, a database error or a misbehaving adapter amounts to."""
+def failure_of(stream: str | None, exc: Exception) -> StreamFailure:
+    """The failure an error amounts to, naming an unexpected error by its type alone."""
     if isinstance(exc, SourceUnavailable):
         kind = FailureKind.SOURCE
     elif isinstance(exc, UnclaimedSource | StrayObservation):
         kind = FailureKind.ADAPTER
     elif isinstance(exc, sqlite3.OperationalError):
         kind = FailureKind.DATABASE_BUSY
-    else:
+    elif isinstance(exc, sqlite3.Error):
         kind = FailureKind.DATABASE
+    else:
+        return StreamFailure(
+            stream, f"unexpected {type(exc).__name__}", FailureKind.UNEXPECTED, exc
+        )
     return StreamFailure(stream, str(exc), kind, exc)

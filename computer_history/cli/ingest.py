@@ -33,6 +33,8 @@ from computer_history.store import Purpose, SpoolHold, open_store
 
 log = logging.getLogger(__name__)
 
+BUG_HINT = "This is a bug: `computer-history logs --level error` shows its traceback."
+
 
 def cmd_ingest(args: argparse.Namespace) -> int:
     db_path: Path = args.database
@@ -124,7 +126,9 @@ def _print_summary(summary: CycleSummary, read_from: str, db_path: Path) -> int:
             source_failed(failure.error, stream=failure.stream)
             continue
         print(f"error{_on(failure)}: {_reason(failure)}", file=sys.stderr)
-        if failure.kind is not FailureKind.ADAPTER:
+        if failure.kind is FailureKind.UNEXPECTED:
+            print(BUG_HINT, file=sys.stderr)
+        elif failure.kind is not FailureKind.ADAPTER:
             print(db_busy_hint(db_path), file=sys.stderr)
     return 0 if summary.ok else 1
 
@@ -140,6 +144,6 @@ def _on(failure: StreamFailure) -> str:
 
 
 def _reason(failure: StreamFailure) -> str:
-    if failure.kind in (FailureKind.SOURCE, FailureKind.ADAPTER):
-        return failure.error
-    return f"database error: {failure.error}"
+    if failure.kind in (FailureKind.DATABASE_BUSY, FailureKind.DATABASE):
+        return f"database error: {failure.error}"
+    return failure.error
