@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from aw_http import served_over_http
-from cli_output import RunCli, ingest_line, status_out
+from cli_output import RunCli, ingest_line, live_check, status_out
 from fake_aw import FakeAW, UnreachableAW
 from fake_host import FakeHost, write_record
 from projectors import AW
@@ -40,6 +40,7 @@ from computer_history.watchdog.state import WatchdogState, write_watchdog_state
 HOST = "test-host.local"
 T0 = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
 NOW = T0 + timedelta(minutes=60)
+BACKEND_SILENT = "backend        PROBLEM: silent while you were active, last seen"
 UNREACHABLE_ERROR = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: refused"
 
 
@@ -274,10 +275,10 @@ def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    line = ingest_line(lines)
-    assert line.startswith("Ingest:        ok, last cycle ")
-    assert line.endswith("; cannot tell: silent, but aw-afk does not show you active")
-    assert "NOT REPORTING" not in line
+    assert ingest_line(lines).startswith("Ingest:        ok, last cycle ")
+    assert "cannot tell: silent, but aw-afk does not show you active, last seen" in live_check(
+        lines, Check.BACKEND
+    )
 
 
 def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_active(
@@ -293,16 +294,17 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    assert ingest_line(lines).endswith("; NOT REPORTING for 20m (is `ingest --watch` running?)")
+    backend = live_check(lines, Check.BACKEND)
+    assert BACKEND_SILENT in backend and backend.endswith(" (20m ago)")
     assert not any(line.startswith("!! ") for line in lines)
 
 
 @pytest.mark.parametrize("saved", ["none", "stopped"])
 @pytest.mark.parametrize(
-    ("away_from", "suffix"),
+    ("away_from", "said"),
     [
-        (60, "; NOT REPORTING for 20m (is `ingest --watch` running?)"),
-        (40, "; cannot tell: silent, but aw-afk does not show you active"),
+        (60, BACKEND_SILENT),
+        (40, "cannot tell: silent, but aw-afk does not show you active, last seen"),
     ],
     ids=["active", "away"],
 )
@@ -312,7 +314,7 @@ def test_status_without_a_running_watchdog_judges_the_recent_past(
     db: Path,
     saved: str,
     away_from: float,
-    suffix: str,
+    said: str,
 ) -> None:
     monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
     now = datetime.now(UTC)
@@ -325,4 +327,4 @@ def test_status_without_a_running_watchdog_judges_the_recent_past(
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    assert ingest_line(lines).endswith(suffix)
+    assert said in live_check(lines, Check.BACKEND)

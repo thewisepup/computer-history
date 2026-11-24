@@ -7,6 +7,7 @@ from typing import Protocol
 
 from computer_history.cli import app as cli_app
 from computer_history.host import Host
+from computer_history.watchdog import Check
 
 
 class RunCli(Protocol):
@@ -40,6 +41,15 @@ def status_out(run: RunCli, *argv: str) -> str:
 def ingest_line(out: list[str]) -> str:
     """Status's one Ingest line."""
     [line] = [line for line in out if line.startswith("Ingest:")]
+    return line
+
+
+LIVE_CHECKS = "Watchdog checks (run now, nothing notified):"
+
+
+def live_check(out: list[str], check: Check) -> str:
+    """Status's line for one check the watchdog makes, judged as status ran."""
+    [line] = [line for line in section(out, LIVE_CHECKS) if line.startswith(f"  {check.value} ")]
     return line
 
 

@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-from cli_output import UNREACHABLE_AW, RunCli, ingest_line, status_out
+from cli_output import UNREACHABLE_AW, RunCli, ingest_line, live_check, status_out
 from fake_host import FakeHost
 from log_records import logged
 
@@ -33,6 +33,7 @@ from computer_history.sources import (
     runner,
     write_health,
 )
+from computer_history.watchdog import Check
 
 T0 = datetime(2026, 11, 19, 20, 7, tzinfo=UTC)
 MINUTE = timedelta(minutes=1)
@@ -316,7 +317,8 @@ def test_status_reports_a_failing_ingest_first(
     assert lines[0].startswith("!! ingest is FAILING since ")
     assert lines[0].endswith(f"(1,071 cycles): aw-afk: {NO_TABLE}")
     ingest = ingest_line(lines)
-    assert "FAILING since" in ingest and "last cycle" in ingest and "NOT REPORTING" not in ingest
+    assert "FAILING since" in ingest and "last cycle" in ingest
+    assert "ok: running, but its cycles fail" in live_check(lines, Check.BACKEND)
     assert any(line.startswith("  last success  ") for line in lines)
 
 

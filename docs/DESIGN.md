@@ -893,18 +893,21 @@ the three "Stable" sections describe the stable install whichever profile
 runs.
 
 - **Ingest:** read from `ingest-health.json` beside the database, before the
-  database itself; while cycles fail, a banner opens the report. The line
-  takes the watchdog's backend verdict by its threshold: a last cycle older
-  than it while aw-afk shows you active adds `NOT REPORTING for <time>`,
-  while you were away `cannot tell: silent, but aw-afk does not show you
-  active`. While a watchdog runs beside the database, silence counts from
-  when it began watching, so just after it resumes the line can read `cannot
-  tell: ... watched only since the watchdog resumed`; with none run in the
-  last 3 minutes (as in dev) the whole recent past counts as watched. No file
-  reads `no ingest --watch has reported yet`.
-- **ActivityWatch:** the watchdog's verdict too: `no` and the banner while
-  it is unreachable, and `PROBLEM: not advancing (<sources>)` when this
-  host's AFK or window source has not advanced past its threshold.
+  database itself: whether cycles fail and when the last one ran. While they
+  fail, a banner opens the report. No file reads `no ingest --watch has
+  reported yet`.
+- **ActivityWatch:** the URL read and the sources found there, with a banner
+  opening the report while it is unreachable.
+- **Watchdog checks:** the watchdog's three findings (§8.6), judged as status
+  runs by the watchdog's thresholds and printed in the watchdog's own words,
+  the same lines as under "Stable watchdog"; nothing is notified or saved.
+  While a watchdog runs beside the database, silence counts from when it
+  began watching and ActivityWatch's outage from when it saw it start, so
+  just after a resume a check can read `cannot tell: ... watched only since
+  the watchdog resumed`. With none run in the last 3 minutes (as in dev) the
+  whole recent past counts as watched, and an outage counts from now, so it
+  reads `cannot tell: unreachable` until a watchdog has seen it for the
+  threshold.
 - **Coverage gaps** are unobserved time, never idle, checked up to each
   source's settled-until time. `ax-text` captures are instants, so its gaps
   have their own rule: a record of any kind explains the minute on either
@@ -918,11 +921,8 @@ runs.
   records, otherwise now. `screenshot` coverage is not checked: it is judged
   from `ax-text`.
 - **Capture agent:** `last capture` is the newest capture, stored or in the
-  spool (excluded, pause and sleep records are not captures). `alive` is the
-  watchdog's capture-agent verdict by its threshold: `yes` when the newest
-  record, stored or in the spool, is within it; `NO` when aw-afk shows you
-  active for over a minute since it; `paused` while capture is paused;
-  otherwise `cannot tell`, with why. `paused` is the newest record being a
+  spool (excluded, pause and sleep records are not captures); whether it is
+  alive is its watchdog check. `paused` is the newest record being a
   `paused` one. `app agreement` checks each stored capture in the coverage
   range against an `aw-window` span of this machine's buckets within 2s of
   it (the window watcher polls once a second): the same app, ignoring case,

@@ -70,7 +70,7 @@ from computer_history.store import (
     default_db_path,
     open_store,
 )
-from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, Verdict, watchdog_state_path
+from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, watchdog_state_path
 
 MAX_GAPS_SHOWN = 10
 MAX_APP_PAIRS_SHOWN = 3
@@ -111,26 +111,25 @@ def _print_store(
 ) -> int:
     db_path = store.path
     assessment = report.assessment
-    banner, ingest_line = _ingest(
-        assessment.health, assessment.health_error, assessment.backend, db_path, now
-    )
-    if banner is not None:
-        print(banner)
+    ingest_banner, ingest_line = _ingest(assessment.health, assessment.health_error, db_path, now)
+    aw_banner, aw_line = _activitywatch(assessment.activitywatch, assessment.aw_sources, aw_url)
+    banners = [banner for banner in (ingest_banner, aw_banner) if banner is not None]
+    if banners:
+        print("\n".join(banners))
         print()
-    aw_line = _activitywatch(assessment.activitywatch, assessment.aw_sources, aw_url)
-    aw_line += "\n" + ingest_line
-
     if store.state is StoreState.MISSING:
         print(f"Database:      {db_path} (not created yet; run `computer-history ingest`)")
-        print(aw_line)
-        return 0
-    if store.state in (StoreState.BUSY, StoreState.UNREADABLE):
-        print(aw_line)
-        return store_unavailable(store)
-    print(f"Database:      {db_path} ({db_size(db_path)}, schema v{store.version})")
+    elif store.state not in (StoreState.BUSY, StoreState.UNREADABLE):
+        print(f"Database:      {db_path} ({db_size(db_path)}, schema v{store.version})")
     print(aw_line)
+    print(ingest_line)
     if store.state is StoreState.OUTDATED:
         print(f"  note: {outdated_note(store)}. No store details until then.")
+    print()
+    print("Watchdog checks (run now, nothing notified):")
+    for line in finding_lines(assessment.findings, now):
+        print(line)
+    if store.state in (StoreState.MISSING, StoreState.OUTDATED):
         return 0
     details = report.store
     if details is None:
@@ -140,7 +139,7 @@ def _print_store(
     print()
     _print_gaps(details)
     print()
-    _print_agent(details.capture, assessment.capture_agent, spool_path, now)
+    _print_agent(details.capture, spool_path, now)
     print()
     _print_screenshots(details.screenshots, now)
     print()
@@ -148,22 +147,14 @@ def _print_store(
     return 0
 
 
-def _activitywatch(found: Finding, streams: tuple[str, ...] | None, aw_url: str) -> str:
+def _activitywatch(
+    found: Finding, streams: tuple[str, ...] | None, aw_url: str
+) -> tuple[str | None, str]:
     if found.reason is Reason.UNREACHABLE:
-        print(f"!! ActivityWatch is UNREACHABLE at {aw_url}: nothing new can be ingested.")
-        print(f"!! {found.detail}")
-        print()
-        return f"ActivityWatch: no  ({aw_url})"
+        banner = f"!! ActivityWatch is UNREACHABLE at {aw_url}: nothing new can be ingested."
+        return banner, f"ActivityWatch: {aw_url}"
     names = ", ".join(streams or []) or "none of window/AFK/web"
-    line = f"ActivityWatch: yes ({aw_url}; sources: {names})"
-    if found.verdict is Verdict.PROBLEM:
-        line += f"; {_verdict(found)}"
-    return line
-
-
-def _verdict(found: Finding) -> str:
-    detail = f" ({found.detail})" if found.detail else ""
-    return f"{found.verdict.value}: {found.reason.value}{detail}"
+    return None, f"ActivityWatch: {aw_url} (sources: {names})"
 
 
 def _print_install(install: InstallDetails, profile: Profile, now: datetime) -> None:
@@ -283,24 +274,13 @@ def _print_watchdog(saved: SavedWatchdog, now: datetime) -> None:
 
 
 def _ingest(
-    health: IngestHealth | None,
-    error: str | None,
-    backend: Finding,
-    db_path: Path,
-    now: datetime,
+    health: IngestHealth | None, error: str | None, db_path: Path, now: datetime
 ) -> tuple[str | None, str]:
     if error is not None:
         return None, f"Ingest:        cannot read {health_path(db_path)}: {error}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
     line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"
-    if backend.verdict is Verdict.PROBLEM:
-        line += (
-            f"; NOT REPORTING for {duration((now - health.cycle_at).total_seconds())}"
-            " (is `ingest --watch` running?)"
-        )
-    elif backend.verdict is Verdict.UNKNOWN:
-        line += f"; {_verdict(backend)}"
     if not health.consecutive_failures:
         return None, line
     last = "never" if health.last_success_at is None else ago(health.last_success_at, now)
@@ -393,14 +373,13 @@ def _print_gap_list(source: str, start: datetime, gaps: Sequence[tuple[Gap, str]
         print(f"  warning: ... and {len(gaps) - MAX_GAPS_SHOWN} more {source} gaps")
 
 
-def _print_agent(health: CaptureHealth, found: Finding, spool_path: Path, now: datetime) -> None:
+def _print_agent(health: CaptureHealth, spool_path: Path, now: datetime) -> None:
     if not health.reported:
         print(f"Capture agent: has not reported yet (no {WINDOW_TEXT_SOURCE} records stored)")
         print(f"  spool         {_spool(health, spool_path, now)}")
         return
     print("Capture agent:")
     print(f"  last capture  {ago(health.last_capture, now)}")
-    print(f"  alive         {_alive(found, now)}")
     print(f"  spool         {_spool(health, spool_path, now)}")
     t = health.today
     print(
@@ -432,26 +411,6 @@ def _print_agreement(health: CaptureHealth) -> None:
     )
     for captured, seen, n in agreement.pairs[:MAX_APP_PAIRS_SHOWN]:
         print(f"                {n:,} x {app_name(captured)} -> {app_name(seen)}")
-
-
-def _alive(found: Finding, now: datetime) -> str:
-    last = ago(found.last_seen, now)
-    match found.reason:
-        case Reason.RECORDING:
-            return f"yes (last record {last})"
-        case Reason.SILENT:
-            return f"NO: no record since {last}, although aw-afk shows you active since then"
-        case Reason.PAUSED:
-            return f"paused, so no records are expected (last record {last})"
-        case Reason.AFK:
-            return (
-                f"cannot tell: no record since {last}, and aw-afk does not show you active since"
-                " then"
-            )
-        case Reason.RESUMED:
-            return f"cannot tell: no record since {last}, watched only since the watchdog resumed"
-        case _:
-            return _verdict(found)
 
 
 def _spool(health: CaptureHealth, spool_path: Path, now: datetime) -> str:

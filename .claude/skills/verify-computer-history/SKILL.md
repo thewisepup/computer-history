@@ -71,7 +71,7 @@ wrong. On any `FAIL`, run `$C down` and `$C up` again rather than driving.
 |---|---|
 | `$C cli <command> [flags]` | Runs `computer-history --db-path <run db> <command> [--aw-url <fake>] [flags]`; `--aw-url` is added for `ingest`, `status`, `backfill`. The spool defaults to `spool/` beside the run's database. Exits with the CLI's exit code. |
 | `$C spool-seed` | Writes `fixtures/spool/records.jsonl` (14 records: 4 captures, 1 excluded, paused, resumed, slept, woke, and 5 screenshot records, one per status; dated 2026-11-18) into the spool as a finished `*.jsonl` file. |
-| `$C spool-seed --now` | Writes one fresh `capture` record timestamped now (makes the agent read `alive yes`). |
+| `$C spool-seed --now` | Writes one fresh `capture` record timestamped now (makes the agent's check read `ok: recording`). |
 | `$C spool-seed --bad` | Writes a file with 2 valid records and one torn line (the ingest must reject the line and set the file aside). |
 | `$C spool-ls` | Lists the spool tree, `unreadable/` included. |
 | `$C sql "<SELECT ...>"` | Query on the run's database with `PRAGMA query_only=1` (writes are refused); refuses when the database does not exist yet. |

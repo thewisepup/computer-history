@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from cli_output import RunCli, status_out
+from cli_output import RunCli, live_check, status_out
 from fake_aw import FakeAW
 from projectors import AW
 from spool_records import spool_line
@@ -47,6 +47,7 @@ from computer_history.store import (
     insert_observations,
     source_summary,
 )
+from computer_history.watchdog import Check
 
 NOW = datetime(2026, 11, 18, 18, 0, tzinfo=UTC)
 DAY_START = datetime(2026, 11, 18, 8, 0, tzinfo=UTC)
@@ -705,7 +706,8 @@ def test_status_reports_every_capture_agent_line(run: RunCli, status_aw, db_path
     out = status_out(run, "--db-path", str(db_path))
 
     assert re.search(r"last capture\s+\S+ \S+ \(1m( \d+s)? ago\)", out)
-    assert re.search(r"alive\s+yes \(last record \S+ \S+ \(\d+s ago\)\)", out)
+    found = live_check(out.splitlines(), Check.CAPTURE_AGENT)
+    assert re.fullmatch(r"  capture agent  ok: recording, last seen \S+ \S+ \(\d+s ago\)", found)
     assert re.search(
         r"spool\s+2 finished files waiting \(oldest 3m( \d+s)?\), 1 in unreadable/"
         rf"\s+\({re.escape(str(spool))}\)",
@@ -762,7 +764,7 @@ def test_status_reports_paused_and_unobserved_capture_gaps(
     )
     assert re.search(r"cannot be judged: no aw-afk data", out)
     assert re.search(r"paused\s+yes, since \S+ \S+ \(20m( \d+s)? ago\)", out)
-    assert "alive         paused" in out
+    assert "cannot tell: paused, last seen" in live_check(out.splitlines(), Check.CAPTURE_AGENT)
     assert "idle" not in out.lower()
 
 
