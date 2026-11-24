@@ -144,8 +144,6 @@ def _progress_note(result: BackfillResult) -> str:
                 "progress not set: this range does not start before all of the source's"
                 " history, so the next `ingest` reads from the beginning"
             )
-        case BackfillProgress.NO_POSITION:
-            return "progress not set: the source reported no position to resume from"
         case BackfillProgress.SET_MEANWHILE | None:
             return "progress not set: another ingest set it meanwhile"
 

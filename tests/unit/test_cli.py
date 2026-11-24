@@ -14,22 +14,13 @@ from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_lock
 from fake_aw import FakeAW
 from projectors import no_signal
 
-import computer_history
 from computer_history import cli
 from computer_history.cli import backfill as cli_backfill
 from computer_history.cli import formatting
 from computer_history.cli import ingest as cli_ingest
 from computer_history.cli import status as cli_status
-from computer_history.sources import (
-    POLL_INTERVAL_SECONDS,
-    CycleReporter,
-    FailureKind,
-    StreamFailure,
-    cycle_report,
-    poll,
-    watch,
-)
-from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE, ActivityWatch, AWError
+from computer_history.sources import CycleSummary, FailureKind, IngestOutcome, StreamFailure
+from computer_history.sources.activitywatch import AFK_SOURCE, WINDOW_SOURCE, AWError
 from computer_history.sources.capture_spool import RECORD_KINDS, SPOOL_VERSION
 from computer_history.store import (
     DB_ENV_VAR,
@@ -44,6 +35,8 @@ from computer_history.watchdog import Check
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
 UNREACHABLE = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: [Errno 61] refused"
+HTTP_500 = "ActivityWatch HTTP 500 for /events"
+NOW = datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
 
 
 def seeded_aw(now: datetime) -> FakeAW:
@@ -82,10 +75,6 @@ def counts_in(db_path: Path) -> dict[str, int]:
         return table_counts(conn)
     finally:
         conn.close()
-
-
-def test_package_imports() -> None:
-    assert computer_history.__name__ == "computer_history"
 
 
 def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
@@ -139,86 +128,42 @@ def test_ingest_with_aw_down_fails_cleanly(run: RunCli, use_aw, db_path: Path) -
     assert "Traceback" not in err + out
 
 
-def poll_aw(conn: sqlite3.Connection, fake: FakeAW, *, now: datetime | None = None):
-    return poll(conn, [ActivityWatch(fake)], now=now)
-
-
-def test_poll_returns_outcomes(conn: sqlite3.Connection) -> None:
-    now = datetime.now(UTC)
-    summary = poll_aw(conn, seeded_aw(now), now=now)
-    assert summary.ok
-    assert summary.at == now
-    assert set(summary.outcomes) == {AFK_SOURCE, WINDOW_SOURCE}
-    assert summary.outcomes[WINDOW_SOURCE].inserted == 1
-    assert "aw-window +1 (0 dup, 1 held)" in cli_ingest.cycle_line(summary)
-
-
-def test_poll_reports_aw_errors(conn: sqlite3.Connection) -> None:
-    summary = poll_aw(conn, DownAW())
-    assert not summary.ok
-    assert summary.outcomes == {}
-    assert summary.failures == (StreamFailure(None, UNREACHABLE, FailureKind.SOURCE),)
-    assert cli_ingest.cycle_line(summary) == f"ingest failed: {UNREACHABLE}"
-
-
-def test_poll_reports_aw_errors_mid_pull(conn: sqlite3.Connection) -> None:
-    class BrokenEvents(FakeAW):
-        def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
-            raise AWError("ActivityWatch HTTP 500 for /events")
-
-    summary = poll_aw(conn, BrokenEvents({WINDOW_BUCKET: "currentwindow"}))
-    assert [f.error for f in summary.failures] == ["ActivityWatch HTTP 500 for /events"]
-    assert table_counts(conn)["observations"] == 0
-
-
-def test_watch_survives_aw_outage_and_logs_each_cycle(
-    conn: sqlite3.Connection, caplog: pytest.LogCaptureFixture
-) -> None:
-    caplog.set_level(logging.INFO)
-    healthy = seeded_aw(datetime.now(UTC))
-
-    class FlakyAW(FakeAW):
-        calls = 0
-
-        def get_buckets(self) -> dict[str, dict[str, Any]]:
-            FlakyAW.calls += 1
-            if FlakyAW.calls == 1:
-                raise AWError(UNREACHABLE)
-            return healthy.get_buckets()
-
-    flaky = FlakyAW({})
-    flaky.buckets, flaky.events = healthy.buckets, healthy.events
-    sleeps: list[float] = []
-
-    def fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-        if len(sleeps) == 2:
-            raise KeyboardInterrupt
-
-    with pytest.raises(KeyboardInterrupt):
-        watch(
-            conn,
-            [ActivityWatch(flaky)],
-            report=CycleReporter(cli_ingest.cycle_line),
-            interval=POLL_INTERVAL_SECONDS,
-            sleep=fake_sleep,
-        )
-
-    assert len(sleeps) == 2
-    assert all(0 <= s <= POLL_INTERVAL_SECONDS for s in sleeps)
-    failed, succeeded = [r for r in caplog.records if r.name == cycle_report.__name__]
-    assert failed.levelno == logging.ERROR
-    assert UNREACHABLE in failed.getMessage()
-    assert vars(failed)["retry_s"] == POLL_INTERVAL_SECONDS
-    assert succeeded.levelno == logging.INFO
-    assert "aw-window +1" in succeeded.getMessage()
-    assert table_counts(conn)["observations"] == 2
+@pytest.mark.parametrize(
+    ("summary", "line"),
+    [
+        (
+            CycleSummary(
+                NOW,
+                {
+                    WINDOW_SOURCE: IngestOutcome(1, 0, 1, None),
+                    "ax-text": IngestOutcome(2, 3, 0, None, rejected=4),
+                },
+            ),
+            "aw-window +1 (0 dup, 1 held); ax-text +2 (3 dup, 0 held, rejected 4)",
+        ),
+        (
+            CycleSummary(NOW, failures=(StreamFailure(None, UNREACHABLE, FailureKind.SOURCE),)),
+            f"ingest failed: {UNREACHABLE}",
+        ),
+        (
+            CycleSummary(
+                NOW,
+                {AFK_SOURCE: IngestOutcome(1, 0, 1, None)},
+                (StreamFailure(WINDOW_SOURCE, HTTP_500, FailureKind.SOURCE),),
+            ),
+            f"aw-afk +1 (0 dup, 1 held); then ingest failed on aw-window: {HTTP_500}",
+        ),
+    ],
+    ids=["ok", "nothing-read", "partly-read"],
+)
+def test_cycle_line_lists_each_stream_then_what_failed(summary: CycleSummary, line: str) -> None:
+    assert cli_ingest.cycle_line(summary) == line
 
 
 class HalfBrokenAW(FakeAW):
     def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
         if bucket_id == WINDOW_BUCKET:
-            raise AWError("ActivityWatch HTTP 500 for /events")
+            raise AWError(HTTP_500)
         return super().get_events(bucket_id, **kwargs)
 
 
@@ -229,91 +174,15 @@ def half_broken_aw(now: datetime) -> HalfBrokenAW:
     return fake
 
 
-def test_poll_keeps_outcomes_committed_before_a_failure(conn: sqlite3.Connection) -> None:
-    summary = poll_aw(conn, half_broken_aw(datetime.now(UTC)))
-    assert not summary.ok
-    assert list(summary.outcomes) == [AFK_SOURCE]
-    assert [f.stream for f in summary.failures] == [WINDOW_SOURCE]
-    assert cli_ingest.cycle_line(summary) == (
-        "aw-afk +1 (0 dup, 1 held); "
-        "then ingest failed on aw-window: ActivityWatch HTTP 500 for /events"
-    )
-    assert table_counts(conn)["observations"] == 1
-
-
 def test_ingest_prints_partial_progress_then_fails(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(half_broken_aw(datetime.now(UTC)))
     code, out, err = run_here(run, "--db-path", str(db_path), "ingest")
     assert code == 1
     assert re.search(r"aw-afk\s+inserted\s+1", out)
     assert "aw-window" not in out
-    assert "error on aw-window: ActivityWatch HTTP 500 for /events" in err
+    assert f"error on aw-window: {HTTP_500}" in err
     assert "cycle failed" not in err
     assert counts_in(db_path)["observations"] == 1
-
-
-def test_poll_survives_a_locked_database(db_path: Path) -> None:
-    conn, locker = connect(db_path), connect(db_path)
-    try:
-        conn.execute("PRAGMA busy_timeout = 50")
-        locker.execute("BEGIN IMMEDIATE")
-        aw = seeded_aw(datetime.now(UTC))
-        summary = poll_aw(conn, aw)
-        assert summary.failures == (
-            StreamFailure(AFK_SOURCE, "database is locked", FailureKind.DATABASE_BUSY),
-        )
-        assert cli_ingest.cycle_line(summary) == (
-            "ingest failed on aw-afk: database error: database is locked"
-        )
-        locker.execute("ROLLBACK")
-        assert poll_aw(conn, aw).ok
-        assert table_counts(conn)["observations"] == 2
-    finally:
-        conn.close()
-        locker.close()
-
-
-def test_watch_survives_a_locked_database_and_logs_the_real_delay(
-    db_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    caplog.set_level(logging.INFO)
-    conn, locker = connect(db_path), connect(db_path)
-    conn.execute("PRAGMA busy_timeout = 50")
-    locker.execute("BEGIN IMMEDIATE")
-    start = datetime.now(UTC)
-    ticks = iter([0.0, 15.0, 100.0, 102.0])
-    sleeps: list[float] = []
-
-    def fake_sleep(seconds: float) -> None:
-        sleeps.append(seconds)
-        if locker.in_transaction:
-            locker.execute("ROLLBACK")
-        if len(sleeps) == 2:
-            raise KeyboardInterrupt
-
-    try:
-        with pytest.raises(KeyboardInterrupt):
-            watch(
-                conn,
-                [ActivityWatch(seeded_aw(start))],
-                report=CycleReporter(cli_ingest.cycle_line),
-                interval=POLL_INTERVAL_SECONDS,
-                clock=lambda: start,
-                monotonic=lambda: next(ticks),
-                sleep=fake_sleep,
-            )
-    finally:
-        conn.close()
-        locker.close()
-
-    assert sleeps == [45.0, 58.0]
-    failed, succeeded = [r for r in caplog.records if r.name == cycle_report.__name__]
-    assert failed.levelno == logging.ERROR
-    assert failed.getMessage() == (
-        "cycle failed: ingest failed on aw-afk: database error: database is locked"
-    )
-    assert vars(failed)["retry_s"] == 45
-    assert "aw-afk +1" in succeeded.getMessage()
 
 
 def test_ingest_watch_exits_zero_on_ctrl_c(

@@ -33,7 +33,6 @@ class FakeSource:
         self.unsettled: set[str] = set()
         self.down: set[str] = set()
         self.listing_down = False
-        self.range_reports_progress = True
         self.before_pull: Callable[[str], None] | None = None
         self.pulled: list[str] = []
         self.positions: list[str] = []
@@ -81,8 +80,6 @@ class FakeSource:
         held = [c for c in inside if c.id in self.unsettled]
         settled = [c for c in inside if c.id not in self.unsettled]
         observations = self._observations(stream, settled)
-        if not self.range_reports_progress:
-            return Pull(observations, len(held), None, None)
         until = min(c.start for c in held) if held else min(end, now)
         new_position = f"range:{until.isoformat()}"
         self.positions.append(new_position)

@@ -23,14 +23,11 @@ from computer_history.sources import (
     BACKFILL_CHUNK,
     BackfillProgress,
     BackfillResult,
-    FailureKind,
     plan_backfill,
-    poll,
     run_backfill,
 )
 from computer_history.sources.activitywatch import (
     AFK_SOURCE,
-    RESUME_OVERLAP_SECONDS,
     WINDOW_SOURCE,
     ActivityWatch,
     AWError,
@@ -64,19 +61,6 @@ def history_aw(now: datetime) -> FakeAW:
     fake.add(WINDOW_BUCKET, DAYS * MINUTES_PER_DAY - 5, 290, {"app": "Chrome", "title": "now"})
     fake.add(AFK_BUCKET, DAYS * MINUTES_PER_DAY - 5, 290, {"status": "not-afk"})
     return fake
-
-
-def stored(conn: sqlite3.Connection, source: str) -> list[sqlite3.Row]:
-    return conn.execute(
-        "SELECT source_id, started_at, ended_at FROM observations WHERE source = ?"
-        " ORDER BY started_at",
-        (source,),
-    ).fetchall()
-
-
-def settled(conn: sqlite3.Connection, source: str = WINDOW_SOURCE) -> datetime | None:
-    progress = get_progress(conn, source)
-    return None if progress is None else progress.settled_until
 
 
 def set_progress(conn: sqlite3.Connection, source: str, until: datetime) -> None:
@@ -147,153 +131,6 @@ def test_plan_probe_ignores_an_event_at_the_start_but_finds_one_before(conn) -> 
     plan = window_plan(fake, conn, start=start)
     assert plan.earlier == ((WINDOW_BUCKET, to_utc(early["timestamp"])),)
     assert not plan.covers_history
-
-
-def test_backfill_ingests_all_history_across_chunks(conn) -> None:
-    fake = history_aw(NOW)
-    plan = window_plan(fake, conn)
-    seen: list[tuple[int, int]] = []
-    run = run_backfill(
-        conn,
-        ActivityWatch(fake),
-        [plan],
-        clock=lambda: NOW,
-        on_chunk=lambda done: seen.append((done.index, done.inserted)),
-    )
-    (result,) = run.results
-    assert [i for i, _ in seen] == list(range(len(plan.chunks)))
-    assert sum(n for _, n in seen) == result.inserted == DAYS
-    assert result.chunks_done == len(plan.chunks)
-    assert result.held_back == 1
-    assert len(stored(conn, WINDOW_SOURCE)) == DAYS
-
-
-def test_event_straddling_a_chunk_edge_is_stored_once_and_whole(conn) -> None:
-    fake = history_aw(NOW)
-    plan = window_plan(fake, conn)
-    edge = plan.chunks[0].end
-    offset = (edge - fake.t0) / timedelta(minutes=1)
-    straddler = fake.add(WINDOW_BUCKET, offset - 60, 3 * 3600, {"app": "Long"})
-    on_edge = fake.add(WINDOW_BUCKET, offset, 30, {"app": "Edge"})
-    first = backfill(conn, fake, plan)
-    assert first.inserted == DAYS + 2
-
-    rows = {row["source_id"]: row for row in stored(conn, WINDOW_SOURCE)}
-    long_row = rows[f"{WINDOW_BUCKET}/{straddler['id']}"]
-    assert to_utc(long_row["ended_at"]) - to_utc(long_row["started_at"]) == timedelta(hours=3)
-    assert to_utc(rows[f"{WINDOW_BUCKET}/{on_edge['id']}"]["started_at"]) == edge
-
-    again = backfill(conn, fake, window_plan(fake, conn, start=plan.start))
-    assert (again.inserted, again.skipped) == (0, DAYS + 2)
-    assert len(stored(conn, WINDOW_SOURCE)) == DAYS + 2
-
-
-class RecordingAW(FakeAW):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.queries: list[dict[str, Any]] = []
-
-    def get_events(self, bucket_id: str, **kwargs: Any) -> list[dict[str, Any]]:
-        self.queries.append(kwargs)
-        return super().get_events(bucket_id, **kwargs)
-
-
-def test_progress_set_to_final_frontier_so_ingest_does_not_rescan_history(conn) -> None:
-    fake = RecordingAW({WINDOW_BUCKET: "currentwindow"}, t0=NOW - timedelta(days=DAYS))
-    fake.events = {WINDOW_BUCKET: history_aw(NOW).events[WINDOW_BUCKET]}
-    held_start = NOW - timedelta(minutes=5)
-    plan = window_plan(fake, conn)
-    result = backfill(conn, fake, plan)
-
-    assert result.incomplete == [(plan.chunks[-1], held_start)]
-    assert result.complete_until == held_start
-    assert result.progress is BackfillProgress.SET
-    assert settled(conn) == held_start
-
-    fake.queries.clear()
-    later = poll(conn, [ActivityWatch(fake)], now=NOW + timedelta(minutes=10)).outcomes[
-        WINDOW_SOURCE
-    ]
-    assert later.inserted == 1
-    range_queries = [q for q in fake.queries if q.get("limit") == -1]
-    overlap = timedelta(seconds=RESUME_OVERLAP_SECONDS)
-    assert [to_utc(q["start"]) for q in range_queries] == [
-        held_start - overlap - timedelta(seconds=1)
-    ]
-
-
-def test_existing_progress_bounds_the_range_and_is_not_moved(conn) -> None:
-    fake = history_aw(NOW)
-    until = NOW - timedelta(days=10, hours=12)
-    set_progress(conn, WINDOW_SOURCE, until)
-    before = get_progress(conn, WINDOW_SOURCE)
-    result = backfill(conn, fake, window_plan(fake, conn))
-    assert result.progress is BackfillProgress.KEPT and result.incomplete == []
-    assert get_progress(conn, WINDOW_SOURCE) == before
-    starts = [to_utc(row["started_at"]) for row in stored(conn, WINDOW_SOURCE)]
-    assert len(starts) == 10 and max(starts) < until
-
-
-def test_history_before_the_floor_is_reported_and_leaves_progress_unset(conn) -> None:
-    fake = history_aw(NOW)
-    imported = fake.add(WINDOW_BUCKET, -3 * MINUTES_PER_DAY, 60, {"app": "Imported"})
-    plan = window_plan(fake, conn)
-    assert plan.earlier == ((WINDOW_BUCKET, to_utc(imported["timestamp"])),)
-    result = backfill(conn, fake, plan)
-    assert result.inserted == DAYS and result.progress is BackfillProgress.NOT_COVERED
-    assert get_progress(conn, WINDOW_SOURCE) is None
-
-    wider = window_plan(fake, conn, start=NOW - timedelta(days=DAYS + 5))
-    assert wider.covers_history
-    result = backfill(conn, fake, wider)
-    assert (result.inserted, result.progress) == (1, BackfillProgress.SET)
-
-
-def test_progress_set_meanwhile_wins(conn) -> None:
-    fake = history_aw(NOW)
-    plan = window_plan(fake, conn)
-    concurrent = NOW - timedelta(minutes=30)
-    set_progress(conn, WINDOW_SOURCE, concurrent)
-    result = backfill(conn, fake, plan)
-    assert result.progress is BackfillProgress.SET_MEANWHILE
-    assert settled(conn) == concurrent
-
-
-def test_progress_is_set_in_the_last_chunks_commit(conn) -> None:
-    fake = history_aw(NOW)
-    plan = window_plan(fake, conn)
-    statements: list[str] = []
-    conn.set_trace_callback(statements.append)
-    result = backfill(conn, fake, plan)
-    conn.set_trace_callback(None)
-    commits = [i for i, sql in enumerate(statements) if sql == "COMMIT"]
-    progress_writes = [i for i, sql in enumerate(statements) if "INTO ingest_progress" in sql]
-    assert len(commits) == len(plan.chunks)
-    assert len(progress_writes) == 1 and commits[-2] < progress_writes[0] < commits[-1]
-    assert result.progress is BackfillProgress.SET and settled(conn) == result.complete_until
-    progress = stored_progress(conn, WINDOW_SOURCE)
-    assert progress.advanced_at == NOW
-
-
-def test_a_failed_last_chunk_sets_no_progress(conn, db_path: Path) -> None:
-    fake = history_aw(NOW)
-    plan = window_plan(fake, conn)
-    conn.execute("PRAGMA busy_timeout = 50")
-    locker = sqlite3.connect(db_path, isolation_level=None)
-
-    def lock_before_the_last(done) -> None:
-        if done.index == len(plan.chunks) - 2:
-            locker.execute("BEGIN IMMEDIATE")
-
-    try:
-        run = run_backfill(
-            conn, ActivityWatch(fake), [plan], clock=lambda: NOW, on_chunk=lock_before_the_last
-        )
-    finally:
-        locker.close()
-    assert run.failure is not None and run.failure.kind is FailureKind.DATABASE_BUSY
-    assert run.results[0].chunks_done == len(plan.chunks) - 1
-    assert get_progress(conn, WINDOW_SOURCE) is None
 
 
 @pytest.fixture

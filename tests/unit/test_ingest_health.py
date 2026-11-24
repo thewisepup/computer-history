@@ -250,19 +250,20 @@ def failure_records(
     return logged(caplog, f"cycle failed: ingest failed on aw-afk: database error: {error}")
 
 
-def test_failed_cycles_are_errors_with_a_traceback_only_on_the_first(
+def test_failed_cycles_are_errors_with_their_retry_delay_and_a_traceback_only_on_the_first(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.INFO)
     report = CycleReporter(cli_ingest.cycle_line, streak=Recorder().streak())
 
-    for n in range(3):
-        report(failing(T0 + n * MINUTE), 60.0)
+    for n, delay in enumerate([60.0, 44.6, 0.2]):
+        report(failing(T0 + n * MINUTE), delay)
     report(ok(T0 + 3 * MINUTE), 60.0)
 
     errors = failure_records(caplog)
     assert [r["levelno"] for r in errors] == [logging.ERROR] * 3
     assert [r["streak"] for r in errors] == [1, 2, 3]
+    assert [r["retry_s"] for r in errors] == [60, 45, 0]
     assert [r["exc_info"] is not None for r in errors] == [True, False, False]
     assert errors[0]["failures"] == [
         {"stream": "aw-afk", "kind": "database busy", "error": NO_TABLE}
