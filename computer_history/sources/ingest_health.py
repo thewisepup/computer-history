@@ -7,21 +7,26 @@ import logging
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
 
 from computer_history.host import ALERT_REPEAT
 from computer_history.sources.commit import FailureKind
 from computer_history.sources.runner import CycleSummary
 from computer_history.store import replace_atomically, to_utc
+from computer_history.transitions import TransitionTable
 
 __all__ = [
     "ALERT_AFTER_FAILURES",
+    "STREAK_STATES",
     "FailureStreak",
     "IngestHealth",
     "Recovery",
     "StreakAlert",
+    "StreakState",
     "health_path",
     "read_health",
+    "streak_state",
     "write_health",
 ]
 
@@ -52,6 +57,31 @@ class IngestHealth:
         return self.consecutive_failures == 0
 
 
+class StreakState(Enum):
+    HEALTHY = auto()  # the last cycle was ok
+    FAILING = auto()  # cycles are failing and the streak has not notified
+    ALERTED = auto()  # cycles are failing and the streak has notified
+
+
+STREAK_STATES = TransitionTable(
+    "failure streak",
+    {
+        StreakState.HEALTHY: frozenset({StreakState.HEALTHY, StreakState.FAILING}),
+        StreakState.FAILING: frozenset(
+            {StreakState.FAILING, StreakState.ALERTED, StreakState.HEALTHY}
+        ),
+        StreakState.ALERTED: frozenset({StreakState.ALERTED, StreakState.HEALTHY}),
+    },
+)
+
+
+def streak_state(health: IngestHealth | None) -> StreakState:
+    """Where the failure streak stands, healthy when no cycle has run yet."""
+    if health is None or health.consecutive_failures == 0:
+        return StreakState.HEALTHY
+    return StreakState.FAILING if health.alerted_at is None else StreakState.ALERTED
+
+
 def health_path(db_path: Path) -> Path:
     """The ingest health file beside the database."""
     return db_path.parent / HEALTH_FILE_NAME
@@ -76,7 +106,7 @@ def read_health(path: Path) -> IngestHealth | None:
         unavailable = doc.get("sources_unavailable", False)
         if not isinstance(unavailable, bool):
             raise TypeError(f"sources_unavailable is {unavailable!r}, not true or false")
-        return IngestHealth(
+        health = IngestHealth(
             cycle_at=to_utc(doc["cycle_at"]),
             consecutive_failures=int(doc["consecutive_failures"]),
             failing_since=_time(doc.get("failing_since")),
@@ -87,6 +117,17 @@ def read_health(path: Path) -> IngestHealth | None:
         )
     except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"not an ingest health file: {exc!r}") from exc
+    _check_streak(health)
+    return health
+
+
+def _check_streak(health: IngestHealth) -> None:
+    if health.consecutive_failures < 0:
+        raise ValueError(f"not an ingest health file: {health.consecutive_failures} failures")
+    if health.consecutive_failures == 0 and (
+        health.failing_since is not None or health.alerted_at is not None
+    ):
+        raise ValueError("not an ingest health file: a failure streak with no failures")
 
 
 def _time(value: str | None) -> datetime | None:
@@ -145,15 +186,14 @@ class FailureStreak:
         if summary.ok:
             if before is not None and before.failing_since is not None and failures:
                 recovery = Recovery(failures, before.failing_since)
-            self.health = IngestHealth(summary.at, last_success_at=summary.at)
-            if alerted is not None:
-                self._send(StreakAlert(failures, ended=True))
+            after = IngestHealth(summary.at, last_success_at=summary.at)
+            alert = StreakAlert(failures, ended=True) if alerted is not None else None
         else:
             since = before.failing_since if before is not None and failures else None
             due = failures + 1 >= ALERT_AFTER_FAILURES and (
                 alerted is None or summary.at - alerted >= ALERT_REPEAT
             )
-            self.health = IngestHealth(
+            after = IngestHealth(
                 summary.at,
                 failures + 1,
                 since or summary.at,
@@ -164,8 +204,11 @@ class FailureStreak:
                 summary.at if due else alerted,
                 all(f.kind is FailureKind.SOURCE for f in summary.failures),
             )
-            if due:
-                self._send(StreakAlert(failures + 1))
+            alert = StreakAlert(failures + 1) if due else None
+        STREAK_STATES.move(streak_state(before), streak_state(after))
+        self.health = after
+        if alert is not None:
+            self._send(alert)
         try:
             self._save(self.health)
         except OSError as exc:

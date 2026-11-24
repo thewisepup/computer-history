@@ -7,6 +7,8 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
       |          one finished file per pull, removed once both streams committed it
   contract.py    what an adapter implements: Source (projectors, streams + pull
       |          after a position), HistorySource (adds history facts + range pulls)
+  progress_moves.py  whether a pull's position may replace the stored one: forward
+      |          only for the spool, back to a held-back event for ActivityWatch
       |
   runner.py      poll every stream of every source, once or in the watch loop,
       |          pulling again while a pull says there is more; a source that

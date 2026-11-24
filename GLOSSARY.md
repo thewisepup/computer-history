@@ -171,7 +171,7 @@ A one-time ingest of history that existed before this install was set up.
 _Avoid_: Import, catch-up
 
 **Progress**:
-How far ingest has stored a stream, and up to when that stream is complete.
+How far ingest has stored a stream, and up to when that stream is complete. A spool stream's progress moves only forward, or back from a position past now; an ActivityWatch stream's moves back to the start of an event held back.
 _Avoid_: Cursor, watermark, offset, checkpoint
 
 **Ingest health**:
