@@ -632,10 +632,10 @@ Caught mutants the rerun could not attribute to a test. Every test calling their
 | `x__print_plan__mutmut_7` | survived | `head = f"  {name} ({buckets} bucket{'s' if buckets != 1 else ''}):"` → `head = f"  {name} ({buckets} bucket{'S' if buckets != 1 else ''}):"` |
 | `x__progress_note__mutmut_11` | survived | `" (incremental ingest owns what follows)"` → `" (INCREMENTAL INGEST OWNS WHAT FOLLOWS)"` |
 | `x__progress_note__mutmut_17` | survived | `" history, so the next `ingest` reads from the beginning"` → `" HISTORY, SO THE NEXT `INGEST` READS FROM THE BEGINNING"` |
-| `x__progress_note__mutmut_19` | survived | `return "progress not set: the source reported no position to resume from"` → `return "PROGRESS NOT SET: THE SOURCE REPORTED NO POSITION TO RESUME FROM"` |
+| `x__progress_note__mutmut_19` | removed | its code, the `NO_POSITION` message, was deleted in #207 |
 | `x__progress_note__mutmut_21` | survived | `return "progress not set: another ingest set it meanwhile"` → `return "PROGRESS NOT SET: ANOTHER INGEST SET IT MEANWHILE"` |
 | `x__progress_note__mutmut_4` | survived | `case BackfillProgress.NOT_COVERED: / return ( / "progress not set: this range does not start before all of the source's" / " history, so the next `ingest` reads from the beginning" / )` → `` |
-| `x__progress_note__mutmut_5` | survived | `case BackfillProgress.NO_POSITION: / return "progress not set: the source reported no position to resume from"` → `` |
+| `x__progress_note__mutmut_5` | removed | its code, the `NO_POSITION` case, was deleted in #207 (no history source reports a range without a position) |
 | `x__progress_note__mutmut_6` | survived | `f"progress set: settled until {when(result.complete_until)};"` → `f"progress set: settled until {when(None)};"` |
 | `x__progress_note__mutmut_8` | survived | `" `computer-history ingest` continues from there without re-reading history"` → `" `COMPUTER-HISTORY INGEST` CONTINUES FROM THERE WITHOUT RE-READING HISTORY"` |
 | `x__progress_note__mutmut_9` | survived | `f"progress unchanged: settled until {when(result.plan.settled_until)}"` → `f"progress unchanged: settled until {when(None)}"` |

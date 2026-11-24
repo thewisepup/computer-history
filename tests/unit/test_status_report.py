@@ -163,6 +163,14 @@ def test_without_a_running_watchdog_the_recent_past_counts_as_watched(db: Path, 
     assert assessment.activitywatch.reason is Reason.STALLED
 
 
+def test_without_a_running_watchdog_a_silence_while_you_were_away_cannot_tell(db: Path) -> None:
+    last_cycle(db, at(40))
+
+    backend = report(db, watchers(away_from=40)).assessment.backend
+
+    assert backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.AFK, at(40))
+
+
 def test_without_a_running_watchdog_an_outage_counts_from_now(db: Path) -> None:
     watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
 
@@ -297,34 +305,3 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     backend = live_check(lines, Check.BACKEND)
     assert BACKEND_SILENT in backend and backend.endswith(" (20m ago)")
     assert not any(line.startswith("!! ") for line in lines)
-
-
-@pytest.mark.parametrize("saved", ["none", "stopped"])
-@pytest.mark.parametrize(
-    ("away_from", "said"),
-    [
-        (60, BACKEND_SILENT),
-        (40, "cannot tell: silent, but aw-afk does not show you active, last seen"),
-    ],
-    ids=["active", "away"],
-)
-def test_status_without_a_running_watchdog_judges_the_recent_past(
-    run: RunCli,
-    monkeypatch: pytest.MonkeyPatch,
-    db: Path,
-    saved: str,
-    away_from: float,
-    said: str,
-) -> None:
-    monkeypatch.delenv(SPOOL_ENV_VAR, raising=False)
-    now = datetime.now(UTC)
-    start = now - timedelta(minutes=60)
-    last_cycle(db, at(40, start))
-    if saved == "stopped":
-        watching(db, since=at(-60, start), ran_at=at(45, start))
-    aw = watchers(socket.gethostname(), t0=start, away_from=away_from)
-
-    with served_over_http(aw) as url:
-        lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
-
-    assert said in live_check(lines, Check.BACKEND)
