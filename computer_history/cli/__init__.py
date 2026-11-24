@@ -28,7 +28,7 @@ app.py         the command table (one Command record per command: help, handler,
   |                findings as lines
   +-- dev.py       dev build-db (a database of synthetic history from the dataset cache),
         |          dev snapshot (the live database copied into the dev folder),
-        |          dev perf (the performance gate), dev bench (wall-clock timings)
+        |          dev perf (the performance gate)
         |
 profile.py (the first line: profile, version or checkout, database),
 db.py and sources.py (unusable database / source messages, and the ActivityWatch

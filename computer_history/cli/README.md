@@ -34,9 +34,9 @@ still win over the defaults, but dev refuses, with exit code 1, any of them
 inside the live folder, including through a symlink or in another letter case.
 The screenshots sit beside the database, so the database's refusal covers them.
 The capture agent writes into the live folder, so a dev `ingest` with no flags
-reads ActivityWatch and an empty dev spool. `dev build-db`, `dev perf` and
-`dev bench` open neither the database nor the spool, so they are never
-refused; `dev snapshot` is the one command that reads live data from dev.
+reads ActivityWatch and an empty dev spool. `dev build-db` and `dev perf`
+open neither the database nor the spool, so they are never refused;
+`dev snapshot` is the one command that reads live data from dev.
 
 Every command's first line names the profile, the version (stable) or the
 checkout's branch and commit (dev), and what the command uses. Real output,
@@ -567,22 +567,24 @@ computer-history dev perf                      # day and month, against the comm
 computer-history dev perf --update-baselines   # record a deliberate change of cost
 computer-history dev perf --dataset day --dataset year   # a nightly dataset (also: heavy-year)
 computer-history dev perf --counters costs.json          # also write what an update would write
+computer-history dev perf --baseline /tmp/sqlite-<version>.json   # another file; its name gives its SQLite
 ```
+
+Real output, on a Mac whose SQLite is not CI's:
 
 ```
 SQLite 3.54.1, 54 compile options:
   ATOMIC_INTRINSICS=1 COMPILER=clang-21.0.0 DEFAULT_AUTOVACUUM ...
-Baseline: .../computer_history/synthetic/perf_baselines/sqlite-3.54.1.json
+Baseline: .../computer_history/synthetic/perf_baselines/sqlite-3.45.1.json
+  SQLite 3.54.1 is not the baseline's 3.45.1: compared statements, full scans and pages but not VM steps, which CI's perf job checks
 
 operation        dataset      statements      VM steps    pages
-ingest           day               8,861       281,335    2,225
-rebuild-signals  day               3,619       232,084    2,225
-status-reads     day                  15        78,718        -
-capture-health   day                   6        71,743        -
-ingest           month           251,848     8,087,820   83,286
+ingest           day              13,558       466,079    4,210
+rebuild-signals  day               5,192       332,768    4,210
+status-reads     day                  15       102,448        -
 ...
-expected to fail, status-reads on month: 340,350 VM steps, over the 45,922 the day dataset allows
-expected to fail, capture-health on month: 481,452 VM steps, over the 143,486 the day dataset allows
+expected to fail, status-reads on month: 340,382 VM steps, over the 45,986 the day dataset allows
+...
 
 Performance gate passed.
 ```
@@ -592,17 +594,18 @@ store reads `status` makes, and the capture agent's health) on the developer
 persona's `messy` datasets from the dataset cache, once untimed and once with
 SQLite's work counted: statements run, VM instructions, full table scans in
 the query plans of the reads it ran, and the pages of a database it writes.
-It compares those with the baseline for the SQLite it runs on,
-`computer_history/synthetic/perf_baselines/sqlite-<version>.json`, and
-exits 1 on any difference: statements, scans and pages exactly, VM steps past
-2%, cheaper ones too, so an improvement is locked in by rerunning with
-`--update-baselines` and saying why in the pull request. A scan fails unless
-its statement is on the gate's short allowlist (the row counts and source
-totals `status` prints, and rebuild's pass over every observation). The
-scaling check fails when a windowed read on month costs more than twice its
-day cost, or another operation grows half again faster than the events; the
-two known failures are tracked in #84. Each failure names the operation,
-counter, before and after, and the statements that changed most:
+It compares those with the committed baseline (`BASELINE` in
+`computer_history/synthetic/baseline.py`), counted on the SQLite CI's `perf`
+job runs and named for it, and exits 1 on any difference: statements,
+scans and pages exactly, VM steps past 2%, cheaper ones too, so an improvement
+is locked in by rerunning with `--update-baselines` and saying why in the pull
+request. A scan fails unless its statement is on the gate's short allowlist
+(the row counts and source totals `status` prints, and rebuild's pass over
+every observation). The scaling check fails when a windowed read on month
+costs more than twice its day cost, or another operation grows half again
+faster than the events; the two known failures are tracked in #84. Each
+failure names the operation, counter, before and after, and the statements
+that changed most:
 
 ```
 ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
@@ -610,68 +613,28 @@ ingest on day: statements 8,861 -> 12,535 (+41.5%), worse than the baseline
     0 -> 3,674 runs, 0 -> 29,392 VM steps: SELECT id FROM observations WHERE id = ?
 ```
 
-The scaling check needs `day` beside a larger dataset and says so when it is
-missing. A dataset with no entry reports `no baseline yet` until it is recorded
-with `--update-baselines`.
-
-There is one baseline file per SQLite version, because VM steps differ between
-versions: CI's 3.45.1 runs one more instruction per inserted row than 3.54.1,
-so `ingest` costs 2.6% more there, past the tolerance. Statements, scans and
-pages match exactly across both. A SQLite with no file of its own is compared
-with the newest version's file, and the run says so. `--update-baselines`
-writes only the running SQLite's file, so a deliberate change of cost updates
-two files: yours, and CI's from the `perf-counters` artifact of the failed CI
-run, whose `perf-counters.json` is the file an update would write:
+VM steps differ between SQLite versions (by up to 11% between two recent
+ones), while statements, scans and pages match exactly. So on another SQLite
+the gate leaves VM steps out and says so in one line, and `--update-baselines`
+rewrites everything but them, taking this machine's VM steps only for an entry
+or statement the baseline lacks. If CI's `perf` job then fails on VM steps
+alone, take its counters, the file an update on CI would write:
 
 ```bash
 gh run download <run-id> -n perf-counters -D /tmp/perf
-cp /tmp/perf/perf-counters.json computer_history/synthetic/perf_baselines/sqlite-<CI version>.json
+cp /tmp/perf/perf-counters.json <the committed baseline>
 ```
 
-The nightly run measures day, year and heavy-year on `ubuntu-24.04` in about
-two hours; heavy-year peaks near 12 GB of memory, and at 17 GB it is built
-afresh each night rather than cached.
+CI's `perf` job fails when its own SQLite is not the baseline's, since it
+would otherwise skip VM steps unseen. After a runner image upgrade, rename
+the baseline to `sqlite-<the runner's version>.json` along with `BASELINE`,
+push, and if VM steps then fail, take that run's counters as above.
 
-`pytest -m perf` runs the same gate; the default `pytest` leaves it out.
-
-## dev bench — the wall-clock benchmark
-
-```bash
-computer-history dev bench                     # day and month, against this machine's last timings
-computer-history dev bench --dataset year      # any dataset dev perf takes
-computer-history dev bench --update-baseline   # record these timings as the machine's new ones
-```
-
-Real output, on an M5 Max, after a first run recorded the baseline:
-
-```
-Median of 5 runs, against this machine's baseline ~/Library/Caches/ComputerHistory/datasets/bench_baseline.json
-
-operation        dataset         median   baseline    change
-ingest           day            0.128 s    0.130 s     -1.4%
-rebuild-signals  day            0.041 s    0.041 s     -0.2%
-status-reads     day            0.002 s    0.002 s     -0.1%
-capture-health   day            0.010 s    0.010 s     -0.3%
-ingest           month          4.816 s    4.837 s     -0.4%
-rebuild-signals  month          1.657 s    1.681 s     -1.4%
-status-reads     month          0.040 s    0.040 s     +0.1%
-capture-health   month          0.040 s    0.040 s     +0.5%
-
-Nothing more than 25% slower than this machine's baseline, of 8.
-```
-
-Times each operation `dev perf` counts five times, without the cost meter,
-each run started afresh, and reports the median. It catches Python-side
-slowdowns the counters can't see. The baseline is `bench_baseline.json` in the
-dataset cache folder, so it belongs to this machine: a timing it lacks is
-recorded (`recorded`), and one more than 25% slower is marked `SLOWER`. A run
-with no baseline at all says so (`No baseline on this machine yet: these
-medians become it, nothing compared.`) rather than that nothing got slower,
-and `--update-baseline` says `Baseline rewritten from these medians`.
-`--update-baselines` is accepted for `--update-baseline`, as `dev perf` spells
-it. It exits 0 either way; only a run that can't happen at all exits 1. The nightly
-CI run keeps no baseline, since each night lands on a different VM, so there it
-reports medians only.
+The scaling check needs `day` beside a larger dataset and says so when it is
+missing. A dataset with no entry reports `no baseline yet` until it is recorded
+with `--update-baselines`. The nightly run measures day, year and heavy-year
+on `ubuntu-24.04` in about two hours; heavy-year peaks near 12 GB of memory,
+and at 17 GB it is built afresh each night rather than cached.
 
 ## logs — what the commands did
 

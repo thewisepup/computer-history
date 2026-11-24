@@ -28,27 +28,16 @@ generate.py         the inputs (persona, scenario, tier, heavy, seed) -> one tim
   operations.py     what the product does (ingest, rebuild, status reads), on a cached dataset
   meter.py          the statements, VM steps, full scans and pages one operation costs
   gate.py           those costs per operation and dataset against the committed baseline
-      |             baseline.py: the committed costs, one file per SQLite version
-  bench.py          each operation's median wall-clock time against this machine's baseline
+      |             baseline.py: the committed costs, counted on CI's SQLite
 """
 
 from computer_history.synthetic.baseline import (
-    BASELINE_DIR,
-    Baseline,
-    baseline_file,
-    compared_baseline,
+    BASELINE,
+    baseline_sqlite,
     load_baseline,
     save_baseline,
-)
-from computer_history.synthetic.bench import (
-    BENCH_BASELINE_NAME,
-    RUNS,
-    SLOWDOWN_TOLERANCE,
-    BenchReport,
-    Timing,
-    bench_baseline_path,
-    run_bench,
-    time_operation,
+    with_vm_steps_of,
+    without_vm_steps,
 )
 from computer_history.synthetic.build import (
     DATABASE_NAME,
@@ -120,8 +109,7 @@ from computer_history.synthetic.scenarios import SCENARIOS
 from computer_history.synthetic.timeline import Fault, FaultKind, Stretch, StretchKind, Timeline
 
 __all__ = [
-    "BASELINE_DIR",
-    "BENCH_BASELINE_NAME",
+    "BASELINE",
     "CACHE_ENV_VAR",
     "DATABASE_NAME",
     "EXPECTED_SCALING_FAILURES",
@@ -134,15 +122,11 @@ __all__ = [
     "PERF_DATASETS",
     "PERSONAS",
     "RENDERERS",
-    "RUNS",
     "SCAN_ALLOWLIST",
     "SCENARIOS",
-    "SLOWDOWN_TOLERANCE",
     "SMALLEST_DATASET",
     "TIERS",
     "UNEXPECTED_PASS_HINT",
-    "Baseline",
-    "BenchReport",
     "BuildFailed",
     "CachedDataset",
     "CaptureCounts",
@@ -166,17 +150,14 @@ __all__ = [
     "Stretch",
     "StretchKind",
     "Timeline",
-    "Timing",
     "Totals",
     "backfill_feeds",
-    "baseline_file",
-    "bench_baseline_path",
+    "baseline_sqlite",
     "build_dataset",
     "build_timeline",
     "cache_root",
     "cached_dataset",
     "compare",
-    "compared_baseline",
     "copy_dataset",
     "dataset_key",
     "gate_dataset",
@@ -189,11 +170,11 @@ __all__ = [
     "open_cached",
     "perf_datasets",
     "poll_feeds",
-    "run_bench",
     "run_gate",
     "save_baseline",
     "scaling",
     "started",
     "statement_text",
-    "time_operation",
+    "with_vm_steps_of",
+    "without_vm_steps",
 ]

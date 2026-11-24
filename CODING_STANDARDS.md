@@ -55,7 +55,7 @@ Review findings ratchet into rules:
 - **S9** Setup and teardown that two modules repeat becomes one context manager
   beside the owner of the resource (`started` in `synthetic/operations.py`).
 - **S10** A threshold constant is named for what it bounds
-  (`VM_STEP_TOLERANCE`, `SLOWDOWN_TOLERANCE`), never as an adjective.
+  (`VM_STEP_TOLERANCE`, `WINDOWED_GROWTH`), never as an adjective.
 - **S11** A name joins a package's `__all__` only when code outside its
   module uses it (tests count); a helper only its own module calls stays
   `_private` (`_within` in `store/paths.py`).

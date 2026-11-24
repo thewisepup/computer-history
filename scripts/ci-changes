@@ -19,7 +19,7 @@ DOCS = re.compile(r"(\.md|\.png|\.jpe?g|\.gif|\.svg)$|^\.scratch/")
 OFF_THE_E2E_PATH = re.compile(
     r"^(computer_history/synthetic/perf_baselines/"
     r"|computer_history/cli/(agent_guard|backfill|backup|dev|install|logs|update|watchdog)\.py$"
-    r"|tests/unit/|tests/perf/|tests/data/(?!test_synthetic_spool\.py$)"
+    r"|tests/unit/|tests/data/(?!test_synthetic_spool\.py$)"
     r"|(history|history_mcp|test_history|test_mcp)\.py$|formal/"
     r"|\.(claude|codex|agents|githooks)/|scripts/(mutate\.sh|mutation/|prune-worktrees)"
     r"|\.github/workflows/(nightly|fix-conflicts)\.yml$)"

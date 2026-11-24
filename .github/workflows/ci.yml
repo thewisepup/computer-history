@@ -136,6 +136,7 @@ jobs:
         run: |
           echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
           echo "sqlite=$(python -c 'import sqlite3; print(sqlite3.sqlite_version)')" >> "$GITHUB_OUTPUT"
+          echo "baseline=$(python -c 'from computer_history.synthetic import BASELINE; print(BASELINE.name)')" >> "$GITHUB_OUTPUT"
       - id: datasets
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -145,16 +146,23 @@ jobs:
         run: |
           set -o pipefail
           computer-history dev perf --counters perf-counters.json | tee perf-gate.txt
+          if grep -q "is not the baseline's" perf-gate.txt; then
+            echo "::error title=Performance gate::VM steps went unchecked: this runner's SQLite is not the baseline's"
+            exit 1
+          fi
         env:
           TMPDIR: /dev/shm
       - if: failure()
-        run: >-
-          echo "::notice title=Performance gate::If the change of cost is intended, take this
-          run's counters as the CI SQLite's baseline: gh run download ${{ github.run_id }}
-          -n perf-counters -D /tmp/perf, then copy /tmp/perf/perf-counters.json to
-          computer_history/synthetic/perf_baselines/ under the name the log's
-          "Counters written" line gives, and run computer-history dev perf
-          --update-baselines locally for your own SQLite."
+        env:
+          SQLITE: ${{ steps.runner.outputs.sqlite }}
+          BASELINE: computer_history/synthetic/perf_baselines/${{ steps.runner.outputs.baseline }}
+          COUNTERS: gh run download ${{ github.run_id }} -n perf-counters -D /tmp/perf
+        run: |
+          if [ "$(basename "$BASELINE")" != "sqlite-$SQLITE.json" ]; then
+            echo "::notice title=Performance gate::The runner's SQLite changed to $SQLITE and no longer matches $BASELINE: rename or refresh that file as the dev perf section of computer_history/cli/README.md says."
+          else
+            echo "::notice title=Performance gate::If the change of cost is intended and only VM steps fail, take this run's counters ($COUNTERS) as $BASELINE, as the dev perf section of computer_history/cli/README.md says."
+          fi
       - if: "!cancelled() && steps.datasets.outputs.cache-hit != 'true' && hashFiles('perf-counters.json') != ''"
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:

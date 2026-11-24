@@ -6,12 +6,13 @@ import sqlite3
 import token
 import tokenize
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from computer_history import cli, synthetic
 from computer_history.cli import dev
-from computer_history.synthetic import CACHE_ENV_VAR, OPERATIONS, SMALLEST_DATASET, baseline_file
+from computer_history.synthetic import CACHE_ENV_VAR, OPERATIONS, SMALLEST_DATASET
 
 
 @pytest.fixture(scope="module")
@@ -27,10 +28,15 @@ def dataset_cache(monkeypatch: pytest.MonkeyPatch, shared_cache: Path) -> Path:
 
 STRING_TOKENS = {token.STRING, getattr(token, "FSTRING_MIDDLE", token.STRING)}
 READ_OPERATION = next(name for name, operation in OPERATIONS.items() if not operation.writes)
+OTHER_SQLITE = "0.0.0"
 
 
 def own_file(folder: Path) -> Path:
-    return baseline_file(sqlite3.sqlite_version, folder)
+    return folder / f"sqlite-{sqlite3.sqlite_version}.json"
+
+
+def other_file(folder: Path) -> Path:
+    return folder / f"sqlite-{OTHER_SQLITE}.json"
 
 
 def perf(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str]:
@@ -42,15 +48,16 @@ def perf(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str]:
 def test_updating_writes_a_baseline_that_the_next_run_passes(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    updated, _ = perf(capsys, "--baselines", str(tmp_path), "--update-baselines")
-    code, printed = perf(capsys, "--baselines", str(tmp_path))
     baseline = own_file(tmp_path)
+    updated, _ = perf(capsys, "--baseline", str(baseline), "--update-baselines")
+    code, printed = perf(capsys, "--baseline", str(baseline))
 
     assert (updated, code) == (0, 0)
     recorded = json.loads(baseline.read_text())
     assert sorted(recorded) == sorted(OPERATIONS)
     assert all(list(datasets) == [SMALLEST_DATASET] for datasets in recorded.values())
     assert "SQLite " in printed and "passed" in printed
+    assert "not VM steps" not in printed
     for name in OPERATIONS:
         assert name in printed
 
@@ -58,14 +65,14 @@ def test_updating_writes_a_baseline_that_the_next_run_passes(
 def test_a_costlier_run_fails_naming_the_operation_counter_and_numbers(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    perf(capsys, "--baselines", str(tmp_path), "--update-baselines")
     baseline = own_file(tmp_path)
+    perf(capsys, "--baseline", str(baseline), "--update-baselines")
     recorded = json.loads(baseline.read_text())
     entry = recorded[READ_OPERATION][SMALLEST_DATASET]
     entry["statements"] -= 1
     baseline.write_text(json.dumps(recorded))
 
-    code, printed = perf(capsys, "--baselines", str(tmp_path))
+    code, printed = perf(capsys, "--baseline", str(baseline))
 
     assert code == 1
     expected = f"{READ_OPERATION} on {SMALLEST_DATASET}: statements {entry['statements']:,} -> "
@@ -75,7 +82,7 @@ def test_a_costlier_run_fails_naming_the_operation_counter_and_numbers(
 def test_a_missing_baseline_fails_and_says_how_to_record_one(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    code, printed = perf(capsys, "--baselines", str(tmp_path / "none"))
+    code, printed = perf(capsys, "--baseline", str(own_file(tmp_path / "none")))
 
     assert code == 1
     assert (
@@ -88,8 +95,8 @@ def test_counters_writes_what_was_measured_in_the_baselines_format(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     counters = tmp_path / "counters.json"
-    perf(capsys, "--baselines", str(tmp_path), "--update-baselines")
     baseline = own_file(tmp_path)
+    perf(capsys, "--baseline", str(baseline), "--update-baselines")
     measured = json.loads(baseline.read_text())
     doctored = json.loads(baseline.read_text())
     doctored[READ_OPERATION][SMALLEST_DATASET]["statements"] -= 1
@@ -98,7 +105,7 @@ def test_counters_writes_what_was_measured_in_the_baselines_format(
     }
     baseline.write_text(json.dumps(doctored))
 
-    code, printed = perf(capsys, "--baselines", str(tmp_path), "--counters", str(counters))
+    code, printed = perf(capsys, "--baseline", str(baseline), "--counters", str(counters))
 
     assert code == 1
     measured[READ_OPERATION]["month"] = kept
@@ -106,47 +113,50 @@ def test_counters_writes_what_was_measured_in_the_baselines_format(
     assert f"Counters written: {counters}" in printed
 
 
-def test_without_its_own_sqlites_baseline_the_gate_uses_the_newest_and_says_so(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
-    perf(capsys, "--baselines", str(tmp_path), "--update-baselines")
-    recorded = json.loads(own_file(tmp_path).read_text())
+def _other_sqlites_baseline(capsys: pytest.CaptureFixture[str], folder: Path) -> dict[str, Any]:
+    perf(capsys, "--baseline", str(own_file(folder)), "--update-baselines")
+    recorded = json.loads(own_file(folder).read_text())
     for entry in (entry for datasets in recorded.values() for entry in datasets.values()):
-        entry["sqlite_version"] = "9.0.0"
-    own_file(tmp_path).unlink()
-    baseline_file("9.0.0", tmp_path).write_text(json.dumps(recorded))
-    baseline_file("1.0.0", tmp_path).write_text("{}")
-
-    code, printed = perf(capsys, "--baselines", str(tmp_path))
-
-    assert code == 0
-    assert f"Baseline: {baseline_file('9.0.0', tmp_path)}" in printed
-    assert "note: entries recorded on SQLite 9.0.0, whose VM steps can differ" in printed
-    assert not own_file(tmp_path).exists()
+        entry["vm_steps"] *= 2
+        entry["by_statement"] = {
+            text: [runs, 7] for text, (runs, _) in entry["by_statement"].items()
+        }
+    other_file(folder).write_text(json.dumps(recorded))
+    return recorded
 
 
-def test_updating_on_a_new_sqlite_keeps_the_compared_files_other_datasets(
+def test_on_another_sqlite_the_gate_compares_all_but_vm_steps_and_says_so(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    perf(capsys, "--baselines", str(tmp_path), "--update-baselines")
-    recorded = json.loads(own_file(tmp_path).read_text())
-    for datasets in recorded.values():
-        datasets["year"] = datasets[SMALLEST_DATASET] | {"sqlite_version": "9.0.0"}
-    own_file(tmp_path).unlink()
-    baseline_file("9.0.0", tmp_path).write_text(json.dumps(recorded))
-    counters = tmp_path / "counters.json"
+    recorded = _other_sqlites_baseline(capsys, tmp_path)
 
-    code, _ = perf(
-        capsys, "--baselines", str(tmp_path), "--update-baselines", "--counters", str(counters)
-    )
+    passed, printed = perf(capsys, "--baseline", str(other_file(tmp_path)))
+    recorded[READ_OPERATION][SMALLEST_DATASET]["statements"] -= 1
+    other_file(tmp_path).write_text(json.dumps(recorded))
+    failed, _ = perf(capsys, "--baseline", str(other_file(tmp_path)))
+
+    assert (passed, failed) == (0, 1)
+    assert (
+        f"SQLite {sqlite3.sqlite_version} is not the baseline's {OTHER_SQLITE}: compared"
+        " statements, full scans and pages but not VM steps"
+    ) in printed
+
+
+def test_updating_on_another_sqlite_keeps_the_baselines_vm_steps(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    recorded = _other_sqlites_baseline(capsys, tmp_path)
+    measured = json.loads(own_file(tmp_path).read_text())
+    recorded[READ_OPERATION][SMALLEST_DATASET]["statements"] -= 1
+    other_file(tmp_path).write_text(json.dumps(recorded))
+
+    code, printed = perf(capsys, "--baseline", str(other_file(tmp_path)), "--update-baselines")
 
     assert code == 0
-    for written in (own_file(tmp_path), counters):
-        kept = json.loads(written.read_text())
-        assert all(set(datasets) == {SMALLEST_DATASET, "year"} for datasets in kept.values()), (
-            written
-        )
-        assert all(datasets["year"]["sqlite_version"] == "9.0.0" for datasets in kept.values())
+    assert "Baseline rewritten from this run, keeping its VM steps." in printed
+    entry = recorded[READ_OPERATION][SMALLEST_DATASET]
+    entry["statements"] = measured[READ_OPERATION][SMALLEST_DATASET]["statements"]
+    assert json.loads(other_file(tmp_path).read_text()) == recorded
 
 
 def _message_strings(path: Path) -> list[str]:

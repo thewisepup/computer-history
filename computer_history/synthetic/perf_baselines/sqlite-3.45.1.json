@@ -1,7 +1,6 @@
 {
  "capture-health": {
   "day": {
-   "sqlite_version": "3.45.1",
    "statements": 6,
    "vm_steps": 71930,
    "full_scans": [],
@@ -31,7 +30,6 @@
    }
   },
   "heavy-year": {
-   "sqlite_version": "3.45.1",
    "statements": 6,
    "vm_steps": 12419377,
    "full_scans": [],
@@ -57,7 +55,6 @@
    }
   },
   "month": {
-   "sqlite_version": "3.45.1",
    "statements": 6,
    "vm_steps": 481952,
    "full_scans": [],
@@ -87,7 +84,6 @@
    }
   },
   "year": {
-   "sqlite_version": "3.45.1",
    "statements": 6,
    "vm_steps": 4989700,
    "full_scans": [],
@@ -115,7 +111,6 @@
  },
  "ingest": {
   "day": {
-   "sqlite_version": "3.45.1",
    "statements": 13558,
    "vm_steps": 476514,
    "full_scans": [],
@@ -174,7 +169,6 @@
    }
   },
   "heavy-year": {
-   "sqlite_version": "3.45.1",
    "statements": 7338739,
    "vm_steps": 252702117,
    "full_scans": [],
@@ -232,7 +226,6 @@
    }
   },
   "month": {
-   "sqlite_version": "3.45.1",
    "statements": 376367,
    "vm_steps": 13367633,
    "full_scans": [],
@@ -291,7 +284,6 @@
    }
   },
   "year": {
-   "sqlite_version": "3.45.1",
    "statements": 3073354,
    "vm_steps": 101477494,
    "full_scans": [],
@@ -351,7 +343,6 @@
  },
  "rebuild-signals": {
   "day": {
-   "sqlite_version": "3.45.1",
    "statements": 5192,
    "vm_steps": 337952,
    "full_scans": [
@@ -431,7 +422,6 @@
    }
   },
   "heavy-year": {
-   "sqlite_version": "3.45.1",
    "statements": 3316489,
    "vm_steps": 215805166,
    "full_scans": [
@@ -510,7 +500,6 @@
    }
   },
   "month": {
-   "sqlite_version": "3.45.1",
    "statements": 147120,
    "vm_steps": 9577026,
    "full_scans": [
@@ -590,7 +579,6 @@
    }
   },
   "year": {
-   "sqlite_version": "3.45.1",
    "statements": 1287657,
    "vm_steps": 83862641,
    "full_scans": [
@@ -671,7 +659,6 @@
  },
  "screenshot-health": {
   "day": {
-   "sqlite_version": "3.45.1",
    "statements": 9,
    "vm_steps": 28422,
    "full_scans": [],
@@ -697,7 +684,6 @@
    }
   },
   "month": {
-   "sqlite_version": "3.45.1",
    "statements": 9,
    "vm_steps": 755208,
    "full_scans": [],
@@ -725,7 +711,6 @@
  },
  "status-reads": {
   "day": {
-   "sqlite_version": "3.45.1",
    "statements": 15,
    "vm_steps": 102400,
    "full_scans": [
@@ -840,7 +825,6 @@
    }
   },
   "heavy-year": {
-   "sqlite_version": "3.45.1",
    "statements": 15,
    "vm_steps": 60933069,
    "full_scans": [
@@ -955,7 +939,6 @@
    }
   },
   "month": {
-   "sqlite_version": "3.45.1",
    "statements": 15,
    "vm_steps": 2564579,
    "full_scans": [
@@ -1070,7 +1053,6 @@
    }
   },
   "year": {
-   "sqlite_version": "3.45.1",
    "statements": 15,
    "vm_steps": 23476478,
    "full_scans": [

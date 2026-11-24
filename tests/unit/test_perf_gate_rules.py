@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from computer_history.synthetic import (
+    BASELINE,
     OPERATIONS,
     Costs,
     FindingKind,
@@ -12,13 +13,14 @@ from computer_history.synthetic import (
     Operation,
     Scan,
     StatementCost,
-    baseline_file,
+    baseline_sqlite,
     compare,
-    compared_baseline,
     load_baseline,
     measure_operation,
     save_baseline,
     scaling,
+    with_vm_steps_of,
+    without_vm_steps,
 )
 from computer_history.synthetic.operations import Session
 
@@ -159,50 +161,59 @@ def test_a_baseline_round_trips_through_its_file(tmp_path: Path) -> None:
     path = tmp_path / "baseline.json"
     scanning = _costs({COUNT: (1, 9)}, scans=(Scan("observations", COUNT),))
 
-    save_baseline(path, "3.54.1", {("ingest", "day"): BASE, ("status-reads", "day"): scanning})
-    baseline = load_baseline(path)
+    save_baseline(path, {("ingest", "day"): BASE, ("status-reads", "day"): scanning})
 
-    assert baseline.versions == {("ingest", "day"): "3.54.1", ("status-reads", "day"): "3.54.1"}
-    assert baseline.costs[("ingest", "day")] == BASE
-    assert baseline.costs[("status-reads", "day")] == _costs(
-        {COUNT: (1, 9)}, scans=(Scan("observations", COUNT),), pages=0, table_pages={}
-    )
+    assert load_baseline(path) == {
+        ("ingest", "day"): BASE,
+        ("status-reads", "day"): _costs(
+            {COUNT: (1, 9)}, scans=(Scan("observations", COUNT),), pages=0, table_pages={}
+        ),
+    }
 
 
-def test_updating_some_entries_keeps_the_others_and_their_versions(tmp_path: Path) -> None:
+def test_updating_some_entries_keeps_the_others(tmp_path: Path) -> None:
     path = tmp_path / "baseline.json"
-    save_baseline(path, "3.45.1", {("ingest", "day"): BASE, ("ingest", "month"): BASE})
+    save_baseline(path, {("ingest", "day"): BASE, ("ingest", "month"): BASE})
     cheaper = _costs({INSERT: (100, 9_000), PROGRESS: (10, 1_000)})
 
-    save_baseline(path, "3.54.1", {("ingest", "day"): cheaper}, keep=load_baseline(path))
-    baseline = load_baseline(path)
+    save_baseline(path, {("ingest", "day"): cheaper}, keep=load_baseline(path))
 
-    assert baseline.costs == {("ingest", "day"): cheaper, ("ingest", "month"): BASE}
-    assert baseline.versions == {("ingest", "day"): "3.54.1", ("ingest", "month"): "3.45.1"}
+    assert load_baseline(path) == {("ingest", "day"): cheaper, ("ingest", "month"): BASE}
 
 
 def test_updating_drops_entries_of_operations_that_are_gone(tmp_path: Path) -> None:
     path = tmp_path / "baseline.json"
-    save_baseline(path, "3.54.1", {("ingest", "day"): BASE})
-    stale = load_baseline(path)
-    stale = type(stale)(
-        {**stale.costs, ("status", "day"): BASE}, {**stale.versions, ("status", "day"): "3.54.1"}
-    )
+    stale = {("ingest", "day"): BASE, ("status", "day"): BASE}
 
-    save_baseline(path, "3.54.1", {("ingest", "day"): BASE}, keep=stale)
+    save_baseline(path, {("ingest", "day"): BASE}, keep=stale)
 
-    assert list(load_baseline(path).costs) == [("ingest", "day")]
+    assert list(load_baseline(path)) == [("ingest", "day")]
 
 
-def test_the_gate_compares_with_its_own_sqlites_baseline_else_the_newest(tmp_path: Path) -> None:
-    for version in ("3.9.2", "3.10.0", "3.45.1"):
-        save_baseline(baseline_file(version, tmp_path), version, {("ingest", "day"): BASE})
+def test_the_baseline_names_the_sqlite_its_costs_were_counted_on() -> None:
+    assert baseline_sqlite(Path("perf_baselines/sqlite-9.8.7.json")) == "9.8.7"
+    assert BASELINE.name == f"sqlite-{baseline_sqlite(BASELINE)}.json"
+    assert [path.name for path in BASELINE.parent.iterdir()] == [BASELINE.name]
 
-    assert compared_baseline("3.10.0", tmp_path) == tmp_path / "sqlite-3.10.0.json"
-    assert compared_baseline("3.54.1", tmp_path) == tmp_path / "sqlite-3.45.1.json"
-    assert compared_baseline("3.54.1", tmp_path / "none") == tmp_path / "none/sqlite-3.54.1.json"
-    (tmp_path / "sqlite-3.45.1.json").unlink()
-    assert compared_baseline("3.2.0", tmp_path) == tmp_path / "sqlite-3.10.0.json"
+
+def test_without_vm_steps_costs_that_differ_only_in_vm_steps_compare_equal() -> None:
+    other_sqlite = _costs({INSERT: (100, 13_000), PROGRESS: (10, 900)})
+    one_more = _costs({INSERT: (100, 13_000), PROGRESS: (11, 900)})
+    ingest = OPERATIONS["ingest"]
+
+    assert compare(ingest, "day", without_vm_steps(other_sqlite), without_vm_steps(BASE)) == []
+    [finding] = compare(ingest, "day", without_vm_steps(one_more), without_vm_steps(BASE))
+    assert (finding.counter, finding.before, finding.after) == ("statements", 110, 111)
+
+
+def test_an_update_on_another_sqlite_keeps_the_baselines_vm_steps() -> None:
+    measured = _costs({INSERT: (101, 13_000), GAPS: (1, 500)})
+
+    kept = with_vm_steps_of(measured, BASE)
+
+    assert (kept.statements, kept.vm_steps) == (102, BASE.vm_steps)
+    assert kept.by_statement == {INSERT: (101, 10_000), GAPS: (1, 500)}
+    assert with_vm_steps_of(measured, None) == measured
 
 
 def _scratch_operation(fresh: bool, seen: list[list[str]]) -> Operation:

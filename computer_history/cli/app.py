@@ -362,8 +362,7 @@ COMMANDS: dict[str, Command] = {
         Command(
             "dev",
             "Developer tools: build-db makes a database of synthetic history, snapshot copies the"
-            " live database into the dev folder, perf runs the performance gate, bench times"
-            " each operation.",
+            " live database into the dev folder, perf runs the performance gate.",
             cmd_dev,
             add_dev_commands,
         ),

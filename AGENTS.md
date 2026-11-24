@@ -72,19 +72,18 @@ first use (about a minute), since the main checkout's venv imports the main
 checkout's source. `docs/agents/checks.md` lists what the pre-commit hook and
 each CI job run, which checks `main` requires, and where a new check belongs.
 
-Tests sit in four folders, and the folder decides which stage runs a test
+Tests sit in three folders, and the folder decides which stage runs a test
 (`docs/agents/checks.md` has the stages):
 
 | Folder | Holds | Run locally |
 |---|---|---|
 | `tests/unit/` | the product on hand-built inputs: temp SQLite, fake ActivityWatch, fake spool, property tests | `pytest -n 4 tests/unit` |
-| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db`, `dev perf` and `dev bench` commands | `pytest -n 4 --dist worksteal tests/data` |
-| `tests/perf/` | the performance gate, measured against `perf_baselines/` | `pytest -m perf` or `computer-history dev perf` |
+| `tests/data/` | the `synthetic` package: datasets built through the real ingest and checked against their manifest, its renderers, cache and coverage rules (H8), and the `dev build-db` and `dev perf` commands | `pytest -n 4 --dist worksteal tests/data` |
 | `tests/e2e/` | the real Swift agent through the real CLI; skipped unless `CAPTURE_AGENT_BINARY` is set | `capture-agent/scripts/e2e.sh` |
 
-Bare `pytest` runs every folder but `perf/`; shared fakes and helpers sit in
-`tests/`. Hypothesis tests run derandomized; to hunt for new failures, run
-them with random seeds and pin anything found as an `@example`:
+Bare `pytest` runs every folder; shared fakes and helpers sit in `tests/`.
+Hypothesis tests run derandomized; to hunt for new failures, run them with
+random seeds and pin anything found as an `@example`:
 `HYPOTHESIS_PROFILE=explore .venv/bin/python -m pytest tests/unit/test_aw_ingest_properties.py`.
 
 Agents that edit code work in their own git worktree, never in the main
@@ -94,7 +93,7 @@ after every pull in the main checkout.
 
 Several agents in several worktrees share one laptop, so local test runs stay
 small: `pytest -n 4`, never `-n auto` (one worker per core in each worktree
-at once freezes the machine), and run `tests/data/`, `dev perf`, `dev bench`
+at once freezes the machine), and run `tests/data/`, `dev perf`
 and `scripts/mutate.sh` only when the task needs them, leaving the rest to CI.
 Never run TLC (`formal/check.sh`) unless Brandon asks for that run. CI keeps
 `-n auto` on its own runners.
@@ -145,9 +144,8 @@ performance gate on them. Its `__init__.py` maps the modules;
 
 ```bash
 computer-history dev build-db --persona developer --scenario messy --tier week --seed 1 --out /tmp/dev
-computer-history dev perf                      # the gate against perf_baselines/sqlite-<version>.json
+computer-history dev perf                      # the gate against the committed baseline
 computer-history dev perf --update-baselines   # a deliberate change of cost
-computer-history dev bench                     # wall-clock medians against this machine's last run
 ```
 
 A new stream, table, timeline field or public store function lands with its
@@ -165,6 +163,9 @@ What to test and what the gate does, by change:
 | Changed operation | Existing tests still pass, plus cases for new behaviour | A new case only for a new code path | Up: justify in the PR; down: lock it in with `--update-baselines` |
 | Schema change | Facts for new tables, or a reasoned exemption | Operations for new reads | Every cached dataset rebuilds; plans, pages and costs rechecked |
 | Refactor | Nothing new | Nothing new | Must pass unchanged |
+
+Why a Mac's update differs from CI's, and what to do when CI fails on VM steps
+alone: the CLI README's `dev perf` section.
 
 ## Agent skills
 
