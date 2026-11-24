@@ -22,8 +22,7 @@
         |                     ActivityWatch), loading, stopping, starting and removing
         |                     them, and what
         |                     launchd says about each agent for status
-        +-- stopped_agents.py the agents update and restore stop for a step, each one
-        |                     running, stopped and owed a start, or restarted, and
+        +-- stopped_agents.py the agents update and restore stop for a step, and
         |                     starting or reloading them after it, even when it fails
         +-- layout.py         where the versions, pointers, link, plists and logs live
 

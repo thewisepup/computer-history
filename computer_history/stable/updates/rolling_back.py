@@ -12,7 +12,7 @@ from computer_history.stable.capture_agent import installed_agent
 from computer_history.stable.launch_agents import BACKEND, load_agent
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
-from computer_history.stable.updates.phases import Progress, RollbackPhase, rollback_progress
+from computer_history.stable.updates.phases import Phases, RollbackPhase, rollback_phases
 from computer_history.stable.versions import point, pointed, supported_schema
 from computer_history.store import stored_schema_version
 from computer_history.transitions import IllegalTransition
@@ -59,22 +59,22 @@ def _rollback(
         raise RollbackFailed(f"there is no previous version to roll back to ({NOTHING_CHANGED})")
     problems: list[str] = []
     _check_schema(layout, previous.name, problems)
-    progress = rollback_progress()
+    phases = rollback_phases()
     try:
         point(layout.current, previous.name)
     except OSError as exc:
         raise RollbackFailed(
             f"could not point current at {previous.name}: {exc} ({NOTHING_CHANGED})"
         ) from exc
-    progress.advance(RollbackPhase.CURRENT_FLIPPED)
+    phases.advance(RollbackPhase.CURRENT_FLIPPED)
     try:
         point(layout.previous, current.name)
     except OSError as exc:
-        undone = _undone(layout, current.name, progress)
+        undone = _undone(layout, current.name, phases)
         raise RollbackFailed(
             f"could not point previous at {current.name}: {exc} ({undone})"
         ) from exc
-    progress.advance(RollbackPhase.PREVIOUS_FLIPPED)
+    phases.advance(RollbackPhase.PREVIOUS_FLIPPED)
     try:
         load_agent(host, layout, BACKEND, sleep=sleep)
     except (HostError, OSError) as exc:
@@ -82,10 +82,10 @@ def _rollback(
             f"switched to version {previous.name}, but the backend could not be restarted on it:"
             f" {exc} (run install)"
         ) from exc
-    progress.advance(RollbackPhase.BACKEND_LOADED)
+    phases.advance(RollbackPhase.BACKEND_LOADED)
     entry = UpdateLogEntry(now(), UpdateAction.ROLLED_BACK, current.name, previous.name)
     append_or_note(layout.update_log, entry, problems)
-    progress.advance(RollbackPhase.FINISHED)
+    phases.advance(RollbackPhase.FINISHED)
     agent = installed_agent(layout)
     built_from = None if agent is None else agent.built_from
     return RollbackReport(previous.name, current.name, built_from, tuple(problems))
@@ -115,7 +115,7 @@ def _check_schema(layout: Layout, target: str, problems: list[str]) -> None:
     )
 
 
-def _undone(layout: Layout, name: str, progress: Progress[RollbackPhase]) -> str:
+def _undone(layout: Layout, name: str, phases: Phases[RollbackPhase]) -> str:
     try:
         point(layout.current, name)
     except OSError as exc:
@@ -123,5 +123,5 @@ def _undone(layout: Layout, name: str, progress: Progress[RollbackPhase]) -> str
             f"current still names the previous version and {name} is no longer pointed at, but"
             f" its folder is kept; pointing current back failed too: {exc}"
         )
-    progress.advance(RollbackPhase.UNDONE)
+    phases.advance(RollbackPhase.UNDONE)
     return f"current points at {name} again; {NOTHING_CHANGED}"

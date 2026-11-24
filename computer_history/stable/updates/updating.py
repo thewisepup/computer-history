@@ -136,7 +136,7 @@ def update(
         with _signals_deferred() as deferred:
             report = _fell_back(run, first.problem, first.interrupted)
         return replace(report, interrupted=True) if deferred else report
-    prepared.progress.advance(UpdatePhase.FIRST_CYCLE_OK)
+    prepared.phases.advance(UpdatePhase.FIRST_CYCLE_OK)
     with _signals_deferred() as deferred:
         problems = _release_hold(prepared)
         swap = swap_agent(host, layout, prepared) if prepared.agent.changed else None
@@ -191,12 +191,12 @@ def _agent_check(
             return AgentCheck(AgentOutcome.FELL_BACK, failure), interrupted
         case SwapEnd.STARTED:
             assert swap.at is not None, "a started swap has its registration time"
-            run.prepared.progress.advance(UpdatePhase.AGENT_SWAPPED)
+            run.prepared.phases.advance(UpdatePhase.AGENT_SWAPPED)
             if interrupted:
                 return AgentCheck(AgentOutcome.FELL_BACK, AGENT_INTERRUPTED), True
             check, interrupted = _check_agent(run, swap.at, newest_record, active_between)
             if check.outcome is AgentOutcome.VERIFIED:
-                run.prepared.progress.advance(UpdatePhase.AGENT_VERIFIED)
+                run.prepared.phases.advance(UpdatePhase.AGENT_VERIFIED)
             return check, interrupted
         case _:
             assert_never(swap.end)
@@ -238,7 +238,7 @@ def _finish(run: UpdateRun, check: AgentCheck, swap: AgentSwap | None) -> Update
         run.now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome
     )
     append_or_note(layout.update_log, entry, problems)
-    prepared.progress.advance(UpdatePhase.FINISHED)
+    prepared.phases.advance(UpdatePhase.FINISHED)
     return UpdateReport(
         UpdateAction.UPDATED,
         run.commit,
@@ -256,12 +256,12 @@ def _switch(run: UpdateRun, last_cycle: LastCycle, wait_seconds: float) -> First
     try:
         try:
             point(layout.previous, prepared.old.name)
-            prepared.progress.advance(UpdatePhase.PREVIOUS_FLIPPED)
+            prepared.phases.advance(UpdatePhase.PREVIOUS_FLIPPED)
             point(layout.current, prepared.new)
-            prepared.progress.advance(UpdatePhase.CURRENT_FLIPPED)
+            prepared.phases.advance(UpdatePhase.CURRENT_FLIPPED)
             started_at = run.now()
             prepared.stopped.load(BACKEND)
-            prepared.progress.advance(UpdatePhase.BACKEND_LOADED)
+            prepared.phases.advance(UpdatePhase.BACKEND_LOADED)
         except (HostError, OSError) as exc:
             return FirstCycle(f"the backend could not be started on the new version: {exc}")
         problem = wait_for_first_cycle(

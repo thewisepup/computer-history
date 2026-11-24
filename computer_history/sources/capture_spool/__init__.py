@@ -14,9 +14,8 @@
                      reads one file for one stream, its position that stream's latest
                      capture time; the after-commit step removes the file, or sets it
                      aside if any line was unusable, only once both streams stored that
-                     same file; more while the stream's listed files remain. Each file's
-                     state moves through FILE_STATES: listed, stored or unreadable by
-                     some then all streams, then removed, kept for the hold, or stuck
+                     same file; more while the stream's listed files remain; each file's
+                     state checked against FILE_STATES
                      normalize.py: its projectors, stored record -> signal: app, title
                      and capped text (window text, or recognized text for screenshot),
                      the rest in extras; a sleep or wake's kind alone, in extras

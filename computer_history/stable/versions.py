@@ -35,13 +35,11 @@ VERSION_FOLDERS = TransitionTable(
     "version folder",
     {
         VersionState.ABSENT: frozenset({VersionState.MARKED_NO_AGENT}),
-        VersionState.PARTIAL: frozenset({VersionState.ABSENT, VersionState.MARKED_NO_AGENT}),
+        VersionState.PARTIAL: frozenset({VersionState.MARKED_NO_AGENT}),
         VersionState.MARKED_NO_AGENT: frozenset(
-            {VersionState.ABSENT, VersionState.MARKED_NO_AGENT, VersionState.COMPLETE}
+            {VersionState.MARKED_NO_AGENT, VersionState.COMPLETE}
         ),
-        VersionState.COMPLETE: frozenset(
-            {VersionState.ABSENT, VersionState.MARKED_NO_AGENT, VersionState.COMPLETE}
-        ),
+        VersionState.COMPLETE: frozenset({VersionState.MARKED_NO_AGENT, VersionState.COMPLETE}),
     },
 )
 
@@ -73,8 +71,7 @@ def version_folder(layout: Layout, name: str) -> Path:
 
 
 def version_state(layout: Layout, folder: Path) -> VersionState:
-    """How far a version folder on disk has got: absent, partly built, marked without an agent
-    app and the note of its commit, or complete."""
+    """How far a version folder on disk has got."""
     if not folder.exists():
         return VersionState.ABSENT
     if not _marker(folder).is_file():

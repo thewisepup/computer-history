@@ -36,14 +36,14 @@ Finish = Callable[[Path], object]
 
 
 class FileState(Enum):
-    LISTED = auto()  # no stream has stored it or failed to read it yet
+    LISTED = auto()
     STORED_BY_SOME = auto()
-    UNREADABLE = auto()  # some streams could not read it and none has stored it
+    UNREADABLE = auto()
     STORED_BY_ALL = auto()
     UNREADABLE_BY_ALL = auto()
-    REMOVED = auto()  # deleted, or set aside into the unreadable folder
-    KEPT_FOR_HOLD = auto()  # left in the spool while the spool hold is placed
-    STUCK = auto()  # removing it failed, and this adapter never reads it again
+    REMOVED = auto()  # deleted | set aside
+    KEPT_FOR_HOLD = auto()
+    STUCK = auto()
 
 
 FILE_STATES = TransitionTable(

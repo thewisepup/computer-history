@@ -12,15 +12,15 @@ __all__ = ["ProgressMove", "ProgressRule", "next_position", "progress_move"]
 
 
 class ProgressMove(Enum):
-    FIRST = auto()  # the stream has no stored position yet
+    FIRST = auto()
     FORWARD = auto()
     UNCHANGED = auto()
     BACKWARD = auto()
 
 
 class ProgressRule(Enum):
-    FORWARD_ONLY = auto()  # the capture spool: back only from a stored position past now
-    SETTLED_FRONTIER = auto()  # ActivityWatch: back to the start of an event held back
+    FORWARD_ONLY = auto()  # capture spool
+    SETTLED_FRONTIER = auto()  # ActivityWatch
 
 
 def progress_move(stored: str | None, new: str) -> ProgressMove:

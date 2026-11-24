@@ -41,7 +41,7 @@ def fall_back(
 
     The spool hold is released only once the new backend is confirmed stopped and the restore done.
     """
-    prepared.progress.advance(UpdatePhase.FALLING_BACK)
+    prepared.phases.advance(UpdatePhase.FALLING_BACK)
     problems: list[str] = []
     old, new = prepared.old.name, prepared.new
     stopped = _stop_new_backend(prepared, problems)
@@ -71,7 +71,7 @@ def fall_back(
         host.notify(f"Update to {new} fell back: {reason}; {back}.")
     except HostError as exc:
         problems.append(f"the notification could not be posted: {exc}")
-    prepared.progress.advance(UpdatePhase.FELL_BACK)
+    prepared.phases.advance(UpdatePhase.FELL_BACK)
     return FellBack(restored, tuple(problems))
 
 

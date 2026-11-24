@@ -35,3 +35,9 @@ def test_a_move_the_table_does_not_list_raises_and_names_both_states() -> None:
 def test_a_table_missing_a_state_is_refused_when_built() -> None:
     with pytest.raises(ValueError, match="BROKEN"):
         TransitionTable("light", {Light.OFF: frozenset({Light.ON}), Light.ON: frozenset()})
+
+
+def test_a_table_that_allows_every_move_is_refused_when_built() -> None:
+    every = frozenset(Light)
+    with pytest.raises(ValueError, match="every move is allowed"):
+        TransitionTable("light", dict.fromkeys(Light, every))

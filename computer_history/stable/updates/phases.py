@@ -77,7 +77,7 @@ ROLLBACK_PHASES = TransitionTable(
 )
 
 
-class Progress(Generic[S]):
+class Phases(Generic[S]):
     """The phase one update or rollback has reached, moved only along its table."""
 
     def __init__(self, table: TransitionTable[S], start: S) -> None:
@@ -88,9 +88,9 @@ class Progress(Generic[S]):
         self.phase = self._table.move(self.phase, target)
 
 
-def update_progress() -> Progress[UpdatePhase]:
-    return Progress(UPDATE_PHASES, UpdatePhase.CHECKED)
+def update_phases() -> Phases[UpdatePhase]:
+    return Phases(UPDATE_PHASES, UpdatePhase.CHECKED)
 
 
-def rollback_progress() -> Progress[RollbackPhase]:
-    return Progress(ROLLBACK_PHASES, RollbackPhase.CHECKED)
+def rollback_phases() -> Phases[RollbackPhase]:
+    return Phases(ROLLBACK_PHASES, RollbackPhase.CHECKED)

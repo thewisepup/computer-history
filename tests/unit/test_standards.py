@@ -134,6 +134,7 @@ FORBIDDEN_IMPORTS = {
         "computer_history.watchdog",
         "computer_history.status",
         "computer_history.cli",
+        "computer_history.transitions",
     ),
     "store": (
         "computer_history.sources",

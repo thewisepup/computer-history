@@ -25,6 +25,8 @@ class TransitionTable(Generic[S]):
         missing = [state.name for state in type(next(iter(states))) if state not in allowed]
         if missing:
             raise ValueError(f"{machine}: no entry for {missing}")
+        if all(targets >= states for targets in allowed.values()):
+            raise ValueError(f"{machine}: every move is allowed, so the table checks nothing")
         self.machine = machine
         self._allowed = dict(allowed)
 

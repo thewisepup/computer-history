@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from computer_history.host.live import SWAP_STEPS, SwapStep
 from computer_history.stable.capture_agent import (
     AgentRecord,
     agent_record,
@@ -18,8 +17,8 @@ from computer_history.stable.updates.phases import (
     UPDATE_PHASES,
     RollbackPhase,
     UpdatePhase,
-    rollback_progress,
-    update_progress,
+    rollback_phases,
+    update_phases,
 )
 from computer_history.stable.versions import VersionState, stepped, version_state
 from computer_history.store import INSTALL_MARKER_NAME
@@ -50,7 +49,7 @@ def layout(tmp_path: Path) -> Layout:
 
 
 def test_an_update_runs_its_phases_in_order_to_finished() -> None:
-    progress = update_progress()
+    phases = update_phases()
     for phase in (
         UpdatePhase.BUILT,
         UpdatePhase.AGENT_PLACED,
@@ -65,8 +64,8 @@ def test_an_update_runs_its_phases_in_order_to_finished() -> None:
         UpdatePhase.AGENT_VERIFIED,
         UpdatePhase.FINISHED,
     ):
-        progress.advance(phase)
-    assert progress.phase is UpdatePhase.FINISHED
+        phases.advance(phase)
+    assert phases.phase is UpdatePhase.FINISHED
 
 
 @pytest.mark.parametrize("phase", list(UpdatePhase), ids=lambda phase: phase.name)
@@ -79,16 +78,16 @@ def test_an_update_falls_back_only_while_it_switches(phase: UpdatePhase) -> None
 
 
 def test_a_refused_phase_leaves_the_run_where_it_was() -> None:
-    progress = update_progress()
+    phases = update_phases()
     with pytest.raises(IllegalTransition, match="update: CHECKED -> FINISHED"):
-        progress.advance(UpdatePhase.FINISHED)
-    assert progress.phase is UpdatePhase.CHECKED
+        phases.advance(UpdatePhase.FINISHED)
+    assert phases.phase is UpdatePhase.CHECKED
 
 
 def test_a_rollback_is_undone_only_between_its_two_flips() -> None:
-    progress = rollback_progress()
-    progress.advance(RollbackPhase.CURRENT_FLIPPED)
-    progress.advance(RollbackPhase.UNDONE)
+    phases = rollback_phases()
+    phases.advance(RollbackPhase.CURRENT_FLIPPED)
+    phases.advance(RollbackPhase.UNDONE)
     with pytest.raises(IllegalTransition):
         ROLLBACK_PHASES.move(RollbackPhase.PREVIOUS_FLIPPED, RollbackPhase.UNDONE)
 
@@ -127,21 +126,6 @@ def test_the_installed_agent_record_is_none_unknown_matching_or_stale(layout: La
     assert agent_record(host, layout, COMMIT)[0] is AgentRecord.STALE
     host.agent_trees[COMMIT] = "tree-b"
     assert agent_record(host, layout, COMMIT)[0] is AgentRecord.MATCHING
-
-
-def test_an_agent_swap_copies_only_after_removing_and_registers_again_after_unregistering() -> None:
-    step = SwapStep.UNTOUCHED
-    for target in (
-        SwapStep.UNREGISTERED,
-        SwapStep.REMOVED,
-        SwapStep.COPIED,
-        SwapStep.REGISTERED,
-        SwapStep.UNREGISTERED,
-        SwapStep.REGISTERED,
-    ):
-        step = SWAP_STEPS.move(step, target)
-    with pytest.raises(IllegalTransition):
-        SWAP_STEPS.move(SwapStep.UNTOUCHED, SwapStep.COPIED)
 
 
 def test_a_notified_problem_stays_open_until_its_clear_is_recorded() -> None:

@@ -56,8 +56,7 @@ def installed_agent(layout: Layout) -> InstalledAgent | None:
 def agent_record(
     host: Host, layout: Layout, commit: str
 ) -> tuple[AgentRecord, InstalledAgent | None]:
-    """Whether the installed agent's record says its source matches a commit's, names another, or
-    is missing or unreadable, or no app is installed; with the record when there is one."""
+    """The installed agent's record, and whether its agent source matches a commit's."""
     if not layout.capture_agent_app.is_dir():
         return AgentRecord.NONE, None
     installed = _read_record(layout)

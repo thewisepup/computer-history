@@ -12,7 +12,7 @@ from computer_history.stable.capture_agent import AgentPlan, place_agent, plan_a
 from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.stopped_agents import StoppedAgents
-from computer_history.stable.updates.phases import Progress, UpdatePhase, update_progress
+from computer_history.stable.updates.phases import Phases, UpdatePhase, update_phases
 from computer_history.stable.versions import (
     InstalledVersion,
     UnsafeVersionFolder,
@@ -43,7 +43,7 @@ class Prepared:
     stopped: StoppedAgents
     backup: DatabaseCopy | None
     hold: SpoolHold
-    progress: Progress[UpdatePhase]
+    phases: Phases[UpdatePhase]
 
 
 def prepare(
@@ -61,7 +61,7 @@ def prepare(
     """
     name = version_name(commit)
     folder = layout.versions / name
-    progress = update_progress()
+    phases = update_phases()
     try:
         agent = plan_agent(host, layout, commit, old)
     except HostError as exc:
@@ -80,21 +80,21 @@ def prepare(
         built = build_version(host, layout, commit)
     except (HostError, OSError, UnsafeVersionFolder, IllegalTransition) as exc:
         raise UpdateFailed(f"could not build version {name}: {exc} ({NOTHING_CHANGED})") from exc
-    progress.advance(UpdatePhase.BUILT)
+    phases.advance(UpdatePhase.BUILT)
     if placing:
         _place(host, layout, agent, name, built=built)
-        progress.advance(UpdatePhase.AGENT_PLACED)
+        phases.advance(UpdatePhase.AGENT_PLACED)
     hold = SpoolHold.beside(layout.database)
     stopped = StoppedAgents(host, layout, sleep=sleep)
     backup = None
     try:
         stopped.stop((BACKEND,))
-        progress.advance(UpdatePhase.BACKEND_STOPPED)
+        phases.advance(UpdatePhase.BACKEND_STOPPED)
         if layout.database.is_file():
             backup = take_pre_update_backup(layout.database, version=old.name, now=now())
-            progress.advance(UpdatePhase.BACKED_UP)
+            phases.advance(UpdatePhase.BACKED_UP)
         hold.place()
-        progress.advance(UpdatePhase.HOLD_PLACED)
+        phases.advance(UpdatePhase.HOLD_PLACED)
     except BaseException as exc:
         left = _undo(layout, name if built else None, backup, stopped)
         if isinstance(exc, HostError | BackupFailed | OSError | IllegalTransition):
@@ -102,7 +102,7 @@ def prepare(
         exc.add_note(left)
         raise
     return Prepared(
-        old, pointed(layout.previous), name, built, agent, stopped, backup, hold, progress
+        old, pointed(layout.previous), name, built, agent, stopped, backup, hold, phases
     )
 
 

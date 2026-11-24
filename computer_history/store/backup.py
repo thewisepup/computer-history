@@ -9,37 +9,13 @@ import tempfile
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import Enum, auto
 from pathlib import Path
 
 from computer_history.store import db
 from computer_history.store.paths import SHARED_MEMORY_SUFFIX, existing_database_files, sidecars
-from computer_history.transitions import TransitionTable
 
 PARTIAL_SUFFIX = ".partial"
 REPLACED_SUFFIX = ".replaced"
-
-
-class RestorePhase(Enum):
-    STARTED = auto()
-    MOVED_ASIDE = auto()  # the database that was there, and its journals, are at aside
-    COPIED = auto()
-    PUT_BACK = auto()  # the copy failed and whatever was moved aside is back
-    DONE = auto()
-
-
-RESTORE_PHASES = TransitionTable(
-    "restore",
-    {
-        RestorePhase.STARTED: frozenset(
-            {RestorePhase.MOVED_ASIDE, RestorePhase.COPIED, RestorePhase.PUT_BACK}
-        ),
-        RestorePhase.MOVED_ASIDE: frozenset({RestorePhase.COPIED, RestorePhase.PUT_BACK}),
-        RestorePhase.COPIED: frozenset({RestorePhase.DONE}),
-        RestorePhase.PUT_BACK: frozenset(),
-        RestorePhase.DONE: frozenset(),
-    },
-)
 
 
 class DatabaseExists(FileExistsError):
@@ -104,14 +80,12 @@ def restore_database(source: Path, target: Path, aside: Path) -> RestoredCopy:
         raise FileNotFoundError(f"no database at {source}")
     if existing_database_files(aside):
         raise DatabaseExists(f"{aside.parent} already holds {aside.name}")
-    phase = RestorePhase.STARTED
     moved: list[tuple[Path, Path]] = []
     with _held(target, fold_wal=True):
         if target.exists() or target.is_symlink():
             aside.parent.mkdir(parents=True, exist_ok=True)
             target.rename(aside)
             moved.append((target, aside))
-            phase = RESTORE_PHASES.move(phase, RestorePhase.MOVED_ASIDE)
     for journal, aside_journal in zip(sidecars(target), sidecars(aside), strict=True):
         if not (journal.exists() or journal.is_symlink()):
             continue
@@ -126,12 +100,8 @@ def restore_database(source: Path, target: Path, aside: Path) -> RestoredCopy:
         for path, to in reversed(moved):
             if not (path.exists() or path.is_symlink()):
                 to.rename(path)
-        RESTORE_PHASES.move(phase, RestorePhase.PUT_BACK)
         raise
-    phase = RESTORE_PHASES.move(phase, RestorePhase.COPIED)
-    restored = RestoredCopy(copy, aside if moved else None)
-    RESTORE_PHASES.move(phase, RestorePhase.DONE)
-    return restored
+    return RestoredCopy(copy, aside if moved else None)
 
 
 def _refuse_existing(target: Path, replace: bool) -> None:

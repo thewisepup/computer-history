@@ -14,13 +14,7 @@ from computer_history.stable.launch_agents import (
     LaunchAgent,
 )
 from computer_history.stable.layout import Layout
-from computer_history.stable.stopped_agents import (
-    AGENT_STOPS,
-    AgentNotStopped,
-    AgentStop,
-    StoppedAgents,
-)
-from computer_history.transitions import IllegalTransition
+from computer_history.stable.stopped_agents import AgentNotStopped, StoppedAgents
 from tests.fake_host import FakeHost
 
 AGENTS = (DAILY_BACKUP, WATCHDOG, BACKEND)
@@ -295,9 +289,3 @@ def test_an_agent_loaded_then_stopped_again_is_owed_again_as_the_last_stopped(
     stopped.stop((BACKEND,))
 
     assert stopped.start_again().agents == (BACKEND, WATCHDOG)
-
-
-def test_the_stop_table_lets_an_agent_be_owed_again_but_never_left_running_by_a_move() -> None:
-    assert AGENT_STOPS.move(AgentStop.RESTARTED, AgentStop.STOPPED_OWED) is AgentStop.STOPPED_OWED
-    with pytest.raises(IllegalTransition):
-        AGENT_STOPS.move(AgentStop.STOPPED_OWED, AgentStop.RUNNING)

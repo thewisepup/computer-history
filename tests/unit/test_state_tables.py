@@ -22,15 +22,10 @@ from computer_history.sources.progress_moves import (
     next_position,
     progress_move,
 )
-from computer_history.store import SpoolHold
-from computer_history.store.backup import RESTORE_PHASES, RestorePhase
-from computer_history.store.spool_hold import HOLD_STATES, HoldState
 from computer_history.transitions import IllegalTransition, TransitionTable
 
 F = FileState
 S = StreakState
-R = RestorePhase
-H = HoldState
 
 TABLES: list[tuple[TransitionTable[Any], type[Enum], dict[Any, set[Any]]]] = [
     (
@@ -55,22 +50,6 @@ TABLES: list[tuple[TransitionTable[Any], type[Enum], dict[Any, set[Any]]]] = [
             S.FAILING: {S.FAILING, S.ALERTED, S.HEALTHY},
             S.ALERTED: {S.ALERTED, S.HEALTHY},
         },
-    ),
-    (
-        RESTORE_PHASES,
-        RestorePhase,
-        {
-            R.STARTED: {R.MOVED_ASIDE, R.COPIED, R.PUT_BACK},
-            R.MOVED_ASIDE: {R.COPIED, R.PUT_BACK},
-            R.COPIED: {R.DONE},
-            R.PUT_BACK: set(),
-            R.DONE: set(),
-        },
-    ),
-    (
-        HOLD_STATES,
-        HoldState,
-        {H.ABSENT: {H.ABSENT, H.PLACED}, H.PLACED: {H.PLACED, H.ABSENT}},
     ),
 ]
 
@@ -158,14 +137,3 @@ def test_a_health_file_with_a_streak_but_no_failures_is_refused(tmp_path: Path, 
     path.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(ValueError, match="a failure streak with no failures"):
         read_health(path)
-
-
-def test_the_spool_hold_reads_its_state_from_the_file(tmp_path: Path) -> None:
-    hold = SpoolHold.beside(tmp_path / "db.sqlite")
-    assert hold.state is HoldState.ABSENT
-    hold.place()
-    hold.place()
-    assert hold.state is HoldState.PLACED
-    hold.release()
-    hold.release()
-    assert hold.state is HoldState.ABSENT

@@ -61,6 +61,9 @@ Review findings ratchet into rules:
   `_private` (`_within` in `store/paths.py`).
 - **S12** A change to what a module handles updates its line in the package's
   flow diagram in the same commit.
+- **S13** **[checked]** in `tests/unit/test_transitions.py`: a `TransitionTable`
+  must refuse at least one move; a table that allows every move checks nothing
+  and is removed.
 
 ## Architecture
 
