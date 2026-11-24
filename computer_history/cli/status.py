@@ -73,6 +73,7 @@ from computer_history.store import (
 from computer_history.watchdog import REOPEN_LIMIT, Finding, Reason, watchdog_state_path
 
 MAX_GAPS_SHOWN = 10
+LIVE_CHECKS_TITLE = "Watchdog checks (run now, nothing notified):"
 MAX_APP_PAIRS_SHOWN = 3
 
 
@@ -126,7 +127,7 @@ def _print_store(
     if store.state is StoreState.OUTDATED:
         print(f"  note: {outdated_note(store)}. No store details until then.")
     print()
-    print("Watchdog checks (run now, nothing notified):")
+    print(LIVE_CHECKS_TITLE)
     for line in finding_lines(assessment.findings, now):
         print(line)
     if store.state in (StoreState.MISSING, StoreState.OUTDATED):

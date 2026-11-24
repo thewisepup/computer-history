@@ -386,16 +386,22 @@ def test_status_lists_many_gaps_compactly(run: RunCli, use_aw, db_path: Path) ->
     assert "warning: ... and 5 more aw-window gaps" in out
 
 
-def test_status_with_aw_down_still_reports_store(run: RunCli, use_aw, db_path: Path) -> None:
-    use_aw(seeded_aw(datetime.now(UTC)))
+def test_status_with_aw_down_still_reports_store(
+    run: RunCli, use_aw, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    use_aw(seeded_aw(now))
     run_here(run, "--db-path", str(db_path), "ingest")
     use_aw(DownAW())
+    monkeypatch.setattr(formatting, "utc_now", lambda: now)
     code, out, err = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     first_line = after_profile_line(out).splitlines()[0]
     assert "ActivityWatch is UNREACHABLE at http://127.0.0.1:5600/api/0" in first_line
-    found = live_check(out.splitlines(), Check.ACTIVITYWATCH)
-    assert "unreachable, since" in found and UNREACHABLE in found
+    assert live_check(out.splitlines(), Check.ACTIVITYWATCH) == (
+        f"  ActivityWatch  cannot tell: unreachable, since {formatting.when(now)} (0s ago)"
+        f" ({UNREACHABLE})"
+    )
     assert re.search(r"aw-window\s+1 observations", out)
     assert "Traceback" not in err
 

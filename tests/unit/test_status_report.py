@@ -163,12 +163,21 @@ def test_without_a_running_watchdog_the_recent_past_counts_as_watched(db: Path, 
     assert assessment.activitywatch.reason is Reason.STALLED
 
 
-def test_without_a_running_watchdog_an_outage_counts_from_now(db: Path) -> None:
-    watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
+@pytest.mark.parametrize(
+    ("saved", "verdict", "since"),
+    [(at(-60), Verdict.PROBLEM, at(-60)), (None, Verdict.UNKNOWN, NOW)],
+    ids=["saved", "none-saved"],
+)
+def test_a_stopped_watchdogs_saved_outage_start_is_kept(
+    db: Path, saved: datetime | None, verdict: Verdict, since: datetime
+) -> None:
+    watching(db, since=at(-120), ran_at=at(50), unreachable_since=saved)
 
     activitywatch = report(db, UnreachableAW()).assessment.activitywatch
 
-    assert (activitywatch.verdict, activitywatch.last_seen) == (Verdict.UNKNOWN, NOW)
+    assert activitywatch == Finding(
+        Check.ACTIVITYWATCH, verdict, Reason.UNREACHABLE, since, UNREACHABLE_ERROR
+    )
 
 
 def test_the_stable_watchdog_state_beside_the_database_is_read_for_both_uses(db: Path) -> None:
@@ -304,7 +313,7 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     ("away_from", "said"),
     [
         (60, BACKEND_SILENT),
-        (40, "cannot tell: silent, but aw-afk does not show you active, last seen"),
+        (40, "backend        cannot tell: silent, but aw-afk does not show you active, last seen"),
     ],
     ids=["active", "away"],
 )
@@ -327,4 +336,5 @@ def test_status_without_a_running_watchdog_judges_the_recent_past(
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    assert said in live_check(lines, Check.BACKEND)
+    backend = live_check(lines, Check.BACKEND)
+    assert said in backend and backend.endswith(" (20m ago)")

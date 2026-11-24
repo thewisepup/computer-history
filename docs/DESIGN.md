@@ -902,12 +902,12 @@ runs.
   runs by the watchdog's thresholds and printed in the watchdog's own words,
   the same lines as under "Stable watchdog"; nothing is notified or saved.
   While a watchdog runs beside the database, silence counts from when it
-  began watching and ActivityWatch's outage from when it saw it start, so
-  just after a resume a check can read `cannot tell: ... watched only since
-  the watchdog resumed`. With none run in the last 3 minutes (as in dev) the
-  whole recent past counts as watched, and an outage counts from now, so it
-  reads `cannot tell: unreachable` until a watchdog has seen it for the
-  threshold.
+  began watching, so just after a resume a check can read `cannot tell: ...
+  watched only since the watchdog resumed`; with none run in the last 3
+  minutes (as in dev) the whole recent past counts as watched. An outage
+  counts from the start the last watchdog run beside the database saved,
+  stopped or not, or from now when none is saved, so it then reads `cannot
+  tell: unreachable` until it outlasts the threshold.
 - **Coverage gaps** are unobserved time, never idle, checked up to each
   source's settled-until time. `ax-text` captures are instants, so its gaps
   have their own rule: a record of any kind explains the minute on either
