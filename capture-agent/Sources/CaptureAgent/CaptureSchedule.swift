@@ -32,13 +32,21 @@ struct CaptureSchedule {
         case focusChanged(FocusChange)
     }
 
+    /// A focus change waiting to settle: the strongest change seen, when the first arrived, and when the last one settles.
+    struct PendingChange: Equatable {
+        let change: FocusChange
+        let since: TimeInterval
+        let settledAt: TimeInterval
+    }
+
+    private enum PendingEvent {
+        case changed(FocusChange, at: TimeInterval)
+        case dropped
+    }
+
     let settings: CaptureSettings
     private(set) var silence: Set<Silence> = []
-    private var presenceSilence: Set<Silence> = []
-    private var paused = false
-    private var pending: FocusChange?
-    private var pendingSince: TimeInterval = 0
-    private var settledAt: TimeInterval = 0
+    private(set) var pending: PendingChange?
     private var heartbeatDue: TimeInterval
     private var lastCapture: TimeInterval?
 
@@ -50,28 +58,33 @@ struct CaptureSchedule {
     mutating func receive(_ event: Event, at now: TimeInterval) {
         switch event {
         case .presence(let presence):
-            presenceSilence = presence.silence(idleThreshold: settings.idleThreshold)
-            updateSilence(at: now)
+            let paused: Set<Silence> = silence.contains(.paused) ? [.paused] : []
+            updateSilence(presence.silence(idleThreshold: settings.idleThreshold).union(paused), at: now)
         case .paused(let paused):
-            self.paused = paused
-            updateSilence(at: now)
+            updateSilence(paused ? silence.union([.paused]) : silence.subtracting([.paused]), at: now)
         case .focusChanged(let change):
             guard silence.isEmpty else { return }
-            if let pending {
-                self.pending = precedence.first { $0 == pending || $0 == change }
-            } else {
-                pending = change
-                pendingSince = now
-            }
-            settledAt = now + settings.settleDelay
+            movePending(.changed(change, at: now))
         }
     }
 
-    private mutating func updateSilence(at now: TimeInterval) {
-        let wasSilent = !silence.isEmpty
-        silence = paused ? presenceSilence.union([.paused]) : presenceSilence
-        if !silence.isEmpty {
+    private mutating func movePending(_ event: PendingEvent) {
+        switch (pending, event) {
+        case (nil, .changed(let change, let now)):
+            pending = PendingChange(change: change, since: now, settledAt: now + settings.settleDelay)
+        case (let waiting?, .changed(let change, let now)):
+            let strongest = precedence.first { $0 == waiting.change || $0 == change } ?? waiting.change
+            pending = PendingChange(change: strongest, since: waiting.since, settledAt: now + settings.settleDelay)
+        case (nil, .dropped), (_?, .dropped):
             pending = nil
+        }
+    }
+
+    private mutating func updateSilence(_ reasons: Set<Silence>, at now: TimeInterval) {
+        let wasSilent = !silence.isEmpty
+        silence = reasons
+        if !silence.isEmpty {
+            movePending(.dropped)
         } else if wasSilent {
             heartbeatDue = now + settings.settleDelay
         }
@@ -82,13 +95,13 @@ struct CaptureSchedule {
         if let lastCapture, now < lastCapture + settings.minimumGap { return nil }
         let trigger: SpoolRecord.Trigger
         if let pending {
-            guard now >= settledAt || now >= pendingSince + settings.heartbeatInterval else { return nil }
-            trigger = pending.trigger
+            guard now >= pending.settledAt || now >= pending.since + settings.heartbeatInterval else { return nil }
+            trigger = pending.change.trigger
         } else {
             guard now >= heartbeatDue else { return nil }
             trigger = .heartbeat
         }
-        pending = nil
+        movePending(.dropped)
         lastCapture = now
         heartbeatDue = now + settings.heartbeatInterval
         return trigger

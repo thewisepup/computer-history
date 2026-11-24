@@ -297,8 +297,10 @@ written; `excluded` records still are, since they touch no window.
 
 The `willSleep` notification writes a `slept` record at that moment, on the
 main thread and before the handler returns, so it is in `open.part` before
-the Mac sleeps. `didWake` writes a `woke` record, but only after a sleep that
-wrote a `slept` record. Neither is written while capture is paused, since the
+the Mac sleeps. `didWake`, or the first input after `willSleep` should
+`didWake` not have come yet, writes one `woke` record on the main thread, but
+only after a sleep that wrote a `slept` record; the Mac counts as asleep until
+that record is written. Neither is written while capture is paused, since the
 pause already explains the time; a failed write is counted with the other
 failed writes. Window text records are written one at a time, and a capture
 or excluded record is written only if the Mac is still awake at that moment,
@@ -614,7 +616,10 @@ folder. Every minute, if `open.part` is non-empty, it is renamed to a
 finished file and the next record starts a new `open.part`. A leftover
 `open.part` from a crash is finished the same way on start. A torn last line
 is dropped before the rename, and the rename is atomic, so the backend, which
-reads only `*.jsonl`, never sees a partial file.
+reads only `*.jsonl`, never sees a partial file. A leftover `open.part` that a
+failed start left behind has its torn last line dropped before the next
+record, and if `open.part` is removed while open, the next record starts a new
+one.
 
 Finished files are named `<yyyyMMdd'T'HHmmss.SSS'Z'>.jsonl` in UTC, for
 example `20261118T090100.000Z.jsonl`. Each name is at least one millisecond

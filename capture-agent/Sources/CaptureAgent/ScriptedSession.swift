@@ -14,13 +14,13 @@ public func runScriptedSession(
     var player: ScriptPlayer
     do {
         let script = try CaptureScript.load(file)
-        mac = ScriptedMac(start: script.start)
+        mac = ScriptedMac(start: script.start, log: log)
         mac.callTimeout = settings.windowText.callTimeout
         player = try ScriptPlayer(script, mac: mac, pause: settings.pause)
     } catch {
         return CommandOutcome(exitCode: 1, message: "cannot play \(file.path): \(error)")
     }
-    let spool = SpoolWriter(directory: settings.spoolDirectory, now: { mac.now() })
+    let spool = SpoolWriter(directory: settings.spoolDirectory, now: { mac.now() }, log: log)
     let counts = CaptureCounts()
     let pause = settings.pause
     let agent = AgentLifecycle(

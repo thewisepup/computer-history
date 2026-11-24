@@ -3,20 +3,51 @@ import Foundation
 /// The recognized text of a kept screenshot, set on the screenshot thread once its recognition has run, or marked failed.
 final class KeptText: @unchecked Sendable {
     private let lock = NSLock()
-    private var read = (text: "", fullTextBytes: 0)
-    private var didFail = false
+    private var state = KeptTextState.pending
 
     /// Whether reading the kept image's text failed or got no answer in time.
-    var failed: Bool { lock.withLock { didFail } }
+    var failed: Bool { lock.withLock { state == .failed } }
 
-    fileprivate var value: (text: String, fullTextBytes: Int) { lock.withLock { read } }
-
-    fileprivate func set(_ text: String, fullTextBytes: Int) {
-        lock.withLock { read = (text, fullTextBytes) }
+    fileprivate var value: (text: String, fullTextBytes: Int) {
+        lock.withLock {
+            switch state {
+            case .pending, .failed: ("", 0)
+            case .read(let text, let fullTextBytes): (text, fullTextBytes)
+            }
+        }
     }
 
-    fileprivate func fail() {
-        lock.withLock { didFail = true }
+    fileprivate func set(_ text: String, fullTextBytes: Int, log: AgentLog) {
+        _ = lock.withLock { state.handle(.recognized(text, fullTextBytes: fullTextBytes), log: log, .ocr) }
+    }
+
+    fileprivate func fail(log: AgentLog) {
+        _ = lock.withLock { state.handle(.recognitionFailed, log: log, .ocr) }
+    }
+}
+
+/// A kept screenshot's text: not read yet, read, or failed to read.
+enum KeptTextState: StateMachine {
+    enum Event {
+        case recognized(String, fullTextBytes: Int)
+        case recognitionFailed
+    }
+
+    static let name = "kept text"
+
+    case pending
+    case read(text: String, fullTextBytes: Int)
+    case failed
+
+    func after(_ event: Event) -> KeptTextState? {
+        switch (self, event) {
+        case (.pending, .recognized(let text, let fullTextBytes)):
+            .read(text: text, fullTextBytes: fullTextBytes)
+        case (.pending, .recognitionFailed):
+            .failed
+        case (.read, .recognized), (.read, .recognitionFailed), (.failed, .recognized), (.failed, .recognitionFailed):
+            nil
+        }
     }
 }
 
@@ -31,7 +62,7 @@ final class ScreenshotQueue: Sendable {
     private let queue = DispatchQueue(label: "screenshots", qos: .utility, autoreleaseFrequency: .workItem)
     private let recognition = DispatchQueue(label: "recognition", qos: .utility, autoreleaseFrequency: .workItem)
     private let recognize: @Sendable (URL) throws -> String
-    private let recognitions = OneRequestAtATime()
+    private let recognitions: OneRequestAtATime
     private let capBytes: Int
     private let timeout: TimeInterval
     private let spool: any SpoolAppender
@@ -49,6 +80,7 @@ final class ScreenshotQueue: Sendable {
         self.spool = spool
         self.counts = counts
         self.log = log
+        recognitions = OneRequestAtATime(log: log, .ocr)
     }
 
     func add(_ screenshot: QueuedScreenshot) {
@@ -82,9 +114,9 @@ final class ScreenshotQueue: Sendable {
             do {
                 var capped = CappedText(capBytes: capBytes)
                 capped.append(try recognizeInTime(image))
-                kept.set(capped.text, fullTextBytes: capped.fullLength)
+                kept.set(capped.text, fullTextBytes: capped.fullLength, log: log)
             } catch {
-                kept.fail()
+                kept.fail(log: log)
                 counts.recordRecognitionFailed(error)
                 log.debug(.ocr, "text recognition failed for \(image.lastPathComponent): \(error)")
             }

@@ -58,7 +58,7 @@ final class HeldAnswer: @unchecked Sendable {
 }
 
 @Test func aHungRequestBlocksOnceThenLaterCapturesFailAtOnceUntilItAnswers() {
-    let requests = OneRequestAtATime()
+    let requests = OneRequestAtATime(log: AgentLog { _ in }, .screenshots)
     let held = HeldAnswer()
     let hang: (@escaping @Sendable (WindowImage) -> Void) -> Void = { answer in
         held.starts += 1

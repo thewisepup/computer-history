@@ -34,27 +34,27 @@ public struct Presence: Equatable, Sendable {
 
 /// Reads presence from macOS: seconds since the last input, the login session's lock state, and sleep and wake.
 public final class LivePresence: @unchecked Sendable {
-    private let lock = NSLock()
-    private var sleptAt: TimeInterval?
-    private var sleepChanged: (@Sendable (SleepChange, Date) -> Void)?
+    private let sleep: SleepWatch
     private var observers: [any NSObjectProtocol] = []
 
     /// Starts listening for sleep and wake, which arrive on the main run loop.
-    public init() {
+    public init(log: AgentLog) {
+        let sleep = SleepWatch(log: log)
+        self.sleep = sleep
         let center = NSWorkspace.shared.notificationCenter
         observers = [
-            center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { [weak self] _ in
-                self?.willSleep()
+            center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { _ in
+                sleep.willSleep(at: ProcessInfo.processInfo.systemUptime, Date())
             },
-            center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { [weak self] _ in
-                self?.didWake()
+            center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { _ in
+                sleep.didWake(Date())
             },
         ]
     }
 
-    /// Calls the handler on the main run loop as the Mac goes to sleep, before the Mac sleeps, and as it wakes.
-    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) {
-        lock.withLock { sleepChanged = handler }
+    /// Calls the handler on the main run loop as the Mac goes to sleep, before the Mac sleeps, and as it wakes from a sleep the handler recorded.
+    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Bool) {
+        sleep.onChange(handler)
     }
 
     deinit {
@@ -67,26 +67,8 @@ public final class LivePresence: @unchecked Sendable {
             || session[kCGSessionOnConsoleKey as String] as? Bool == false
         let anyInput = CGEventType(rawValue: ~0)!
         let idleSeconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
-        let asleep = lock.withLock {
-            if let sleptAt, !isStillAsleep(sleptAt: sleptAt, idleSeconds: idleSeconds, uptime: ProcessInfo.processInfo.systemUptime) {
-                self.sleptAt = nil
-            }
-            return sleptAt != nil
-        }
+        let asleep = sleep.stillAsleep(idleSeconds: idleSeconds, uptime: ProcessInfo.processInfo.systemUptime)
         return Presence(idleSeconds: idleSeconds, locked: locked, asleep: asleep)
-    }
-
-    private func willSleep() {
-        let handler = lock.withLock {
-            sleptAt = ProcessInfo.processInfo.systemUptime
-            return sleepChanged
-        }
-        handler?(.willSleep, Date())
-    }
-
-    private func didWake() {
-        lock.withLock { sleepChanged }?(.didWake, Date())
-        lock.withLock { sleptAt = nil }
     }
 }
 
