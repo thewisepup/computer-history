@@ -62,25 +62,34 @@ private func expectTransitions<S: StateMachine>(_ legal: [(S, S.Event, S)], refu
 }
 
 @Test func sleepIsRecordedThenWakesThroughWakingOnlyWhenRecorded() {
+    let waking = SleepState.waking(since: 10, writing: false)
+    let writing = SleepState.waking(since: 10, writing: true)
     expectTransitions(
         [
             (SleepState.awake, .willSleep(at: 10), .asleep(since: 10, recorded: false)),
             (.asleep(since: 10, recorded: true), .willSleep(at: 20), .asleep(since: 20, recorded: false)),
-            (.waking, .willSleep(at: 20), .asleep(since: 20, recorded: false)),
-            (.asleep(since: 10, recorded: false), .recorded, .asleep(since: 10, recorded: true)),
+            (waking, .willSleep(at: 20), .asleep(since: 20, recorded: false)),
+            (.asleep(since: 10, recorded: false), .recorded(since: 10), .asleep(since: 10, recorded: true)),
+            (.awake, .recorded(since: 10), waking),
             (.asleep(since: 10, recorded: false), .didWake, .awake),
             (.awake, .didWake, .awake),
-            (.asleep(since: 10, recorded: true), .didWake, .waking),
-            (.waking, .didWake, .waking),
-            (.waking, .woke, .awake),
+            (.asleep(since: 10, recorded: true), .didWake, waking),
+            (waking, .didWake, waking),
+            (writing, .didWake, writing),
+            (waking, .writingWoke(since: 10), writing),
+            (writing, .woke(since: 10), .awake),
         ],
         refused: [
-            (.awake, .recorded),
-            (.asleep(since: 10, recorded: true), .recorded),
-            (.waking, .recorded),
-            (.awake, .woke),
-            (.asleep(since: 10, recorded: false), .woke),
-            (.asleep(since: 10, recorded: true), .woke),
+            (.asleep(since: 20, recorded: false), .recorded(since: 10)),
+            (.asleep(since: 10, recorded: true), .recorded(since: 10)),
+            (waking, .recorded(since: 10)),
+            (writing, .writingWoke(since: 10)),
+            (.waking(since: 20, writing: false), .writingWoke(since: 10)),
+            (.asleep(since: 20, recorded: false), .writingWoke(since: 10)),
+            (.awake, .woke(since: 10)),
+            (waking, .woke(since: 10)),
+            (.waking(since: 20, writing: true), .woke(since: 10)),
+            (.asleep(since: 10, recorded: true), .woke(since: 10)),
         ]
     )
 }
