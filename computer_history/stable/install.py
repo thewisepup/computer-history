@@ -25,6 +25,7 @@ from computer_history.stable.versions import (
     replace_symlink,
     version_name,
 )
+from computer_history.transitions import IllegalTransition
 
 
 class InstallFailed(Exception):
@@ -71,7 +72,7 @@ def install(
                 raise InstallFailed(f"{none_passed(search.skipped)} ({NOTHING_CHANGED})")
             built, skipped = search.chosen.commit, search.skipped
             make_current(host, layout, built)
-        except (HostError, OSError, UnsafeVersionFolder) as exc:
+        except (HostError, OSError, UnsafeVersionFolder, IllegalTransition) as exc:
             raise InstallFailed(f"{exc} ({NOTHING_CHANGED})") from exc
     try:
         layout.link.parent.mkdir(parents=True, exist_ok=True)

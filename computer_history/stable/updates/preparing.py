@@ -8,18 +8,22 @@ from datetime import datetime
 
 from computer_history.host import Host, HostError
 from computer_history.stable.backups import BackupFailed, take_pre_update_backup
-from computer_history.stable.capture_agent import AgentPlan, holds_agent, place_agent, plan_agent
+from computer_history.stable.capture_agent import AgentPlan, place_agent, plan_agent
 from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import NOTHING_CHANGED, Layout
 from computer_history.stable.stopped_agents import StoppedAgents
+from computer_history.stable.updates.phases import Progress, UpdatePhase, update_progress
 from computer_history.stable.versions import (
     InstalledVersion,
     UnsafeVersionFolder,
+    VersionState,
     build_version,
     pointed,
     version_name,
+    version_state,
 )
 from computer_history.store import DatabaseCopy, SpoolHold, sidecars
+from computer_history.transitions import IllegalTransition
 
 
 class UpdateFailed(Exception):
@@ -28,7 +32,8 @@ class UpdateFailed(Exception):
 
 @dataclass(frozen=True)
 class Prepared:
-    """What update readied before switching versions, the stopped backend among it."""
+    """What update readied before switching versions, the stopped backend among it, and the
+    phase the run has reached."""
 
     old: InstalledVersion
     old_previous: InstalledVersion | None
@@ -38,6 +43,7 @@ class Prepared:
     stopped: StoppedAgents
     backup: DatabaseCopy | None
     hold: SpoolHold
+    progress: Progress[UpdatePhase]
 
 
 def prepare(
@@ -55,13 +61,14 @@ def prepare(
     """
     name = version_name(commit)
     folder = layout.versions / name
+    progress = update_progress()
     try:
         agent = plan_agent(host, layout, commit, old)
     except HostError as exc:
         raise UpdateFailed(
             f"could not tell whether the capture agent changed: {exc} ({NOTHING_CHANGED})"
         ) from exc
-    placing = not holds_agent(layout, folder)
+    placing = version_state(layout, folder) is not VersionState.COMPLETE
     if agent.changed and placing:
         try:
             host.check_agent_toolchain()
@@ -71,25 +78,32 @@ def prepare(
             ) from exc
     try:
         built = build_version(host, layout, commit)
-    except (HostError, OSError, UnsafeVersionFolder) as exc:
+    except (HostError, OSError, UnsafeVersionFolder, IllegalTransition) as exc:
         raise UpdateFailed(f"could not build version {name}: {exc} ({NOTHING_CHANGED})") from exc
+    progress.advance(UpdatePhase.BUILT)
     if placing:
         _place(host, layout, agent, name, built=built)
+        progress.advance(UpdatePhase.AGENT_PLACED)
     hold = SpoolHold.beside(layout.database)
     stopped = StoppedAgents(host, layout, sleep=sleep)
     backup = None
     try:
         stopped.stop((BACKEND,))
+        progress.advance(UpdatePhase.BACKEND_STOPPED)
         if layout.database.is_file():
             backup = take_pre_update_backup(layout.database, version=old.name, now=now())
+            progress.advance(UpdatePhase.BACKED_UP)
         hold.place()
+        progress.advance(UpdatePhase.HOLD_PLACED)
     except BaseException as exc:
         left = _undo(layout, name if built else None, backup, stopped)
-        if isinstance(exc, HostError | BackupFailed | OSError):
+        if isinstance(exc, HostError | BackupFailed | OSError | IllegalTransition):
             raise UpdateFailed(f"{exc} ({left})") from exc
         exc.add_note(left)
         raise
-    return Prepared(old, pointed(layout.previous), name, built, agent, stopped, backup, hold)
+    return Prepared(
+        old, pointed(layout.previous), name, built, agent, stopped, backup, hold, progress
+    )
 
 
 def _place(host: Host, layout: Layout, agent: AgentPlan, name: str, *, built: bool) -> None:
@@ -98,7 +112,7 @@ def _place(host: Host, layout: Layout, agent: AgentPlan, name: str, *, built: bo
     except BaseException as exc:
         if built:
             shutil.rmtree(layout.versions / name, ignore_errors=True)
-        if not isinstance(exc, HostError | OSError):
+        if not isinstance(exc, HostError | OSError | IllegalTransition):
             raise
         doing = "build the capture agent for" if agent.changed else "copy the capture agent into"
         raise UpdateFailed(f"could not {doing} version {name}: {exc} ({NOTHING_CHANGED})") from exc

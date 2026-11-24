@@ -25,7 +25,6 @@ class WatchdogState:
     watching_since: datetime | None = None
     findings: tuple[Finding, ...] = ()
     notified: dict[Check, datetime] = field(default_factory=lambda: {})
-    open: frozenset[Check] = frozenset()
     reopened: tuple[datetime, ...] = ()
     unreachable_since: datetime | None = None
     logged: dict[str, datetime] = field(default_factory=lambda: {})
@@ -86,7 +85,6 @@ def read_watchdog_state(path: Path) -> WatchdogState | None:
             watching_since=_time(saved["watching_since"]),
             findings=tuple(_finding(found) for found in saved["findings"]),
             notified={Check(name): _required(at) for name, at in saved["notified"].items()},
-            open=frozenset(Check(name) for name in saved["open"]),
             reopened=tuple(_required(at) for at in saved["reopened"]),
             unreachable_since=_time(saved["unreachable_since"]),
             logged={str(message): _required(at) for message, at in saved["logged"].items()},
@@ -112,7 +110,7 @@ def write_watchdog_state(path: Path, state: WatchdogState) -> None:
             for found in state.findings
         ],
         "notified": {check.value: at.isoformat() for check, at in state.notified.items()},
-        "open": sorted(check.value for check in state.open),
+        "open": sorted(check.value for check in state.notified),
         "reopened": [at.isoformat() for at in state.reopened],
         "unreachable_since": _iso(state.unreachable_since),
         "logged": {message: at.isoformat() for message, at in state.logged.items()},

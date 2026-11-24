@@ -14,8 +14,8 @@ run.py          one run, under a lock: read the thresholds and the last state,
     |                  and the backend (silent: no cycle in its ingest health
     |                  file; failing cycles alert from ingest itself)
     +-- alerts.py      which findings notify: a problem at most once an hour,
-    |                  a clear once, the notification text, and which errors
-    |                  are due a log line
+    |                  a clear once, each check's alert closed or open, the
+    |                  notification text, and which errors are due a log line
     +-- state.py       the state file and lock beside the database: the last
                        findings, what was notified and logged, the reopens,
                        when watching resumed, and whether the watchdog stopped

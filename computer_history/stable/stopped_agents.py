@@ -3,10 +3,28 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from computer_history.host import Host, HostError
 from computer_history.stable.launch_agents import LaunchAgent, load_agent, start_agent, stop_agent
 from computer_history.stable.layout import Layout
+from computer_history.transitions import TransitionTable
+
+
+class AgentStop(Enum):
+    RUNNING = auto()
+    STOPPED_OWED = auto()
+    RESTARTED = auto()
+
+
+AGENT_STOPS = TransitionTable(
+    "stopped agent",
+    {
+        AgentStop.RUNNING: frozenset({AgentStop.STOPPED_OWED, AgentStop.RESTARTED}),
+        AgentStop.STOPPED_OWED: frozenset({AgentStop.STOPPED_OWED, AgentStop.RESTARTED}),
+        AgentStop.RESTARTED: frozenset({AgentStop.STOPPED_OWED, AgentStop.RESTARTED}),
+    },
+)
 
 
 class AgentNotStopped(HostError):
@@ -37,7 +55,7 @@ class StoppedAgents:
         self._host = host
         self._layout = layout
         self._sleep = sleep
-        self._owed: list[LaunchAgent] = []
+        self._stops: dict[LaunchAgent, AgentStop] = {}
 
     def stop(self, agents: Iterable[LaunchAgent]) -> None:
         """Stop each agent launchd has loaded, in order, waiting until launchd lets it go."""
@@ -45,8 +63,7 @@ class StoppedAgents:
             try:
                 if not self._host.job(agent.label).loaded:
                     continue
-                if agent not in self._owed:
-                    self._owed.append(agent)
+                self._move(agent, AgentStop.STOPPED_OWED)
                 stop_agent(self._host, agent.label, sleep=self._sleep)
             except HostError as exc:
                 raise AgentNotStopped(agent, exc) from exc
@@ -68,12 +85,20 @@ class StoppedAgents:
     def load(self, agent: LaunchAgent) -> None:
         """Write the agent's plist and load it, stopped or not; it is no longer owed a start."""
         load_agent(self._host, self._layout, agent, sleep=self._sleep)
-        if agent in self._owed:
-            self._owed.remove(agent)
+        self._move(agent, AgentStop.RESTARTED)
+
+    def _move(self, agent: LaunchAgent, target: AgentStop) -> None:
+        current = self._stops.get(agent, AgentStop.RUNNING)
+        if AGENT_STOPS.move(current, target) is not current:
+            self._stops.pop(agent, None)
+        self._stops[agent] = target
 
     def _start_owed(self, *, skip_loaded: bool) -> Restart:
-        owed = tuple(reversed(self._owed))
-        self._owed.clear()
+        owed = tuple(
+            agent for agent, stop in reversed(self._stops.items()) if stop is AgentStop.STOPPED_OWED
+        )
+        for agent in owed:
+            self._move(agent, AgentStop.RESTARTED)
         failed: list[tuple[LaunchAgent, HostError]] = []
         for agent in owed:
             if skip_loaded and self._loaded(agent, unanswered=True):
