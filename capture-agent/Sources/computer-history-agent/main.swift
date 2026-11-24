@@ -23,7 +23,7 @@ let pause = settings.pause
 switch command {
 case .run:
     let log = AgentLog.unified()
-    let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init)
+    let spool = SpoolWriter(directory: settings.spoolDirectory, now: Date.init, log: log)
     let counts = CaptureCounts()
     let captureStop = CaptureStop()
     exit(AgentLifecycle(
@@ -35,7 +35,7 @@ case .run:
         counts: counts,
         startCapturing: {
             startCaptureThread(
-                mac: LiveMac(callTimeout: settings.windowText.callTimeout),
+                mac: LiveMac(callTimeout: settings.windowText.callTimeout, log: log),
                 settings: settings,
                 spool: spool,
                 images: JPEGImageStore(

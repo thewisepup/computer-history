@@ -94,12 +94,13 @@ final class TempSpool {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("spool-tests-\(UUID().uuidString)", isDirectory: true)
     let clock = TestClock("2026-11-18T09:00:00.000Z")
+    let logs = LogRecorder()
 
     deinit { try? FileManager.default.removeItem(at: directory) }
 
     func writer() -> SpoolWriter {
         let clock = clock
-        return SpoolWriter(directory: directory, now: { clock.now })
+        return SpoolWriter(directory: directory, now: { clock.now }, log: logs.log)
     }
 
     func names() throws -> [String] {

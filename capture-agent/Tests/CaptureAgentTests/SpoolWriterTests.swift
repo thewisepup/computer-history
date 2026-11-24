@@ -146,3 +146,55 @@ import Testing
     #expect(try spool.mode(SpoolWriter.lockFileName) == 0o600)
     #expect(try spool.mode(leftover.lastPathComponent) == 0o600)
 }
+
+@Test func anAppendThatOpensALeftoverFileDropsItsTornLastLineFirst() throws {
+    let spool = TempSpool()
+    let whole = try line(fixtureRecords[0])
+    try spool.writeOpenFile(whole + "\n" + String(try line(fixtureRecords[1]).prefix(40)))
+    try spool.writer().append(fixtureRecords[2])
+    #expect(try spool.lines(SpoolWriter.openFileName) == [whole, line(fixtureRecords[2]), ""])
+}
+
+@Test func anAppendAfterTheOpenFileWasRemovedWritesToANewOpenFile() throws {
+    let spool = TempSpool()
+    let writer = spool.writer()
+    try writer.start()
+    try writer.append(fixtureRecords[0])
+    try FileManager.default.removeItem(at: spool.directory.appendingPathComponent(SpoolWriter.openFileName))
+    try writer.append(fixtureRecords[1])
+    #expect(try spool.lines(SpoolWriter.openFileName) == [line(fixtureRecords[1]), ""])
+    #expect(spool.logs.records.isEmpty)
+}
+
+@Test func aFinishAfterTheOpenFileWasRemovedLetsTheNextAppendStartANewOne() throws {
+    let spool = TempSpool()
+    let writer = spool.writer()
+    try writer.start()
+    try writer.append(fixtureRecords[0])
+    try FileManager.default.removeItem(at: spool.directory.appendingPathComponent(SpoolWriter.openFileName))
+    #expect(try writer.finish() == nil)
+    try writer.append(fixtureRecords[1])
+    #expect(try writer.finish()?.lastPathComponent == "20261118T090000.000Z.jsonl")
+    #expect(try spool.lines("20261118T090000.000Z.jsonl") == [line(fixtureRecords[1]), ""])
+    #expect(spool.logs.records.isEmpty)
+}
+
+@Test func aStartThatFailsAfterTakingTheLockLetsGoOfIt() throws {
+    let spool = TempSpool()
+    try FileManager.default.createDirectory(at: spool.directory, withIntermediateDirectories: true)
+    let denyListing = "user:\(NSUserName()) deny list"
+    try changeAccess("+a", denyListing, spool.directory)
+    let writer = spool.writer()
+    #expect(throws: (any Error).self) { try writer.start() }
+    try changeAccess("-a", denyListing, spool.directory)
+    #expect(try writer.start() == nil)
+}
+
+private func changeAccess(_ operation: String, _ entry: String, _ folder: URL) throws {
+    let chmod = Process()
+    chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
+    chmod.arguments = [operation, entry, folder.path]
+    try chmod.run()
+    chmod.waitUntilExit()
+    #expect(chmod.terminationStatus == 0)
+}

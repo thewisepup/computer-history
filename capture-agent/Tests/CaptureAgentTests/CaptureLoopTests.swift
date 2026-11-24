@@ -408,7 +408,10 @@ extension LoopFixture {
 @Test func theMacStillReportsAsleepWhileItsWakeIsHandled() {
     let mac = ScriptedMac()
     let seen = Seen()
-    mac.onSleepChange { change, _ in seen.add("\(change) \(mac.samplePresence().asleep)") }
+    mac.onSleepChange { change, _ in
+        seen.add("\(change) \(mac.samplePresence().asleep)")
+        return true
+    }
     mac.presence.asleep = true
     mac.presence.asleep = false
     #expect(seen.values == ["willSleep true", "didWake true"])

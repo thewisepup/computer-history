@@ -30,7 +30,8 @@ final class CaptureLoop<M: Mac> {
                 denylist: settings.denylist
             ),
             windows: WindowWatch(applicationElement: mac.applicationElement),
-            start: mac.uptime()
+            start: mac.uptime(),
+            log: log
         )
         self.mac = mac
         self.pause = settings.pause
@@ -84,7 +85,7 @@ final class CaptureLoop<M: Mac> {
 
     /// Stops writing slept and woke records, once the loop has run for the last time.
     func stopRecordingSleep() {
-        mac.onSleepChange { _, _ in }
+        mac.onSleepChange { _, _ in false }
     }
 
     /// Gives queued screenshot records until the deadline to reach the spool, then writes no more, and returns how many were dropped.

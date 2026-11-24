@@ -8,8 +8,8 @@ public protocol Mac {
     func now() -> Date
     func sleep(_ seconds: TimeInterval)
     func samplePresence() -> Presence
-    /// Calls the handler, replacing any earlier one, with the time as the Mac goes to sleep and as it wakes.
-    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void)
+    /// Calls the handler, replacing any earlier one, with the time as the Mac goes to sleep and as it wakes from a sleep the handler returned true for.
+    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Bool)
     func accessibilityTrusted() -> Bool
     func focusedApplication() -> FocusedApplication?
     func frontmostApplication() -> FocusedApplication?
@@ -21,21 +21,23 @@ public protocol Mac {
 
 /// The real Mac: system uptime and time, presence from macOS, the live accessibility API, pictures of the focused window through ScreenCaptureKit, and notifications through the notification centre.
 public struct LiveMac: Mac, Sendable {
-    private let presence = LivePresence()
+    private let presence: LivePresence
     private let frontmost = LiveFrontmostApplication()
-    private let screenshots = OneRequestAtATime()
+    private let screenshots: OneRequestAtATime
     private let notifications = LiveNotifications()
 
     /// Sets every accessibility call this process makes to time out after the given seconds, starts listening for sleep, wake and app activations, and handles clicks on its notifications.
-    public init(callTimeout: TimeInterval) {
+    public init(callTimeout: TimeInterval, log: AgentLog) {
         LiveAccessibilityElement.setProcessCallTimeout(callTimeout)
+        presence = LivePresence(log: log)
+        screenshots = OneRequestAtATime(log: log, .screenshots)
     }
 
     public func uptime() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
     public func now() -> Date { Date() }
     public func sleep(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
     public func samplePresence() -> Presence { presence.sample() }
-    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) { presence.onSleepChange(handler) }
+    public func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Bool) { presence.onSleepChange(handler) }
     public func accessibilityTrusted() -> Bool { isAccessibilityTrusted(prompt: false) }
     public func focusedApplication() -> FocusedApplication? { CaptureAgent.focusedApplication(orFrontmost: frontmost.application) }
     public func frontmostApplication() -> FocusedApplication? { frontmost.application() }

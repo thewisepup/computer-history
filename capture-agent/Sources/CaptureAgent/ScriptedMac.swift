@@ -27,11 +27,12 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     var notifications: [UserNotification] = []
     var postedLater: [@Sendable () -> Void] = []
     var onCall: (String) -> Void = { _ in }
-    private var sleepHandler: @Sendable (SleepChange, Date) -> Void = { _, _ in }
+    let sleepWatch: SleepWatch
     private var elements: CGWindowID = 0
 
-    init(start: Date = Date(timeIntervalSince1970: 0)) {
+    init(start: Date = Date(timeIntervalSince1970: 0), log: AgentLog = AgentLog { _ in }) {
         self.start = start
+        sleepWatch = SleepWatch(log: log)
         windowImage = { [unowned self] window, _ in
             .image(fixtureImage(width: 1600, height: 1000), windowID: apps[window.processIdentifier]?.focusedWindow?.windowID ?? 0)
         }
@@ -41,10 +42,15 @@ final class ScriptedMac: Mac, @unchecked Sendable {
     func now() -> Date { start.addingTimeInterval(clock) }
     func sleep(_ seconds: TimeInterval) { clock += seconds }
     func samplePresence() -> Presence { presence }
-    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Void) { sleepHandler = handler }
+    func onSleepChange(_ handler: @escaping @Sendable (SleepChange, Date) -> Bool) { sleepWatch.onChange(handler) }
 
-    /// Tells the sleep handler of a sleep or wake now, as changing presence.asleep does.
-    func sleepChanged(_ change: SleepChange) { sleepHandler(change, now()) }
+    /// Tells the sleep watch of a sleep or wake now, as changing presence.asleep does.
+    func sleepChanged(_ change: SleepChange) {
+        switch change {
+        case .willSleep: sleepWatch.willSleep(at: clock, now())
+        case .didWake: sleepWatch.didWake(now())
+        }
+    }
 
     func accessibilityTrusted() -> Bool { trusted }
 
