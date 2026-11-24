@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from computer_history.sources import (
     CycleSummary,
     FailureKind,
     IngestOutcome,
+    Pull,
     StreamFailure,
     plan_backfill,
     poll,
@@ -240,8 +242,18 @@ def test_poll_refuses_a_stream_fed_by_two_sources(conn: sqlite3.Connection) -> N
     assert second.pulled == []
 
 
-def three_hours() -> FakeSource:
-    spool = FakeSource("a")
+class UnsettledRanges(FakeSource):
+    def pull_range(self, stream: str, start: datetime, end: datetime, *, now: datetime) -> Pull:
+        return replace(super().pull_range(stream, start, end, now=now), settled_until=None)
+
+
+class PositionlessRanges(UnsettledRanges):
+    def pull_range(self, stream: str, start: datetime, end: datetime, *, now: datetime) -> Pull:
+        return replace(super().pull_range(stream, start, end, now=now), position=None)
+
+
+def three_hours(source: type[FakeSource] = FakeSource) -> FakeSource:
+    spool = source("a")
     for capture_id, minute in [("a1", 10), ("a2", 70), ("held", 90), ("a3", 100), ("a4", 130)]:
         spool.add("a", capture_id, minute)
     spool.unsettled.add("held")
@@ -373,8 +385,7 @@ def test_ctrl_c_while_reporting_a_finished_stream_is_reported_as_interrupted(
 def test_held_back_events_without_a_settled_time_make_the_chunk_incomplete(
     conn: sqlite3.Connection,
 ) -> None:
-    spool = three_hours()
-    spool.range_reports_progress = False
+    spool = three_hours(UnsettledRanges)
     plan = hourly_plan(spool, conn)
     chunks: list[ChunkDone] = []
     (result,) = run_backfill(
@@ -384,6 +395,18 @@ def test_held_back_events_without_a_settled_time_make_the_chunk_incomplete(
     assert [done.incomplete_from for done in chunks] == [None, second.start, None]
     assert result.incomplete == [(second, second.start)]
     assert result.complete_until == second.start
+    assert result.progress is BackfillProgress.SET
+    progress = stored_progress(conn, "a")
+    assert progress.position == spool.positions[1] and progress.settled_until is None
+
+
+def test_backfill_refuses_a_range_pull_without_a_position_to_set_progress_from(
+    conn: sqlite3.Connection,
+) -> None:
+    spool = three_hours(PositionlessRanges)
+    with pytest.raises(ValueError, match="gave no position to set its progress from"):
+        run_backfill(conn, spool, [hourly_plan(spool, conn)], clock=lambda: at(180))
+    assert stored(conn, "a") == ["a1", "a2", "a3"] and get_progress(conn, "a") is None
 
 
 def test_backfill_refuses_two_plans_for_one_stream(conn: sqlite3.Connection) -> None:

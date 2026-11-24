@@ -332,14 +332,18 @@ def _backfill_stream(
         incomplete_from = _incomplete_from(pulled, piece)
         if incomplete_from is not None and first_incomplete is None:
             first_incomplete = pulled
-        complete = first_incomplete or pulled
+        progress_from = (first_incomplete or pulled) if index == last and attempt else None
+        if progress_from is not None and progress_from.position is None:
+            raise ValueError(
+                f"a range pull of {plan.stream!r} gave no position to set its progress from"
+            )
         written = commit_pull(
             conn,
             plan.stream,
             pulled,
             project=project,
             now=now,
-            progress_from=complete if index == last and attempt else None,
+            progress_from=progress_from,
             only_if_none=True,
         )
         seconds = (clock() - now).total_seconds()

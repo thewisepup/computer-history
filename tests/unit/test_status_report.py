@@ -162,6 +162,14 @@ def test_without_a_running_watchdog_the_recent_past_counts_as_watched(db: Path, 
     assert assessment.activitywatch.reason is Reason.STALLED
 
 
+def test_without_a_running_watchdog_a_silence_while_you_were_away_cannot_tell(db: Path) -> None:
+    last_cycle(db, at(40))
+
+    backend = report(db, watchers(away_from=40)).assessment.backend
+
+    assert backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.AFK, at(40))
+
+
 def test_without_a_running_watchdog_an_outage_counts_from_now(db: Path) -> None:
     watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
 
