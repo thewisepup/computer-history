@@ -293,9 +293,9 @@ def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
     assert ingest_line(lines).startswith("Ingest:        ok, last cycle ")
-    assert "cannot tell: silent, but aw-afk does not show you active, last seen" in live_check(
-        lines, Check.BACKEND
-    )
+    backend = live_check(lines, Check.BACKEND)
+    assert "cannot tell: silent, but aw-afk does not show you active, last seen" in backend
+    assert backend.endswith(" (20m ago)")
 
 
 def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_active(
