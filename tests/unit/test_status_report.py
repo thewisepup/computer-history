@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from aw_http import served_over_http
-from cli_output import RunCli, ingest_line, status_out
+from cli_output import RunCli, ingest_line, live_check, status_out
 from fake_aw import FakeAW, UnreachableAW
 from fake_host import FakeHost, write_record
 from projectors import AW
@@ -40,6 +40,7 @@ from computer_history.watchdog.state import WatchdogState, write_watchdog_state
 HOST = "test-host.local"
 T0 = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
 NOW = T0 + timedelta(minutes=60)
+BACKEND_SILENT = "backend        PROBLEM: silent while you were active, last seen"
 UNREACHABLE_ERROR = "ActivityWatch unreachable at http://127.0.0.1:5600/api/0: refused"
 
 
@@ -170,12 +171,21 @@ def test_without_a_running_watchdog_a_silence_while_you_were_away_cannot_tell(db
     assert backend == Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.AFK, at(40))
 
 
-def test_without_a_running_watchdog_an_outage_counts_from_now(db: Path) -> None:
-    watching(db, since=at(-60), ran_at=at(50), unreachable_since=at(-30))
+@pytest.mark.parametrize(
+    ("saved", "verdict", "since"),
+    [(at(-60), Verdict.PROBLEM, at(-60)), (None, Verdict.UNKNOWN, NOW)],
+    ids=["saved", "none-saved"],
+)
+def test_a_stopped_watchdogs_saved_outage_start_is_kept(
+    db: Path, saved: datetime | None, verdict: Verdict, since: datetime
+) -> None:
+    watching(db, since=at(-120), ran_at=at(50), unreachable_since=saved)
 
     activitywatch = report(db, UnreachableAW()).assessment.activitywatch
 
-    assert (activitywatch.verdict, activitywatch.last_seen) == (Verdict.UNKNOWN, NOW)
+    assert activitywatch == Finding(
+        Check.ACTIVITYWATCH, verdict, Reason.UNREACHABLE, since, UNREACHABLE_ERROR
+    )
 
 
 def test_the_stable_watchdog_state_beside_the_database_is_read_for_both_uses(db: Path) -> None:
@@ -282,10 +292,10 @@ def test_status_after_twenty_minutes_away_shows_the_afk_verdict(
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    line = ingest_line(lines)
-    assert line.startswith("Ingest:        ok, last cycle ")
-    assert line.endswith("; cannot tell: silent, but aw-afk does not show you active")
-    assert "NOT REPORTING" not in line
+    assert ingest_line(lines).startswith("Ingest:        ok, last cycle ")
+    backend = live_check(lines, Check.BACKEND)
+    assert "cannot tell: silent, but aw-afk does not show you active, last seen" in backend
+    assert backend.endswith(" (20m ago)")
 
 
 def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_active(
@@ -301,5 +311,6 @@ def test_status_says_not_reporting_when_the_backend_is_silent_while_you_were_act
     with served_over_http(aw) as url:
         lines = status_out(run, "--db-path", str(db), "--aw-url", url).splitlines()
 
-    assert ingest_line(lines).endswith("; NOT REPORTING for 20m (is `ingest --watch` running?)")
+    backend = live_check(lines, Check.BACKEND)
+    assert BACKEND_SILENT in backend and backend.endswith(" (20m ago)")
     assert not any(line.startswith("!! ") for line in lines)

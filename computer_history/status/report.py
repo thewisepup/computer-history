@@ -158,7 +158,7 @@ def status_report(
         health_file=health_path(db_path),
         silent_after=read_thresholds(agent_config_path(db_path)).silent_after,
         watched_since=now - STATUS_WINDOW if running is None else running,
-        unreachable_since=None if running is None else previous.unreachable_since,
+        unreachable_since=previous.unreachable_since,
         now=now,
         hostname=hostname,
     )

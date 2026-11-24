@@ -362,8 +362,13 @@ computer-history status --spool-path /tmp/spool   # or $COMPUTER_HISTORY_SPOOL
 
 ```
 Database:      .../ComputerHistory/history.db (5.2 MB, schema v5)
-ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-web, aw-window)
+ActivityWatch: http://127.0.0.1:5600/api/0 (sources: aw-afk, aw-web, aw-window)
 Ingest:        ok, last cycle 2026-11-18 10:10 (20s ago)
+
+Watchdog checks (run now, nothing notified):
+  capture agent  ok: recording, last seen 2026-11-18 10:10 (12s ago)
+  ActivityWatch  ok: recording, last seen 2026-11-18 10:10 (5s ago)
+  backend        ok: recording, last seen 2026-11-18 10:10 (20s ago)
 
 Sources:
   aw-window     3,451 observations  latest end 2026-11-18 10:10  settled until 2026-11-18 10:10 (5s behind now)
@@ -378,7 +383,6 @@ Coverage gaps (unobserved: nothing recorded) of 5m or more ...
 
 Capture agent:
   last capture  2026-11-18 10:09 (40s ago)
-  alive         yes (last record 2026-11-18 10:10 (12s ago))
   spool         2 finished files waiting (oldest 1m 30s), 0 in unreadable/  (.../ComputerHistory/spool)
   today         812 captures stored, 14 excluded, 3 cut off, 1 timed out, 2 slept, 2 woke
   paused        no
@@ -428,20 +432,25 @@ Stable watchdog:
 Read-only: it never creates, migrates or writes, never changes the spool, and
 never notifies. Everything down to `Backups:` is the given database's own; the
 three `Stable` sections describe the stable install whichever profile runs.
-`Ingest:`, `ActivityWatch:` and the capture agent's `alive` take the
-watchdog's verdicts by its thresholds. Gaps are unobserved time, never assumed
+`Watchdog checks` are the watchdog's findings, judged now by its thresholds,
+in the same words as `Stable watchdog`. Gaps are unobserved time, never assumed
 idle; where aw-afk has no data the stretch *cannot be judged*.
 `docs/DESIGN.md` §8.7 has how each line is judged. While ingest
-cycles fail, status opens with a banner (real output, seven cycles into a
-renamed `ingest_progress`):
+cycles fail, status opens with a banner (real output, one cycle into a
+renamed `ingest_progress`, renamed back before status ran):
 
 ```
-!! ingest is FAILING since 2026-11-20 16:13 (7 cycles): aw-afk: no such table: ingest_progress
+!! ingest is FAILING since 2026-11-23 16:14 (1 cycles): aw-afk: no such table: ingest_progress
 
-Database:      .../history.db (112.0 KB + 16.1 KB WAL, schema v5)
-ActivityWatch: yes (http://127.0.0.1:50057/api/0; sources: aw-afk, aw-web, aw-window)
-Ingest:        FAILING since 2026-11-20 16:13 (7 cycles), last cycle 2026-11-20 16:19 (15s ago)
-  last success  2026-11-20 16:12 (7m 15s ago)
+Database:      .../history.db (4.0 KB + 265.6 KB WAL, schema v5)
+ActivityWatch: http://127.0.0.1:50660/api/0 (sources: aw-afk, aw-web, aw-window)
+Ingest:        FAILING since 2026-11-23 16:14 (1 cycles), last cycle 2026-11-23 16:14 (1s ago)
+  last success  2026-11-23 16:13 (1m 1s ago)
+
+Watchdog checks (run now, nothing notified):
+  capture agent  ok: recording, last seen 2026-11-23 16:13 (1m 1s ago)
+  ActivityWatch  cannot tell: no AFK or window bucket for this host
+  backend        ok: running, but its cycles fail (ingest alerts on that), last seen 2026-11-23 16:14 (1s ago) (aw-afk: no such table: ingest_progress)
 ```
 
 Before the agent has stored anything, or with no screenshot records, its

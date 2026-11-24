@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Protocol
 
 from computer_history.cli import app as cli_app
+from computer_history.cli.status import LIVE_CHECKS_TITLE
 from computer_history.host import Host
+from computer_history.watchdog import Check
 
 
 class RunCli(Protocol):
@@ -40,6 +42,14 @@ def status_out(run: RunCli, *argv: str) -> str:
 def ingest_line(out: list[str]) -> str:
     """Status's one Ingest line."""
     [line] = [line for line in out if line.startswith("Ingest:")]
+    return line
+
+
+def live_check(out: list[str], check: Check) -> str:
+    """Status's line for one check the watchdog makes, judged as status ran."""
+    [line] = [
+        line for line in section(out, LIVE_CHECKS_TITLE) if line.startswith(f"  {check.value} ")
+    ]
     return line
 
 

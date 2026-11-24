@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from cli_output import RunCli, after_profile_line, run_here
+from cli_output import RunCli, after_profile_line, live_check, run_here
 from db_states import SUPPORTED, newer_db, outdated_db, user_version, write_locked
 from fake_aw import FakeAW
 from projectors import no_signal
@@ -30,6 +30,7 @@ from computer_history.store import (
     insert_observations,
     table_counts,
 )
+from computer_history.watchdog import Check
 
 WINDOW_BUCKET = "aw-watcher-window_test-host.local"
 AFK_BUCKET = "aw-watcher-afk_test-host.local"
@@ -214,7 +215,7 @@ def test_status_reports_sources_lag_gaps_and_counts(run: RunCli, use_aw, db_path
 
     code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
-    assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: aw-afk, aw-window)" in out
+    assert "ActivityWatch: http://127.0.0.1:5600/api/0 (sources: aw-afk, aw-window)" in out
     assert re.search(rf"Database:\s+{re.escape(str(db_path))} \(\d+(\.\d)? [KM]?B", out)
     assert f"schema v{SUPPORTED}" in out
     assert re.search(r"aw-window\s+1 observations .* settled until .* \(20m( \d+s)? behind", out)
@@ -254,16 +255,22 @@ def test_status_lists_many_gaps_compactly(run: RunCli, use_aw, db_path: Path) ->
     assert "warning: ... and 5 more aw-window gaps" in out
 
 
-def test_status_with_aw_down_still_reports_store(run: RunCli, use_aw, db_path: Path) -> None:
-    use_aw(seeded_aw(datetime.now(UTC)))
+def test_status_with_aw_down_still_reports_store(
+    run: RunCli, use_aw, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    use_aw(seeded_aw(now))
     run_here(run, "--db-path", str(db_path), "ingest")
     use_aw(DownAW())
+    monkeypatch.setattr(formatting, "utc_now", lambda: now)
     code, out, err = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
     first_line = after_profile_line(out).splitlines()[0]
     assert "ActivityWatch is UNREACHABLE at http://127.0.0.1:5600/api/0" in first_line
-    assert UNREACHABLE in out
-    assert "ActivityWatch: no" in out
+    assert live_check(out.splitlines(), Check.ACTIVITYWATCH) == (
+        f"  ActivityWatch  cannot tell: unreachable, since {formatting.when(now)} (0s ago)"
+        f" ({UNREACHABLE})"
+    )
     assert re.search(r"aw-window\s+1 observations", out)
     assert "Traceback" not in err
 
@@ -282,7 +289,7 @@ def test_status_on_fresh_db(run: RunCli, use_aw, db_path: Path) -> None:
     use_aw(FakeAW({}))
     code, out, _ = run_here(run, "--db-path", str(db_path), "status")
     assert code == 0
-    assert "ActivityWatch: yes (http://127.0.0.1:5600/api/0; sources: none of" in out
+    assert "ActivityWatch: http://127.0.0.1:5600/api/0 (sources: none of" in out
     assert "Sources:\n  none yet" in out
     assert "nothing to check yet" in out
     assert re.search(r"observations\s+0\n", out)
@@ -322,7 +329,7 @@ def test_status_reports_a_newer_schema(run: RunCli, use_aw, db_path: Path) -> No
     code, out, err = run_here(run, "--db-path", str(db_path), "status")
     assert code == 1
     assert f"schema v{SUPPORTED + 1})" in out
-    assert "ActivityWatch: yes" in out
+    assert "ActivityWatch: http://127.0.0.1:5600/api/0 (sources:" in out
     assert "Sources:" not in out
     assert f"schema v{SUPPORTED + 1} is newer than this CLI understands (v{SUPPORTED})" in err
 
@@ -386,7 +393,7 @@ def test_status_honors_aw_url(run: RunCli, monkeypatch: pytest.MonkeyPatch, db_p
         run, "--db-path", str(db_path), "status", "--aw-url", "http://127.0.0.1:5666/api/0"
     )
     assert seen == ["http://127.0.0.1:5666/api/0"]
-    assert "(http://127.0.0.1:5666/api/0;" in out
+    assert "ActivityWatch: http://127.0.0.1:5666/api/0 (sources:" in out
 
 
 EVERY_COMMAND = [
