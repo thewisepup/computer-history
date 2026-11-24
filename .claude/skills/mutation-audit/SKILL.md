@@ -36,6 +36,9 @@ It installs mutmut (the `mutation` extra) when the venv lacks it, removes the
   `history_mcp.py`), not Swift (issue #48).
 - Not run against mutants, and never pruned, because they check things the
   tool cannot see: `tests/unit/test_standards.py`, `tests/unit/test_spool_fixture.py`,
+  the tests of repo scripts outside the package (`test_guard_live_data.py`,
+  `test_guard_live_data_hook.py`, `test_commit_msg_hook.py`, `test_ci_changes.py`,
+  `test_release_gate.py`, and the install-script test in `test_agent_install_guard.py`),
   `tests/e2e/test_capture_e2e.py`, `tests/data/test_synthetic_cli_http.py` (both run
   the CLI as a subprocess, which mutmut cannot follow) and
   `tests/data/test_synthetic_coverage.py` (it traces store functions by name, which
