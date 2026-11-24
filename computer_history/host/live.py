@@ -19,16 +19,13 @@ from typing import Any, TypeVar, cast
 from computer_history.host.contract import (
     COMMAND_NAME,
     OPEN_ACTIVITYWATCH,
-    SPOOL_READS_FLAG,
     AgentNotUnregistered,
-    BackendBuild,
     CheckOutcome,
     CheckRun,
     GitState,
     HostError,
     JobBusy,
     JobState,
-    SpoolReads,
 )
 
 Answer = TypeVar("Answer")
@@ -131,7 +128,7 @@ class LiveHost:
         )
         return GitState(branch, clean=not status.strip(), head=head, origin_main=origin_main)
 
-    def build(self, commit: str, venv: Path) -> BackendBuild:
+    def build(self, commit: str, venv: Path) -> str:
         uv = shutil.which("uv")
         if uv is None:
             raise HostError("uv is not installed (install it with `brew install uv`)")
@@ -159,11 +156,8 @@ class LiveHost:
             ],
             f"install commit {commit}",
         )
-        reads = _spool_reads(
-            _run([str(venv / "bin" / COMMAND_NAME), SPOOL_READS_FLAG], "run the built command")
-        )
-        packages = _run([uv, "pip", "freeze", "--python", python], "list the installed packages")
-        return BackendBuild(packages, reads)
+        _run([str(venv / "bin" / COMMAND_NAME), "--help"], "run the built command")
+        return _run([uv, "pip", "freeze", "--python", python], "list the installed packages")
 
     def agent_tree(self, commit: str) -> str:
         doing = f"read the capture agent's source tree at {commit}"
@@ -295,15 +289,6 @@ def _hash(answer: object, doing: str) -> str:
     if isinstance(answer, str) and COMMIT_HASH.fullmatch(answer):
         return answer
     raise HostError(f"could not {doing} from GitHub: it answered {answer!r:.60} for a hash")
-
-
-def _spool_reads(answer: str) -> SpoolReads:
-    try:
-        return SpoolReads.from_json(answer)
-    except ValueError as exc:
-        raise HostError(
-            f"could not ask the built command what it reads: {exc} in {answer.strip()[:200]!r}"
-        ) from exc
 
 
 def _export(commit: str, scratch: Path) -> Path:

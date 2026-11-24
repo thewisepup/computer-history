@@ -20,7 +20,6 @@ import pytest
 from computer_history.host import (
     OPEN_ACTIVITYWATCH,
     AgentNotUnregistered,
-    BackendBuild,
     CheckOutcome,
     CheckRun,
     GitState,
@@ -28,7 +27,6 @@ from computer_history.host import (
     JobBusy,
     JobState,
     LiveHost,
-    SpoolReads,
     live,
 )
 from computer_history.stable import BACKEND, CAPTURE_AGENT_LABEL
@@ -345,20 +343,13 @@ def test_git_state_without_git_is_a_host_error(
         LiveHost().git_state(tmp_path)
 
 
-def test_the_build_creates_installs_asks_what_it_reads_and_freezes_with_uv(
+def test_the_build_creates_installs_runs_and_freezes_with_uv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(live.shutil, "which", lambda _: UV)
     venv = tmp_path / "venv"
     python = str(venv / "bin" / "python")
-    command = str(venv / "bin" / "computer-history")
-    ran = commands_answer_each(
-        monkeypatch,
-        {
-            command: (0, '{"spool_version": 3, "kinds": ["capture", "paused"]}\n', ""),
-            UV: (0, "computer-history @ git+...\n", ""),
-        },
-    )
+    ran = commands_answer_each(monkeypatch, {UV: (0, "computer-history @ git+...\n", "")})
 
     built = LiveHost().build("abc123", venv)
 
@@ -380,32 +371,21 @@ def test_the_build_creates_installs_asks_what_it_reads_and_freezes_with_uv(
             python,
             f"computer-history @ git+{live.REPO_GIT_URL}@abc123",
         ],
-        [command, "--spool-reads"],
+        [str(venv / "bin" / "computer-history"), "--help"],
         [UV, "pip", "freeze", "--python", python],
     ]
-    assert built == BackendBuild(
-        "computer-history @ git+...\n", SpoolReads(3, ("capture", "paused"))
-    )
+    assert built == "computer-history @ git+...\n"
 
 
-@pytest.mark.parametrize(
-    "answer",
-    [
-        "usage: computer-history [-h]\n",
-        "[" * 100_000,
-        '{"spool_version": "1", "kinds": []}\n',
-        '{"kinds": []}\n',
-    ],
-    ids=["not json", "nested past the parser limit", "version not a number", "no version"],
-)
-def test_a_built_command_that_cannot_say_what_it_reads_fails_the_build(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: str
+def test_a_built_command_that_does_not_run_fails_the_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(live.shutil, "which", lambda _: UV)
     venv = tmp_path / "venv"
-    commands_answer_each(monkeypatch, {str(venv / "bin" / "computer-history"): (0, answer, "")})
+    command = str(venv / "bin" / "computer-history")
+    commands_answer_each(monkeypatch, {command: (1, "", "ImportError: no module")})
 
-    with pytest.raises(HostError, match="could not ask the built command what it reads: "):
+    with pytest.raises(HostError, match="run the built command: ImportError: no module"):
         LiveHost().build("abc123", venv)
 
 

@@ -444,6 +444,34 @@ def test_a_record_failing_validation_says_why(line: str, problem: str) -> None:
         parse_record(line)
 
 
+@pytest.mark.parametrize(
+    ("newer", "with_known"),
+    [
+        ({"kind": "heartbeat"}, True),
+        ({"version": SPOOL_VERSION + 1}, True),
+        ({"kind": "heartbeat"}, False),
+    ],
+    ids=["newer kind", "newer spool version", "only newer kinds"],
+)
+def test_records_from_a_newer_agent_are_moved_aside_not_deleted(
+    conn: sqlite3.Connection, spool_dir: Path, newer: dict[str, Any], with_known: bool
+) -> None:
+    known = [record(1, T0)] if with_known else []
+    newer_lines = [record(2, T0, **newer), record(3, T0, **newer)]
+    path = write_file(spool_dir, file_name(1), [*known, *newer_lines])
+    kept = path.read_bytes()
+    later = record(4, T0 + timedelta(seconds=1))
+    write_file(spool_dir, file_name(2), [later])
+
+    summary = poll(conn, [CaptureSpool(spool_dir)], now=NOW)
+
+    assert summary.ok
+    stored = [row[0] for row in conn.execute("SELECT payload FROM observations ORDER BY id")]
+    assert stored == [*known, later]
+    assert (spool_dir / UNREADABLE_FOLDER / file_name(1)).read_bytes() == kept
+    assert finished_files(spool_dir) == []
+
+
 def test_a_file_with_no_usable_record_is_moved_aside_not_deleted(
     conn: sqlite3.Connection, spool_dir: Path
 ) -> None:

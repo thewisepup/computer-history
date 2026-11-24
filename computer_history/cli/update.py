@@ -21,12 +21,13 @@ from computer_history.sources import (
     read_health,
 )
 from computer_history.sources.activitywatch import AWApi
-from computer_history.sources.capture_spool import default_spool_path
+from computer_history.sources.capture_spool import UNREADABLE_FOLDER, default_spool_path
 from computer_history.stable import (
     NOTHING_CHANGED,
     AgentCheck,
     AgentOutcome,
     Layout,
+    NewestSeen,
     RollbackFailed,
     UpdateAction,
     UpdateFailed,
@@ -34,6 +35,7 @@ from computer_history.stable import (
     rollback,
     stable_layout,
     update,
+    version_name,
 )
 from computer_history.store import Purpose, StoreState, open_store
 
@@ -52,10 +54,12 @@ def _reading(database: Path) -> Generator[tuple[sqlite3.Connection | None, str |
             yield None, f"the database is {store.state.value}"
 
 
-def _newest_record(database: Path, spool: Path) -> tuple[datetime | None, bool, str | None]:
+def _newest_record(database: Path, spool: Path) -> NewestSeen:
     with _reading(database) as (conn, unread):
         found = newest_record(conn, spool, now=formatting.utc_now())
-    return (None, False, unread) if found is None else (found.at, found.paused, unread)
+    if found is None:
+        return NewestSeen(None, database_unread=unread)
+    return NewestSeen(found.at, found.paused, unread)
 
 
 def _active_between(
@@ -152,17 +156,22 @@ def _agent(agent: AgentCheck, old: str) -> str:
 
 
 def cmd_rollback(args: argparse.Namespace) -> int:
+    layout = stable_layout()
     try:
-        report = rollback(args.host, stable_layout(), now=formatting.utc_now)
+        report = rollback(args.host, layout, now=formatting.utc_now)
     except RollbackFailed as exc:
         print(f"rollback failed: {exc}", file=sys.stderr)
         return 1
+    built_from = report.agent_built_from
+    agent = "its build unknown" if built_from is None else f"{version_name(built_from)}'s build"
+    unreadable = default_spool_path(layout.database) / UNREADABLE_FOLDER
     print(f"Rolled back to version {report.current} from {report.previous}")
     print(f"  previous      {report.previous} (rollback again returns to it)")
-    agent = report.agent
-    shown = f"moved back to {report.current}'s build" if agent.moved else "not moved"
-    print(f"  agent         {shown}" + ("" if agent.why is None else f" ({agent.why})"))
+    print(f"  agent         left as it is ({agent})")
     print("  backend       restarted")
+    print(
+        f"  note: spool files {report.current} can't read are moved to {unreadable}/, not deleted"
+    )
     for problem in report.problems:
         print(f"  warning: {problem}")
     return 0

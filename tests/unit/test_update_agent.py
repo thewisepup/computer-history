@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,8 +19,6 @@ from stable_updates import (
     updating,
 )
 
-from computer_history.host import SpoolReads
-from computer_history.sources.capture_spool import RECORD_KINDS, SPOOL_VERSION
 from computer_history.stable import (
     BACKEND,
     BACKUPS_FOLDER_NAME,
@@ -193,23 +190,6 @@ def test_an_interrupt_during_the_agent_build_removes_the_new_version_and_changes
     assert install_state(layout) == before
     assert host.jobs[BACKEND.label].loaded
     assert not any(call in ("unload", "load") for call, _ in host.calls)
-
-
-def test_every_new_version_notes_what_its_built_backend_reads(run: RunCli, layout: Layout) -> None:
-    reads = SpoolReads(SPOOL_VERSION + 1, ("capture", "heartbeat"))
-    host = updating(layout, completes_a_cycle(health(layout)), spool_reads={NEWER: reads})
-
-    code, _, err = run(stable_code(layout), "update", host=host)
-
-    assert code == 0, err
-    assert json.loads(layout.spool_reads(new_version(layout)).read_text()) == {
-        "spool_version": SPOOL_VERSION + 1,
-        "kinds": ["capture", "heartbeat"],
-    }
-    assert json.loads(layout.spool_reads(old_version(layout)).read_text()) == {
-        "spool_version": SPOOL_VERSION,
-        "kinds": list(RECORD_KINDS),
-    }
 
 
 def test_an_update_back_to_a_version_still_on_disk_keeps_the_app_it_carries(

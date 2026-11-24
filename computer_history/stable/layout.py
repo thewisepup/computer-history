@@ -19,7 +19,6 @@ CAPTURE_AGENT_APP = "ComputerHistoryAgent.app"
 FELL_BACK_AGENT_APP = "ComputerHistoryAgent.fell-back.app"
 AGENT_COMMIT_NAME = "agent-commit.txt"
 FELL_BACK_AGENT_COMMIT_NAME = "agent-commit.fell-back.txt"
-SPOOL_READS_NAME = "spool-reads.json"
 INSTALLED_AGENT_NAME = "installed-agent.json"
 
 
@@ -98,10 +97,6 @@ class Layout:
     def fell_back_agent_commit(self, version: Path) -> Path:
         """The note of the commit the build that fell back was built from."""
         return version / FELL_BACK_AGENT_COMMIT_NAME
-
-    def spool_reads(self, version: Path) -> Path:
-        """The note of the spool version and record kinds a version folder's backend reads."""
-        return version / SPOOL_READS_NAME
 
 
 def stable_layout() -> Layout:
