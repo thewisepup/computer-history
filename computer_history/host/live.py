@@ -13,6 +13,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
@@ -27,6 +28,7 @@ from computer_history.host.contract import (
     JobBusy,
     JobState,
 )
+from computer_history.transitions import TransitionTable
 
 Answer = TypeVar("Answer")
 REPO = "thewisepup/computer-history"
@@ -70,6 +72,26 @@ NOTIFY_SCRIPT = (
     "on run argv",
     "display notification (item 2 of argv) with title (item 1 of argv)",
     "end run",
+)
+
+
+class SwapStep(Enum):
+    UNTOUCHED = auto()
+    UNREGISTERED = auto()
+    REMOVED = auto()
+    COPIED = auto()
+    REGISTERED = auto()
+
+
+SWAP_STEPS = TransitionTable(
+    "agent swap",
+    {
+        SwapStep.UNTOUCHED: frozenset({SwapStep.UNREGISTERED, SwapStep.REMOVED}),
+        SwapStep.UNREGISTERED: frozenset({SwapStep.REMOVED, SwapStep.REGISTERED}),
+        SwapStep.REMOVED: frozenset({SwapStep.COPIED}),
+        SwapStep.COPIED: frozenset({SwapStep.REGISTERED}),
+        SwapStep.REGISTERED: frozenset({SwapStep.UNREGISTERED}),
+    },
 )
 
 
@@ -203,19 +225,24 @@ class LiveHost:
     def install_agent(self, app: Path, fixed: Path) -> datetime:
         executable = Path("Contents") / "MacOS" / _bundle_executable(app)
         label = _bundle_label(app)
+        step = SwapStep.UNTOUCHED
         old = _existing_executable(fixed)
         if old is not None:
             try:
                 _run([str(old), "uninstall"], "unregister the installed capture agent")
             except HostError as exc:
                 raise AgentNotUnregistered(str(exc)) from exc
+            step = SWAP_STEPS.move(step, SwapStep.UNREGISTERED)
         if fixed.exists():
             shutil.rmtree(fixed)
         fixed.parent.mkdir(parents=True, exist_ok=True)
+        step = SWAP_STEPS.move(step, SwapStep.REMOVED)
         _run([DITTO, str(app), str(fixed)], f"copy the capture agent to {fixed}")
+        step = SWAP_STEPS.move(step, SwapStep.COPIED)
         agent = str(fixed / executable)
         registered_at = self._now()
         _run([agent, "install"], "register the capture agent")
+        step = SWAP_STEPS.move(step, SwapStep.REGISTERED)
         for attempt in range(AGENT_REGISTER_ATTEMPTS):
             if self._agent_running(label):
                 return registered_at
@@ -224,7 +251,9 @@ class LiveHost:
             _command([LAUNCHCTL, "kickstart", f"{_domain()}/{label}"], f"kickstart {label}")
             self._sleep(AGENT_REGISTER_RETRY_SECONDS)
             _run([agent, "uninstall"], "unregister the capture agent")
+            step = SWAP_STEPS.move(step, SwapStep.UNREGISTERED)
             _run([agent, "install"], "register the capture agent")
+            step = SWAP_STEPS.move(step, SwapStep.REGISTERED)
         raise HostError(
             "the capture agent is registered but did not start (check: launchctl print"
             f" {_domain()}/{label})"

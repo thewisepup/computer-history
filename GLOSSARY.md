@@ -63,12 +63,16 @@ _Avoid_: Queue, buffer, inbox
 _Avoid_: Prod folder, real folder
 
 **Stable install**:
-The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable. `install` builds it from a commit that passed the release gate, and `current` points at the version in use.
+The copy of the code in a marked version folder under the live folder's `versions/`; the only code whose profile is stable. `install` builds it from a commit that passed the release gate, and `current` points at the version in use. A version folder is absent, partly built, marked without an agent app, or complete.
 _Avoid_: Release, production build
 
 **Update**:
 Moving the stable install's `current` forward to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes an ok cycle on it under the spool hold.
 _Avoid_: Upgrade, deploy, release
+
+**Update phase**:
+How far one update has got, held in memory only: checked, built, agent placed, backend stopped, backed up, hold placed, previous and current flipped, backend loaded, first cycle ok, agent swapped and verified, finished; any step of the switch can instead go on to falling back and fell back. A rollback has its own phases. A move its table does not allow stops the run.
+_Avoid_: Update state, update status
 
 **Fallback**:
 What an update does on its own when the new version's backend crashes, fails its first cycle for a reason other than an unavailable source, completes none in time, or the wait is interrupted: the old version back as `current`, the pre-update backup restored only when the schema changed.
@@ -79,7 +83,7 @@ Switching `current` to the previous version by hand, keeping the version left as
 _Avoid_: Downgrade, revert
 
 **Installed agent**:
-The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`.
+The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`; against a commit, a record is matching when its agent source is the same and stale when it is not.
 _Avoid_: Deployed agent, agent version
 
 **Agent swap**:

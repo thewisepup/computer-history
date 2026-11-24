@@ -18,7 +18,9 @@ updating.py         update: the release-gate walk, then prepare, switch and wait
     |                     fixed path; or put the old app back, keep the build
     |                     that fell back aside, log and notify
     +-- agent_waiting.py  wait for the swapped-in capture agent's first record,
-                          counting only the time aw-afk shows the user active
+    |                     counting only the time aw-afk shows the user active
+    +-- phases.py         the phases an update and a rollback move through, and
+                          the table each move is checked against
 
 rolling_back.py     rollback: current and previous swapped and the backend
                     restarted, the capture agent left as it is; refused when

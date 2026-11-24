@@ -8,7 +8,7 @@ from pathlib import Path
 
 from computer_history.host import Host, HostError
 from computer_history.sources.activitywatch import AWApi
-from computer_history.watchdog.alerts import Notice, due_to_log, notices
+from computer_history.watchdog.alerts import Notice, due_to_log, notices, record_notice
 from computer_history.watchdog.assessment import assess
 from computer_history.watchdog.reopening import Reopening, recent_reopens, reopen_if_closed
 from computer_history.watchdog.state import (
@@ -94,15 +94,9 @@ def _watch(
         errors.append(reopening.error)
     findings = assessment.findings
 
-    notified, open_problems = dict(previous.notified), set(previous.open)
+    notified = dict(previous.notified)
     posted: list[Notice] = []
-    for notice in notices(
-        findings,
-        notified=previous.notified,
-        open_problems=previous.open,
-        silent_after=silent_after,
-        now=now,
-    ):
+    for notice in notices(findings, notified=previous.notified, silent_after=silent_after, now=now):
         try:
             host.notify(notice.message)
         except HostError as exc:
@@ -110,12 +104,7 @@ def _watch(
             continue
         log.info("notified: %s", notice.message)
         posted.append(notice)
-        if notice.cleared:
-            open_problems.discard(notice.check)
-            notified.pop(notice.check, None)
-        else:
-            notified[notice.check] = now
-            open_problems.add(notice.check)
+        record_notice(notified, notice, now)
 
     messages = [f"config problem: {problem}" for problem in thresholds.problems]
     to_log, logged = due_to_log(
@@ -126,7 +115,6 @@ def _watch(
         watching_since=assessment.watched_since,
         findings=findings,
         notified=notified,
-        open=frozenset(open_problems),
         reopened=recent_reopens(previous.reopened, now) if reopening is None else reopening.reopens,
         unreachable_since=assessment.unreachable_since,
         logged=logged,

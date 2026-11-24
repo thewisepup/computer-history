@@ -14,6 +14,7 @@ from computer_history.stable.launch_agents import BACKEND
 from computer_history.stable.layout import Layout
 from computer_history.stable.stopped_agents import AgentNotStopped
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
+from computer_history.stable.updates.phases import UpdatePhase
 from computer_history.stable.updates.preparing import Prepared
 from computer_history.stable.versions import point
 from computer_history.store import stored_schema_version
@@ -40,6 +41,7 @@ def fall_back(
 
     The spool hold is released only once the new backend is confirmed stopped and the restore done.
     """
+    prepared.progress.advance(UpdatePhase.FALLING_BACK)
     problems: list[str] = []
     old, new = prepared.old.name, prepared.new
     stopped = _stop_new_backend(prepared, problems)
@@ -69,6 +71,7 @@ def fall_back(
         host.notify(f"Update to {new} fell back: {reason}; {back}.")
     except HostError as exc:
         problems.append(f"the notification could not be posted: {exc}")
+    prepared.progress.advance(UpdatePhase.FELL_BACK)
     return FellBack(restored, tuple(problems))
 
 
