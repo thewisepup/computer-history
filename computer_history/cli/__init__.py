@@ -1,8 +1,9 @@
 """The computer-history command line.
 
-app.py         parser + dispatch: one entry per command, the log folder of the
-  |              profile, and the install lock around the commands that change
-  |              the stable install
+app.py         the command table (one Command record per command: help, handler,
+  |              arguments, database and install use), parser + dispatch, the log
+  |              folder of the profile, and the install lock around the commands
+  |              that change the stable install
   +-- ingest.py    one poll, or the --watch loop, through the ingest runner
   |                (ActivityWatch and the capture spool in one loop), with
   |                the ingest health file, the cycle's log record and the
@@ -32,8 +33,9 @@ app.py         parser + dispatch: one entry per command, the log folder of the
 profile.py (the first line: profile, version or checkout, database),
 db.py and sources.py (unusable database / source messages, and the ActivityWatch
 timeout status and the watchdog share),
-formatting.py (durations, times, sizes, app names, watchdog findings as lines, and
-the clock every command reads)
+formatting.py (durations, times, sizes, app names, plurals, "ahead of now", the
+release-gate and database-copy lines, watchdog findings as lines, and the clock every
+command reads)
 """
 
 from computer_history.cli.app import COMMANDS, build_parser, main

@@ -13,7 +13,17 @@ AGENT_WAIT_SECONDS = 600.0
 AGENT_POLL_SECONDS = 2.0
 
 
-NewestAgentRecord = Callable[[], tuple[datetime | None, bool, str | None]]
+@dataclass(frozen=True)
+class NewestSeen:
+    """When the capture agent's newest record was captured (None when there is none), whether it
+    marks a pause, and why the database could not be searched for one, if it could not."""
+
+    at: datetime | None
+    paused: bool = False
+    database_unread: str | None = None
+
+
+NewestAgentRecord = Callable[[], NewestSeen]
 ActiveBetween = Callable[[datetime, datetime], timedelta | None]
 
 
@@ -37,17 +47,13 @@ def wait_for_agent_record(
 ) -> AgentCheck:
     """Wait for a record captured since the swap, counting only time the user is active; a pause
     before it, unknown activity or too little of it within the wall-clock bound leaves it
-    unverified.
-
-    newest_record gives the newest record's time and whether it marks a pause (None and False
-    when there is none), and why the database could not be searched, if it could not.
-    """
+    unverified."""
     deadline = monotonic() + AGENT_WAIT_SECONDS
     while True:
-        at, paused, unread = _newest(newest_record)
-        if at is not None and at >= swapped_at:
+        seen = _newest(newest_record)
+        if seen.at is not None and seen.at >= swapped_at:
             return AgentCheck(AgentOutcome.VERIFIED, "the new capture agent records")
-        if paused:
+        if seen.paused:
             return AgentCheck(AgentOutcome.NOT_VERIFIED, "capture is paused")
         try:
             attended = active_between(swapped_at, now())
@@ -64,10 +70,10 @@ def wait_for_agent_record(
                 f"the new capture agent recorded nothing in {AGENT_ACTIVE_SECONDS:g}s while you"
                 " were active"
             )
-            if unread is not None:
+            if seen.database_unread is not None:
                 return AgentCheck(
                     AgentOutcome.NOT_VERIFIED,
-                    f"{silent}, but {unread}, so only the spool was checked",
+                    f"{silent}, but {seen.database_unread}, so only the spool was checked",
                 )
             return AgentCheck(AgentOutcome.FELL_BACK, silent)
         if monotonic() >= deadline:
@@ -79,8 +85,8 @@ def wait_for_agent_record(
         sleep(AGENT_POLL_SECONDS)
 
 
-def _newest(newest_record: NewestAgentRecord) -> tuple[datetime | None, bool, str | None]:
+def _newest(newest_record: NewestAgentRecord) -> NewestSeen:
     try:
         return newest_record()
     except (OSError, ValueError, sqlite3.Error) as exc:
-        return None, False, f"the database could not be read ({exc})"
+        return NewestSeen(None, database_unread=f"the database could not be read ({exc})")

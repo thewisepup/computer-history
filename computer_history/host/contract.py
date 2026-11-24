@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 COMMAND_NAME = "computer-history"
-SPOOL_READS_FLAG = "--spool-reads"
 ACTIVITYWATCH_BUNDLE_ID = "net.activitywatch.ActivityWatch"
 OPEN_ACTIVITYWATCH = ("/usr/bin/open", "-g", "-b", ACTIVITYWATCH_BUNDLE_ID)
 ALERT_REPEAT = timedelta(hours=1)
@@ -59,40 +57,6 @@ class JobState:
     pid: int | None = None
 
 
-@dataclass(frozen=True)
-class SpoolReads:
-    """The spool version and record kinds a version's backend reads."""
-
-    version: int
-    kinds: tuple[str, ...]
-
-    def as_json(self) -> str:
-        return json.dumps({"spool_version": self.version, "kinds": list(self.kinds)})
-
-    @classmethod
-    def from_json(cls, text: str) -> SpoolReads:
-        """Read what as_json wrote, raising ValueError for anything else."""
-        try:
-            found = json.loads(text)
-        except RecursionError as exc:
-            raise ValueError("nested too deeply to read") from exc
-        if not isinstance(found, dict):
-            raise ValueError("not a JSON object")
-        fields = cast(dict[str, object], found)
-        version, kinds = fields.get("spool_version"), fields.get("kinds")
-        if type(version) is not int or not isinstance(kinds, list):
-            raise ValueError("no spool version and list of kinds")
-        return cls(version, tuple(str(kind) for kind in cast(list[object], kinds)))
-
-
-@dataclass(frozen=True)
-class BackendBuild:
-    """What building a version gave: its frozen packages and what its backend reads."""
-
-    packages: str
-    reads: SpoolReads
-
-
 class Host(Protocol):
     """Everything that touches macOS or the network: launchctl, GitHub, git, uv, Swift and
     codesign, ActivityWatch's app and user notifications."""
@@ -109,8 +73,8 @@ class Host(Protocol):
         """What git says about the checkout holding this folder, without fetching."""
         ...
 
-    def build(self, commit: str, venv: Path) -> BackendBuild:
-        """Build the commit into a new virtual environment and ask its command what it reads."""
+    def build(self, commit: str, venv: Path) -> str:
+        """Build the commit into a new virtual environment and return its frozen packages."""
         ...
 
     def agent_tree(self, commit: str) -> str:

@@ -1,7 +1,7 @@
 """The host adapter: the one seam to macOS and the network.
 
-    contract.py   Host (the Protocol), its answers (CheckRun, GitState, JobState,
-                  BackendBuild, SpoolReads), HostError
+    contract.py   Host (the Protocol), its answers (CheckRun, GitState, JobState),
+                  HostError
                   JobBusy (launchd not done with a job yet) and
                   AgentNotUnregistered (the agent at the fixed path left as it
                   was), the command
@@ -23,9 +23,7 @@ from computer_history.host.contract import (
     ALERT_REPEAT,
     COMMAND_NAME,
     OPEN_ACTIVITYWATCH,
-    SPOOL_READS_FLAG,
     AgentNotUnregistered,
-    BackendBuild,
     CheckOutcome,
     CheckRun,
     GitState,
@@ -33,7 +31,6 @@ from computer_history.host.contract import (
     HostError,
     JobBusy,
     JobState,
-    SpoolReads,
 )
 from computer_history.host.live import NOTIFY_ENV_VAR, LiveHost
 
@@ -42,9 +39,7 @@ __all__ = [
     "COMMAND_NAME",
     "NOTIFY_ENV_VAR",
     "OPEN_ACTIVITYWATCH",
-    "SPOOL_READS_FLAG",
     "AgentNotUnregistered",
-    "BackendBuild",
     "CheckOutcome",
     "CheckRun",
     "GitState",
@@ -53,5 +48,4 @@ __all__ = [
     "JobBusy",
     "JobState",
     "LiveHost",
-    "SpoolReads",
 ]

@@ -111,8 +111,9 @@ computer-history --spool-reads
 
 Prints the spool version and record kinds this code's backend reads, as one
 JSON line, and exits before any command runs (no profile line, no database).
-`install` and `update` ask it of every version they build and keep the answer
-as that version's `spool-reads.json`. Real output:
+It is hidden from `--help`: nothing in this code reads the answer, but stable
+versions from before rollback stopped moving the capture agent ask it of
+every version they build, and fail the build without it. Real output:
 
 ```
 {"spool_version": 1, "kinds": ["capture", "excluded", "paused", "resumed", "slept", "woke", "screenshot"]}
@@ -160,9 +161,24 @@ Update to version 9f0e1d2 fell back: the backend crashed before its first ingest
 ```
 
 `rollback` points `current` at the previous version and restarts the backend;
-running it twice returns to where it started. It takes the capture agent back
-too when the previous version can't read what the installed agent writes. It
-never restores a backup, so when the database's schema is newer than the
+running it twice returns to where it started. The capture agent stays as it
+is: a spool file holding a record kind or spool version the older backend
+can't read has its other records stored and is moved to `spool/unreadable/`,
+never deleted. Once a version that reads it is current again, move the file
+back into `spool/` to ingest it. Output from the tests' fake host
+(illustrative names):
+
+```
+$ computer-history rollback
+Profile stable (version 8d23e3a), stable install .../ComputerHistory
+Rolled back to version 572c48b from 8d23e3a
+  previous      8d23e3a (rollback again returns to it)
+  agent         left as it is (8d23e3a's build)
+  backend       restarted
+  note: spool files 572c48b can't read are moved to .../ComputerHistory/spool/unreadable/, not deleted
+```
+
+It never restores a backup, so when the database's schema is newer than the
 previous version opens, it refuses (illustrative):
 
 ```

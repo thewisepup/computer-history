@@ -20,16 +20,16 @@ updating.py         update: the release-gate walk, then prepare, switch and wait
     +-- agent_waiting.py  wait for the swapped-in capture agent's first record,
                           counting only the time aw-afk shows the user active
 
-rolling_back.py     rollback: current and previous swapped, the capture agent
-                    moved back first when the previous version can't read its
-                    records, and the backend restarted; refused when the
-                    previous version cannot open the database's schema
+rolling_back.py     rollback: current and previous swapped and the backend
+                    restarted, the capture agent left as it is; refused when
+                    the previous version cannot open the database's schema
 """
 
 from computer_history.stable.updates.agent_waiting import (
     AGENT_ACTIVE_SECONDS,
     AGENT_WAIT_SECONDS,
     AgentCheck,
+    NewestSeen,
 )
 from computer_history.stable.updates.preparing import UpdateFailed
 from computer_history.stable.updates.rolling_back import RollbackFailed, rollback
@@ -41,6 +41,7 @@ __all__ = [
     "AGENT_WAIT_SECONDS",
     "FIRST_CYCLE_WAIT_SECONDS",
     "AgentCheck",
+    "NewestSeen",
     "RollbackFailed",
     "UpdateFailed",
     "UpdateReport",
