@@ -48,7 +48,7 @@ has not seen the work.
      `status` output, an app window), taken from isolated or synthetic runs
      only, never live data, since the repository is public. Upload them to the
      `pr-evidence` branch under `<pr-number>/` and embed them as
-     `![what it shows](https://github.com/thewisepup/computer-history/blob/pr-evidence/<pr-number>/<file>.png?raw=true)`;
+     `![what it shows](https://github.com/thewisepup/open-computer-history/blob/pr-evidence/<pr-number>/<file>.png?raw=true)`;
    - the test that fails without the change;
    - review findings and what was done about each.
 5. **Try it yourself**: what only you can check, as copy-paste steps from the

@@ -77,9 +77,9 @@ SCAN_ALLOWLIST: Mapping[re.Pattern[str], str] = MappingProxyType(
 )
 EXPECTED_SCALING_FAILURES: Mapping[str, str] = MappingProxyType(
     {
-        "status-reads": "https://github.com/thewisepup/computer-history/issues/84",
-        "capture-health": "https://github.com/thewisepup/computer-history/issues/84",
-        "screenshot-health": "https://github.com/thewisepup/computer-history/issues/84",
+        "status-reads": "https://github.com/thewisepup/open-computer-history/issues/84",
+        "capture-health": "https://github.com/thewisepup/open-computer-history/issues/84",
+        "screenshot-health": "https://github.com/thewisepup/open-computer-history/issues/84",
     }
 )
 UNEXPECTED_PASS_HINT = "take it off EXPECTED_SCALING_FAILURES in computer_history/synthetic/gate.py"

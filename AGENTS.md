@@ -171,7 +171,7 @@ alone: the CLI README's `dev perf` section.
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `thewisepup/computer-history` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `thewisepup/open-computer-history` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Pull requests
 
