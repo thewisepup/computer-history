@@ -19,7 +19,7 @@ from spool_records import spool_line
 from computer_history.cli import formatting as cli_formatting
 from computer_history.cli import watchdog as cli_watchdog
 from computer_history.host import OPEN_ACTIVITYWATCH
-from computer_history.sources import IngestHealth, agent_health, health_path, write_health
+from computer_history.sources import HealthFile, IngestHealth, agent_health
 from computer_history.sources.activitywatch import WINDOW_SOURCE, AWError
 from computer_history.sources.capture_spool import CAPTURE_KIND, PAUSED_KIND, agent_config_path
 from computer_history.stable import ACTIVITYWATCH_AT_LOGIN, WATCHDOG, stable_layout
@@ -107,7 +107,7 @@ class Mac:
                 health = IngestHealth(self.now, last_success_at=self.now)
                 if failing is not None:
                     health = IngestHealth(self.now, 1, self.now, last_error=failing)
-                write_health(health_path(self.db), health)
+                HealthFile.beside(self.db).write(health)
             self.watch()
 
     def watched(self, bucket: str, start: float, seconds: float, data: dict[str, str]) -> None:

@@ -17,12 +17,11 @@ from computer_history.store import replace_atomically, to_utc
 __all__ = [
     "ALERT_AFTER_FAILURES",
     "FailureStreak",
+    "HealthFile",
+    "HealthUnreadable",
     "IngestHealth",
     "Recovery",
     "StreakAlert",
-    "health_path",
-    "read_health",
-    "write_health",
 ]
 
 HEALTH_FILE_NAME = "ingest-health.json"
@@ -52,26 +51,41 @@ class IngestHealth:
         return self.consecutive_failures == 0
 
 
-def health_path(db_path: Path) -> Path:
-    """The ingest health file beside the database."""
-    return db_path.parent / HEALTH_FILE_NAME
+class HealthUnreadable(ValueError):
+    """The ingest health file exists but could not be read as one."""
 
 
-def write_health(path: Path, health: IngestHealth) -> None:
-    """Replace the health file in one step."""
-    doc = {k: v.isoformat() if isinstance(v, datetime) else v for k, v in asdict(health).items()}
-    text = json.dumps(doc, indent=2) + "\n"
-    replace_atomically(path, lambda staged: staged.write_text(text, encoding="utf-8"))
+@dataclass(frozen=True)
+class HealthFile:
+    """The ingest health file beside a database, which the watch loop rewrites after each cycle."""
+
+    path: Path
+
+    @classmethod
+    def beside(cls, db_path: Path) -> HealthFile:
+        return cls(db_path.parent / HEALTH_FILE_NAME)
+
+    def read(self) -> IngestHealth | None:
+        """The saved health, or None if no watch loop has saved one yet."""
+        try:
+            return _parsed(self.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except RecursionError as exc:
+            raise HealthUnreadable(f"not an ingest health file: {exc!r}") from exc
+        except (OSError, ValueError) as exc:
+            raise HealthUnreadable(str(exc)) from exc
+
+    def write(self, health: IngestHealth) -> None:
+        """Replace the file in one step."""
+        fields = asdict(health).items()
+        doc = {k: v.isoformat() if isinstance(v, datetime) else v for k, v in fields}
+        text = json.dumps(doc, indent=2) + "\n"
+        replace_atomically(self.path, lambda staged: staged.write_text(text, encoding="utf-8"))
 
 
-def read_health(path: Path) -> IngestHealth | None:
-    """The saved health, or None if no watch loop has saved one yet."""
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except RecursionError as exc:
-        raise ValueError(f"not an ingest health file: {exc!r}") from exc
+def _parsed(text: str) -> IngestHealth:
+    doc = json.loads(text)
     try:
         unavailable = doc.get("sources_unavailable", False)
         if not isinstance(unavailable, bool):
@@ -117,21 +131,19 @@ class StreakAlert:
 
 
 class FailureStreak:
-    """Counts failed cycles in a row, saving the health after each cycle.
+    """Counts failed cycles in a row, carrying on from the health file and saving it after each.
 
     It alerts at the threshold, at most once per repeat while failures last, and when they end.
     """
 
-    def __init__(
-        self,
-        *,
-        save: Callable[[IngestHealth], None],
-        notify: Callable[[StreakAlert], None] | None,
-        health: IngestHealth | None = None,
-    ) -> None:
-        self.health = health
-        self._save = save
+    def __init__(self, file: HealthFile, *, notify: Callable[[StreakAlert], None] | None) -> None:
+        self._file = file
         self._notify = notify
+        try:
+            self.health = file.read()
+        except HealthUnreadable as exc:
+            log.warning("ingest health unreadable, starting afresh", extra={"error": str(exc)})
+            self.health = None
 
     @property
     def failures(self) -> int:
@@ -167,7 +179,7 @@ class FailureStreak:
             if due:
                 self._send(StreakAlert(failures + 1))
         try:
-            self._save(self.health)
+            self._file.write(self.health)
         except OSError as exc:
             log.warning("ingest health not saved", extra={"error": str(exc)})
         return recovery

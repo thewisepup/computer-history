@@ -26,8 +26,8 @@ from computer_history.sources import (
     ActivityWatch,
     AWClient,
     CaptureHealth,
+    HealthFile,
     IngestHealth,
-    health_path,
     resolve_spool_path,
 )
 from computer_history.sources.capture_spool import (
@@ -278,7 +278,7 @@ def _ingest(
     health: IngestHealth | None, error: str | None, db_path: Path, now: datetime
 ) -> tuple[str | None, str]:
     if error is not None:
-        return None, f"Ingest:        cannot read {health_path(db_path)}: {error}"
+        return None, f"Ingest:        cannot read {HealthFile.beside(db_path).path}: {error}"
     if health is None:
         return None, "Ingest:        no `ingest --watch` has reported yet"
     line = f"Ingest:        {_ingest_state(health)}, last cycle {ago(health.cycle_at, now)}"

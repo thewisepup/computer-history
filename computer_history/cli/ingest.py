@@ -18,16 +18,13 @@ from computer_history.sources import (
     CycleSummary,
     FailureKind,
     FailureStreak,
-    IngestHealth,
+    HealthFile,
     IngestOutcome,
     StreakAlert,
     StreamFailure,
-    health_path,
     poll,
-    read_health,
     resolve_spool_path,
     watch,
-    write_health,
 )
 from computer_history.store import Purpose, SpoolHold, open_store
 
@@ -47,12 +44,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         return store_unavailable(store)
     with store:
         if args.watch:
-            health = health_path(db_path)
-            streak = FailureStreak(
-                save=partial(write_health, health),
-                notify=partial(_notify, args.host),
-                health=_saved(health),
-            )
+            streak = FailureStreak(HealthFile.beside(db_path), notify=partial(_notify, args.host))
             log.info(
                 "watching (Ctrl-C to stop)",
                 extra={
@@ -87,14 +79,6 @@ def _notify(host: Host, alert: StreakAlert) -> None:
         host.notify(alert.message)
     except HostError as exc:
         log.warning("notification not shown", extra={"error": str(exc)})
-
-
-def _saved(path: Path) -> IngestHealth | None:
-    try:
-        return read_health(path)
-    except (OSError, ValueError) as exc:
-        log.warning("ingest health unreadable, starting afresh", extra={"error": str(exc)})
-        return None
 
 
 def cycle_line(summary: CycleSummary) -> str:

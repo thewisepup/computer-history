@@ -34,7 +34,7 @@ from stable_updates import (
 
 from computer_history.cli import ingest as cli_ingest
 from computer_history.host import CheckOutcome
-from computer_history.sources import read_health, runner
+from computer_history.sources import runner
 from computer_history.sources.capture_spool import UNREADABLE_FOLDER, default_spool_path
 from computer_history.stable import (
     BACKEND,
@@ -517,7 +517,7 @@ def test_a_backend_whose_first_cycle_fails_keeps_holding(
     assert code == 0
     assert hold.exists()
     assert (spool / SPOOL_FILE).exists()
-    written = read_health(health(layout))
+    written = health(layout).read()
     assert written is not None
     assert written.sources_unavailable
 

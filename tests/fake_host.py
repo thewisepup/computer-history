@@ -21,7 +21,7 @@ from computer_history.host import (
     JobBusy,
     JobState,
 )
-from computer_history.sources import IngestHealth, write_health
+from computer_history.sources import HealthFile, IngestHealth
 from computer_history.sources.capture_spool import CAPTURE_KIND
 from computer_history.stable import (
     BACKEND,
@@ -76,17 +76,17 @@ BackendStart = Callable[["FakeHost"], None]
 
 
 def completes_a_cycle(
-    health: Path, *, error: str | None = None, sources_unavailable: bool = False
+    health: HealthFile, *, error: str | None = None, sources_unavailable: bool = False
 ) -> BackendStart:
     """A backend that runs its first ingest cycle at once, failing with the error if given one."""
 
     def start(_: FakeHost) -> None:
         now = datetime.now(UTC)
         if error is None:
-            write_health(health, IngestHealth(now, last_success_at=now))
+            health.write(IngestHealth(now, last_success_at=now))
             return
         cycle = IngestHealth(now, 1, now, last_error=error, sources_unavailable=sources_unavailable)
-        write_health(health, cycle)
+        health.write(cycle)
 
     return start
 

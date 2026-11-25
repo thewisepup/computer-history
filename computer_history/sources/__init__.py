@@ -11,9 +11,10 @@ capture_spool/   the same for the capture spool's ax-text and screenshot streams
   runner.py      poll every stream of every source, once or in the watch loop,
       |          pulling again while a pull says there is more; a source that
       |          fails, expectedly or not, skips only its own streams
-  ingest_health.py  the watch loop's last cycle and failure streak, in one file
-      |          beside the database rewritten after every cycle, with an alert
-      |          through the host adapter when a streak lasts and when it ends
+  ingest_health.py  the health file beside the database (the watch loop's last
+      |          cycle and failure streak), read with one error when unreadable;
+      |          the streak carries on from it, rewrites it after every cycle and
+      |          alerts through the host adapter when it lasts and when it ends
   cycle_report.py   each cycle's one log record, counted toward that streak
       |
   backfill.py    plan a stream's history in chunks, then ingest them oldest first
@@ -65,12 +66,11 @@ from computer_history.sources.cycle_report import CycleReporter
 from computer_history.sources.ingest_health import (
     ALERT_AFTER_FAILURES,
     FailureStreak,
+    HealthFile,
+    HealthUnreadable,
     IngestHealth,
     Recovery,
     StreakAlert,
-    health_path,
-    read_health,
-    write_health,
 )
 from computer_history.sources.projection import KNOWN_SOURCES, projector_for, reproject_signals
 from computer_history.sources.runner import (
@@ -100,6 +100,8 @@ __all__ = [
     "CycleSummary",
     "FailureKind",
     "FailureStreak",
+    "HealthFile",
+    "HealthUnreadable",
     "HistorySource",
     "IngestHealth",
     "IngestOutcome",
@@ -116,16 +118,13 @@ __all__ = [
     "capture_liveness",
     "commit_pull",
     "failure_of",
-    "health_path",
     "newest_record",
     "plan_all_backfills",
     "plan_backfill",
     "poll",
     "projector_for",
-    "read_health",
     "reproject_signals",
     "resolve_spool_path",
     "run_backfill",
     "watch",
-    "write_health",
 ]
