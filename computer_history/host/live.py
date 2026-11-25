@@ -29,7 +29,7 @@ from computer_history.host.contract import (
 )
 
 Answer = TypeVar("Answer")
-REPO = "thewisepup/computer-history"
+REPO = "thewisepup/open-computer-history"
 GITHUB_API = f"https://api.github.com/repos/{REPO}"
 REPO_GIT_URL = f"https://github.com/{REPO}"
 GITHUB_TOKEN_ENV_VAR = "GITHUB_TOKEN"

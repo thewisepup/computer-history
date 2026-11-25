@@ -24,7 +24,7 @@ M5 deletes it; AI clients wait for M6.
 ### M2 — Capture agent: AX text
 
 Remaining before ✅: a full restart of the Mac and real sizes after a day of
-use ([#12](https://github.com/thewisepup/computer-history/issues/12)).
+use ([#12](https://github.com/thewisepup/open-computer-history/issues/12)).
 
 - [ ] Swift CLI builds to a stable path, signed and started by its own
       LaunchAgent; Accessibility permission granted and surviving a rebuild
@@ -47,9 +47,9 @@ use ([#12](https://github.com/thewisepup/computer-history/issues/12)).
 ### M3 — Capture agent: screenshots + text recognition
 
 Remaining before ✅: the measurements on real screens
-([#38](https://github.com/thewisepup/computer-history/issues/38)), the
+([#38](https://github.com/thewisepup/open-computer-history/issues/38)), the
 Screen Recording unknowns
-([#39](https://github.com/thewisepup/computer-history/issues/39)), a normal
+([#39](https://github.com/thewisepup/open-computer-history/issues/39)), a normal
 day within the storage budget, and a static screen saving at most one image
 per keep-after limit while its text is read. All on Brandon's Mac.
 
