@@ -40,8 +40,11 @@ then `Sub-features`, `How to get to it (user POV)`, `Driving it with chv`
 
 - [Ingest](./ingest.md): one poll and `--watch` across ActivityWatch and the
   spool; idempotence, held-back events, rejected spool lines.
-- [Status](./status.md): database, sources, coverage gaps, capture agent and
-  row counts; read-only on a missing database.
+- [Status](./status.md): database, sources, coverage gaps, capture agent,
+  row counts and the stable sections; read-only on a missing database.
 - [Backfill](./backfill.md): dry-run plan and the chunked history import.
 - [Rebuild signals](./rebuild-signals.md): re-projecting the derived layer
   from stored observations.
+- [Backup and restore](./backup.md): the daily backup beside the database and
+  putting one back.
+- [Logs](./logs.md): reading the run's JSON log back, filtered.

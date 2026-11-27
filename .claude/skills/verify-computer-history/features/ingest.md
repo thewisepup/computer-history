@@ -27,23 +27,27 @@ Preconditions:
 - **First poll.** Seed the spool and ingest. Run `$C spool-seed` then
   `$C cli ingest`. Exit `0`; stdout has `aw-afk inserted 4 ... held back 1`,
   `aw-web inserted 2 ... held back 0`, `aw-window inserted 17 ... held back 1`,
-  `ax-text inserted 9`.
+  `ax-text inserted 9`, `screenshot inserted 5`.
 - **Stored rows.** Run `$C sql "SELECT source, COUNT(*) n FROM observations GROUP BY source"`.
-  Counts match the inserted numbers (4, 2, 17, 9).
+  Counts match the inserted numbers (4, 2, 17, 9, 5).
 - **Spool emptied.** Run `$C spool-ls`. No `*.jsonl` file remains.
 - **Second poll.** Run `$C cli ingest` again. Every stream reports
   `inserted 0`; `held back 1` stays on `aw-afk` and `aw-window`.
 - **Held event settles.** Run `$C aw-advance` then `$C cli ingest`.
-  `aw-window inserted 1` (the formerly growing event), `held back 1` (the new one).
+  `aw-afk inserted 1` and `aw-window inserted 1` (the formerly growing events),
+  each `held back 1` (the new ones).
 - **Rejected line.** Run `$C spool-seed --bad` then `$C cli ingest`. Exit `0`;
-  stdout has `ax-text inserted ... rejected 1`; stderr has
-  `WARNING skipped 1 unusable record(s) in spool file` and
-  `moved spool file ... to .../spool/unreadable/`. Then `$C spool-ls` shows the
-  file under `unreadable/`.
-- **Watch.** Run `$C watch-start`, wait 3 seconds, `$C doctor` (the watch pid
-  line is `ok`), then `$C watch-stop`. The `NN-watch.txt` transcript has
-  `INFO watching ... every 60s` and one cycle line
-  `aw-afk +0 (... dup, 1 held); ...; ax-text +0 (...)`.
+  the file's two good lines are fixture records already stored, so stdout reads
+  `ax-text ... skipped 1` and `screenshot ... skipped 1`; stderr has
+  `WARNING sources.capture_spool.adapter  spool file set aside  file=... target=.../spool/unreadable/...`
+  with `error="it has 1 unusable line(s), 1 of no readable kind (its usable lines are stored)"`.
+  Then `$C spool-ls` shows the file under `unreadable/`.
+- **Watch.** Run `$C watch-start` (it returns once the first cycle is logged),
+  `$C doctor` (the watch pid line is `ok`), `$C cli status` (`Ingest:` reads
+  `ok, last cycle ...` and the checks `backend  ok: recording, last seen ...`),
+  then `$C watch-stop`. The `NN-watch.txt` transcript has
+  `INFO    cli.ingest  watching (Ctrl-C to stop)  ... interval_s=60` and one line
+  `INFO    sources.cycle_report  cycle ok: aw-afk +0 (1 dup, 1 held); ...; screenshot +0 (0 dup, 0 held)`.
 
 ## Gotchas
 
@@ -51,10 +55,18 @@ Preconditions:
   stores them once (`skipped` on ax-text), which is correct, not a failure.
 - The fixed-id records are 2026-11-18; they do not make the agent `alive`.
   Use `$C spool-seed --now` for that.
-- `aw-window` reports `skipped 2` on repeat polls: the resume reads 10 minutes
+- `aw-window` reports `skipped 3` on repeat polls: the resume reads 10 minutes
   back and re-sees stored events. Assert `inserted 0`, not `skipped 0`.
+- Stdout pads its counts (`inserted      4  skipped      0  held back   1`);
+  match the words and numbers, not the spacing.
+- `rejected` counts only well-formed records of the stream's kinds with a bad
+  field; a torn line has no readable kind, so `--bad` sets the file aside
+  without a `rejected` count.
 - The `unreadable/` folder is created `drwxr-xr-x` while the spool itself is
   `drwx------` (seen 2026-11-19); the files inside are `0600`.
 - `--watch` sleeps 60s between cycles; one cycle is all a short run captures.
+  A separate shell `sleep` between drives can stall for minutes (seen
+  2026-11-27: background processes advanced only while a command ran), so wait
+  inside one command, as `watch-start` does, never across calls.
   Stop it with `$C watch-stop`, never by process name: the live LaunchAgent
   runs the same command.

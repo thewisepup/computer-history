@@ -1,6 +1,6 @@
 ---
 name: verify-computer-history
-description: Drive the real computer-history CLI (ingest, status, backfill, rebuild-signals) against an isolated run with a seeded fake ActivityWatch and its own database and spool, and capture transcripts as proof. Use when asked to prove, demo or verify a CLI change end to end in the real app, beyond pytest.
+description: Drive the real computer-history CLI (ingest, status, backfill, rebuild-signals, backup, restore, logs) against an isolated run with a seeded fake ActivityWatch and its own database and spool, and capture transcripts as proof. Use when asked to prove, demo or verify a CLI change end to end in the real app, beyond pytest.
 ---
 
 # Verify computer-history
@@ -11,8 +11,10 @@ folder, and writes one SQLite database. The user's live setup runs on this
 machine at all times: ActivityWatch on `127.0.0.1:5600`, the capture agent,
 and a LaunchAgent running `ingest --watch` into
 `~/Library/Application Support/ComputerHistory/`. A verification run touches
-none of it. Every run gets its own database, spool and fake ActivityWatch
-port, so runs sit side by side with the live setup and with each other.
+none of it, except that `status` reads (never writes) the stable install's
+versions, LaunchAgents and watchdog state for its last sections. Every run
+gets its own database, spool and fake ActivityWatch port, so runs sit side by
+side with the live setup and with each other.
 
 All driving goes through one helper, `scripts/chv`, run from the repo root.
 Its commands are the only stable handles; it strips `COMPUTER_HISTORY_*`
@@ -40,7 +42,9 @@ new user. `CHV_RUN` must be set in every later shell (`export CHV_RUN=<id>`),
 since each Bash call starts fresh.
 
 The fake ActivityWatch (`scripts/fake_aw.py`) serves the endpoints the CLI
-reads, with the real API's range semantics, seeded relative to launch time:
+reads, with the real API's range semantics, seeded relative to launch time.
+Its buckets are named `<watcher>_<this machine's hostname>`, as ActivityWatch
+names them, so `status` judges them as this host's:
 
 - `aw-window`: 3 events on each of the last 3 days, 8 five-minute events
   over the last 40 minutes, then one growing event (`Cursor`, `live — chv`).
@@ -76,7 +80,7 @@ wrong. On any `FAIL`, run `$C down` and `$C up` again rather than driving.
 | `$C spool-ls` | Lists the spool tree, `unreadable/` included. |
 | `$C sql "<SELECT ...>"` | Query on the run's database with `PRAGMA query_only=1` (writes are refused); refuses when the database does not exist yet. |
 | `$C aw-advance` | Closes the growing ActivityWatch events (see Launch). |
-| `$C watch-start` / `$C watch-stop` | Runs `ingest --watch` in the background (60s cycles, first cycle immediately) / stops it with SIGINT. |
+| `$C watch-start` / `$C watch-stop` | Runs `ingest --watch` in the background (60s cycles, first cycle immediately) and returns once that first cycle is logged / stops it with SIGINT. |
 | `$C runs` | Lists run folders on this machine as `live` or `stale`. |
 
 The per-command recipes and what proves each one are in

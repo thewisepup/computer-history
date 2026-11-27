@@ -35,8 +35,9 @@ Preconditions:
 ## Gotchas
 
 - Signals cover captures, slept and woke records only for ax-text (excluded,
-  paused and resumed records project to nothing), so signals < observations is
-  expected.
+  paused and resumed records project to nothing), and `aw-afk` events project
+  to nothing, so signals < observations is expected: the fixture run stores 37
+  observations and 30 signals.
 - The shrink guard only fires after a projector change; the seed cannot
   trigger it. Reaching `--allow-shrink` needs a code change and is out of
   this map's reach.
