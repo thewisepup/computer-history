@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-HOST = "chv-fake-aw"
-WINDOW = "aw-watcher-window_chv-fake-aw"
-AFK = "aw-watcher-afk_chv-fake-aw"
-WEB = "aw-watcher-web-chrome_chv-fake-aw"
+# ActivityWatch names buckets <watcher>_<hostname>; status judges only this host's.
+HOST = socket.gethostname()
+WINDOW = f"aw-watcher-window_{HOST}"
+AFK = f"aw-watcher-afk_{HOST}"
+WEB = f"aw-watcher-web-chrome_{HOST}"
 TYPES = {WINDOW: "currentwindow", AFK: "afkstatus", WEB: "web.tab.current"}
 
 WINDOW_PLAN = [

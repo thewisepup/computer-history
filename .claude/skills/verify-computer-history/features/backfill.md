@@ -15,7 +15,7 @@ nothing.
 
 - `computer-history backfill --dry-run`
 - `computer-history backfill`
-- `computer-history backfill --start <ISO date>`
+- `computer-history backfill --start <ISO date>` (and `--end <ISO date>`; dates without an offset are local time)
 
 ## Driving it with chv
 
@@ -36,9 +36,12 @@ Preconditions:
 - **Stored.** Run `$C sql "SELECT source, settled_until FROM ingest_progress"`.
   One row each for `aw-afk`, `aw-web`, `aw-window`.
 - **Ingest continues.** Run `$C cli ingest`. AW streams report `inserted 0`.
-- **Rerun.** Run `$C cli backfill`. Every `done in` line reads `inserted 0`.
+- **Rerun.** Run `$C cli backfill`. Every `done in` line reads `inserted 0`
+  (`skipped 4`, `2`, `17`).
 - **Start override.** Run `$C cli backfill --dry-run --start $(date -v-1d +%Y-%m-%d)`.
-  Each range begins at yesterday `00:00`.
+  Each range begins at yesterday `00:00` and runs `up to its settled-until time`;
+  `aw-afk` and `aw-window` each add
+  `warning: aw-watcher-..._<host> has events before <yesterday> 00:00 ...; they are NOT included and progress will not be set.`
 
 ## Gotchas
 

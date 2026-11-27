@@ -161,6 +161,9 @@ cmd_watch_start() {
   env $(env | awk -F= '/^COMPUTER_HISTORY_/{printf "-u %s ", $1}') "${ISOLATED[@]}" \
     nohup "$CLI" --db-path "$DB" ingest --aw-url "$AW_URL" --watch >"$log" 2>&1 &
   echo $! >"$STATE/watch.pid"
+  # Wait for the first cycle line here: a separate shell `sleep` can stall in agent harnesses.
+  for _ in $(seq 100); do grep -q 'cycle ' "$log" 2>/dev/null && break; sleep 0.1; done
+  grep -q 'cycle ' "$log" || echo "chv: no cycle line in $log after 10s" >&2
   echo "chv: ingest --watch pid $(cat "$STATE/watch.pid") logging to $log" >&2
 }
 
