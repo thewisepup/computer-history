@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from computer_history.sources import (
+    HealthFile,
+    HealthUnreadable,
     IngestHealth,
     SourceUnavailable,
     active_spans,
     capture_liveness,
-    read_health,
 )
 from computer_history.sources.activitywatch import AWApi, discover_sources, watcher_ends
 from computer_history.sources.capture_spool import Span
@@ -51,7 +52,7 @@ def assess(
     client: AWApi,
     *,
     spool: Path,
-    health_file: Path,
+    health: HealthFile,
     silent_after: Mapping[Check, timedelta],
     watched_since: datetime,
     unreachable_since: datetime | None,
@@ -87,14 +88,14 @@ def assess(
             Check.CAPTURE_AGENT, Verdict.UNKNOWN, Reason.UNREADABLE, detail=store_error
         )
     try:
-        health, health_error = read_health(health_file), None
-    except (OSError, ValueError) as exc:
-        health, health_error = None, str(exc)
+        cycle, health_error = health.read(), None
+    except HealthUnreadable as exc:
+        cycle, health_error = None, str(exc)
     if health_error is not None:
         backend = Finding(Check.BACKEND, Verdict.UNKNOWN, Reason.UNREADABLE, detail=health_error)
     else:
         backend = judge_backend(
-            health,
+            cycle,
             now=now,
             active=_since(active, now - silent_after[Check.BACKEND]),
             watched_since=watched_since,
@@ -118,7 +119,7 @@ def assess(
         backend,
         watched_since,
         None if ends is not None else since,
-        health,
+        cycle,
         health_error,
         aw_sources,
         buckets,

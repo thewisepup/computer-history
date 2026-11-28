@@ -15,7 +15,7 @@ from fake_host import FakeHost, write_record
 from projectors import AW
 from spool_records import spool_line
 
-from computer_history.sources import IngestHealth, health_path, write_health
+from computer_history.sources import HealthFile, IngestHealth
 from computer_history.sources.activitywatch import AWError
 from computer_history.sources.capture_spool import (
     CAPTURE_KIND,
@@ -60,7 +60,7 @@ def watchers(host: str = HOST, *, t0: datetime = T0, away_from: float = 60) -> F
 
 
 def last_cycle(db_path: Path, when: datetime) -> None:
-    write_health(health_path(db_path), IngestHealth(when, last_success_at=when))
+    HealthFile.beside(db_path).write(IngestHealth(when, last_success_at=when))
 
 
 def watching(

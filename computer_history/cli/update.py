@@ -15,10 +15,9 @@ from computer_history.cli.formatting import release_gate_lines
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
 from computer_history.sources import (
     AWClient,
+    HealthFile,
     active_time,
-    health_path,
     newest_record,
-    read_health,
 )
 from computer_history.sources.activitywatch import AWApi
 from computer_history.sources.capture_spool import UNREADABLE_FOLDER, default_spool_path
@@ -71,13 +70,12 @@ def _active_between(
 
 def cmd_update(args: argparse.Namespace) -> int:
     layout = stable_layout()
-    health = health_path(layout.database)
     client = AWClient(args.aw_url, timeout=AW_CHECK_TIMEOUT_SECONDS)
     try:
         report = update(
             args.host,
             layout,
-            last_cycle=lambda: read_health(health),
+            last_cycle=HealthFile.beside(layout.database).read,
             newest_record=partial(
                 _newest_record, layout.database, default_spool_path(layout.database)
             ),

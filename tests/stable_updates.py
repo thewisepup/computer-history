@@ -9,7 +9,7 @@ from cli_output import RunCli
 from db_states import writer
 from fake_host import BackendStart, FakeHost, gate_runs, installed_package
 
-from computer_history.sources import health_path
+from computer_history.sources import HealthFile
 from computer_history.stable import BACKEND, Layout, stable_layout
 from computer_history.store import DATABASE_NAME, sidecars
 
@@ -31,8 +31,8 @@ def stable_code(layout: Layout) -> Path:
     return installed_package(layout.current.resolve() / "venv")
 
 
-def health(layout: Layout) -> Path:
-    return health_path(layout.database)
+def health(layout: Layout) -> HealthFile:
+    return HealthFile.beside(layout.database)
 
 
 def updating(layout: Layout, *starts: BackendStart, **options: object) -> FakeHost:

@@ -9,7 +9,7 @@ from socket import gethostname
 from computer_history.cli import formatting
 from computer_history.cli.formatting import duration, finding_lines
 from computer_history.cli.sources import AW_CHECK_TIMEOUT_SECONDS
-from computer_history.sources import AWClient, health_path, resolve_spool_path
+from computer_history.sources import AWClient, HealthFile, resolve_spool_path
 from computer_history.sources.capture_spool import agent_config_path
 from computer_history.store import Purpose, StoreState, open_store
 from computer_history.watchdog import (
@@ -26,7 +26,7 @@ def cmd_watchdog(args: argparse.Namespace) -> int:
     db_path: Path = args.database
     paths = WatchPaths(
         spool=resolve_spool_path(args.spool_path, db_path, args.profile),
-        health=health_path(db_path),
+        health=HealthFile.beside(db_path),
         config=agent_config_path(db_path),
         state=watchdog_state_path(db_path),
         lock=watchdog_lock_path(db_path),

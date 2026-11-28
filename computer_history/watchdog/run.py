@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from computer_history.host import Host, HostError
+from computer_history.sources import HealthFile
 from computer_history.sources.activitywatch import AWApi
 from computer_history.watchdog.alerts import Notice, due_to_log, notices
 from computer_history.watchdog.assessment import assess
@@ -28,7 +29,7 @@ class WatchPaths:
     """The files one watchdog run reads and writes."""
 
     spool: Path
-    health: Path
+    health: HealthFile
     config: Path
     state: Path
     lock: Path
@@ -80,7 +81,7 @@ def _watch(
         conn,
         client,
         spool=paths.spool,
-        health_file=paths.health,
+        health=paths.health,
         silent_after=silent_after,
         watched_since=running_since(previous, now) or now,
         unreachable_since=previous.unreachable_since,

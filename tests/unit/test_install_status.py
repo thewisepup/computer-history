@@ -8,7 +8,7 @@ from fake_aw import FakeAW
 from fake_host import FakeHost, gate_runs, installed_package, write_stopgap_plist
 
 from computer_history.cli import ingest as cli_ingest
-from computer_history.sources import health_path, read_health, runner
+from computer_history.sources import HealthFile, runner
 from computer_history.stable import (
     ACTIVITYWATCH_AT_LOGIN,
     BACKEND,
@@ -73,7 +73,7 @@ def test_a_failed_cycle_is_recorded_with_why_and_status_leads_with_it(
 
     _, out, _ = run(code, *STATUS, host=host)
 
-    health = read_health(health_path(live / DATABASE_NAME))
+    health = HealthFile.beside(live / DATABASE_NAME).read()
     assert health is not None and health.last_error is not None
     assert not health.ok and health.sources_unavailable
     assert "ActivityWatch" in health.last_error

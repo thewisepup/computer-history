@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, TypeAlias
 
 from computer_history.host import Host, HostError
-from computer_history.sources import CaptureHealth, capture_health, health_path
+from computer_history.sources import CaptureHealth, HealthFile, capture_health
 from computer_history.sources.activitywatch import AWApi
 from computer_history.sources.capture_spool import (
     SCREENSHOT_SOURCE,
@@ -155,7 +155,7 @@ def status_report(
         conn,
         client,
         spool=spool,
-        health_file=health_path(db_path),
+        health=HealthFile.beside(db_path),
         silent_after=read_thresholds(agent_config_path(db_path)).silent_after,
         watched_since=now - STATUS_WINDOW if running is None else running,
         unreachable_since=previous.unreachable_since,
