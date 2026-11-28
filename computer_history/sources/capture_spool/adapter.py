@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum, auto
 from functools import partial
 from pathlib import Path
 
@@ -25,11 +26,81 @@ from computer_history.sources.capture_spool.spool import (
     set_aside,
 )
 from computer_history.sources.contract import Pull
+from computer_history.sources.progress_moves import ProgressRule, next_position
 from computer_history.store import Observation, SpoolHold, utc_iso
+from computer_history.transitions import TransitionTable
 
 log = logging.getLogger(__name__)
 
 Finish = Callable[[Path], object]
+
+
+class FileState(Enum):
+    LISTED = auto()
+    STORED_BY_SOME = auto()
+    UNREADABLE = auto()
+    STORED_BY_ALL = auto()
+    UNREADABLE_BY_ALL = auto()
+    REMOVED = auto()  # deleted | set aside
+    KEPT_FOR_HOLD = auto()
+    STUCK = auto()
+
+
+FILE_STATES = TransitionTable(
+    "spool file",
+    {
+        FileState.LISTED: frozenset(
+            {
+                FileState.STORED_BY_SOME,
+                FileState.STORED_BY_ALL,
+                FileState.UNREADABLE,
+                FileState.UNREADABLE_BY_ALL,
+            }
+        ),
+        FileState.STORED_BY_SOME: frozenset({FileState.STORED_BY_SOME, FileState.STORED_BY_ALL}),
+        FileState.UNREADABLE: frozenset(
+            {
+                FileState.UNREADABLE,
+                FileState.UNREADABLE_BY_ALL,
+                FileState.STORED_BY_SOME,
+                FileState.STORED_BY_ALL,
+            }
+        ),
+        FileState.STORED_BY_ALL: frozenset(
+            {FileState.REMOVED, FileState.KEPT_FOR_HOLD, FileState.STUCK, FileState.LISTED}
+        ),
+        FileState.UNREADABLE_BY_ALL: frozenset(
+            {FileState.REMOVED, FileState.KEPT_FOR_HOLD, FileState.STUCK, FileState.LISTED}
+        ),
+        FileState.REMOVED: frozenset({FileState.LISTED}),
+        FileState.KEPT_FOR_HOLD: frozenset({FileState.LISTED}),
+        FileState.STUCK: frozenset(),
+    },
+)
+
+_FINISHED = frozenset(
+    {
+        FileState.STORED_BY_ALL,
+        FileState.UNREADABLE_BY_ALL,
+        FileState.REMOVED,
+        FileState.KEPT_FOR_HOLD,
+    }
+)
+
+
+@dataclass
+class _File:
+    state: FileState = FileState.LISTED
+    identity: FileIdentity | None = None
+    stored_by: set[str] = field(default_factory=set[str])
+    unreadable_by: set[str] = field(default_factory=set[str])
+
+    def move(self, target: FileState) -> None:
+        self.state = FILE_STATES.move(self.state, target)
+        if target is FileState.LISTED:
+            self.identity = None
+            self.stored_by.clear()
+            self.unreadable_by.clear()
 
 
 class CaptureSpool:
@@ -41,9 +112,7 @@ class CaptureSpool:
         self.folder = folder
         self.hold = hold
         self._listed: dict[str, deque[Path]] = {stream: deque() for stream in STREAM_KINDS}
-        self._stored: dict[tuple[Path, FileIdentity], set[str]] = {}
-        self._unreadable: dict[Path, set[str]] = {}
-        self._stuck: set[Path] = set()
+        self._files: dict[Path, _File] = {}
 
     def streams(self) -> list[str]:
         return list(STREAM_KINDS)
@@ -56,9 +125,7 @@ class CaptureSpool:
                 f"the spool feeds {', '.join(map(repr, STREAM_KINDS))}, not {stream!r}"
             )
         if not listed:
-            found = finished_files(self.folder)
-            self._forget_all_but(found)
-            listed.extend(p for p in found if p not in self._stuck)
+            self._relist(listed)
         if not listed:
             return Pull((), 0, None, None)
         path = listed[0]
@@ -90,14 +157,12 @@ class CaptureSpool:
                 f" {read.file_kindless} of no readable kind ({kept})",
             )
         newest = None if read.latest is None else utc_iso(read.latest)
-        moved = newest is not None and (
-            position is None or newest > position or position > utc_iso(now)
-        )
+        moved_to = next_position(ProgressRule.FORWARD_ONLY, position, newest, now=now)
         return Pull(
             read.observations,
             0,
-            newest if moved else None,
-            read.latest if moved else None,
+            moved_to,
+            read.latest if moved_to is not None else None,
             rejected=read.rejected,
             more=more,
             after_commit=partial(self._stored_by, stream, path, identity, finish),
@@ -106,51 +171,76 @@ class CaptureSpool:
     def _empty(self, after_commit: Callable[[], None], more: bool) -> Pull:
         return Pull((), 0, None, None, more=more, after_commit=after_commit)
 
+    def _relist(self, listed: deque[Path]) -> None:
+        found = finished_files(self.folder)
+        present = set(found)
+        for path in [p for p in self._files if p not in present]:
+            if self._files[path].state is not FileState.STUCK:
+                del self._files[path]
+        for path in found:
+            file = self._files.setdefault(path, _File())
+            if file.state is FileState.STUCK:
+                continue
+            if file.state in _FINISHED:
+                file.move(FileState.LISTED)
+            listed.append(path)
+
+    def _tracked(self, path: Path) -> _File:
+        file = self._files.setdefault(path, _File())
+        if file.state in _FINISHED:
+            file.move(FileState.LISTED)
+        return file
+
     def _stored_by(self, stream: str, path: Path, identity: FileIdentity, finish: Finish) -> None:
-        self._unreadable.get(path, set()).discard(stream)
-        streams = self._stored.setdefault((path, identity), set())
-        streams.add(stream)
-        if len(streams) < len(STREAM_KINDS):
+        file = self._tracked(path)
+        if file.state is FileState.STUCK:
             self._drop(stream, path)
             return
-        del self._stored[(path, identity)]
-        self._finish(stream, path, finish)
+        file.unreadable_by.discard(stream)
+        if file.identity != identity:
+            file.identity = identity
+            file.stored_by.clear()
+        file.stored_by.add(stream)
+        if len(file.stored_by) < len(STREAM_KINDS):
+            file.move(FileState.STORED_BY_SOME)
+            self._drop(stream, path)
+            return
+        file.move(FileState.STORED_BY_ALL)
+        self._finish(stream, path, file, finish)
 
     def _unreadable_by(self, stream: str, path: Path, problem: str) -> None:
-        failed = self._unreadable.setdefault(path, set())
-        failed.add(stream)
-        stored_by_any = any(key[0] == path for key in self._stored)
-        if stored_by_any or len(failed) < len(STREAM_KINDS):
+        file = self._tracked(path)
+        if file.state is FileState.STUCK:
+            self._drop(stream, path)
+            return
+        file.unreadable_by.add(stream)
+        if file.stored_by or len(file.unreadable_by) < len(STREAM_KINDS):
+            file.move(FileState.STORED_BY_SOME if file.stored_by else FileState.UNREADABLE)
             log.warning(
                 "spool file unreadable, will retry",
                 extra={"file": path.name, "stream": stream, "error": problem},
             )
             self._drop(stream, path)
             return
-        del self._unreadable[path]
-        self._finish(stream, path, partial(_move_aside, error=f"cannot read it: {problem}"))
+        file.move(FileState.UNREADABLE_BY_ALL)
+        self._finish(stream, path, file, partial(_move_aside, error=f"cannot read it: {problem}"))
 
-    def _finish(self, stream: str, path: Path, finish: Finish) -> None:
+    def _finish(self, stream: str, path: Path, file: _File, finish: Finish) -> None:
         self._drop(stream, path)
         if self.hold is not None and self.hold.active:
+            file.move(FileState.KEPT_FOR_HOLD)
             return
         try:
             finish(path)
         except SpoolError:
-            self._stuck.add(path)
+            file.move(FileState.STUCK)
             raise
+        file.move(FileState.REMOVED)
 
     def _drop(self, stream: str, path: Path) -> None:
         listed = self._listed[stream]
         if path in listed:
             listed.remove(path)
-
-    def _forget_all_but(self, present: list[Path]) -> None:
-        names = set(present)
-        for key in [key for key in self._stored if key[0] not in names]:
-            del self._stored[key]
-        for path in [path for path in self._unreadable if path not in names]:
-            del self._unreadable[path]
 
 
 @dataclass(frozen=True)

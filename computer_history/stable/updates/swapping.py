@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
 
 from computer_history.host import AgentNotUnregistered, Host, HostError
 from computer_history.stable.capture_agent import (
-    carried_agent,
     installed_agent,
     keep_installed_app,
     record_installed_agent_or_note,
@@ -16,18 +16,25 @@ from computer_history.stable.capture_agent import (
 from computer_history.stable.layout import Layout
 from computer_history.stable.update_log import UpdateAction, UpdateLogEntry, append_or_note
 from computer_history.stable.updates.preparing import Prepared
+from computer_history.stable.versions import carried_agent
 
 REINSTALL_HINT = "run capture-agent/scripts/install.sh from a checkout at main"
 
 
+class SwapEnd(Enum):
+    LEFT_RUNNING = auto()
+    FAILED = auto()
+    STARTED = auto()
+
+
 @dataclass(frozen=True)
 class AgentSwap:
-    """How the swap went: when the new app was registered, or why to put the old one back, or
-    that the installed agent was left running untouched."""
+    """How the swap ended: the installed agent left running untouched, a new app that failed and
+    why, or one started and when it was registered."""
 
-    at: datetime | None
+    end: SwapEnd
+    at: datetime | None = None
     failure: str | None = None
-    swapped: bool = True
     problems: tuple[str, ...] = ()
 
 
@@ -47,7 +54,7 @@ def swap_agent(host: Host, layout: Layout, prepared: Prepared) -> AgentSwap:
         keep_installed_app(layout, old)
     except OSError as exc:
         kept = f"the installed capture agent could not be kept in {prepared.old.name}: {exc}"
-        return AgentSwap(None, swapped=False, problems=(kept,))
+        return AgentSwap(SwapEnd.LEFT_RUNNING, problems=(kept,))
     installed = installed_agent(layout)
     try:
         layout.installed_agent.unlink(missing_ok=True)
@@ -62,12 +69,13 @@ def swap_agent(host: Host, layout: Layout, prepared: Prepared) -> AgentSwap:
             record_installed_agent_or_note(
                 layout, installed.built_from, installed.installed_at, problems
             )
-        return AgentSwap(None, swapped=False, problems=tuple(problems))
+        return AgentSwap(SwapEnd.LEFT_RUNNING, problems=tuple(problems))
     except (HostError, OSError) as exc:
-        return AgentSwap(None, f"the new capture agent could not be started: {exc}")
+        failure = f"the new capture agent could not be started: {exc}"
+        return AgentSwap(SwapEnd.FAILED, failure=failure)
     problems: list[str] = []
     record_installed_agent_or_note(layout, prepared.agent.built_from, at, problems)
-    return AgentSwap(at, problems=tuple(problems))
+    return AgentSwap(SwapEnd.STARTED, at, problems=tuple(problems))
 
 
 def fall_back_agent(

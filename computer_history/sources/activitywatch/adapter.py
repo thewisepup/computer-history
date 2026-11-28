@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -10,6 +11,7 @@ from computer_history.sources.activitywatch.history import history_before, histo
 from computer_history.sources.activitywatch.normalize import PROJECTORS
 from computer_history.sources.activitywatch.pull import SourcePull, pull_source
 from computer_history.sources.contract import Pull, StreamProjector
+from computer_history.sources.progress_moves import ProgressRule, next_position
 from computer_history.store import to_utc, utc_iso
 
 RESUME_OVERLAP_SECONDS = 600
@@ -28,7 +30,9 @@ class ActivityWatch:
 
     def pull_after(self, stream: str, position: str | None, *, now: datetime) -> Pull:
         start = None if position is None else _resume_start(position)
-        return _as_pull(pull_source(self.client, self._source(stream), start=start, now=now))
+        pulled = _as_pull(pull_source(self.client, self._source(stream), start=start, now=now))
+        rule = ProgressRule.SETTLED_FRONTIER
+        return replace(pulled, position=next_position(rule, position, pulled.position, now=now))
 
     def pull_range(self, stream: str, start: datetime, end: datetime, *, now: datetime) -> Pull:
         pulled = pull_source(self.client, self._source(stream), start=start, end=end, now=now)

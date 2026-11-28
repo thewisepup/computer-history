@@ -276,3 +276,16 @@ def test_load_replaces_a_running_agent(layout: Layout) -> None:
 
     assert launchd_calls(host) == [("unload", BACKEND.label), ("load", BACKEND.label)]
     assert loaded(host, BACKEND)
+
+
+def test_an_agent_loaded_then_stopped_again_is_owed_again_as_the_last_stopped(
+    layout: Layout,
+) -> None:
+    host = FakeHost(loaded=[BACKEND.label, WATCHDOG.label])
+    stopped = stopped_agents(host, layout)
+
+    stopped.stop((BACKEND, WATCHDOG))
+    stopped.load(BACKEND)
+    stopped.stop((BACKEND,))
+
+    assert stopped.start_again().agents == (BACKEND, WATCHDOG)

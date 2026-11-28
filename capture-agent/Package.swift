@@ -18,7 +18,8 @@ import PackageDescription
 ///     CaptureLoop.swift     the capture thread: each tick asks the decision what to do, then reads
 ///           |               the window or writes a capture, excluded, paused or resumed record,
 ///           |               and after each capture queues its screenshot record
-///     SleepRecords.swift    the slept and woke records, written from the sleep and wake notifications
+///     SleepRecords.swift    the Mac's sleep as one state, moved by the sleep and wake notifications
+///                           or the first input after a sleep, and the slept and woke records it passes on
 ///     RecordWriter.swift    appends window text records one at a time and counts failed writes
 ///     Screenshots/CaptureScreenshot.swift   the screenshot stage: password-field check, picture,
 ///           |     duplicate check, image saved, and the screenshot record that names the capture;
@@ -78,6 +79,8 @@ import PackageDescription
 ///     SpoolWriter.swift     append records to open.part; finish it to <stamp>.jsonl
 ///     SpoolRecord.swift     one record, the hash and cut-off it derives, and its JSON line
 ///     SpoolTime.swift       UTC milliseconds as ISO-8601 and as file name stamps
+///     StateMachine.swift    the states and events every machine above moves through; a refused event
+///                           is logged and the state kept
 ///
 /// The spool and its record format are described in README.md.
 let package = Package(

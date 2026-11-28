@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from types import FrameType
+from typing import assert_never
 
 from computer_history.host import Host, HostError
 from computer_history.stable.gate import GateVerdict, newest_passing, none_passed
@@ -27,8 +28,14 @@ from computer_history.stable.updates.agent_waiting import (
     wait_for_agent_record,
 )
 from computer_history.stable.updates.falling_back import fall_back
+from computer_history.stable.updates.phases import UpdatePhase
 from computer_history.stable.updates.preparing import Prepared, UpdateFailed, prepare
-from computer_history.stable.updates.swapping import AgentSwap, fall_back_agent, swap_agent
+from computer_history.stable.updates.swapping import (
+    AgentSwap,
+    SwapEnd,
+    fall_back_agent,
+    swap_agent,
+)
 from computer_history.stable.updates.waiting import (
     FIRST_CYCLE_WAIT_SECONDS,
     LastCycle,
@@ -129,20 +136,15 @@ def update(
         with _signals_deferred() as deferred:
             report = _fell_back(run, first.problem, first.interrupted)
         return replace(report, interrupted=True) if deferred else report
+    prepared.phases.advance(UpdatePhase.FIRST_CYCLE_OK)
     with _signals_deferred() as deferred:
         problems = _release_hold(prepared)
         swap = swap_agent(host, layout, prepared) if prepared.agent.changed else None
     interrupted = bool(deferred)
     if swap is None:
         check = AgentCheck(AgentOutcome.UNCHANGED, "its source is the same")
-    elif not swap.swapped:
-        check = AgentCheck(
-            AgentOutcome.NOT_SWAPPED, f"{prepared.old.name}'s capture agent keeps running"
-        )
-    elif swap.at is None or interrupted:
-        check = AgentCheck(AgentOutcome.FELL_BACK, swap.failure or AGENT_INTERRUPTED)
     else:
-        check, interrupted = _check_agent(run, swap.at, newest_record, active_between)
+        check, interrupted = _agent_check(run, swap, interrupted, newest_record, active_between)
     with _signals_deferred() as deferred:
         report = _finish(run, check, swap)
     problems.extend(report.problems)
@@ -171,6 +173,33 @@ def _release_hold(prepared: Prepared) -> list[str]:
     except OSError as exc:
         return [f"the spool hold {prepared.hold.path} could not be removed: {exc}"]
     return []
+
+
+def _agent_check(
+    run: UpdateRun,
+    swap: AgentSwap,
+    interrupted: bool,
+    newest_record: NewestAgentRecord,
+    active_between: ActiveBetween,
+) -> tuple[AgentCheck, bool]:
+    match swap.end:
+        case SwapEnd.LEFT_RUNNING:
+            kept = f"{run.prepared.old.name}'s capture agent keeps running"
+            return AgentCheck(AgentOutcome.NOT_SWAPPED, kept), interrupted
+        case SwapEnd.FAILED:
+            failure = swap.failure or AGENT_INTERRUPTED
+            return AgentCheck(AgentOutcome.FELL_BACK, failure), interrupted
+        case SwapEnd.STARTED:
+            assert swap.at is not None, "a started swap has its registration time"
+            run.prepared.phases.advance(UpdatePhase.AGENT_SWAPPED)
+            if interrupted:
+                return AgentCheck(AgentOutcome.FELL_BACK, AGENT_INTERRUPTED), True
+            check, interrupted = _check_agent(run, swap.at, newest_record, active_between)
+            if check.outcome is AgentOutcome.VERIFIED:
+                run.prepared.phases.advance(UpdatePhase.AGENT_VERIFIED)
+            return check, interrupted
+        case _:
+            assert_never(swap.end)
 
 
 def _check_agent(
@@ -209,6 +238,7 @@ def _finish(run: UpdateRun, check: AgentCheck, swap: AgentSwap | None) -> Update
         run.now(), UpdateAction.UPDATED, old.name, prepared.new, agent=check.outcome
     )
     append_or_note(layout.update_log, entry, problems)
+    prepared.phases.advance(UpdatePhase.FINISHED)
     return UpdateReport(
         UpdateAction.UPDATED,
         run.commit,
@@ -226,9 +256,12 @@ def _switch(run: UpdateRun, last_cycle: LastCycle, wait_seconds: float) -> First
     try:
         try:
             point(layout.previous, prepared.old.name)
+            prepared.phases.advance(UpdatePhase.PREVIOUS_FLIPPED)
             point(layout.current, prepared.new)
+            prepared.phases.advance(UpdatePhase.CURRENT_FLIPPED)
             started_at = run.now()
             prepared.stopped.load(BACKEND)
+            prepared.phases.advance(UpdatePhase.BACKEND_LOADED)
         except (HostError, OSError) as exc:
             return FirstCycle(f"the backend could not be started on the new version: {exc}")
         problem = wait_for_first_cycle(

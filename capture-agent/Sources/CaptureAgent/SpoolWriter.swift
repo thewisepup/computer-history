@@ -30,20 +30,26 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
 
     public let directory: URL
     private let now: @Sendable () -> Date
+    private let log: AgentLog
     private let lock = NSLock()
-    private var lockFile: Int32 = -1
-    private var handle: FileHandle?
-    private var tailMayBeTorn = false
-    private var lastFinished = SpoolTime(milliseconds: 0)
+    private var state = SpoolWriterState.notStarted
 
-    public init(directory: URL, now: @escaping @Sendable () -> Date) {
+    public init(directory: URL, now: @escaping @Sendable () -> Date, log: AgentLog) {
         self.directory = directory
         self.now = now
+        self.log = log
     }
 
     deinit {
-        try? handle?.close()
-        if lockFile >= 0 { close(lockFile) }
+        switch state {
+        case .notStarted:
+            break
+        case .idle(let spool):
+            close(spool.lockFile)
+        case .open(let spool, let file, _):
+            try? file.close()
+            close(spool.lockFile)
+        }
     }
 
     var openFile: URL { directory.appendingPathComponent(Self.openFileName) }
@@ -61,15 +67,15 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         try lock.withLock {
             try startIfNeeded()
             let file = try openHandle()
-            if tailMayBeTorn {
+            if case .open(_, _, .unknown) = state {
                 try dropUnfinishedLine(file)
-                tailMayBeTorn = false
+                handle(.tailRepaired)
             }
             try file.seekToEnd()
             do {
                 try file.write(contentsOf: line)
             } catch {
-                tailMayBeTorn = true
+                handle(.writeFailed)
                 throw error
             }
         }
@@ -84,8 +90,12 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         }
     }
 
+    private func handle(_ event: SpoolWriterState.Event) {
+        state.handle(event, log: log, .spool)
+    }
+
     private func startIfNeeded() throws {
-        guard lockFile < 0 else { return }
+        guard case .notStarted = state else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         chmod(directory.path, Self.folderMode)
         let lockPath = directory.appendingPathComponent(Self.lockFileName).path
@@ -95,44 +105,60 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         } catch is LockHeld {
             throw InUse(directory: directory)
         }
-        fchmod(descriptor, Self.fileMode)
-        chmod(openFile.path, Self.fileMode)
-        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-        let stamps = names.compactMap { name in
-            name.hasSuffix(Self.finishedSuffix) ? SpoolTime(fileStamp: name.dropLast(Self.finishedSuffix.count)) : nil
+        do {
+            fchmod(descriptor, Self.fileMode)
+            chmod(openFile.path, Self.fileMode)
+            let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            let stamps = names.compactMap { name in
+                name.hasSuffix(Self.finishedSuffix) ? SpoolTime(fileStamp: name.dropLast(Self.finishedSuffix.count)) : nil
+            }
+            handle(.started(lockFile: descriptor, lastFinished: stamps.max() ?? SpoolTime(milliseconds: 0)))
+        } catch {
+            close(descriptor)
+            throw error
         }
-        lastFinished = max(lastFinished, stamps.max() ?? lastFinished)
-        lockFile = descriptor
     }
 
     private func openHandle() throws -> FileHandle {
-        if let handle { return handle }
-        if !FileManager.default.fileExists(atPath: openFile.path) {
+        let exists = FileManager.default.fileExists(atPath: openFile.path)
+        if case .open(_, let file, _) = state {
+            if exists { return file }
+            try? file.close()
+            handle(.openFileGone)
+        }
+        if !exists {
             FileManager.default.createFile(atPath: openFile.path, contents: nil, attributes: [.posixPermissions: Self.fileMode])
         }
         let file = try FileHandle(forUpdating: openFile)
-        handle = file
+        handle(.opened(file, leftover: exists))
         return file
     }
 
     private func finishLocked() throws -> URL? {
-        guard FileManager.default.fileExists(atPath: openFile.path) else { return nil }
+        guard FileManager.default.fileExists(atPath: openFile.path) else {
+            if case .open(_, let file, _) = state {
+                try? file.close()
+                handle(.openFileGone)
+            }
+            return nil
+        }
         let file = try openHandle()
         try dropUnfinishedLine(file)
-        tailMayBeTorn = false
+        handle(.tailRepaired)
         guard try file.seekToEnd() > 0 else { return nil }
         try file.synchronize()
+        guard case .open(let spool, _, _) = state else { return nil }
+        var tried = spool.lastFinished
         while true {
-            let stamp = SpoolTime(milliseconds: max(SpoolTime(now()).milliseconds, lastFinished.milliseconds + 1))
+            let stamp = SpoolTime(milliseconds: max(SpoolTime(now()).milliseconds, tried.milliseconds + 1))
             let finished = directory.appendingPathComponent(stamp.fileStamp + Self.finishedSuffix)
             if renamex_np(openFile.path, finished.path, UInt32(RENAME_EXCL)) == 0 {
                 try? file.close()
-                handle = nil
-                lastFinished = stamp
+                handle(.finished(stamp))
                 return finished
             }
             guard errno == EEXIST else { throw posixError() }
-            lastFinished = stamp
+            tried = stamp
         }
     }
 
@@ -145,5 +171,53 @@ public final class SpoolWriter: SpoolAppender, @unchecked Sendable {
         let contents = try file.readToEnd() ?? Data()
         let keep = contents.lastIndex(of: UInt8(ascii: "\n")).map { UInt64($0) + 1 } ?? 0
         try file.truncate(atOffset: keep)
+    }
+}
+
+/// The spool writer's hold on the spool: not taken yet, taken with no file open, or taken with the open file and whether its last line may be torn.
+enum SpoolWriterState: StateMachine {
+    struct Spool: Equatable {
+        let lockFile: Int32
+        let lastFinished: SpoolTime
+    }
+
+    enum Tail: Equatable {
+        case clean, unknown
+    }
+
+    enum Event {
+        case started(lockFile: Int32, lastFinished: SpoolTime)
+        case opened(FileHandle, leftover: Bool)
+        case writeFailed
+        case tailRepaired
+        case finished(SpoolTime)
+        case openFileGone
+    }
+
+    static let name = "spool writer"
+
+    case notStarted
+    case idle(Spool)
+    case open(Spool, FileHandle, tail: Tail)
+
+    func after(_ event: Event) -> SpoolWriterState? {
+        switch (self, event) {
+        case (.notStarted, .started(let lockFile, let lastFinished)):
+            .idle(Spool(lockFile: lockFile, lastFinished: lastFinished))
+        case (.idle(let spool), .opened(let file, let leftover)):
+            .open(spool, file, tail: leftover ? .unknown : .clean)
+        case (.open(let spool, let file, _), .writeFailed):
+            .open(spool, file, tail: .unknown)
+        case (.open(let spool, let file, _), .tailRepaired):
+            .open(spool, file, tail: .clean)
+        case (.open(let spool, _, _), .finished(let stamp)):
+            .idle(Spool(lockFile: spool.lockFile, lastFinished: stamp))
+        case (.open(let spool, _, _), .openFileGone):
+            .idle(spool)
+        case (.notStarted, .opened), (.notStarted, .writeFailed), (.notStarted, .tailRepaired), (.notStarted, .finished),
+             (.notStarted, .openFileGone), (.idle, .started), (.idle, .writeFailed), (.idle, .tailRepaired),
+             (.idle, .finished), (.idle, .openFileGone), (.open, .started), (.open, .opened):
+            nil
+        }
     }
 }

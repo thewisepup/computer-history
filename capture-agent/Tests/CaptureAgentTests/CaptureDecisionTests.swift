@@ -53,7 +53,8 @@ final class DecisionFixture {
         paused: paused,
         apps: focus.appWatch,
         windows: focus.windowWatch,
-        start: 0
+        start: 0,
+        log: AgentLog { _ in }
     )
 
     func run(for seconds: TimeInterval) -> [TickOutcome] {

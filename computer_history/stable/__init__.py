@@ -10,13 +10,13 @@
         |                     (the capture agent's among them), and the walk to the
         |                     newest one that does
         +-- versions.py       build a commit into its marked version folder and point
-        |                     current at it, undoing it all on failure; the pointers; a
-        |                     name that is not a short commit hash is refused before any
-        |                     folder is touched
-        +-- capture_agent.py  the installed agent's record, the agent app a version
-        |                     folder carries (built when its source changed, else
-        |                     copied), and the installed app kept in the old version
-        |                     before a swap
+        |                     current at it, undoing it all on failure; the pointers; how
+        |                     far a version folder on disk has got; a name that is not a
+        |                     short commit hash is refused before any folder is touched
+        +-- capture_agent.py  the installed agent's record and whether it matches a
+        |                     commit, the agent app a version folder carries (built when
+        |                     its source changed, else copied), and the installed app kept
+        |                     in the old version before a swap
         +-- launch_agents.py  the plists (kept running, run every minute, run daily or
         |                     once at login: the backend, the backup, the watchdog and
         |                     ActivityWatch), loading, stopping, starting and removing

@@ -70,6 +70,10 @@ _Avoid_: Release, production build
 Moving the stable install's `current` forward to the newest commit the release gate passes, after a pre-update backup, kept only once the backend completes an ok cycle on it under the spool hold.
 _Avoid_: Upgrade, deploy, release
 
+**Update phase**:
+How far one update or rollback has got, held in memory only; a move its table does not allow stops the run.
+_Avoid_: Update state, update status
+
 **Fallback**:
 What an update does on its own when the new version's backend crashes, fails its first cycle for a reason other than an unavailable source, completes none in time, or the wait is interrupted: the old version back as `current`, the pre-update backup restored only when the schema changed.
 _Avoid_: Revert, auto-rollback
@@ -79,7 +83,7 @@ Switching `current` to the previous version by hand, keeping the version left as
 _Avoid_: Downgrade, revert
 
 **Installed agent**:
-The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`.
+The capture agent app at its one fixed path, `~/Applications/ComputerHistoryAgent.app`, and `installed-agent.json` in the live folder naming the commit it was built from. Every version folder carries a copy of an agent app with the commit it came from; none is ever registered from there. With no record the installed agent is unknown, update counts it as changed, and `status` says `built from unknown`; a record is stale when its agent source differs from the commit's.
 _Avoid_: Deployed agent, agent version
 
 **Agent swap**:
@@ -171,7 +175,7 @@ A one-time ingest of history that existed before this install was set up.
 _Avoid_: Import, catch-up
 
 **Progress**:
-How far ingest has stored a stream, and up to when that stream is complete.
+How far ingest has stored a stream, and up to when that stream is complete. It moves back only to an ActivityWatch event held back, or from a spool position past now.
 _Avoid_: Cursor, watermark, offset, checkpoint
 
 **Ingest health**:
