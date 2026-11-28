@@ -21,12 +21,14 @@ Preconditions:
   [ingest](./ingest.md); `$C doctor` all `ok`.
 
 - **Filter.** Run `$C cli logs --since 1h --level warning`. Exit `0`; the
-  records go to stderr, among them
-  `WARNING sources.capture_spool.adapter [ingest <run id>]  spool file set aside  file=...`.
+  records go to stdout, among them
+  `WARNING sources.capture_spool.adapter [ingest <id>]  spool file set aside  file=...`,
+  where `<id>` is that ingest's own 8-hex run id (not `CHV_RUN`).
 - **JSON.** Run `$C cli logs --since 1h --json`. One JSON object per line.
 
 ## Gotchas
 
 - `chv` points `COMPUTER_HISTORY_LOG_DIR` at the run's evidence `logs/`, so
   this reads only the run's own log, never the live one.
-- `logs` writes its records to stderr, not stdout; the transcript keeps both.
+- `logs` writes its records to stdout and only the `Profile` line (and a
+  `no log records yet` notice) to stderr; the transcript keeps both.
