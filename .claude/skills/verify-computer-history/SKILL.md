@@ -30,6 +30,8 @@ C=.claude/skills/verify-computer-history/scripts/chv
 ## Launch
 
 Needs the venv from `AGENTS.md` (`.venv/bin/computer-history` must exist).
+A new worktree has none: run `"$(scripts/venv-python)" -c ''` once from the
+repo root to create it (about a minute).
 
 ```bash
 eval "$($C up)"        # sets CHV_RUN in this shell; prints "chv: run <id> ready; evidence in <dir>"
@@ -126,3 +128,8 @@ its folder under `$TMPDIR/chv/`; for a `live` one, `CHV_RUN=<id> $C down`.
   agent session into a temp spool and ingests it (needs `swift`).
 - The frozen POC (`history.py` REST + `history_mcp.py`): see `README.md`;
   out of scope until M5 deletes it.
+- Not in this map: `install`, `uninstall`, `update`, `rollback`,
+  `check-agent-install` and `dev snapshot` act on or read the live install,
+  so a run never drives them; `watchdog` probes the real ActivityWatch app
+  (`pgrep`, and `open` when it isn't running) whatever `--aw-url` says;
+  `dev build-db` and `dev perf` are covered by `tests/data/`.

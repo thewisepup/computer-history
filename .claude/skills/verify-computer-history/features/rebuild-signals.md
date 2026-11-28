@@ -2,7 +2,8 @@
 
 `rebuild-signals` wipes the derived `signals` table and re-projects every
 stored observation through its source's projector, aborting and rolling back
-when the result would shrink suspiciously.
+when the result would shrink suspiciously or more than half the payloads are
+malformed.
 
 ## Sub-features
 
@@ -38,6 +39,9 @@ Preconditions:
   paused and resumed records project to nothing), and `aw-afk` events project
   to nothing, so signals < observations is expected: the fixture run stores 37
   observations and 30 signals.
-- The shrink guard only fires after a projector change; the seed cannot
-  trigger it. Reaching `--allow-shrink` needs a code change and is out of
-  this map's reach.
+- The shrink guard fires only when there were at least 50 signals before and
+  the rebuild keeps under half of them; the seed's 30 never reach 50, and
+  unchanged projectors keep every signal. Reaching `--allow-shrink` needs a
+  code change and is out of this map's reach.
+- `skipped` is padded like the other counts (`skipped   0  (malformed payloads)`);
+  match the words and numbers, not the spacing.

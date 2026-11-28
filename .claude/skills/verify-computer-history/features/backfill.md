@@ -23,10 +23,11 @@ Preconditions:
 
 - A fresh run with no ingest yet; `$C doctor` all `ok`.
 
-- **Plan.** Run `$C cli backfill --dry-run`. Exit `0`; stdout starts
-  `Dry run: would backfill`, lists `aw-afk`, `aw-web`, `aw-window` each
-  `(1 bucket): [<3 days ago, midnight>, <now>) up to now (no ingest progress yet), 1 chunk`,
-  and ends `dry run: nothing written`.
+- **Plan.** Run `$C cli backfill --dry-run`. Exit `0`; after the `Profile`
+  line stdout reads `Dry run: would backfill ... (7d chunks)`, lists `aw-afk`,
+  `aw-web`, `aw-window` each
+  `(1 bucket): [<3 days ago, midnight>, <now>) up to now (no ingest progress yet), 1 chunk`
+  with a `chunk 1/1` line under it, and ends `dry run: nothing written`.
 - **Nothing written.** Run `$C cli status`. Still `not created yet`.
 - **Import.** Run `$C cli backfill`. Exit `0`; per source a
   `done in` line (`aw-afk ... inserted 4, ... held back 1`,
